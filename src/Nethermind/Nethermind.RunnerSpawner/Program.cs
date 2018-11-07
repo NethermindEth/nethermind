@@ -21,6 +21,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Runner;
@@ -118,7 +119,7 @@ namespace Nethermind.RunnerSpawner
                 arguments = $"{arguments} --baseDbPath {baseDbPath}";
             }
             process.StartInfo.Arguments = arguments;
-            process.StartInfo.UseShellExecute = true;
+            process.StartInfo.UseShellExecute = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
             process.StartInfo.CreateNoWindow = true;
             process.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
             _logger.Info($"Starting {process.StartInfo.WorkingDirectory} {process.StartInfo.FileName} {process.StartInfo.Arguments}");

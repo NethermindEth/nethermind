@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain
                 _logger.Debug($"Added transaction: {transaction.Hash}");
             }
 
-            var peers = _peers.Select(p => p.Value).ToArray();
+            var peers = _peers.Values.ToArray();
             var peerGroups = new PeerGroups();
             peerGroups.GenerateGroup(transaction, peers, _iterationsLimit);
             _transactions.TryAdd(transaction, peerGroups);
@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain
             {
                 if (peerGroups.Iterations < _iterationsLimit)
                 {
-                    var peers = _peers.Select(p => p.Value).ToArray();
+                    var peers = _peers.Values.ToArray();
                     peerGroups.Notify(transaction);
                     peerGroups.GenerateGroup(transaction, peers, _iterationsLimit);
                     continue;

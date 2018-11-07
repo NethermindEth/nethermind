@@ -138,7 +138,7 @@ namespace Nethermind.JsonRpc
             tx.GasPrice = transaction.GasPrice?.Value.ToUInt256() ?? 0;
             tx.Nonce = transaction.Nonce?.Value.ToUInt256() ?? 0; // here pick the last nonce?
             tx.To = transaction.To == null ? null : new Address(transaction.To.Value);
-            tx.SenderAddress = new Address(transaction.From.Value);
+            tx.SenderAddress = transaction.From == null ? null : new Address(transaction.From.Value);
             tx.Value = transaction.Value?.Value.ToUInt256() ?? UInt256.Zero;
             if (tx.To == null)
             {

@@ -1,6 +1,6 @@
 {
-  "ReleasePath": "F:\\IT\\projects\\Crypto\\nevermind\\src\\Nethermind\\Nethermind.Runner\\bin\\Debug\\netcoreapp2.1",
-  "DbBasePath": "F:\\IT\\projects\\Crypto\\db",
+  "ReleasePath": "/home/spetz/Workspace/Nethermind/Runner/",
+  "DbBasePath": "/home/spetz/Workspace/Nethermind/DB",
   "Runners": {
     "Bootnode": [
       {
@@ -15,9 +15,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8345,
           "IsMining": false,
-          "ChainSpecPath": "chainspec\\private_bootnode.json",
+          "ChainSpecPath": "chainspec/private_bootnode.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_bootnode\\full",
+          "BaseDbPath": "private_bootnode/full",
           "TestNodeKey": "100102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_bootnode.logs.txt"
         }
@@ -36,9 +36,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8346,
           "IsMining": true,
-          "ChainSpecPath": "chainspec\\private_miner1.json",
+          "ChainSpecPath": "chainspec/private_miner1.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_miner1\\full",
+          "BaseDbPath": "private_miner1/full",
           "TestNodeKey": "110102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_miner_1.logs.txt"
         }
@@ -57,9 +57,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8347,
           "IsMining": false,
-          "ChainSpecPath": "chainspec\\private_client.json",
+          "ChainSpecPath": "chainspec/private_client.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_client1\\full",
+          "BaseDbPath": "private_client1/full",
           "TestNodeKey": "120102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_1.logs.txt"
         }
@@ -78,9 +78,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8348,
           "IsMining": false,
-          "ChainSpecPath": "chainspec\\private_client.json",
+          "ChainSpecPath": "chainspec/private_client.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_client2\\full",
+          "BaseDbPath": "private_client2/full",
           "TestNodeKey": "130102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_2.logs.txt"
         }
@@ -100,9 +100,9 @@
           "HttpPort": 8349,
           "IsMining": false,
           "FakeMiningDelay": 12000,
-          "ChainSpecPath": "chainspec\\private_client.json",
+          "ChainSpecPath": "chainspec/private_client.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_client3\\full",
+          "BaseDbPath": "private_client3/full",
           "TestNodeKey": "140102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_3.logs.txt"
         }
@@ -121,9 +121,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8350,
           "IsMining": false,
-          "ChainSpecPath": "chainspec\\private_client.json",
+          "ChainSpecPath": "chainspec/private_client.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_client4\\full",
+          "BaseDbPath": "private_client4/full",
           "TestNodeKey": "150102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_4.logs.txt"
         }
