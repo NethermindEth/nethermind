@@ -220,7 +220,7 @@ namespace Nethermind.Blockchain
             {
                 _logger.Trace($"Received a pending transaction {transaction.Hash} from {receivedFrom}");
             }
-            if (_transactionStore.AddPending(transaction, HeadNumber) != AddTransactionResult.Added)
+            if (_transactionStore.AddPending(transaction, HeadNumber) == AddTransactionResult.Added)
             {
                 _mempool.AddTransaction(transaction);
             }
