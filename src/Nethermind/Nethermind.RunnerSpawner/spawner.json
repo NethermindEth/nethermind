@@ -1,6 +1,6 @@
 {
-  "ReleasePath": "F:\\IT\\projects\\Crypto\\nethermind_release",
-  "DbBasePath": "F:\\IT\\projects\\Crypto\\db",
+  "ReleasePath": "/home/spetz/Workspace/Nethermind/Runner/",
+  "DbBasePath": "/home/spetz/Workspace/Nethermind/DB",
   "Runners": {
     "Miner1": [
       {
@@ -15,9 +15,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8345,
           "IsMining": true,
-          "ChainSpecPath": "chainspec\\private_miner1.json",
+          "ChainSpecPath": "chainspec/private_miner1.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_0\\full",
+          "BaseDbPath": "private_0/full",
           "TestNodeKey": "100102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_0.logs.txt"
         }
@@ -36,9 +36,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8345,
           "IsMining": true,
-          "ChainSpecPath": "chainspec\\private_miner2.json",
+          "ChainSpecPath": "chainspec/private_miner2.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_1\\full",
+          "BaseDbPath": "private_1/full",
           "TestNodeKey": "110102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_1.logs.txt"
         }
@@ -57,9 +57,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8345,
           "IsMining": false,
-          "ChainSpecPath": "chainspec\\private_client.json",
+          "ChainSpecPath": "chainspec/private_client.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_2\\full",
+          "BaseDbPath": "private_2/full",
           "TestNodeKey": "120102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_2.logs.txt"
         }
@@ -78,9 +78,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8345,
           "IsMining": false,
-          "ChainSpecPath": "chainspec\\private_client.json",
+          "ChainSpecPath": "chainspec/private_client.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_3\\full",
+          "BaseDbPath": "private_3/full",
           "TestNodeKey": "130102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_3.logs.txt"
         }
@@ -99,9 +99,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8345,
           "IsMining": false,
-          "ChainSpecPath": "chainspec\\private_client.json",
+          "ChainSpecPath": "chainspec/private_client.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_4\\full",
+          "BaseDbPath": "private_4/full",
           "TestNodeKey": "140102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_4.logs.txt"
         }
@@ -120,9 +120,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8345,
           "IsMining": false,
-          "ChainSpecPath": "chainspec\\private_client.json",
+          "ChainSpecPath": "chainspec/private_client.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_5\\full",
+          "BaseDbPath": "private_5/full",
           "TestNodeKey": "150102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_5.logs.txt"
         }
@@ -141,9 +141,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8345,
           "IsMining": false,
-          "ChainSpecPath": "chainspec\\private_client.json",
+          "ChainSpecPath": "chainspec/private_client.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_6\\full",
+          "BaseDbPath": "private_6/full",
           "TestNodeKey": "160102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_6.logs.txt"
         }
@@ -162,9 +162,9 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8345,
           "IsMining": false,
-          "ChainSpecPath": "chainspec\\private_client.json",
+          "ChainSpecPath": "chainspec/private_client.json",
           "GenesisHash": "",
-          "BaseDbPath": "private_7\\full",
+          "BaseDbPath": "private_7/full",
           "TestNodeKey": "170102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
           "LogFileName": "private_7.logs.txt"
         }
