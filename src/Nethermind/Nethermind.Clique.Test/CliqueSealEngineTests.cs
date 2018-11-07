@@ -93,8 +93,8 @@ namespace Nethermind.Clique.Test
         {
             Block block6 = CreateBlock(2, 6, _lastBlock);
             Block signed = _clique.Mine(block6);
-            bool validHeader = _clique.VerifyHeader(signed.Header);
-            bool validSeal = _clique.VerifySeal(signed.Header);
+            bool validHeader = _clique.ValidateHeader(signed.Header);
+            bool validSeal = _clique.ValidateSeal(signed.Header);
             Assert.True(validHeader);
             Assert.True(validSeal);
         }

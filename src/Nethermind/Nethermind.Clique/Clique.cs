@@ -143,7 +143,7 @@ namespace Nethermind.Clique
             return block;
         }
 
-        public bool VerifyHeader(BlockHeader header)
+        public bool ValidateHeader(BlockHeader header)
         {
             ulong number = (ulong) header.Number;
             // Checkpoint blocks need to enforce zero beneficiary
@@ -210,13 +210,13 @@ namespace Nethermind.Clique
                 _logger.Warn($"Invalid block difficulty ({header.Difficulty}) - should be {DiffInTurn} or {DiffNoTurn}");
             }
 
-            return VerifyCascadingFields(header);
+            return ValidateCascadingFields(header);
         }
 
-        public bool VerifySeal(BlockHeader header)
+        public bool ValidateSeal(BlockHeader header)
         {
             ulong number = (ulong) header.Number;
-            // Retrieve the snapshot needed to verify this header and cache it
+            // Retrieve the snapshot needed to validate this header and cache it
             Snapshot snap = GetSnapshot(number - 1, header.ParentHash);
             // Resolve the authorization key and check against signers
             Address signer = header.GetBlockSealer(_signatures);
@@ -451,7 +451,7 @@ namespace Nethermind.Clique
             return new UInt256(DiffNoTurn);
         }
 
-        private bool VerifyCascadingFields(BlockHeader header)
+        private bool ValidateCascadingFields(BlockHeader header)
         {
             ulong number = (ulong) header.Number;
             // Ensure that the block's timestamp isn't too close to it's parent
@@ -462,10 +462,10 @@ namespace Nethermind.Clique
                 return false;
             }
 
-            // Retrieve the snapshot needed to verify this header and cache it
+            // Retrieve the snapshot needed to validate this header and cache it
             Snapshot snap = GetSnapshot(number - 1, header.ParentHash);
 
-            // If the block is a checkpoint block, verify the signer list
+            // If the block is a checkpoint block, validate the signer list
             if (number % _config.Epoch == 0)
             {
                 var signersBytes = new byte[snap.Signers.Count * AddressLength];
