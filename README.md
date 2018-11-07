@@ -34,6 +34,10 @@ on Mac:
 brew install gmp
 ```
 
+on Windows:
+you may need to install https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
+if you do not have dev tools already installed
+
 then (any platform):
 ```
 git clone https://github.com/tkstanczak/nethermind --recursive
