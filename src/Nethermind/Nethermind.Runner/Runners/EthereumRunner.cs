@@ -427,7 +427,7 @@ namespace Nethermind.Runner.Runners
                 TransactionStore debugTransactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _specProvider, ethereumSigner);
                 AlternativeChain debugChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, rpcDbProvider, recoveryStep, _logManager, debugTransactionStore);
                 IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-                DebugBridge = new DebugBridge(debugDbProvider, txTracer, rpcChain.Processor, debugChain.Processor);
+                DebugBridge = new DebugBridge(debugDbProvider, txTracer, debugChain.Processor);
             }
 
             if (_initConfig.IsMining)

@@ -1541,7 +1541,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        PushBytes(env.CurrentBlock.Beneficiary.Bytes, bytesOnStack);
+                        PushBytes(env.CurrentBlock.GasBeneficiary.Bytes, bytesOnStack);
                         break;
                     }
                     case Instruction.DIFFICULTY:

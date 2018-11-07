@@ -20,13 +20,16 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 using Nethermind.JsonRpc.DataModel;
+using TransactionTrace = Nethermind.JsonRpc.DataModel.TransactionTrace;
 
 namespace Nethermind.JsonRpc.Module
 {
@@ -137,7 +140,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Data blockHash)
         {
-            var blockTrace = _debugBridge.GetBlockTrace(new Keccak(blockHash.Value));
+            BlockTrace blockTrace = _debugBridge.GetBlockTrace(new Keccak(blockHash.Value));
             if (blockTrace == null)
             {
                 return ResultWrapper<BlockTraceItem[]>.Fail($"Trace is null for block {blockHash}", ErrorType.NotFound);

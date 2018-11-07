@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain
         {
             Block block = _blockTree.FindBlock(blockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
-            block.Transactions = new [] {tx};
+            block.Transactions = new[] {tx};
             TraceListener listener = new TraceListener(tx.Hash);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
             return listener.Trace;
@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain
             }
 
             BlockTraceListener listener = new BlockTraceListener(block);
-            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
             return listener.BlockTrace;
         }
     }

@@ -119,8 +119,13 @@ namespace Nethermind.Evm.Test
                 .SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, blockNumber)
                 .TestObject;
 
-            Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
+            Block block = BuildBlock(blockNumber);
             return _processor.Execute(0, transaction, block.Header, shouldTrace);
+        }
+
+        protected virtual Block BuildBlock(UInt256 blockNumber)
+        {
+            return Build.A.Block.WithNumber(blockNumber).TestObject;
         }
 
         protected void AssertGas(TransactionReceipt receipt, long gas)
@@ -128,6 +133,11 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(gas, receipt.GasUsed, "gas");
         }
 
+        protected void AssertStorage(UInt256 address, Address value)
+        {
+            Assert.AreEqual(value.Bytes.PadLeft(32), Storage.Get(new StorageAddress(Recipient, address)).PadLeft(32), "storage");
+        }
+        
         protected void AssertStorage(UInt256 address, Keccak value)
         {
             Assert.AreEqual(value.Bytes, Storage.Get(new StorageAddress(Recipient, address)).PadLeft(32), "storage");

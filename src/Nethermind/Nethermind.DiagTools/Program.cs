@@ -40,8 +40,8 @@ namespace Nethermind.DiagTools
 //            int blockNumber = 6108276;
 //            string hash = "?";
 
-            int blockNumber = 226522;
-            string hash = "0x63de8ba970ca56da5f12d5c4ff826501ab4e945f36338ae20be42f9e42e13b7a";
+            int blockNumber = 316658;
+            string hash = "0x846806c1e1fc530399ad80cec3121b9d90fe24e4665484b995237f7f95e2caa8";
 //            Console.WriteLine("Block Number:");
             // int blockNumber = int.Parse(Console.ReadLine());
 
@@ -55,7 +55,7 @@ namespace Nethermind.DiagTools
 //            await TraceBlock(localhostClient, blockNumber, nethPathBase);
             await TraceBlockByHash(localhostClient, hash, nethPathBase);
 
-            BasicJsonRpcClient gethClient = new BasicJsonRpcClient(KnownRpcUris.GethVm4, _serializer, NullLogManager.Instance);
+            BasicJsonRpcClient gethClient = new BasicJsonRpcClient(KnownRpcUris.Localhost, _serializer, NullLogManager.Instance);
 //            await TraceBlock(gethClient, blockNumber, gethPathBase);
             await TraceBlockByHash(gethClient, hash, gethPathBase);
 

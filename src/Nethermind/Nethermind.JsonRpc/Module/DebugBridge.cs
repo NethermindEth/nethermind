@@ -30,15 +30,13 @@ namespace Nethermind.JsonRpc.Module
 {
     public class DebugBridge : IDebugBridge
     {
-        private readonly IBlockchainProcessor _traceProcessot;
         private readonly IBlockchainProcessor _receiptsProcessor;
         private readonly ITxTracer _txTracer;
         private Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IReadOnlyDbProvider dbProvider, ITxTracer txTracer, IBlockchainProcessor traceProcessor, IBlockchainProcessor receiptsProcessor)
+        public DebugBridge(IReadOnlyDbProvider dbProvider, ITxTracer txTracer, IBlockchainProcessor receiptsProcessor)
         {
-            _traceProcessot = traceProcessor ?? throw new ArgumentNullException(nameof(traceProcessor));
-            _receiptsProcessor = receiptsProcessor ?? throw new ArgumentNullException(nameof(traceProcessor));
+            _receiptsProcessor = receiptsProcessor ?? throw new ArgumentNullException(nameof(receiptsProcessor));
             _receiptsProcessor.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
             _txTracer = txTracer ?? throw new ArgumentNullException(nameof(txTracer));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
