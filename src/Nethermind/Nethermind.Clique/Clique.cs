@@ -286,9 +286,10 @@ namespace Nethermind.Clique
                 }
 
                 // If we're at an checkpoint block, make a snapshot if it's known
-                if (number == 0 || (number % _config.Epoch == 0 && _blockTree.FindHeader(number - 1) == null))
+                Keccak parentHash = _blockTree.FindHeader(hash).ParentHash;
+                if (number == 0 || (number % _config.Epoch == 0 && _blockTree.FindHeader(parentHash) == null))
                 {
-                    BlockHeader checkpoint = _blockTree.FindHeader(number);
+                    BlockHeader checkpoint = _blockTree.FindHeader(hash);
                     if (checkpoint != null)
                     {
                         Keccak blockHash = BlockHeader.CalculateHash(checkpoint);
