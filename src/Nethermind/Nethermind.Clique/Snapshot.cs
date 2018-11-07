@@ -113,7 +113,6 @@ namespace Nethermind.Clique
                 return null;
             }
             String json = Encoding.UTF8.GetString(blob);
-            new SimpleConsoleLogger().Info($"s json = {json}");
             JsonSerializer serializer = new JsonSerializer(NullLogManager.Instance);
             Snapshot snap = serializer.Deserialize<Snapshot>(json);
             snap.Config = config;
