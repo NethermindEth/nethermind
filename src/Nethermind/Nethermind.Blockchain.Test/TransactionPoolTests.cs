@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TransactionPools.Filters;
+using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -33,7 +35,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Test()
         {
-            _transactionPool = new TransactionPool(new NonPersistentTransactionPoolStrategy(), _logManager);
+            _transactionPool = new TransactionPool(_logManager);
             var peers = GetPeers();
             var transactions = GetTransactions(peers);
 
@@ -44,7 +46,7 @@ namespace Nethermind.Blockchain.Test
 
             foreach (var transaction in transactions)
             {
-                _transactionPool.AddTransaction(transaction);
+                _transactionPool.TryAddTransaction(transaction);
             }
         }
 

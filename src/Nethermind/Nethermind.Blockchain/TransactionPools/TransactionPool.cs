@@ -10,22 +10,38 @@ namespace Nethermind.Blockchain.TransactionPools
 {
     public class TransactionPool : ITransactionPool
     {
-        private static readonly Random Random = new Random();
+        private static readonly Random GlobalRandom = new Random();
+        [ThreadStatic] private static Random _random;
+
+        private readonly ConcurrentDictionary<Type, ITransactionPoolFilter> _filters =
+            new ConcurrentDictionary<Type, ITransactionPoolFilter>();
+
+        private readonly ConcurrentDictionary<Type, ITransactionPoolStorage> _storages =
+            new ConcurrentDictionary<Type, ITransactionPoolStorage>();
 
         private readonly ConcurrentDictionary<PublicKey, ISynchronizationPeer> _peers =
             new ConcurrentDictionary<PublicKey, ISynchronizationPeer>();
 
-        private readonly ITransactionPoolStrategy _strategy;
         private readonly ILogger _logger;
         private readonly int _peerThrehshold;
 
-        public TransactionPool(ITransactionPoolStrategy strategy, ILogManager logManager,
-            int peerThrehshold = 20)
+        public TransactionPool(ILogManager logManager, int peerThrehshold = 20)
         {
-            _strategy = strategy;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _peerThrehshold = peerThrehshold;
         }
+
+        public void AddFilter<T>(T filter) where T : ITransactionPoolFilter
+            => _filters.TryAdd(typeof(T), filter);
+
+        public void DeleteFilter<T>() where T : ITransactionPoolFilter
+            => _filters.TryRemove(typeof(T), out _);
+
+        public void AddStorage<T>(T storage) where T : ITransactionPoolStorage
+            => _storages.TryAdd(storage.GetType(), storage);
+
+        public void DeleteStorage<T>() where T : ITransactionPoolStorage
+            => _storages.TryRemove(typeof(T), out _);
 
         public void AddPeer(ISynchronizationPeer peer)
         {
@@ -53,20 +69,53 @@ namespace Nethermind.Blockchain.TransactionPools
             }
         }
 
-        public void AddTransaction(Transaction transaction)
+        public void TryAddTransaction(Transaction transaction)
         {
+            var filters = _filters.Values.ToArray();
+            for (var i = 0; i < filters.Length; i++)
+            {
+                var filter = filters[i];
+                if (!filter.CanAdd(transaction))
+                {
+                    return;
+                }
+            }
+
+            var storages = _storages.Values.ToArray();
+            for (var i = 0; i < storages.Length; i++)
+            {
+                var storage = storages[i];
+                storage.Add(transaction);
+            }
+
             if (_logger.IsDebug)
             {
                 _logger.Debug($"Added transaction: {transaction.Hash}");
             }
 
             NotifyPeers(SelectPeers(GetAvailablePeers(transaction)), transaction);
-            _strategy.AddTransaction(transaction);
         }
 
-        public void UpdateTransaction(Transaction transaction)
+        public void TryDeleteTransaction(Transaction transaction)
         {
-            _strategy.UpdateTransaction(transaction);
+            var filters = _filters.Values.ToArray();
+            for (var i = 0; i < filters.Length; i++)
+            {
+                var filter = filters[i];
+                if (!filter.CanDelete(transaction))
+                {
+                    return;
+                }
+            }
+
+            var storages = _storages.Values.ToArray();
+            for (var i = 0; i < storages.Length; i++)
+            {
+                var storage = storages[i];
+                storage.Delete(transaction);
+            }
+
+            _logger.Debug($"Deleted transaction: {transaction.Hash}");
         }
 
         private void NotifyPeers(ISynchronizationPeer[] peers, Transaction transaction)
@@ -99,7 +148,7 @@ namespace Nethermind.Blockchain.TransactionPools
             for (var i = 0; i < availablePeers.Length; i++)
             {
                 var peer = availablePeers[i];
-                if (_peerThrehshold >= Random.Next(1, 100))
+                if (_peerThrehshold >= GetRandomNumber())
                 {
                     selectedPeers.Add(peer);
                 }
@@ -125,6 +174,19 @@ namespace Nethermind.Blockchain.TransactionPools
             }
 
             return availablePeers.ToArray();
+        }
+
+        private static int GetRandomNumber()
+        {
+            var instance = _random;
+            if (instance == null)
+            {
+                int seed;
+                lock (GlobalRandom) seed = GlobalRandom.Next();
+                _random = instance = new Random(seed);
+            }
+
+            return instance.Next(1, 100);
         }
     }
 }
