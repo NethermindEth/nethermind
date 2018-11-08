@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -73,7 +74,7 @@ namespace Nethermind.Evm.Test
         [TestCase("0x0000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000000", "0xdeadbeef", 32006, "0x70f2b2914A2a4b783FaEFb75f459A580616Fcb5e")]
         [TestCase("0x00000000000000000000000000000000deadbeef", "0x00000000000000000000000000000000000000000000000000000000cafebabe", "0xdeadbeef", 32006, "0x60f3f640a8508fC6a86d45DF051962668E1e8AC7")]
         [TestCase("0x00000000000000000000000000000000deadbeef", "0x00000000000000000000000000000000000000000000000000000000cafebabe", "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef", 32012, "0x1d8bfDC5D46DC4f61D6b6115972536eBE6A8854C")]
-        [TestCase("0x0000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000000", "0x00", 32000, "0xE33C0C7F7df4809055C3ebA6c09CFe4BaF1BD9e0")]
+        [TestCase("0x0000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000000", "0x", 32000, "0xE33C0C7F7df4809055C3ebA6c09CFe4BaF1BD9e0")]
         public void Examples_from_eip_spec_are_executed_correctly(string addressHex, string saltHex, string initCodeHex, long gas, string resultHex)
         {
             byte[] salt = Bytes.FromHexString(saltHex);   
@@ -93,10 +94,11 @@ namespace Nethermind.Evm.Test
                 .Call(TestObject.AddressC, 50000)
                 .Done;
 
-            Execute(code);
+            (var receipt, var trace) =  ExecuteAndTrace(code);
             
             Address expectedAddress = new Address(resultHex);
             AssertEip1014(expectedAddress, deployedCode);
+            Assert.AreEqual(gas, trace.Entries.Single(e => e.Operation == Instruction.CREATE2.ToString()).GasCost);
         }
     }
 }
