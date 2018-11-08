@@ -7,20 +7,20 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain.TransactionPools.Storages
 {
-    public class PersistentTransactionReceiptStorage : ITransactionReceiptStorage
+    public class PersistentReceiptStorage : IReceiptStorage
     {
-        private readonly IDb _receiptsDb;
+        private readonly IDb _database;
         private readonly ISpecProvider _specProvider;
 
-        public PersistentTransactionReceiptStorage(IDb receiptsDb, ISpecProvider specProvider)
+        public PersistentReceiptStorage(IDb database, ISpecProvider specProvider)
         {
-            _receiptsDb = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
+            _database = database ?? throw new ArgumentNullException(nameof(database));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
 
         public TransactionReceipt Get(Keccak hash)
         {
-            var receiptData = _receiptsDb.Get(hash);
+            var receiptData = _database.Get(hash);
 
             return receiptData == null
                 ? null
@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.TransactionPools.Storages
             }
 
             var spec = _specProvider.GetSpec(receipt.BlockNumber);
-            _receiptsDb.Set(receipt.TransactionHash,
+            _database.Set(receipt.TransactionHash,
                 Rlp.Encode(receipt, spec.IsEip658Enabled
                     ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage
                     : RlpBehaviors.Storage).Bytes);

@@ -20,6 +20,7 @@ using System;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
@@ -31,10 +32,6 @@ namespace Nethermind.Blockchain
         }
 
         public static NullTransactionPool Instance { get; } = new NullTransactionPool();
-
-        public void StoreProcessedTransaction(Keccak txHash, TransactionReceipt receipt)
-        {
-        }
 
         public Transaction[] PendingTransactions => new Transaction[0];
 
@@ -52,7 +49,7 @@ namespace Nethermind.Blockchain
         {
         }
 
-        public void RemovePeer(ISynchronizationPeer peer)
+        public void DeletePeer(NodeId nodeId)
         {
         }
 

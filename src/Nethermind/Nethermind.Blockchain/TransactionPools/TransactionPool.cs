@@ -5,6 +5,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
+using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TransactionPools
@@ -21,7 +22,7 @@ namespace Nethermind.Blockchain.TransactionPools
             new ConcurrentDictionary<Type, ITransactionFilter>();
 
         private readonly ITransactionStorage _storage;
-        private readonly ITransactionReceiptStorage _receiptStorage;
+        private readonly IReceiptStorage _receiptStorage;
 
         private readonly ConcurrentDictionary<PublicKey, ISynchronizationPeer> _peers =
             new ConcurrentDictionary<PublicKey, ISynchronizationPeer>();
@@ -30,7 +31,7 @@ namespace Nethermind.Blockchain.TransactionPools
         private readonly ILogger _logger;
         private readonly int _peerThrehshold;
 
-        public TransactionPool(ITransactionStorage storage, ITransactionReceiptStorage receiptStorage,
+        public TransactionPool(ITransactionStorage storage, IReceiptStorage receiptStorage,
             IEthereumSigner signer, ILogManager logManager, int peerThrehshold = 20)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -41,7 +42,6 @@ namespace Nethermind.Blockchain.TransactionPools
         }
 
         public Transaction[] PendingTransactions => _pendingTransactions.Values.ToArray();
-        public Transaction[] FilteredTransactions => _storage.GetAll();
         public TransactionReceipt GetReceipt(Keccak hash) => _receiptStorage.Get(hash);
 
         public void AddFilter<T>(T filter) where T : ITransactionFilter
@@ -63,16 +63,16 @@ namespace Nethermind.Blockchain.TransactionPools
             }
         }
 
-        public void RemovePeer(ISynchronizationPeer peer)
+        public void DeletePeer(NodeId nodeId)
         {
-            if (!_peers.TryRemove(peer.NodeId.PublicKey, out _))
+            if (!_peers.TryRemove(nodeId.PublicKey, out _))
             {
                 return;
             }
 
             if (_logger.IsDebug)
             {
-                _logger.Debug($"Removed peer: {peer.ClientId}");
+                _logger.Debug($"Removed peer: {nodeId}");
             }
         }
 
@@ -92,10 +92,10 @@ namespace Nethermind.Blockchain.TransactionPools
             _pendingTransactions.TryAdd(transaction.Hash, transaction);
             NewPending?.Invoke(this, new TransactionEventArgs(transaction));
             NotifyPeers(SelectPeers(GetAvailablePeers(transaction)), transaction);
-            FilterAndStoreTransaction(transaction);
+            FilterAndStoreTransaction(transaction, blockNumber);
         }
 
-        private void FilterAndStoreTransaction(Transaction transaction)
+        private void FilterAndStoreTransaction(Transaction transaction, UInt256 blockNumber)
         {
             var filters = _filters.Values.ToArray();
             for (var i = 0; i < filters.Length; i++)
@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.TransactionPools
                 }
             }
 
-            _storage.Add(transaction);
+            _storage.Add(transaction, blockNumber);
             if (_logger.IsDebug)
             {
                 _logger.Debug($"Added transaction: {transaction.Hash}");
