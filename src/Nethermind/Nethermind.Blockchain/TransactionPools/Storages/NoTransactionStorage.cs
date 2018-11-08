@@ -1,5 +1,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TransactionPools.Storages
 {
@@ -9,7 +10,7 @@ namespace Nethermind.Blockchain.TransactionPools.Storages
 
         public Transaction[] GetAll() => new Transaction[0];
 
-        public void Add(Transaction transaction)
+        public void Add(Transaction transaction, UInt256 blockNumber)
         {
         }
 

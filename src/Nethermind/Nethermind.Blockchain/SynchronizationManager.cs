@@ -284,7 +284,7 @@ namespace Nethermind.Blockchain
                 //possible if sync failed - we remove peer and eventually initiate disconnect, which calls remove peer again
                 return;
             }
-            _transactionPool.RemovePeer(peerInfo.Peer);
+            _transactionPool.DeletePeer(peerInfo.Peer.NodeId);
 
             if (_currentSyncingPeerInfo?.Peer.NodeId.Equals(synchronizationPeer.NodeId) ?? false)
             {

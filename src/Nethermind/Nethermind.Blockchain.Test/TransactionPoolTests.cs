@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using FluentAssertions;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.TransactionPools.Filters;
 using Nethermind.Blockchain.TransactionPools.Storages;
@@ -17,57 +18,150 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class TransactionPoolTests
     {
+        private Block _genesisBlock;
+        private ILogManager _logManager;
         private IEthereumSigner _ethereumSigner;
         private ISpecProvider _specProvider;
-        private ILogManager _logManager;
-        private Block _genesisBlock;
         private ITransactionPool _transactionPool;
-        private ITransactionStorage _storage;
-        private ITransactionReceiptStorage _receiptStorage;
+        private ITransactionStorage _noStorage;
+        private ITransactionStorage _persistentStorage;
+        private ITransactionStorage _inMemoryStorage;
+        private IReceiptStorage _noReceiptStorage;
+        private IReceiptStorage _persistentReceiptStorage;
+        private IReceiptStorage _inMemoryReceiptStorage;
         private IBlockTree _remoteBlockTree;
 
         [SetUp]
         public void Setup()
         {
-            _logManager = NullLogManager.Instance;
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
+            _logManager = NullLogManager.Instance;
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
-            _storage = new NoTransactionStorage();
-            _receiptStorage = new NoTransactionReceiptStorage();
+            _noStorage = new NoTransactionStorage();
+            _inMemoryStorage = new InMemoryTransactionStorage();
+            _persistentStorage = new PersistentTransactionStorage(new MemDb(), _specProvider);
+            _noReceiptStorage = new NoReceiptStorage();
+            _persistentReceiptStorage = new PersistentReceiptStorage(new MemDb(), _specProvider);
+            _inMemoryReceiptStorage = new InMemoryReceiptStorage();
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
         }
 
         [Test]
-        public void Test()
+        public void should_add_peers()
         {
-            _transactionPool = new TransactionPool(_storage, _receiptStorage, _ethereumSigner, _logManager);
+            _transactionPool = new TransactionPool(_noStorage, _noReceiptStorage, _ethereumSigner, _logManager);
             var peers = GetPeers();
-            var transactions = GetTransactions(peers);
+
+            foreach ((ISynchronizationPeer peer, _) in peers)
+            {
+                _transactionPool.AddPeer(peer);
+            }
+        }
+
+        [Test]
+        public void should_delete_peers()
+        {
+            _transactionPool = new TransactionPool(_noStorage, _noReceiptStorage, _ethereumSigner, _logManager);
+            var peers = GetPeers();
 
             foreach ((ISynchronizationPeer peer, _) in peers)
             {
                 _transactionPool.AddPeer(peer);
             }
 
-            for (var i = 0; i < transactions.Length; i++)
+            foreach ((ISynchronizationPeer peer, _) in peers)
             {
-                _transactionPool.AddTransaction(transactions[i], 1);
+                _transactionPool.DeletePeer(peer.NodeId);
             }
         }
 
         [Test]
-        public void Can_store_and_retrieve_receipt()
+        public void should_add_transactions()
         {
-            _receiptStorage = new PersistentTransactionReceiptStorage(new MemDb(), _specProvider);
-            _transactionPool = new TransactionPool(_storage, _receiptStorage, _ethereumSigner, _logManager);
-            Transaction tx = Build.A.Transaction.Signed(_ethereumSigner, TestObject.PrivateKeyA, 1).TestObject;
-            TransactionReceipt txReceipt = Build.A.TransactionReceipt.WithState(TestObject.KeccakB)
-                .WithTransactionHash(tx.Hash).TestObject;
-            _transactionPool.AddReceipt(txReceipt);
+            _transactionPool = new TransactionPool(_noStorage, _noReceiptStorage, _ethereumSigner, _logManager);
+            var transactions = GetTransactions(GetPeers());
 
-            TransactionReceipt txReceiptRetrieved = _transactionPool.GetReceipt(tx.Hash);
-            Assert.AreEqual(txReceipt.PostTransactionState, txReceiptRetrieved.PostTransactionState, "state");
+            foreach (var transaction in transactions)
+            {
+                _transactionPool.AddTransaction(transaction, 1);
+            }
+
+            _transactionPool.PendingTransactions.Length.Should().Be(transactions.Length);
+        }
+
+        [Test]
+        public void should_add_transactions_to_in_memory_storage()
+        {
+            _transactionPool = new TransactionPool(_inMemoryStorage, _noReceiptStorage, _ethereumSigner, _logManager);
+            var transactions = GetTransactions(GetPeers());
+
+            foreach (var transaction in transactions)
+            {
+                _transactionPool.AddTransaction(transaction, 1);
+            }
+
+            var storedTransactions = new List<Transaction>();
+            foreach (var transaction in transactions)
+            {
+                storedTransactions.Add(_inMemoryStorage.Get(transaction.Hash));
+            }
+
+            storedTransactions.Count.Should().Be(transactions.Length);
+        }
+
+        [Test]
+        public void should_add_transactions_to_persistent_storage()
+        {
+            _transactionPool = new TransactionPool(_persistentStorage, _noReceiptStorage, _ethereumSigner, _logManager);
+            var transactions = GetTransactions(GetPeers());
+
+            foreach (var transaction in transactions)
+            {
+                _transactionPool.AddTransaction(transaction, 1);
+            }
+
+            var storedTransactions = new List<Transaction>();
+            foreach (var transaction in transactions)
+            {
+                storedTransactions.Add(_persistentStorage.Get(transaction.Hash));
+            }
+
+            storedTransactions.Count.Should().Be(transactions.Length);
+        }
+
+        [Test]
+        public void should_delete_transactions()
+        {
+            _transactionPool = new TransactionPool(_noStorage, _noReceiptStorage, _ethereumSigner, _logManager);
+            var transactions = GetTransactions(GetPeers());
+
+            foreach (var transaction in transactions)
+            {
+                _transactionPool.AddTransaction(transaction, 1);
+            }
+
+            foreach (var transaction in transactions)
+            {
+                _transactionPool.DeleteTransaction(transaction.Hash);
+            }
+
+            _transactionPool.PendingTransactions.Should().BeEmpty();
+        }
+
+        [Test]
+        public void should_store_and_get_valid_receipt()
+        {
+            _noReceiptStorage = new PersistentReceiptStorage(new MemDb(), _specProvider);
+            _transactionPool = new TransactionPool(_noStorage, _noReceiptStorage, _ethereumSigner, _logManager);
+            var transaction = Build.A.Transaction.Signed(_ethereumSigner, TestObject.PrivateKeyA, 1).TestObject;
+            var receipt = Build.A.TransactionReceipt.WithState(TestObject.KeccakB)
+                .WithTransactionHash(transaction.Hash).TestObject;
+
+            _transactionPool.AddReceipt(receipt);
+
+            var fetchedReceipt = _transactionPool.GetReceipt(transaction.Hash);
+            receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
         }
 
         private IDictionary<ISynchronizationPeer, PrivateKey> GetPeers(int limit = 100)
@@ -98,7 +192,7 @@ namespace Nethermind.Blockchain.Test
             {
                 for (var i = 0; i < transactionsPerPeer; i++)
                 {
-                    transactions.Add(GetTransaction(Address.FromNumber(1), privateKey));
+                    transactions.Add(GetTransaction(Address.FromNumber(i), privateKey));
                 }
             }
 

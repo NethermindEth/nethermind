@@ -143,7 +143,7 @@ namespace Nethermind.Runner.Runners
             _dbProvider = new ReadOnlyDbProvider(writableDbProvider, true);
 
             var transactionPool = new TransactionPool(new NoTransactionStorage(),
-                new PersistentTransactionReceiptStorage(writableDbProvider.ReceiptsDb, _specProvider),
+                new PersistentReceiptStorage(writableDbProvider.ReceiptsDb, _specProvider),
                 ethereumSigner, _logManager);
             
             /* blockchain */

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TransactionPools.Storages
 {
@@ -19,7 +20,8 @@ namespace Nethermind.Blockchain.TransactionPools.Storages
 
         public Transaction[] GetAll() => _transactions.Values.ToArray();
 
-        public void Add(Transaction transaction) => _transactions.TryAdd(transaction.Hash, transaction);
+        public void Add(Transaction transaction, UInt256 blockNumber)
+            => _transactions.TryAdd(transaction.Hash, transaction);
 
         public void Delete(Keccak hash) => _transactions.TryRemove(hash, out _);
     }

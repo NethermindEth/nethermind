@@ -1,5 +1,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TransactionPools
 {
@@ -7,7 +8,7 @@ namespace Nethermind.Blockchain.TransactionPools
     {
         Transaction Get(Keccak hash);
         Transaction[] GetAll();
-        void Add(Transaction transaction);
+        void Add(Transaction transaction, UInt256 blockNumber);
         void Delete(Keccak hash);
     }
 }
