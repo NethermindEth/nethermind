@@ -217,23 +217,23 @@ namespace Nethermind.Clique
         {
             ulong number = (ulong) header.Number;
             // Retrieve the snapshot needed to validate this header and cache it
-            Snapshot snap = GetSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
             // Resolve the authorization key and check against signers
             Address signer = header.GetBlockSealer(_signatures);
-            if (!snap.Signers.Contains(signer))
+            if (!snapshot.Signers.Contains(signer))
             {
                 _logger.Warn($"Invalid block signer {signer} - not authorized to sign a block");
                 return false;
             }
 
-            foreach (var recent in snap.Recent)
+            foreach (var recent in snapshot.Recent)
             {
                 UInt64 seen = recent.Key;
                 Address address = recent.Value;
                 if (address == signer)
                 {
                     // Signer is among recent, only fail if the current block doesn't shift it out
-                    uint limit = (uint) snap.Signers.Count / 2 + 1;
+                    uint limit = (uint) snapshot.Signers.Count / 2 + 1;
                     if (seen > (uint) number - limit)
                     {
                         _logger.Warn($"Invalid block signer {signer} - the signer is among recents");
@@ -243,7 +243,7 @@ namespace Nethermind.Clique
             }
 
             // Ensure that the difficulty corresponds to the turn-ness of the signer
-            bool inturn = snap.Inturn(header.Number, signer);
+            bool inturn = snapshot.Inturn(header.Number, signer);
             if (inturn && header.Difficulty != DiffInTurn)
             {
                 _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {DiffInTurn}");
@@ -263,24 +263,24 @@ namespace Nethermind.Clique
         {
             // Search for a snapshot in memory or on disk for checkpoints
             List<BlockHeader> headers = new List<BlockHeader>();
-            Snapshot snap = null;
-            while (snap == null)
+            Snapshot snapshot = null;
+            while (snapshot == null)
             {
                 // If an in-memory snapshot was found, use that
-                Snapshot s = _recents.Get(hash);
-                if (s != null)
+                Snapshot memorySnapshot = _recents.Get(hash);
+                if (memorySnapshot != null)
                 {
-                    snap = s;
+                    snapshot = memorySnapshot;
                     break;
                 }
 
                 // If an on-disk checkpoint snapshot can be found, use that
                 if (number % CheckpointInterval == 0)
                 {
-                    s = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash.Bytes);
-                    if (s != null)
+                    memorySnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash.Bytes);
+                    if (memorySnapshot != null)
                     {
-                        snap = s;
+                        snapshot = memorySnapshot;
                         break;
                     }
                 }
@@ -301,8 +301,8 @@ namespace Nethermind.Clique
                             signers[i] = new Address(signerBytes);
                         }
 
-                        snap = Snapshot.NewSnapshot(_config, _signatures, number, blockHash.Bytes, signers);
-                        snap.Store(_blocksDb);
+                        snapshot = Snapshot.NewSnapshot(_config, _signatures, number, blockHash.Bytes, signers);
+                        snapshot.Store(_blocksDb);
                         break;
                     }
                 }
@@ -329,18 +329,18 @@ namespace Nethermind.Clique
                 headers[i] = temp;
             }
 
-            snap = snap.Apply(headers);
+            snapshot = snapshot.Apply(headers);
 
-            Keccak snapHash = new Keccak(snap.Hash);
+            Keccak snapHash = new Keccak(snapshot.Hash);
 
-            _recents.Set(snapHash, snap);
+            _recents.Set(snapHash, snapshot);
             // If we've generated a new checkpoint snapshot, save to disk
-            if ((uint) snap.Number % CheckpointInterval == 0 && headers.Count > 0)
+            if ((uint) snapshot.Number % CheckpointInterval == 0 && headers.Count > 0)
             {
-                snap.Store(_blocksDb);
+                snapshot.Store(_blocksDb);
             }
 
-            return snap;
+            return snapshot;
         }
 
         private void Prepare(BlockHeader header)
@@ -348,7 +348,7 @@ namespace Nethermind.Clique
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
             ulong number = (ulong) header.Number;
             // Assemble the voting snapshot to check which votes make sense
-            Snapshot snap = GetSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
             if ((uint) number % _config.Epoch != 0)
             {
                 // Gather all the proposals that make sense voting on
@@ -357,7 +357,7 @@ namespace Nethermind.Clique
                 {
                     Address address = proposal.Key;
                     bool authorize = proposal.Value;
-                    if (snap.ValidVote(address, authorize))
+                    if (snapshot.ValidVote(address, authorize))
                     {
                         addresses.Append(address);
                     }
@@ -380,7 +380,7 @@ namespace Nethermind.Clique
             }
 
             // Set the correct difficulty
-            header.Difficulty = CalcDifficulty(snap, _key.Address);
+            header.Difficulty = CalcDifficulty(snapshot, _key.Address);
             // Ensure the extra data has all it's components
             if (header.ExtraData.Length < ExtraVanity)
             {
@@ -394,7 +394,7 @@ namespace Nethermind.Clique
 
             if (number % _config.Epoch == 0)
             {
-                foreach (Address signer in snap.Signers)
+                foreach (Address signer in snapshot.Signers)
                 {
                     foreach (byte addressByte in signer.Bytes)
                     {
@@ -463,13 +463,13 @@ namespace Nethermind.Clique
             }
 
             // Retrieve the snapshot needed to validate this header and cache it
-            Snapshot snap = GetSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
 
             // If the block is a checkpoint block, validate the signer list
             if (number % _config.Epoch == 0)
             {
-                var signersBytes = new byte[snap.Signers.Count * AddressLength];
-                var signers = snap.GetSigners();
+                var signersBytes = new byte[snapshot.Signers.Count * AddressLength];
+                var signers = snapshot.GetSigners();
                 for (int i = 0; i < signers.Length; i++)
                 {
                     Address signer = signers[i];
