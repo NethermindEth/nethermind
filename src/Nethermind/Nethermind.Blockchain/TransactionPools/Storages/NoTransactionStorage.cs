@@ -3,7 +3,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.TransactionPools.Storages
 {
-    public class NoTransactionPoolStorage : ITransactionPoolStorage
+    public class NoTransactionStorage : ITransactionStorage
     {
         public Transaction Get(Keccak hash) => null;
 
@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain.TransactionPools.Storages
         {
         }
 
-        public void Delete(Transaction transaction)
+        public void Delete(Keccak hash)
         {
         }
     }

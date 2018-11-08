@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using System.Timers;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -35,7 +36,7 @@ namespace Nethermind.Blockchain
         private readonly Random _random = new Random();
         private readonly IEthereumSigner _signer;
         private readonly TimeSpan _txDelay;
-        private readonly ITransactionStore _store;
+        private readonly ITransactionPool _transactionPool;
         private readonly Timer _timer = new Timer();
 
         private ulong _count;
@@ -45,10 +46,10 @@ namespace Nethermind.Blockchain
             return _txDelay + TimeSpan.FromMilliseconds((_random.Next((int)_txDelay.TotalMilliseconds) - (int)_txDelay.TotalMilliseconds / 2));
         }
         
-        public TestTransactionsGenerator(ITransactionStore store, IEthereumSigner signer, TimeSpan txDelay, ILogManager logManager)
+        public TestTransactionsGenerator(ITransactionPool transactionPool, IEthereumSigner signer, TimeSpan txDelay, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _store = store ?? throw new ArgumentNullException(nameof(store));
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _txDelay = txDelay;
 
@@ -91,7 +92,7 @@ namespace Nethermind.Blockchain
 
             tx.Hash = Transaction.CalculateHash(tx);
 
-            _store.AddPending(tx, 1);
+            _transactionPool.AddTransaction(tx, 1);
             _logger.Debug($"Generated a test transaction for testing ({_count - 1}).");
         }
 

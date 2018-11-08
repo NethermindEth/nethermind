@@ -32,18 +32,6 @@ namespace Nethermind.Blockchain.Test
     {
         private static ISpecProvider _specProvider = RopstenSpecProvider.Instance;
         private static IEthereumSigner _signer = new EthereumSigner(_specProvider, NullLogManager.Instance);
-        
-        [Test]
-        public void Can_store_and_retrieve_receipt()
-        {
-            TransactionStore store = new TransactionStore(new MemDb(), RopstenSpecProvider.Instance, NullEthereumSigner.Instance);
 
-            Transaction tx = Build.A.Transaction.Signed(_signer, TestObject.PrivateKeyA, 1).TestObject;
-            TransactionReceipt txReceipt = Build.A.TransactionReceipt.WithState(TestObject.KeccakB).TestObject;
-            store.StoreProcessedTransaction(tx.Hash, txReceipt);
-
-            TransactionReceipt txReceiptRetrieved = store.GetReceipt(tx.Hash);
-            Assert.AreEqual(txReceipt.PostTransactionState, txReceiptRetrieved.PostTransactionState, "state");
-        }
     }
 }

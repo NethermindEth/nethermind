@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test
                 codeDb,
                 stateProvider,
                 new StorageProvider(stateDb, stateProvider, NullLogManager.Instance),
-                NullTransactionStore.Instance,
+                NullTransactionPool.Instance,
                 NullLogManager.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestObject.AddressD).TestObject;

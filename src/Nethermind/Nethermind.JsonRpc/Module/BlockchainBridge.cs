@@ -22,6 +22,7 @@ using System.Numerics;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -41,7 +42,7 @@ namespace Nethermind.JsonRpc.Module
         private readonly IEthereumSigner _signer;
         private readonly IStateProvider _stateProvider;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly ITransactionStore _transactionStore;
+        private readonly ITransactionPool _transactionPool;
         private readonly IWallet _wallet;
 
         private ReaderWriterLockSlim _readerWriterLockSlim = new ReaderWriterLockSlim();
@@ -49,7 +50,7 @@ namespace Nethermind.JsonRpc.Module
         public BlockchainBridge(IEthereumSigner signer,
             IStateProvider stateProvider,
             IBlockTree blockTree,
-            ITransactionStore transactionStore,
+            ITransactionPool transactionPool,
             IFilterStore filterStore,
             IFilterManager filterManager,
             IWallet wallet,
@@ -58,7 +59,7 @@ namespace Nethermind.JsonRpc.Module
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
@@ -100,7 +101,7 @@ namespace Nethermind.JsonRpc.Module
 
         public (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
-            TransactionReceipt receipt = _transactionStore.GetReceipt(transactionHash);
+            TransactionReceipt receipt = _transactionPool.GetReceipt(transactionHash);
             if (receipt.BlockHash == null) return (null, null);
 
             Block block = _blockTree.FindBlock(receipt.BlockHash, true);
@@ -109,7 +110,7 @@ namespace Nethermind.JsonRpc.Module
 
         public Keccak GetBlockHash(Keccak transactionHash)
         {
-            return _transactionStore.GetReceipt(transactionHash).BlockHash;
+            return _transactionPool.GetReceipt(transactionHash).BlockHash;
         }
 
         public Keccak SendTransaction(Transaction transaction)
@@ -127,7 +128,7 @@ namespace Nethermind.JsonRpc.Module
 
                 if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce) throw new InvalidOperationException("Invalid nonce");
 
-                _transactionStore.AddPending(transaction, _blockTree.Head.Number);
+                _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
 
                 _stateProvider.Reset();
                 return transaction.Hash;
@@ -140,7 +141,7 @@ namespace Nethermind.JsonRpc.Module
 
         public TransactionReceipt GetTransactionReceipt(Keccak txHash)
         {
-            return _transactionStore.GetReceipt(txHash);
+            return _transactionPool.GetReceipt(txHash);
         }
 
         public byte[] Call(Block block, Transaction transaction)

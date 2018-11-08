@@ -19,6 +19,7 @@
 using System;
 using System.Numerics;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -49,7 +50,7 @@ namespace Nethermind.Core.Test
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));
             _ethash = new EthashSealEngine(new Ethash(NullLogManager.Instance), calculator, NullLogManager.Instance);
             _testLogger = new TestLogger();
-            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, Substitute.For<ITransactionStore>(), NullLogManager.Instance);
+            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, Substitute.For<ITransactionPool>(), NullLogManager.Instance);
             
             _validator = new HeaderValidator(blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;

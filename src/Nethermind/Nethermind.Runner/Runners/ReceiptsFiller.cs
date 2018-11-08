@@ -21,6 +21,8 @@ using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Clique;
 using Nethermind.Config;
@@ -140,14 +142,16 @@ namespace Nethermind.Runner.Runners
             IDbProvider writableDbProvider = new RocksDbProvider(dbBasePath, dbConfig);
             _dbProvider = new ReadOnlyDbProvider(writableDbProvider, true);
 
-            var transactionStore = new TransactionStore(writableDbProvider.ReceiptsDb, _specProvider, ethereumSigner);
-
+            var transactionPool = new TransactionPool(new NoTransactionStorage(),
+                new PersistentTransactionReceiptStorage(writableDbProvider.ReceiptsDb, _specProvider),
+                ethereumSigner, _logManager);
+            
             /* blockchain */
             _blockTree = new BlockTree(
                 _dbProvider.BlocksDb,
                 _dbProvider.BlockInfosDb,
                 _specProvider,
-                transactionStore,
+                transactionPool,
                 _logManager);
 
             var sealEngine =
@@ -222,7 +226,7 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.CodeDb,
                 stateProvider,
                 storageProvider,
-                transactionStore,
+                transactionPool,
                 _logManager);
 
             blockProcessor.BlockProcessed += (sender, args) =>

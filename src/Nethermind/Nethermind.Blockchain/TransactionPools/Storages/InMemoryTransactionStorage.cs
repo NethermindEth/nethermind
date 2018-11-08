@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.TransactionPools.Storages
 {
-    public class InMemoryTransactionPoolStorage : ITransactionPoolStorage
+    public class InMemoryTransactionStorage : ITransactionStorage
     {
         private readonly ConcurrentDictionary<Keccak, Transaction> _transactions =
             new ConcurrentDictionary<Keccak, Transaction>();
@@ -21,6 +21,6 @@ namespace Nethermind.Blockchain.TransactionPools.Storages
 
         public void Add(Transaction transaction) => _transactions.TryAdd(transaction.Hash, transaction);
 
-        public void Delete(Transaction transaction) => _transactions.TryRemove(transaction.Hash, out _);
+        public void Delete(Keccak hash) => _transactions.TryRemove(hash, out _);
     }
 }
