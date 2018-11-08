@@ -51,17 +51,17 @@ jobs:
       name: "Nethermind.Core.Test"
     - script: dotnet test src/Nethermind/Nethermind.DataStreams.Test
       name: "Nethermind.DataStreams.Test"
-    - script: dotnet test src/Nethermind/Nethermind.Db.Test
-      name: "Nethermind.Db.Test.Linux"
-    - script: dotnet test src/Nethermind/Nethermind.Db.Test
-      name: "Nethermind.Db.Test.Osx"
+    #- script: dotnet test src/Nethermind/Nethermind.Db.Test
+    #  name: "Nethermind.Db.Test.Linux"
+    #- script: dotnet test src/Nethermind/Nethermind.Db.Test
+    #  name: "Nethermind.Db.Test.Osx"
       os: osx
     - script: dotnet test src/Nethermind/Nethermind.Evm.Test
       name: "Nethermind.Evm.Test"
     - script: dotnet test src/Nethermind/Nethermind.JsonRpc.Test
       name: "Nethermind.JsonRpc.Test"
-    - script: dotnet test src/Nethermind/Nethermind.KeyStore.Test
-      name: "Nethermind.KeyStore.Test"
+    #- script: dotnet test src/Nethermind/Nethermind.KeyStore.Test
+    #  name: "Nethermind.KeyStore.Test"
     #- script: dotnet test src/Nethermind/Nethermind.LibSolc.Test
     #  name: "Nethermind.LibSolc.Test.Linux"
     #- script: dotnet test src/Nethermind/Nethermind.LibSolc.Test
