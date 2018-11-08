@@ -62,12 +62,12 @@ namespace Nethermind.Clique
 
         public bool ValidateParams(Block parent, BlockHeader header)
         {
-            return _clique.VerifyHeader(header);
+            return _clique.ValidateHeader(header);
         }
 
         public bool ValidateSeal(BlockHeader header)
         {
-            return _clique.VerifySeal(header);
+            return _clique.ValidateSeal(header);
         }
 
         public bool IsMining { get; set; }

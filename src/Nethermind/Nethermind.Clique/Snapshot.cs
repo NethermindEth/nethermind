@@ -95,13 +95,13 @@ namespace Nethermind.Clique
             HashSet<Address> signerSet = new HashSet<Address>();
             Dictionary<UInt64, Address> signerDict = new Dictionary<UInt64, Address>();
             Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
-            Snapshot snap = new Snapshot(config, sigcache, number, hash, signerSet, signerDict, tally);
+            Snapshot snapshot = new Snapshot(config, sigcache, number, hash, signerSet, signerDict, tally);
 
             foreach (Address signer in signers)
             {
-                snap.Signers.Add(signer);
+                snapshot.Signers.Add(signer);
             }
-            return snap;
+            return snapshot;
         }
 
         public static Snapshot LoadSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, IDb db, byte[] hash)
@@ -114,10 +114,10 @@ namespace Nethermind.Clique
             }
             String json = Encoding.UTF8.GetString(blob);
             JsonSerializer serializer = new JsonSerializer(NullLogManager.Instance);
-            Snapshot snap = serializer.Deserialize<Snapshot>(json);
-            snap.Config = config;
-            snap.SigCache = sigcache;
-            return snap;
+            Snapshot snapshot = serializer.Deserialize<Snapshot>(json);
+            snapshot.Config = config;
+            snapshot.SigCache = sigcache;
+            return snapshot;
         }
 
         public void Store(IDb db)
@@ -195,7 +195,7 @@ namespace Nethermind.Clique
                     }
                 }
                 // Tally up the new vote from the signer
-                bool authorize = header.Nonce == Nethermind.Clique.Clique.NonceAuthVote;
+                bool authorize = header.Nonce == Clique.NonceAuthVote;
                 if (snapshot.Cast(header.Beneficiary, authorize))
                 {
                     Vote vote = new Vote(signer, number, header.Beneficiary, authorize);
