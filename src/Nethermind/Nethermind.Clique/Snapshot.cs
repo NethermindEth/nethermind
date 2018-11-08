@@ -21,6 +21,8 @@ using System.Collections.Generic;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
@@ -112,9 +114,8 @@ namespace Nethermind.Clique
             {
                 return null;
             }
-            String json = Encoding.UTF8.GetString(blob);
-            JsonSerializer serializer = new JsonSerializer(NullLogManager.Instance);
-            Snapshot snapshot = serializer.Deserialize<Snapshot>(json);
+            SnapshotDecoder decoder = new SnapshotDecoder();
+            Snapshot snapshot = decoder.Decode(blob.AsRlpContext());
             snapshot.Config = config;
             snapshot.SigCache = sigcache;
             return snapshot;
@@ -122,9 +123,9 @@ namespace Nethermind.Clique
 
         public void Store(IDb db)
         {
-            JsonSerializer serializer = new JsonSerializer(NullLogManager.Instance);
-            string json = serializer.Serialize(this);
-            byte[] blob = Encoding.UTF8.GetBytes(json);
+            SnapshotDecoder decoder = new SnapshotDecoder();
+            Rlp rlp = decoder.Encode(this);
+            byte[] blob = rlp.Bytes;
             Keccak key = GetSnapshotKey(Hash);
             db.Set(key, blob);
         }

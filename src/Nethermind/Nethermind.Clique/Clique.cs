@@ -38,7 +38,7 @@ namespace Nethermind.Clique
     {
         private const int CheckpointInterval = 1024;
         private const int InmemorySnapshots = 128;
-        private const int InmemorySignatures = 4096;
+        internal const int InmemorySignatures = 4096;
         private const int WiggleTime = 500;
 
         private const int EpochLength = 30000;
