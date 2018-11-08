@@ -17,47 +17,57 @@
  */
 
 using System;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
 {
-    public class NullTransactionStore : ITransactionStore
+    public class NullTransactionPool : ITransactionPool
     {
-        private NullTransactionStore()
+        private NullTransactionPool()
         {
         }
 
-        public static NullTransactionStore Instance { get; } = new NullTransactionStore();
+        public static NullTransactionPool Instance { get; } = new NullTransactionPool();
 
         public void StoreProcessedTransaction(Keccak txHash, TransactionReceipt receipt)
         {
         }
 
-        public TransactionReceipt GetReceipt(Keccak txHash)
-        {
-            throw new NotSupportedException();
-        }
+        public Transaction[] PendingTransactions => new Transaction[0];
 
-        public AddTransactionResult AddPending(Transaction transaction, UInt256 blockNumber)
-        {
-            return AddTransactionResult.Added;
-        }
+        public TransactionReceipt GetReceipt(Keccak txHash) => null;
 
-        public void RemovePending(Transaction transaction)
+        public void AddFilter<T>(T filter) where T : ITransactionFilter
         {
         }
 
-        public Transaction[] GetAllPending()
+        public void DeleteFilter<T>() where T : ITransactionFilter
         {
-            return Array.Empty<Transaction>();
         }
 
-        public event EventHandler<TransactionEventArgs> NewPending
+        public void AddPeer(ISynchronizationPeer peer)
         {
-            add { }
-            remove { }
         }
+
+        public void RemovePeer(ISynchronizationPeer peer)
+        {
+        }
+
+        public void AddTransaction(Transaction transaction, UInt256 blockNumber)
+        {
+        }
+
+        public void DeleteTransaction(Keccak hash)
+        {
+        }
+
+        public void AddReceipt(TransactionReceipt receipt)
+        {
+        }
+
+        public event EventHandler<TransactionEventArgs> NewPending;
     }
 }

@@ -20,6 +20,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -52,7 +53,6 @@ namespace Nethermind.Blockchain.Test
             ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 
             _manager = new SynchronizationManager(_stateDb, _blockTree, blockValidator, headerValidator,
-                new TransactionStore(_receiptsDb, RopstenSpecProvider.Instance, NullEthereumSigner.Instance),
                 transactionValidator, NullLogManager.Instance, new BlockchainConfig(),
                 new PerfService(NullLogManager.Instance), _transactionPool);
         }

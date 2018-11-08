@@ -3,11 +3,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.TransactionPools
 {
-    public interface ITransactionPoolStorage
+    public interface ITransactionStorage
     {
         Transaction Get(Keccak hash);
         Transaction[] GetAll();
         void Add(Transaction transaction);
-        void Delete(Transaction transaction);
+        void Delete(Keccak hash);
     }
 }

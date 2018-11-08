@@ -204,7 +204,7 @@ namespace Nethermind.Runner.Runners
                 IReadOnlyDbProvider dbProvider,
                 IBlockDataRecoveryStep recoveryStep,
                 ILogManager logManager,
-                ITransactionStore customTransactionStore)
+                ITransactionPool customTransactionPool)
             {
                 IStateProvider stateProvider = new StateProvider(new StateTree(dbProvider.StateDb), dbProvider.CodeDb, logManager);
                 StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, stateProvider, logManager);
@@ -212,13 +212,14 @@ namespace Nethermind.Runner.Runners
                 BlockhashProvider blockhashProvider = new BlockhashProvider(readOnlyTree);
                 VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
                 ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
-                ITransactionStore transactionStore = customTransactionStore;
-                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, stateProvider, storageProvider, transactionStore, logManager);
+                ITransactionPool transactionPool = customTransactionPool;
+                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, stateProvider, storageProvider, transactionPool, logManager);
                 Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, true);
             }
 
             public AlternativeChain(IBlockTree blockTree, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, ISpecProvider specProvider, IReadOnlyDbProvider dbProvider, IBlockDataRecoveryStep recoveryStep, IEthereumSigner signer, ILogManager logManager)
-                : this(blockTree, blockValidator, rewardCalculator, specProvider, dbProvider, recoveryStep, logManager, new TransactionStore(dbProvider.ReceiptsDb, specProvider, signer))
+                : this(blockTree, blockValidator, rewardCalculator, specProvider, dbProvider, recoveryStep, logManager, new TransactionPool(new NoTransactionStorage(), 
+                    new PersistentTransactionReceiptStorage(dbProvider.ReceiptsDb, specProvider), signer, logManager))
             {
             }
         }
@@ -291,14 +292,16 @@ namespace Nethermind.Runner.Runners
 //            IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig));
 //            _dbProvider = debugReader;
 
-            var transactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _specProvider, ethereumSigner);
+            var transactionPool = new TransactionPool(new NoTransactionStorage(),
+                new PersistentTransactionReceiptStorage(_dbProvider.ReceiptsDb, _specProvider),
+                ethereumSigner, _logManager);
 
             /* blockchain */
             _blockTree = new BlockTree(
                 _dbProvider.BlocksDb,
                 _dbProvider.BlockInfosDb,
                 _specProvider,
-                transactionStore,
+                transactionPool,
                 _logManager);
 
             // TODO: read seal engine from ChainSpec
@@ -377,7 +380,7 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.CodeDb,
                 stateProvider,
                 storageProvider,
-                transactionStore,
+                transactionPool,
                 _logManager);
 
             _blockchainProcessor = new BlockchainProcessor(
@@ -410,7 +413,7 @@ namespace Nethermind.Runner.Runners
                 IReadOnlyDbProvider rpcDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 AlternativeChain rpcChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, rpcDbProvider, recoveryStep, ethereumSigner, _logManager);
 
-                ITxTracer txTracer = new TxTracer(rpcChain.Processor, transactionStore, _blockTree);
+                ITxTracer txTracer = new TxTracer(rpcChain.Processor, transactionPool, _blockTree);
                 IFilterStore filterStore = new FilterStore();
                 IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, _logManager);
                 IWallet wallet = new DevWallet(_logManager);
@@ -421,14 +424,16 @@ namespace Nethermind.Runner.Runners
                     ethereumSigner,
                     rpcState.StateProvider,
                     rpcState.BlockTree,
-                    transactionStore,
+                    transactionPool,
                     filterStore,
                     filterManager,
                     wallet,
                     rpcState.TransactionProcessor);
 
-                TransactionStore debugTransactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _specProvider, ethereumSigner);
-                AlternativeChain debugChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, rpcDbProvider, recoveryStep, _logManager, debugTransactionStore);
+                TransactionPool debugTransactionPool = new TransactionPool(new NoTransactionStorage(),
+                    new PersistentTransactionReceiptStorage(_dbProvider.ReceiptsDb, _specProvider),
+                    ethereumSigner, _logManager);
+                AlternativeChain debugChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, rpcDbProvider, recoveryStep, _logManager, debugTransactionPool);
                 IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 DebugBridge = new DebugBridge(debugDbProvider, txTracer, debugChain.Processor);
             }
@@ -437,7 +442,7 @@ namespace Nethermind.Runner.Runners
             {
                 IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 AlternativeChain devChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, minerDbProvider, recoveryStep, ethereumSigner, _logManager);
-                var producer = new DevBlockProducer(transactionStore, devChain.Processor, _blockTree, _logManager);
+                var producer = new DevBlockProducer(transactionPool, devChain.Processor, _blockTree, _logManager);
                 producer.Start();
             }
 
@@ -459,7 +464,7 @@ namespace Nethermind.Runner.Runners
             }
 
             await InitializeNetwork(
-                transactionStore,
+                transactionPool,
                 blockValidator,
                 headerValidator,
                 txValidator);
@@ -490,7 +495,7 @@ namespace Nethermind.Runner.Runners
         }
 
         private async Task InitializeNetwork(
-            TransactionStore transactionStore,
+            ITransactionPool transactionPool,
             BlockValidator blockValidator,
             HeaderValidator headerValidator,
             TransactionValidator txValidator)
@@ -501,16 +506,16 @@ namespace Nethermind.Runner.Runners
                 return;
             }
             
-            var transactionPool = new TransactionPool(_logManager);
-            transactionPool.AddFilter(new AcceptAnyTransactionPoolFilter());
-            transactionPool.AddStorage(new NoTransactionPoolStorage());
             
+            var ethereumSigner = new EthereumSigner(
+                _specProvider,
+                _logManager);
+
             _syncManager = new SynchronizationManager(
                 _dbProvider.StateDb,
                 _blockTree,
                 blockValidator,
                 headerValidator,
-                transactionStore,
                 txValidator,
                 _logManager,
                 _configProvider.GetConfig<IBlockchainConfig>(),

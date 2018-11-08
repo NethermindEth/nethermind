@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,12 +30,12 @@ namespace Nethermind.Blockchain
     {
         private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _processor;
-        private readonly ITransactionStore _txStore;
+        private readonly ITransactionPool _transactionPool;
 
-        public TxTracer(IBlockchainProcessor processor, ITransactionStore txStore, IBlockTree blockTree)
+        public TxTracer(IBlockchainProcessor processor, ITransactionPool transactionPool, IBlockTree blockTree)
         {
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
-            _txStore = txStore ?? throw new ArgumentNullException(nameof(txStore));
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
@@ -50,7 +51,7 @@ namespace Nethermind.Blockchain
 
         public TransactionTrace Trace(Keccak txHash)
         {
-            TransactionReceipt receipt = _txStore.GetReceipt(txHash);
+            TransactionReceipt receipt = _transactionPool.GetReceipt(txHash);
             Block block = _blockTree.FindBlock(receipt.BlockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
 

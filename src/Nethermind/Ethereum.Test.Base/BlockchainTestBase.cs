@@ -26,6 +26,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -235,8 +237,8 @@ namespace Ethereum.Test.Base
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             IEthereumSigner signer = new EthereumSigner(specProvider, _logManager);
-            ITransactionStore transactionStore = new TransactionStore(new MemDb(), specProvider, signer);
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionStore, _logManager);
+            ITransactionPool transactionPool = new TransactionPool(new NoTransactionStorage(), new NoTransactionReceiptStorage(), signer, _logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
@@ -265,7 +267,7 @@ namespace Ethereum.Test.Base
                 codeDb,
                 stateProvider,
                 storageProvider,
-                transactionStore,
+                transactionPool,
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(

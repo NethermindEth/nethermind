@@ -25,6 +25,8 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -151,7 +153,10 @@ namespace Nethermind.PerfTest
             ISnapshotableDb stateDb = new StateDb();
             StateTree stateTree = new StateTree(stateDb);
             IStateProvider stateProvider = new StateProvider(stateTree, new StateDb(), logManager);
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, new TransactionStore(new MemDb(), RopstenSpecProvider.Instance, NullEthereumSigner.Instance), logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance,
+                new TransactionPool(new NoTransactionStorage(),
+                    new PersistentTransactionReceiptStorage(new MemDb(), RopstenSpecProvider.Instance),
+                    NullEthereumSigner.Instance, logManager), logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
 
             Stopwatch stopwatch = new Stopwatch();
@@ -319,7 +324,9 @@ namespace Nethermind.PerfTest
             var receiptsDb = dbProvider.ReceiptsDb;
 
             /* store & validation */
-            var transactionStore = new TransactionStore(receiptsDb, specProvider, NullEthereumSigner.Instance);
+            var transactionStore = new TransactionPool(new NoTransactionStorage(),
+                new PersistentTransactionReceiptStorage(receiptsDb, specProvider),
+                NullEthereumSigner.Instance, _logManager);
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, transactionStore, _logManager));
             var headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, _logManager);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);

@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -40,7 +41,7 @@ namespace Nethermind.Blockchain
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly ITransactionStore _transactionStore;
+        private readonly ITransactionPool _transactionPool;
 
         public BlockProcessor(
             ISpecProvider specProvider,
@@ -51,7 +52,7 @@ namespace Nethermind.Blockchain
             ISnapshotableDb codeDb,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
-            ITransactionStore transactionStore,
+            ITransactionPool transactionPool,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -59,7 +60,7 @@ namespace Nethermind.Blockchain
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
-            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
@@ -196,7 +197,8 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 receipts[i].BlockHash = block.Hash;
-                _transactionStore.StoreProcessedTransaction(block.Transactions[i].Hash, receipts[i]);
+                _transactionPool.AddReceipt(receipts[i]);
+                _transactionPool.DeleteTransaction(receipts[i].TransactionHash);
             }
         }
 
