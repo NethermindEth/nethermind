@@ -34,13 +34,7 @@ namespace Nethermind.Clique
             context.ReadSequenceLength();
             
             // Config
-            ulong period = (ulong)context.DecodeLong();
-            ulong epoch = (ulong)context.DecodeLong();
-            CliqueConfig config = new CliqueConfig
-            {
-                Period = period,
-                Epoch = epoch
-            };
+            CliqueConfig config = new CliqueConfig();
             // Signature cache
             LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(Clique.InmemorySignatures);
             // Block number
@@ -64,8 +58,6 @@ namespace Nethermind.Clique
         public Rlp Encode(Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             return Rlp.Encode(
-                Rlp.Encode(new UInt256(item.Config.Period)),
-                Rlp.Encode(new UInt256(item.Config.Epoch)),
                 Rlp.Encode(item.Number),
                 Rlp.Encode(item.Hash),
                 Rlp.Encode(EncodeSigners(item.Signers)),
