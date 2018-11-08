@@ -2151,17 +2151,19 @@ namespace Nethermind.Evm
                             
                         _state.IncrementNonce(env.ExecutingAccount);
 
+                        int stateSnapshot = _state.TakeSnapshot();
+                        int storageSnapshot = _storage.TakeSnapshot();
+                        
                         bool accountExists = _state.AccountExists(contractAddress);
                         if (accountExists && ((GetCachedCodeInfo(contractAddress)?.MachineCode?.Length ?? 0) != 0 || _state.GetNonce(contractAddress) != 0))
                         {
+                            /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
                             if (_logger.IsTrace) _logger.Trace($"Contract collision at {contractAddress}");
-                            PushZero(bytesOnStack); // TODO: this push 0 approach should be replaced with some proper approach to call result
+                            PushZero(bytesOnStack);
                             break;
                         }
-
-                        int stateSnapshot = _state.TakeSnapshot();
-                        int storageSnapshot = _storage.TakeSnapshot();
-
+                        
+                        _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
                         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);                        
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
                         callEnv.TransferValue = value;
