@@ -44,7 +44,7 @@ namespace Nethermind.Clique
             // Signers
             HashSet<Address> signers = DecodeSigners(context);
             // Recent
-            Dictionary<ulong, Address> recent = DecodeRecent(context);
+            Dictionary<UInt256, Address> recent = DecodeRecent(context);
             // Votes
             List<Vote> votes = DecodeVotes(context);
             // Tally
@@ -80,14 +80,14 @@ namespace Nethermind.Clique
             return signers;
         }
 
-        private Dictionary<ulong, Address> DecodeRecent(Rlp.DecoderContext context)
+        private Dictionary<UInt256, Address> DecodeRecent(Rlp.DecoderContext context)
         {
             context.ReadSequenceLength();
-            Dictionary<ulong, Address> recent = new Dictionary<ulong, Address>();
+            Dictionary<UInt256, Address> recent = new Dictionary<UInt256, Address>();
             int length = context.DecodeInt();
             for (int i = 0; i < length; i++)
             {
-                ulong number = (ulong)context.DecodeUInt256();
+                UInt256 number = context.DecodeUInt256();
                 Address signer = context.DecodeAddress();
                 recent[number] = signer;
             }
@@ -142,7 +142,7 @@ namespace Nethermind.Clique
             return rlp;
         }
 
-        private Rlp[] EncodeRecent(Dictionary<ulong, Address> recent)
+        private Rlp[] EncodeRecent(Dictionary<UInt256, Address> recent)
         {
             int recentCount = recent.Count;
             Rlp[] rlp = new Rlp[2 * recentCount + 1];
@@ -150,7 +150,7 @@ namespace Nethermind.Clique
             int i = 0;
             foreach (var signing in recent)
             {
-                rlp[2 * i + 1] = Rlp.Encode(new UInt256(signing.Key));
+                rlp[2 * i + 1] = Rlp.Encode(signing.Key);
                 rlp[2 * i + 2] = Rlp.Encode(signing.Value);
                 i++;
             }

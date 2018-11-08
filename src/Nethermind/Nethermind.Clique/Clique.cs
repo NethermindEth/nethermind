@@ -103,7 +103,7 @@ namespace Nethermind.Clique
             // If we're amongst the recent signers, wait for the next block
             foreach (var item in snapshot.Recent)
             {
-                UInt64 seen = item.Key;
+                UInt256 seen = item.Key;
                 Address recent = item.Value;
                 if (recent == _key.Address)
                 {
@@ -228,7 +228,7 @@ namespace Nethermind.Clique
 
             foreach (var recent in snapshot.Recent)
             {
-                UInt64 seen = recent.Key;
+                UInt256 seen = recent.Key;
                 Address address = recent.Value;
                 if (address == signer)
                 {

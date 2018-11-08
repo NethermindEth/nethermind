@@ -36,7 +36,7 @@ namespace Nethermind.Clique
         public UInt256 Number;
         public Keccak Hash;
         public HashSet<Address> Signers;
-        public Dictionary<UInt64, Address> Recent;
+        public Dictionary<UInt256, Address> Recent;
         public List<Vote> Votes;
         public Dictionary<Address, Tally> Tally;
 
@@ -45,7 +45,7 @@ namespace Nethermind.Clique
             Votes = new List<Vote>();
         }
 
-        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, HashSet<Address> signers, Dictionary<UInt64, Address> recent, Dictionary<Address, Tally> tally)
+        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, HashSet<Address> signers, Dictionary<UInt256, Address> recent, Dictionary<Address, Tally> tally)
         {
             Config = config;
             SigCache = sigCache;
@@ -65,7 +65,7 @@ namespace Nethermind.Clique
             clone.Number = Number;
             clone.Hash = Hash;
             clone.Signers = new HashSet<Address>();
-            clone.Recent = new Dictionary<ulong, Address>();
+            clone.Recent = new Dictionary<UInt256, Address>();
             clone.Votes = new List<Vote>();
             clone.Tally = new Dictionary<Address, Tally>();
 
@@ -95,7 +95,7 @@ namespace Nethermind.Clique
         public static Snapshot NewSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, UInt256 number, Keccak hash, Address[] signers)
         {
             HashSet<Address> signerSet = new HashSet<Address>();
-            Dictionary<UInt64, Address> signerDict = new Dictionary<UInt64, Address>();
+            Dictionary<UInt256, Address> signerDict = new Dictionary<UInt256, Address>();
             Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
             Snapshot snapshot = new Snapshot(config, sigcache, number, hash, signerSet, signerDict, tally);
 

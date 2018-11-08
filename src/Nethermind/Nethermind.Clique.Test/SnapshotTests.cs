@@ -85,7 +85,7 @@ namespace Nethermind.Clique.Test
                 _signer2,
                 _signer3
             };
-            Dictionary<UInt64, Address> recents = new Dictionary<ulong, Address>();
+            Dictionary<UInt256, Address> recents = new Dictionary<UInt256, Address>();
             Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
             Snapshot snapshot = new Snapshot(
                 config, sigcache, genesis.Number, genesis.Hash, signers, recents, tally);
@@ -207,10 +207,10 @@ namespace Nethermind.Clique.Test
             signers.Add(_signer1);
             signers.Add(_signer2);
             signers.Add(_signer3);
-            Dictionary<ulong, Address> recent = new Dictionary<ulong, Address>();
-            recent[(ulong)(number - 1)] = _signer2;
-            recent[(ulong)(number - 2)] = _signer1;
-            recent[(ulong)(number - 3)] = _signer3;
+            Dictionary<UInt256, Address> recent = new Dictionary<UInt256, Address>();
+            recent[number - 1] = _signer2;
+            recent[number - 2] = _signer1;
+            recent[number - 3] = _signer3;
             List<Vote> votes = new List<Vote>();
             votes.Add(new Vote(_signer1, number - 2, candidate, true));
             votes.Add(new Vote(_signer3, number - 3, candidate, true));
