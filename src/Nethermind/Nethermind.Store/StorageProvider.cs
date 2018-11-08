@@ -193,7 +193,6 @@ namespace Nethermind.Store
 //                }
                 
                 _committedThisRound.Add(change.StorageAddress);
-                toUpdateRoots.Add(change.StorageAddress.Address);
 
                 if (change.ChangeType == ChangeType.Destroy)
                 {
@@ -213,7 +212,6 @@ namespace Nethermind.Store
                     case ChangeType.JustCache:
                         break;
                     case ChangeType.Update:
-
                         if (_logger.IsTrace)
                         {
                             _logger.Trace($"  Update {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {change.Value.ToHexString(true)}");
@@ -221,6 +219,7 @@ namespace Nethermind.Store
 
                         StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
                         Metrics.StorageTreeWrites++;
+                        toUpdateRoots.Add(change.StorageAddress.Address);
                         tree.Set(change.StorageAddress.Index, change.Value);
                         break;
                     default:

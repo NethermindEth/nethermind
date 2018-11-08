@@ -2162,8 +2162,12 @@ namespace Nethermind.Evm
                             PushZero(bytesOnStack);
                             break;
                         }
-                        
-                        _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+
+                        if (accountExists)
+                        {
+                            _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+                        }
+
                         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);                        
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
                         callEnv.TransferValue = value;
