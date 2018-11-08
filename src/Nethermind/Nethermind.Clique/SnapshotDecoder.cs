@@ -46,7 +46,7 @@ namespace Nethermind.Clique
             // Block number
             UInt256 number = context.DecodeUInt256();
             // Hash
-            byte[] hash = context.DecodeByteArray();
+            Keccak hash = context.DecodeKeccak();
             // Signers
             HashSet<Address> signers = DecodeSigners(context);
             // Recent
@@ -66,7 +66,7 @@ namespace Nethermind.Clique
             return Rlp.Encode(
                 Rlp.Encode(new UInt256(item.Config.Period)),
                 Rlp.Encode(new UInt256(item.Config.Epoch)),
-                Rlp.Encode(new UInt256(item.Number)),
+                Rlp.Encode(item.Number),
                 Rlp.Encode(item.Hash),
                 Rlp.Encode(EncodeSigners(item.Signers)),
                 Rlp.Encode(EncodeRecent(item.Recent)),

@@ -88,7 +88,7 @@ namespace Nethermind.Clique.Test
             Dictionary<UInt64, Address> recents = new Dictionary<ulong, Address>();
             Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
             Snapshot snapshot = new Snapshot(
-                config, sigcache, genesis.Number, genesis.Hash.Bytes, signers, recents, tally);
+                config, sigcache, genesis.Number, genesis.Hash, signers, recents, tally);
             snapshot.Store(_snapshotDb);
         }
 
@@ -99,12 +99,12 @@ namespace Nethermind.Clique.Test
             LruCache<Keccak, Address> sigcache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
             Snapshot snapshot = Snapshot.LoadSnapshot(
-                config, sigcache, _snapshotDb, genesis.Hash.Bytes);
+                config, sigcache, _snapshotDb, genesis.Hash);
             Assert.NotNull(snapshot);
             Assert.AreEqual(config, snapshot.Config);
             Assert.AreEqual(sigcache, snapshot.SigCache);
-            Assert.AreEqual(genesis.Hash.Bytes, snapshot.Hash);
-            Assert.AreEqual((uint)genesis.Number, snapshot.Number);
+            Assert.AreEqual(genesis.Hash, snapshot.Hash);
+            Assert.AreEqual(genesis.Number, snapshot.Number);
             // Check signers
             Assert.IsTrue(snapshot.Signers.Contains(_signer1));
             Assert.IsTrue(snapshot.Signers.Contains(_signer2));
@@ -117,7 +117,7 @@ namespace Nethermind.Clique.Test
             var config = GetRinkebyConfig();
             LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
-            Snapshot snapshot = Snapshot.LoadSnapshot(config, sigCache, _snapshotDb, genesis.Hash.Bytes);
+            Snapshot snapshot = Snapshot.LoadSnapshot(config, sigCache, _snapshotDb, genesis.Hash);
             // Block 1
             Assert.IsTrue(snapshot.Inturn(1, _signer1));
             Assert.IsFalse(snapshot.Inturn(1, _signer2));

@@ -277,7 +277,7 @@ namespace Nethermind.Clique
                 // If an on-disk checkpoint snapshot can be found, use that
                 if (number % CheckpointInterval == 0)
                 {
-                    memorySnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash.Bytes);
+                    memorySnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash);
                     if (memorySnapshot != null)
                     {
                         snapshot = memorySnapshot;
@@ -301,7 +301,7 @@ namespace Nethermind.Clique
                             signers[i] = new Address(signerBytes);
                         }
 
-                        snapshot = Snapshot.NewSnapshot(_config, _signatures, number, blockHash.Bytes, signers);
+                        snapshot = Snapshot.NewSnapshot(_config, _signatures, number, blockHash, signers);
                         snapshot.Store(_blocksDb);
                         break;
                     }
@@ -331,9 +331,7 @@ namespace Nethermind.Clique
 
             snapshot = snapshot.Apply(headers);
 
-            Keccak snapHash = new Keccak(snapshot.Hash);
-
-            _recents.Set(snapHash, snapshot);
+            _recents.Set(snapshot.Hash, snapshot);
             // If we've generated a new checkpoint snapshot, save to disk
             if ((uint) snapshot.Number % CheckpointInterval == 0 && headers.Count > 0)
             {

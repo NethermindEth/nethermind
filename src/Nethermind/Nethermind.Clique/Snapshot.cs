@@ -33,8 +33,8 @@ namespace Nethermind.Clique
     {
         public CliqueConfig Config;
         public LruCache<Keccak, Address> SigCache;
-        public uint Number;
-        public byte[] Hash;
+        public UInt256 Number;
+        public Keccak Hash;
         public HashSet<Address> Signers;
         public Dictionary<UInt64, Address> Recent;
         public List<Vote> Votes;
@@ -45,11 +45,11 @@ namespace Nethermind.Clique
             Votes = new List<Vote>();
         }
 
-        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, byte[] hash, HashSet<Address> signers, Dictionary<UInt64, Address> recent, Dictionary<Address, Tally> tally)
+        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, HashSet<Address> signers, Dictionary<UInt64, Address> recent, Dictionary<Address, Tally> tally)
         {
             Config = config;
             SigCache = sigCache;
-            Number = (uint)number;
+            Number = number;
             Hash = hash;
             Signers = signers;
             Recent = recent;
@@ -92,7 +92,7 @@ namespace Nethermind.Clique
             return clone;
         }
 
-        public static Snapshot NewSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, UInt256 number, byte[] hash, Address[] signers)
+        public static Snapshot NewSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, UInt256 number, Keccak hash, Address[] signers)
         {
             HashSet<Address> signerSet = new HashSet<Address>();
             Dictionary<UInt64, Address> signerDict = new Dictionary<UInt64, Address>();
@@ -106,7 +106,7 @@ namespace Nethermind.Clique
             return snapshot;
         }
 
-        public static Snapshot LoadSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, IDb db, byte[] hash)
+        public static Snapshot LoadSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, IDb db, Keccak hash)
         {
             Keccak key = GetSnapshotKey(hash);
             byte[] blob = db.Get(key);
@@ -246,7 +246,7 @@ namespace Nethermind.Clique
                 }
             }
             snapshot.Number += (uint)headers.Count;
-            snapshot.Hash = BlockHeader.CalculateHash(headers[headers.Count - 1]).Bytes;
+            snapshot.Hash = BlockHeader.CalculateHash(headers[headers.Count - 1]);
             return snapshot;
         }
 
@@ -330,11 +330,12 @@ namespace Nethermind.Clique
             return sigs;
         }
 
-        private static Keccak GetSnapshotKey(byte[] blockHash)
+        private static Keccak GetSnapshotKey(Keccak blockHash)
         {
+            byte[] hashBytes = blockHash.Bytes;
             byte[] snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
-            byte[] keyBytes = new byte[blockHash.Length];
-            Array.Copy(blockHash, keyBytes, blockHash.Length);
+            byte[] keyBytes = new byte[hashBytes.Length];
+            Array.Copy(hashBytes, keyBytes, hashBytes.Length);
             for (int i = 0; i < snapshotBytes.Length; i++)
             {
                 keyBytes[i] ^= snapshotBytes[i];
