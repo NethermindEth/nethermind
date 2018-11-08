@@ -223,7 +223,7 @@ namespace Nethermind.Blockchain
             }
             if (_transactionStore.AddPending(transaction, HeadNumber) == AddTransactionResult.Added)
             {
-                _transactionPool.AddTransaction(transaction);
+                _transactionPool.TryAddTransaction(transaction);
             }
         }
 

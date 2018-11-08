@@ -27,6 +27,8 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TransactionPools.Filters;
+using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Clique;
 using Nethermind.Config;
@@ -498,7 +500,11 @@ namespace Nethermind.Runner.Runners
                 if (_logger.IsWarn) _logger.Warn($"Skipping network init due to ({nameof(IInitConfig.NetworkEnabled)} set to false)");
                 return;
             }
-
+            
+            var transactionPool = new TransactionPool(_logManager);
+            transactionPool.AddFilter(new AcceptAnyTransactionPoolFilter());
+            transactionPool.AddStorage(new NoTransactionPoolStorage());
+            
             _syncManager = new SynchronizationManager(
                 _dbProvider.StateDb,
                 _blockTree,
@@ -509,7 +515,7 @@ namespace Nethermind.Runner.Runners
                 _logManager,
                 _configProvider.GetConfig<IBlockchainConfig>(),
                 _perfService,
-                new TransactionPool(new NonPersistentTransactionPoolStrategy(), _logManager));
+                transactionPool);
 
             InitDiscovery();
             await InitPeer();
