@@ -111,7 +111,7 @@ namespace Nethermind.Clique.Test
             Assert.IsTrue(snapshot.Signers.Contains(_signer3));
         }
 
-        [TestCase()]
+        [Test]
         public void Recognises_signer_turn()
         {
             var config = GetRinkebyConfig();
@@ -130,6 +130,41 @@ namespace Nethermind.Clique.Test
             Assert.IsFalse(snapshot.Inturn(3, _signer1));
             Assert.IsFalse(snapshot.Inturn(3, _signer2));
             Assert.IsTrue(snapshot.Inturn(3, _signer3));
+        }
+
+        [Test]
+        public void Encodes()
+        {
+
+            SnapshotDecoder decoder = new SnapshotDecoder();
+            // Prepare snapshot
+            Keccak hash = new Keccak("0xa33ea6f6c0f1c80a6c7af308a30cb7a7affa4d0d51e6639b739727af0518b50e");
+            UInt256 number = new UInt256(3305206);
+            Address candidate = new Address("0xbe1085bc3e0812f3df63deced87e29b3bc2db524");
+            Snapshot expected = GenerateSnapshot(hash, number, candidate);
+            // Encode snapshot
+            Rlp rlp = decoder.Encode(expected);
+            // Decode snapshot
+            Snapshot actual = decoder.Decode(rlp.Bytes.AsRlpContext());
+            // Validate fields
+            Assert.AreEqual(expected.Number, actual.Number);
+            Assert.AreEqual(expected.Hash, actual.Hash);
+            Assert.AreEqual(expected.Signers, actual.Signers);
+            Assert.AreEqual(expected.Recent, actual.Recent);
+            Assert.AreEqual(expected.Votes.Count, actual.Votes.Count);
+            for (int i = 0; i < expected.Votes.Count; i++)
+            {
+                Assert.AreEqual(expected.Votes[i].Signer, actual.Votes[i].Signer);
+                Assert.AreEqual(expected.Votes[i].Block, actual.Votes[i].Block);
+                Assert.AreEqual(expected.Votes[i].Address, actual.Votes[i].Address);
+                Assert.AreEqual(expected.Votes[i].Authorize, actual.Votes[i].Authorize);
+            }
+            Assert.AreEqual(expected.Tally.Count, actual.Tally.Count);
+            foreach (Address address in expected.Tally.Keys)
+            {
+                Assert.AreEqual(expected.Tally[address].Votes, actual.Tally[address].Votes);
+                Assert.AreEqual(expected.Tally[address].Authorize, actual.Tally[address].Authorize);
+            }
         }
 
         private Block GetRinkebyGenesis()
@@ -162,6 +197,32 @@ namespace Nethermind.Clique.Test
             tree.SuggestBlock(block);
             tree.MarkAsProcessed(block.Hash);
             tree.MoveToMain(block);
+        }
+
+        private Snapshot GenerateSnapshot(Keccak hash, UInt256 number, Address candidate)
+        {
+            CliqueConfig config = GetRinkebyConfig();
+            LruCache<Keccak, Address> sigCache = null;
+            HashSet<Address> signers = new HashSet<Address>();
+            signers.Add(_signer1);
+            signers.Add(_signer2);
+            signers.Add(_signer3);
+            Dictionary<ulong, Address> recent = new Dictionary<ulong, Address>();
+            recent[(ulong)(number - 1)] = _signer2;
+            recent[(ulong)(number - 2)] = _signer1;
+            recent[(ulong)(number - 3)] = _signer3;
+            List<Vote> votes = new List<Vote>();
+            votes.Add(new Vote(_signer1, number - 2, candidate, true));
+            votes.Add(new Vote(_signer3, number - 3, candidate, true));
+            votes.Add(new Vote(_signer3, number - 6, _signer2, false));
+            Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
+            tally[candidate] = new Tally(true);
+            tally[candidate].Votes = 2;
+            tally[_signer2] = new Tally(false);
+            tally[_signer2].Votes = 1;
+            Snapshot snapshot = new Snapshot(config, sigCache, number, hash, signers, recent, tally);
+            snapshot.Votes = votes;
+            return snapshot;
         }
     }
 }
