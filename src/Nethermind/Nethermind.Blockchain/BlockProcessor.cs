@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain
 
         private void ApplyMinerReward(Block block, BlockReward reward)
         {
-            if (_logger.IsTrace) _logger.Trace($"    {(decimal) reward.Value / (decimal) Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
+            if (_logger.IsTrace) _logger.Trace($"  {(decimal) reward.Value / (decimal) Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
             if (!_stateProvider.AccountExists(reward.Address))
             {
                 _stateProvider.CreateAccount(reward.Address, (UInt256) reward.Value);

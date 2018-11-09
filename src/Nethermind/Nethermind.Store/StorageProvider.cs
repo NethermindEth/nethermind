@@ -193,7 +193,6 @@ namespace Nethermind.Store
 //                }
                 
                 _committedThisRound.Add(change.StorageAddress);
-                toUpdateRoots.Add(change.StorageAddress.Address);
 
                 if (change.ChangeType == ChangeType.Destroy)
                 {
@@ -213,14 +212,14 @@ namespace Nethermind.Store
                     case ChangeType.JustCache:
                         break;
                     case ChangeType.Update:
-
                         if (_logger.IsTrace)
                         {
-                            _logger.Trace($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {change.Value.ToHexString(true)}");
+                            _logger.Trace($"  Update {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {change.Value.ToHexString(true)}");
                         }
 
                         StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
                         Metrics.StorageTreeWrites++;
+                        toUpdateRoots.Add(change.StorageAddress.Address);
                         tree.Set(change.StorageAddress.Index, change.Value);
                         break;
                     default:
@@ -249,7 +248,7 @@ namespace Nethermind.Store
 
         public void Reset()
         {
-            if (_logger.IsTrace) _logger.Trace("Resetting storage.");
+            if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _intraBlockCache.Clear();
             _originalValues.Clear();

@@ -88,24 +88,27 @@ namespace Nethermind.Blockchain.Validators
             bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
             if (_logger != null && !isValid)
             {
+                if (_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.Short)} is not valid");
+                if(_logger.IsError) _logger.Error($"  hash {processedBlock.Hash} != stated hash {suggestedBlock.Hash}");
+                
                 if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
                 {
-                    if(_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.HashAndNumber)} is invalid - gas used {processedBlock.Header.GasUsed} != stated gas used {suggestedBlock.Header.GasUsed} ({processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed} difference)");
+                    if(_logger.IsError) _logger.Error($"  gas used {processedBlock.Header.GasUsed} != stated gas used {suggestedBlock.Header.GasUsed} ({processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed} difference)");
                 }
 
                 if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom)
                 {
-                    if(_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.HashAndNumber)} is invalid - bloom {processedBlock.Header.Bloom} != stated bloom {suggestedBlock.Header.Bloom}");
+                    if(_logger.IsError) _logger.Error($"  bloom {processedBlock.Header.Bloom} != stated bloom {suggestedBlock.Header.Bloom}");
                 }
 
                 if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot)
                 {
-                    if(_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.HashAndNumber)} is invalid - receipts root {processedBlock.Header.ReceiptsRoot} != stated receipts root {suggestedBlock.Header.ReceiptsRoot}");
+                    if(_logger.IsError) _logger.Error($"  receipts root {processedBlock.Header.ReceiptsRoot} != stated receipts root {suggestedBlock.Header.ReceiptsRoot}");
                 }
 
                 if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
                 {
-                    if(_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.HashAndNumber)} is invalid - state root {processedBlock.Header.StateRoot} != stated state root {suggestedBlock.Header.StateRoot}");
+                    if(_logger.IsError) _logger.Error($"  state root {processedBlock.Header.StateRoot} != stated state root {suggestedBlock.Header.StateRoot}");
                 }
             }
 
