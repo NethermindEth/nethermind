@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography;
 using FluentAssertions;
 using Nethermind.Blockchain.TransactionPools;
@@ -19,38 +20,38 @@ namespace Nethermind.Blockchain.Test
     public class TransactionPoolTests
     {
         private Block _genesisBlock;
+        private IBlockTree _remoteBlockTree;
         private ILogManager _logManager;
         private IEthereumSigner _ethereumSigner;
         private ISpecProvider _specProvider;
         private ITransactionPool _transactionPool;
-        private ITransactionStorage _noStorage;
-        private ITransactionStorage _persistentStorage;
-        private ITransactionStorage _inMemoryStorage;
+        private ITransactionStorage _noTransactionStorage;
+        private ITransactionStorage _inMemoryTransactionStorage;
+        private ITransactionStorage _persistentTransactionStorage;
         private IReceiptStorage _noReceiptStorage;
-        private IReceiptStorage _persistentReceiptStorage;
         private IReceiptStorage _inMemoryReceiptStorage;
-        private IBlockTree _remoteBlockTree;
+        private IReceiptStorage _persistentReceiptStorage;
 
         [SetUp]
         public void Setup()
         {
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
             _logManager = NullLogManager.Instance;
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
-            _noStorage = new NoTransactionStorage();
-            _inMemoryStorage = new InMemoryTransactionStorage();
-            _persistentStorage = new PersistentTransactionStorage(new MemDb(), _specProvider);
+            _noTransactionStorage = new NoTransactionStorage();
+            _inMemoryTransactionStorage = new InMemoryTransactionStorage();
+            _persistentTransactionStorage = new PersistentTransactionStorage(new MemDb(), _specProvider);
             _noReceiptStorage = new NoReceiptStorage();
-            _persistentReceiptStorage = new PersistentReceiptStorage(new MemDb(), _specProvider);
             _inMemoryReceiptStorage = new InMemoryReceiptStorage();
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
+            _persistentReceiptStorage = new PersistentReceiptStorage(new MemDb(), _specProvider);
         }
 
         [Test]
         public void should_add_peers()
         {
-            _transactionPool = new TransactionPool(_noStorage, _noReceiptStorage, _ethereumSigner, _logManager);
+            _transactionPool = CreatePool(_noTransactionStorage, _noReceiptStorage);
             var peers = GetPeers();
 
             foreach ((ISynchronizationPeer peer, _) in peers)
@@ -62,7 +63,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void should_delete_peers()
         {
-            _transactionPool = new TransactionPool(_noStorage, _noReceiptStorage, _ethereumSigner, _logManager);
+            _transactionPool = CreatePool(_noTransactionStorage, _noReceiptStorage);
             var peers = GetPeers();
 
             foreach ((ISynchronizationPeer peer, _) in peers)
@@ -77,10 +78,10 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void should_add_transactions()
+        public void should_add_pending_transactions()
         {
-            _transactionPool = new TransactionPool(_noStorage, _noReceiptStorage, _ethereumSigner, _logManager);
-            var transactions = GetTransactions(GetPeers());
+            _transactionPool = CreatePool(_noTransactionStorage, _noReceiptStorage);
+            var transactions = AddTransactionsToPool();
 
             foreach (var transaction in transactions)
             {
@@ -91,77 +92,103 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        public void should_delete_pending_transactions()
+        {
+            _transactionPool = CreatePool(_noTransactionStorage, _noReceiptStorage);
+            var transactions = AddTransactionsToPool();
+            DeleteTransactionsFromPool(transactions);
+            _transactionPool.PendingTransactions.Should().BeEmpty();
+        }
+
+        [Test]
         public void should_add_transactions_to_in_memory_storage()
         {
-            _transactionPool = new TransactionPool(_inMemoryStorage, _noReceiptStorage, _ethereumSigner, _logManager);
-            var transactions = GetTransactions(GetPeers());
-
-            foreach (var transaction in transactions)
-            {
-                _transactionPool.AddTransaction(transaction, 1);
-            }
-
-            var storedTransactions = new List<Transaction>();
-            foreach (var transaction in transactions)
-            {
-                storedTransactions.Add(_inMemoryStorage.Get(transaction.Hash));
-            }
-
-            storedTransactions.Count.Should().Be(transactions.Length);
+            var transactions = AddAndFilterTransactions(_inMemoryTransactionStorage);
+            transactions.Pending.Count().Should().Be(transactions.Filtered.Count());
         }
 
         [Test]
         public void should_add_transactions_to_persistent_storage()
         {
-            _transactionPool = new TransactionPool(_persistentStorage, _noReceiptStorage, _ethereumSigner, _logManager);
-            var transactions = GetTransactions(GetPeers());
-
-            foreach (var transaction in transactions)
-            {
-                _transactionPool.AddTransaction(transaction, 1);
-            }
-
-            var storedTransactions = new List<Transaction>();
-            foreach (var transaction in transactions)
-            {
-                storedTransactions.Add(_persistentStorage.Get(transaction.Hash));
-            }
-
-            storedTransactions.Count.Should().Be(transactions.Length);
+            var transactions = AddAndFilterTransactions(_persistentTransactionStorage);
+            transactions.Pending.Count().Should().Be(transactions.Filtered.Count());
         }
 
         [Test]
-        public void should_delete_transactions()
+        public void should_add_all_transactions_to_storage_when_using_accept_all_filter()
         {
-            _transactionPool = new TransactionPool(_noStorage, _noReceiptStorage, _ethereumSigner, _logManager);
-            var transactions = GetTransactions(GetPeers());
-
-            foreach (var transaction in transactions)
-            {
-                _transactionPool.AddTransaction(transaction, 1);
-            }
-
-            foreach (var transaction in transactions)
-            {
-                _transactionPool.DeleteTransaction(transaction.Hash);
-            }
-
-            _transactionPool.PendingTransactions.Should().BeEmpty();
+            var transactions = AddAndFilterTransactions(_inMemoryTransactionStorage, new AcceptAllTransactionFilter());
+            transactions.Pending.Count().Should().Be(transactions.Filtered.Count());
         }
 
         [Test]
-        public void should_store_and_get_valid_receipt()
+        public void should_not_add_any_transaction_to_storage_when_using_reject_all_filter()
         {
-            _noReceiptStorage = new PersistentReceiptStorage(new MemDb(), _specProvider);
-            _transactionPool = new TransactionPool(_noStorage, _noReceiptStorage, _ethereumSigner, _logManager);
-            var transaction = Build.A.Transaction.Signed(_ethereumSigner, TestObject.PrivateKeyA, 1).TestObject;
-            var receipt = Build.A.TransactionReceipt.WithState(TestObject.KeccakB)
-                .WithTransactionHash(transaction.Hash).TestObject;
+            var transactions = AddAndFilterTransactions(_inMemoryTransactionStorage, new RejectAllTransactionFilter());
+            transactions.Filtered.Count().Should().Be(0);
+            transactions.Pending.Count().Should().NotBe(transactions.Filtered.Count());
+        }
 
+        [Test]
+        public void should_not_add_any_transaction_to_storage_when_using_accept_all_and_reject_all_filter()
+        {
+            var transactions = AddAndFilterTransactions(_inMemoryTransactionStorage, new RejectAllTransactionFilter());
+            transactions.Filtered.Count().Should().Be(0);
+            transactions.Pending.Count().Should().NotBe(transactions.Filtered.Count());
+        }
+
+        [Test]
+        public void should_add_some_transactions_to_storage_when_using_accept_when_filter()
+        {
+            var filter = AcceptWhenTransactionFilter
+                .Create()
+                .AddWhen()
+                .Nonce(n => n >= 0)
+                .GasPrice(p => p > 2 && p < 10)
+                .Build()
+                .DeleteWhen()
+                .GasLimit(l => l < 1000)
+                .Hash(h => h.Equals(Keccak.Zero))
+                .Build()
+                .BuildFilter();
+            var transactions = AddAndFilterTransactions(_inMemoryTransactionStorage, filter);
+            transactions.Filtered.Count().Should().NotBe(0);
+        }
+
+        [Test]
+        public void should_add_and_fetch_receipt_from_in_memory_storage()
+        {
+            _transactionPool = CreatePool(_noTransactionStorage, _inMemoryReceiptStorage);
+            var transaction = GetSignedTransaction();
+            var receipt = GetReceipt(transaction);
             _transactionPool.AddReceipt(receipt);
-
             var fetchedReceipt = _transactionPool.GetReceipt(transaction.Hash);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
+        }
+
+        [Test]
+        public void should_add_and_fetch_receipt_from_persistent_storage()
+        {
+            _transactionPool = CreatePool(_noTransactionStorage, _persistentReceiptStorage);
+            var transaction = GetSignedTransaction();
+            var receipt = GetReceipt(transaction);
+            _transactionPool.AddReceipt(receipt);
+            var fetchedReceipt = _transactionPool.GetReceipt(transaction.Hash);
+            receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
+        }
+
+        private Transactions AddAndFilterTransactions(ITransactionStorage storage, params ITransactionFilter[] filters)
+        {
+            _transactionPool = CreatePool(storage, _noReceiptStorage);
+            foreach (var filter in filters ?? Enumerable.Empty<ITransactionFilter>())
+            {
+                _transactionPool.AddFilter(filter);
+            }
+
+            var pendingTransactions = AddTransactionsToPool();
+            var filteredTransactions = GetTransactionsFromStorage(storage, pendingTransactions);
+
+            return new Transactions(pendingTransactions, filteredTransactions);
         }
 
         private IDictionary<ISynchronizationPeer, PrivateKey> GetPeers(int limit = 100)
@@ -181,8 +208,34 @@ namespace Nethermind.Blockchain.Test
             return peers;
         }
 
+        private TransactionPool CreatePool(ITransactionStorage transactionStorage, IReceiptStorage receiptStorage)
+            => new TransactionPool(transactionStorage, receiptStorage, _ethereumSigner, _logManager);
+
         private ISynchronizationPeer GetPeer(PublicKey publicKey)
             => new SynchronizationPeerMock(_remoteBlockTree, publicKey);
+
+        private Transaction[] AddTransactionsToPool(int transactionsPerPeer = 10)
+        {
+            var transactions = GetTransactions(GetPeers(transactionsPerPeer));
+            foreach (var transaction in transactions)
+            {
+                _transactionPool.AddTransaction(transaction, 1);
+            }
+
+            return transactions;
+        }
+
+        private void DeleteTransactionsFromPool(IEnumerable<Transaction> transactions)
+        {
+            foreach (var transaction in transactions)
+            {
+                _transactionPool.DeleteTransaction(transaction.Hash);
+            }
+        }
+
+        private static IEnumerable<Transaction> GetTransactionsFromStorage(ITransactionStorage storage,
+            IEnumerable<Transaction> transactions)
+            => transactions.Select(t => storage.Get(t.Hash)).Where(t => !(t is null)).ToArray();
 
         private Transaction[] GetTransactions(IDictionary<ISynchronizationPeer, PrivateKey> peers,
             int transactionsPerPeer = 10)
@@ -192,20 +245,45 @@ namespace Nethermind.Blockchain.Test
             {
                 for (var i = 0; i < transactionsPerPeer; i++)
                 {
-                    transactions.Add(GetTransaction(Address.FromNumber(i), privateKey));
+                    transactions.Add(GetTransaction(privateKey, Address.FromNumber(i)));
                 }
             }
 
             return transactions.ToArray();
         }
 
-        private Transaction GetTransaction(Address to, PrivateKey privateKey)
+        private Transaction GetSignedTransaction(Address to = null)
+            => GetTransaction(TestObject.PrivateKeyA, to);
+
+        private Transaction GetTransaction(PrivateKey privateKey, Address to = null)
+            => GetTransaction(0, 1, 1000, to, new byte[0], privateKey);
+
+        private Transaction GetTransaction(UInt256 nonce, UInt256 gasLimit, UInt256 gasPrice, Address to, byte[] data,
+            PrivateKey privateKey)
             => Build.A.Transaction
-                .WithGasLimit(1000)
-                .WithGasPrice(1)
+                .WithNonce(nonce)
+                .WithGasLimit(gasLimit)
+                .WithGasPrice(gasPrice)
+                .WithData(data)
                 .To(to)
                 .DeliveredBy(privateKey.PublicKey)
                 .SignedAndResolved(_ethereumSigner, privateKey, 1)
                 .TestObject;
+
+        private static TransactionReceipt GetReceipt(Transaction transaction)
+            => Build.A.TransactionReceipt.WithState(TestObject.KeccakB)
+                .WithTransactionHash(transaction.Hash).TestObject;
+
+        private class Transactions
+        {
+            public IEnumerable<Transaction> Pending { get; }
+            public IEnumerable<Transaction> Filtered { get; }
+
+            public Transactions(IEnumerable<Transaction> pending, IEnumerable<Transaction> filtered)
+            {
+                Pending = pending;
+                Filtered = filtered;
+            }
+        }
     }
 }
