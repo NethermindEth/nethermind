@@ -435,8 +435,8 @@ namespace Nethermind.Clique
         private UInt256 CalcDifficulty(uint time, BlockHeader parent)
         {
             ulong parentNumber = (ulong) parent.Number;
-            Snapshot snap = GetSnapshot(parentNumber, BlockHeader.CalculateHash(parent));
-            return CalcDifficulty(snap, _key.Address);
+            Snapshot snapshot = GetSnapshot(parentNumber, BlockHeader.CalculateHash(parent));
+            return CalcDifficulty(snapshot, _key.Address);
         }
 
         private UInt256 CalcDifficulty(Snapshot snapshot, Address signer)
