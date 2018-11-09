@@ -21,7 +21,57 @@ namespace Nethermind.Blockchain.TransactionPools.Filters
 
         private static bool Valid(Transaction transaction, Builder.Filter filter)
         {
-            if (!filter.Nonce(transaction.Nonce))
+            if (filter.Nonce != null && !filter.Nonce(transaction.Nonce))
+            {
+                return false;
+            }
+
+            if (filter.GasPrice != null && !filter.GasPrice(transaction.GasPrice))
+            {
+                return false;
+            }
+
+            if (filter.GasLimit != null && !filter.GasLimit(transaction.GasLimit))
+            {
+                return false;
+            }
+
+            if (filter.Hash != null && !filter.Hash(transaction.Hash))
+            {
+                return false;
+            }
+
+            if (filter.DeliveredBy != null && !filter.DeliveredBy(transaction.DeliveredBy))
+            {
+                return false;
+            }
+
+            if (filter.To != null && !filter.To(transaction.To))
+            {
+                return false;
+            }
+
+            if (filter.Value != null && !filter.Value(transaction.Value))
+            {
+                return false;
+            }
+
+            if (filter.Data != null && !filter.Data(transaction.Data))
+            {
+                return false;
+            }
+
+            if (filter.Init != null && !filter.Init(transaction.Init))
+            {
+                return false;
+            }
+
+            if (filter.SenderAddress != null && !filter.SenderAddress(transaction.SenderAddress))
+            {
+                return false;
+            }
+
+            if (filter.Signature != null && !filter.Signature(transaction.Signature))
             {
                 return false;
             }
@@ -38,7 +88,9 @@ namespace Nethermind.Blockchain.TransactionPools.Filters
 
             public FilterBuilder AddWhen() => new FilterBuilder(this, _addFilter);
             public FilterBuilder DeleteWhen() => new FilterBuilder(this, _deleteFilter);
-            public AcceptWhenTransactionFilter BuildFilter() => new AcceptWhenTransactionFilter(_addFilter, _deleteFilter);
+
+            public AcceptWhenTransactionFilter BuildFilter() =>
+                new AcceptWhenTransactionFilter(_addFilter, _deleteFilter);
 
             public class FilterBuilder
             {

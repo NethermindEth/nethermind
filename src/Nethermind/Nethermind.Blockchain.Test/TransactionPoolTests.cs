@@ -144,7 +144,7 @@ namespace Nethermind.Blockchain.Test
                 .Create()
                 .AddWhen()
                 .Nonce(n => n >= 0)
-                .GasPrice(p => p > 2 && p < 10)
+                .GasPrice(p => p > 2 && p < 1500)
                 .Build()
                 .DeleteWhen()
                 .GasLimit(l => l < 1000)
