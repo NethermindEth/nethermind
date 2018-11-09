@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
 using FluentAssertions;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.TransactionPools.Filters;
@@ -132,7 +131,8 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void should_not_add_any_transaction_to_storage_when_using_accept_all_and_reject_all_filter()
         {
-            var transactions = AddAndFilterTransactions(_inMemoryTransactionStorage, new RejectAllTransactionFilter());
+            var transactions = AddAndFilterTransactions(_inMemoryTransactionStorage,
+                new AcceptAllTransactionFilter(), new RejectAllTransactionFilter());
             transactions.Filtered.Count().Should().Be(0);
             transactions.Pending.Count().Should().NotBe(transactions.Filtered.Count());
         }
@@ -194,15 +194,10 @@ namespace Nethermind.Blockchain.Test
         private IDictionary<ISynchronizationPeer, PrivateKey> GetPeers(int limit = 100)
         {
             var peers = new Dictionary<ISynchronizationPeer, PrivateKey>();
-            var bytes = new byte[32];
-            using (var rng = new RNGCryptoServiceProvider())
+            for (var i = 0; i < limit; i++)
             {
-                for (var i = 0; i < limit; i++)
-                {
-                    rng.GetBytes(bytes);
-                    var privateKey = new PrivateKey(bytes);
-                    peers.Add(GetPeer(privateKey.PublicKey), privateKey);
-                }
+                var privateKey = Build.A.PrivateKey.TestObject;
+                peers.Add(GetPeer(privateKey.PublicKey), privateKey);
             }
 
             return peers;
