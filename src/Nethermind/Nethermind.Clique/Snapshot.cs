@@ -21,6 +21,8 @@ using System.Collections.Generic;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
@@ -31,10 +33,10 @@ namespace Nethermind.Clique
     {
         public CliqueConfig Config;
         public LruCache<Keccak, Address> SigCache;
-        public uint Number;
-        public byte[] Hash;
+        public UInt256 Number;
+        public Keccak Hash;
         public HashSet<Address> Signers;
-        public Dictionary<UInt64, Address> Recent;
+        public Dictionary<UInt256, Address> Recent;
         public List<Vote> Votes;
         public Dictionary<Address, Tally> Tally;
 
@@ -43,11 +45,11 @@ namespace Nethermind.Clique
             Votes = new List<Vote>();
         }
 
-        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, byte[] hash, HashSet<Address> signers, Dictionary<UInt64, Address> recent, Dictionary<Address, Tally> tally)
+        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, HashSet<Address> signers, Dictionary<UInt256, Address> recent, Dictionary<Address, Tally> tally)
         {
             Config = config;
             SigCache = sigCache;
-            Number = (uint)number;
+            Number = number;
             Hash = hash;
             Signers = signers;
             Recent = recent;
@@ -63,7 +65,7 @@ namespace Nethermind.Clique
             clone.Number = Number;
             clone.Hash = Hash;
             clone.Signers = new HashSet<Address>();
-            clone.Recent = new Dictionary<ulong, Address>();
+            clone.Recent = new Dictionary<UInt256, Address>();
             clone.Votes = new List<Vote>();
             clone.Tally = new Dictionary<Address, Tally>();
 
@@ -90,10 +92,10 @@ namespace Nethermind.Clique
             return clone;
         }
 
-        public static Snapshot NewSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, UInt256 number, byte[] hash, Address[] signers)
+        public static Snapshot NewSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, UInt256 number, Keccak hash, Address[] signers)
         {
             HashSet<Address> signerSet = new HashSet<Address>();
-            Dictionary<UInt64, Address> signerDict = new Dictionary<UInt64, Address>();
+            Dictionary<UInt256, Address> signerDict = new Dictionary<UInt256, Address>();
             Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
             Snapshot snapshot = new Snapshot(config, sigcache, number, hash, signerSet, signerDict, tally);
 
@@ -104,7 +106,7 @@ namespace Nethermind.Clique
             return snapshot;
         }
 
-        public static Snapshot LoadSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, IDb db, byte[] hash)
+        public static Snapshot LoadSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, IDb db, Keccak hash)
         {
             Keccak key = GetSnapshotKey(hash);
             byte[] blob = db.Get(key);
@@ -112,9 +114,8 @@ namespace Nethermind.Clique
             {
                 return null;
             }
-            String json = Encoding.UTF8.GetString(blob);
-            JsonSerializer serializer = new JsonSerializer(NullLogManager.Instance);
-            Snapshot snapshot = serializer.Deserialize<Snapshot>(json);
+            SnapshotDecoder decoder = new SnapshotDecoder();
+            Snapshot snapshot = decoder.Decode(blob.AsRlpContext());
             snapshot.Config = config;
             snapshot.SigCache = sigcache;
             return snapshot;
@@ -122,9 +123,9 @@ namespace Nethermind.Clique
 
         public void Store(IDb db)
         {
-            JsonSerializer serializer = new JsonSerializer(NullLogManager.Instance);
-            string json = serializer.Serialize(this);
-            byte[] blob = Encoding.UTF8.GetBytes(json);
+            SnapshotDecoder decoder = new SnapshotDecoder();
+            Rlp rlp = decoder.Encode(this);
+            byte[] blob = rlp.Bytes;
             Keccak key = GetSnapshotKey(Hash);
             db.Set(key, blob);
         }
@@ -245,7 +246,7 @@ namespace Nethermind.Clique
                 }
             }
             snapshot.Number += (uint)headers.Count;
-            snapshot.Hash = BlockHeader.CalculateHash(headers[headers.Count - 1]).Bytes;
+            snapshot.Hash = BlockHeader.CalculateHash(headers[headers.Count - 1]);
             return snapshot;
         }
 
@@ -329,11 +330,12 @@ namespace Nethermind.Clique
             return sigs;
         }
 
-        private static Keccak GetSnapshotKey(byte[] blockHash)
+        private static Keccak GetSnapshotKey(Keccak blockHash)
         {
+            byte[] hashBytes = blockHash.Bytes;
             byte[] snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
-            byte[] keyBytes = new byte[blockHash.Length];
-            Array.Copy(blockHash, keyBytes, blockHash.Length);
+            byte[] keyBytes = new byte[hashBytes.Length];
+            Array.Copy(hashBytes, keyBytes, hashBytes.Length);
             for (int i = 0; i < snapshotBytes.Length; i++)
             {
                 keyBytes[i] ^= snapshotBytes[i];

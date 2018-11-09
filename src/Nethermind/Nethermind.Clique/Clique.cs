@@ -38,7 +38,7 @@ namespace Nethermind.Clique
     {
         private const int CheckpointInterval = 1024;
         private const int InmemorySnapshots = 128;
-        private const int InmemorySignatures = 4096;
+        internal const int InmemorySignatures = 4096;
         private const int WiggleTime = 500;
 
         private const int EpochLength = 30000;
@@ -103,7 +103,7 @@ namespace Nethermind.Clique
             // If we're amongst the recent signers, wait for the next block
             foreach (var item in snapshot.Recent)
             {
-                UInt64 seen = item.Key;
+                UInt256 seen = item.Key;
                 Address recent = item.Value;
                 if (recent == _key.Address)
                 {
@@ -228,7 +228,7 @@ namespace Nethermind.Clique
 
             foreach (var recent in snapshot.Recent)
             {
-                UInt64 seen = recent.Key;
+                UInt256 seen = recent.Key;
                 Address address = recent.Value;
                 if (address == signer)
                 {
@@ -277,7 +277,7 @@ namespace Nethermind.Clique
                 // If an on-disk checkpoint snapshot can be found, use that
                 if (number % CheckpointInterval == 0)
                 {
-                    memorySnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash.Bytes);
+                    memorySnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash);
                     if (memorySnapshot != null)
                     {
                         snapshot = memorySnapshot;
@@ -301,7 +301,7 @@ namespace Nethermind.Clique
                             signers[i] = new Address(signerBytes);
                         }
 
-                        snapshot = Snapshot.NewSnapshot(_config, _signatures, number, blockHash.Bytes, signers);
+                        snapshot = Snapshot.NewSnapshot(_config, _signatures, number, blockHash, signers);
                         snapshot.Store(_blocksDb);
                         break;
                     }
@@ -331,9 +331,7 @@ namespace Nethermind.Clique
 
             snapshot = snapshot.Apply(headers);
 
-            Keccak snapHash = new Keccak(snapshot.Hash);
-
-            _recents.Set(snapHash, snapshot);
+            _recents.Set(snapshot.Hash, snapshot);
             // If we've generated a new checkpoint snapshot, save to disk
             if ((uint) snapshot.Number % CheckpointInterval == 0 && headers.Count > 0)
             {
