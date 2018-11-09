@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.TransactionPools
         Transaction[] PendingTransactions { get; }
         TransactionReceipt GetReceipt(Keccak hash);
         void AddFilter<T>(T filter) where T : ITransactionFilter;
-        void DeleteFilter<T>() where T : ITransactionFilter;
+        void DeleteFilter(Type type);
         void AddPeer(ISynchronizationPeer peer);
         void DeletePeer(NodeId nodeId);
         void AddTransaction(Transaction transaction, UInt256 blockNumber);

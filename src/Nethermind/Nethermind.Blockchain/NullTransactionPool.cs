@@ -41,9 +41,10 @@ namespace Nethermind.Blockchain
         {
         }
 
-        public void DeleteFilter<T>() where T : ITransactionFilter
+        public void DeleteFilter(Type type)
         {
         }
+
 
         public void AddPeer(ISynchronizationPeer peer)
         {

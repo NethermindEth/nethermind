@@ -45,10 +45,9 @@ namespace Nethermind.Blockchain.TransactionPools
         public TransactionReceipt GetReceipt(Keccak hash) => _receiptStorage.Get(hash);
 
         public void AddFilter<T>(T filter) where T : ITransactionFilter
-            => _filters.TryAdd(typeof(T), filter);
+            => _filters.TryAdd(filter.GetType(), filter);
 
-        public void DeleteFilter<T>() where T : ITransactionFilter
-            => _filters.TryRemove(typeof(T), out _);
+        public void DeleteFilter(Type type) => _filters.TryRemove(type, out _);
 
         public void AddPeer(ISynchronizationPeer peer)
         {
