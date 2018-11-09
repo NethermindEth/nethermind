@@ -5,7 +5,6 @@ namespace Nethermind.Blockchain.TransactionPools
 {
     public interface ITransactionFilter
     {
-        bool CanAdd(Transaction transaction);
-        bool CanDelete(Transaction transaction);
+        bool IsValid(Transaction transaction);
     }
 }

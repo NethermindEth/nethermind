@@ -214,11 +214,7 @@ namespace Nethermind.Blockchain
 
         public void AddNewTransaction(Transaction transaction, NodeId receivedFrom)
         {
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Received a pending transaction {transaction.Hash} from {receivedFrom}");
-            }
-
+            if (_logger.IsTrace) _logger.Trace($"Received a pending transaction {transaction.Hash} from {receivedFrom}");
             _transactionPool.AddTransaction(transaction, HeadNumber);
         }
 

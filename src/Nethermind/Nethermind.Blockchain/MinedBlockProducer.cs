@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain
             header.TotalDifficulty = parent.TotalDifficulty + difficulty;
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
-            var transactions = _transactionPool.PendingTransactions.OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
+            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
 
             List<Transaction> selected = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;

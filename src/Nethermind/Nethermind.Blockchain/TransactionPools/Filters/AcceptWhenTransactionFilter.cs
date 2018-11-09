@@ -1,202 +1,199 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TransactionPools.Filters
 {
     public class AcceptWhenTransactionFilter : ITransactionFilter
     {
-        private readonly Builder.Filter _addFilter;
-        private readonly Builder.Filter _deleteFilter;
+        private readonly Filter _filter;
+        private readonly ILogger _logger;
 
-        private AcceptWhenTransactionFilter(Builder.Filter addFilter, Builder.Filter deleteFilter)
+        private AcceptWhenTransactionFilter(Filter filter, ILogManager logManager)
         {
-            _addFilter = addFilter;
-            _deleteFilter = deleteFilter;
+            _filter = filter;
+            _logger = logManager?.GetClassLogger();
         }
 
-        public bool CanAdd(Transaction transaction) => Valid(transaction, _addFilter);
-        public bool CanDelete(Transaction transaction) => Valid(transaction, _deleteFilter);
-
-        private static bool Valid(Transaction transaction, Builder.Filter filter)
+        public bool IsValid(Transaction transaction)
         {
-            if (filter.Nonce != null && !filter.Nonce(transaction.Nonce))
+            if (_filter.Nonce != null && !_filter.Nonce(transaction.Nonce))
             {
-                return false;
+                return FalseWithLogTrace(transaction, nameof(transaction.Nonce));
             }
 
-            if (filter.GasPrice != null && !filter.GasPrice(transaction.GasPrice))
+            if (_filter.GasPrice != null && !_filter.GasPrice(transaction.GasPrice))
             {
-                return false;
+                return FalseWithLogTrace(transaction, nameof(transaction.GasPrice));
             }
 
-            if (filter.GasLimit != null && !filter.GasLimit(transaction.GasLimit))
+            if (_filter.GasLimit != null && !_filter.GasLimit(transaction.GasLimit))
             {
-                return false;
+                return FalseWithLogTrace(transaction, nameof(transaction.GasLimit));
             }
 
-            if (filter.Hash != null && !filter.Hash(transaction.Hash))
+            if (_filter.Hash != null && !_filter.Hash(transaction.Hash))
             {
-                return false;
+                return FalseWithLogTrace(transaction, nameof(transaction.Hash));
             }
 
-            if (filter.DeliveredBy != null && !filter.DeliveredBy(transaction.DeliveredBy))
+            if (_filter.DeliveredBy != null && !_filter.DeliveredBy(transaction.DeliveredBy))
             {
-                return false;
+                return FalseWithLogTrace(transaction, nameof(transaction.DeliveredBy));
             }
 
-            if (filter.To != null && !filter.To(transaction.To))
+            if (_filter.To != null && !_filter.To(transaction.To))
             {
-                return false;
+                return FalseWithLogTrace(transaction, nameof(transaction.To));
             }
 
-            if (filter.Value != null && !filter.Value(transaction.Value))
+            if (_filter.Value != null && !_filter.Value(transaction.Value))
             {
-                return false;
+                return FalseWithLogTrace(transaction, nameof(transaction.Value));
             }
 
-            if (filter.Data != null && !filter.Data(transaction.Data))
+            if (_filter.Data != null && !_filter.Data(transaction.Data))
             {
-                return false;
+                return FalseWithLogTrace(transaction, nameof(transaction.Data));
             }
 
-            if (filter.Init != null && !filter.Init(transaction.Init))
+            if (_filter.Init != null && !_filter.Init(transaction.Init))
             {
-                return false;
+                return FalseWithLogTrace(transaction, nameof(transaction.Init));
             }
 
-            if (filter.SenderAddress != null && !filter.SenderAddress(transaction.SenderAddress))
+            if (_filter.SenderAddress != null && !_filter.SenderAddress(transaction.SenderAddress))
             {
-                return false;
+                return FalseWithLogTrace(transaction, nameof(transaction.SenderAddress));
             }
 
-            if (filter.Signature != null && !filter.Signature(transaction.Signature))
+            if (_filter.Signature != null && !_filter.Signature(transaction.Signature))
             {
-                return false;
+                return FalseWithLogTrace(transaction, nameof(transaction.Signature));
             }
 
             return true;
         }
 
-        public static Builder Create() => new Builder();
+        private bool FalseWithLogTrace(Transaction transaction, string parameter)
+        {
+            if (_logger == null || !_logger.IsTrace)
+            {
+                return false;
+            }
+
+            _logger.Trace($"Transaction: {transaction.Hash} is invalid, parameter: {parameter}.");
+
+            return false;
+        }
+
+        public static Builder Create(ILogManager logManager = null) => new Builder(logManager);
 
         public class Builder
         {
-            private readonly Filter _addFilter = new Filter();
-            private readonly Filter _deleteFilter = new Filter();
+            private readonly ILogManager _logManager;
+            private readonly Filter _filter = new Filter();
 
-            public FilterBuilder AddWhen() => new FilterBuilder(this, _addFilter);
-            public FilterBuilder DeleteWhen() => new FilterBuilder(this, _deleteFilter);
-
-            public AcceptWhenTransactionFilter BuildFilter() =>
-                new AcceptWhenTransactionFilter(_addFilter, _deleteFilter);
-
-            public class FilterBuilder
+            public Builder(ILogManager logManager = null)
             {
-                private readonly Builder _builder;
-                private readonly Filter _filter;
-
-                public FilterBuilder(Builder builder, Filter filter)
-                {
-                    _builder = builder;
-                    _filter = filter;
-                }
-
-                public FilterBuilder Nonce(Predicate<UInt256> nonce)
-                {
-                    _filter.Nonce = nonce;
-
-                    return this;
-                }
-
-                public FilterBuilder GasPrice(Predicate<UInt256> gasPrice)
-                {
-                    _filter.GasPrice = gasPrice;
-
-                    return this;
-                }
-
-                public FilterBuilder GasLimit(Predicate<UInt256> gasLimit)
-                {
-                    _filter.GasLimit = gasLimit;
-
-                    return this;
-                }
-
-                public FilterBuilder To(Predicate<Address> to)
-                {
-                    _filter.To = to;
-
-                    return this;
-                }
-
-                public FilterBuilder Value(Predicate<UInt256> value)
-                {
-                    _filter.Value = value;
-
-                    return this;
-                }
-
-                public FilterBuilder Data(Predicate<byte[]> data)
-                {
-                    _filter.Data = data;
-
-                    return this;
-                }
-
-                public FilterBuilder Init(Predicate<byte[]> init)
-                {
-                    _filter.Init = init;
-
-                    return this;
-                }
-
-                public FilterBuilder SenderAddress(Predicate<Address> senderAddress)
-                {
-                    _filter.SenderAddress = senderAddress;
-
-                    return this;
-                }
-
-                public FilterBuilder Signature(Predicate<Signature> signature)
-                {
-                    _filter.Signature = signature;
-
-                    return this;
-                }
-
-                public FilterBuilder Hash(Predicate<Keccak> hash)
-                {
-                    _filter.Hash = hash;
-
-                    return this;
-                }
-
-                public FilterBuilder DeliveredBy(Predicate<PublicKey> deliveredBy)
-                {
-                    _filter.DeliveredBy = deliveredBy;
-
-                    return this;
-                }
-
-                public Builder Build() => _builder;
+                _logManager = logManager;
             }
 
-            public class Filter
+            public Builder Nonce(Predicate<UInt256> nonce)
             {
-                public Predicate<UInt256> Nonce { get; set; }
-                public Predicate<UInt256> GasPrice { get; set; }
-                public Predicate<UInt256> GasLimit { get; set; }
-                public Predicate<Address> To { get; set; }
-                public Predicate<UInt256> Value { get; set; }
-                public Predicate<byte[]> Data { get; set; }
-                public Predicate<byte[]> Init { get; set; }
-                public Predicate<Address> SenderAddress { get; set; }
-                public Predicate<Signature> Signature { get; set; }
-                public Predicate<Keccak> Hash { get; set; }
-                public Predicate<PublicKey> DeliveredBy { get; set; }
+                _filter.Nonce = nonce;
+
+                return this;
             }
+
+            public Builder GasPrice(Predicate<UInt256> gasPrice)
+            {
+                _filter.GasPrice = gasPrice;
+
+                return this;
+            }
+
+            public Builder GasLimit(Predicate<UInt256> gasLimit)
+            {
+                _filter.GasLimit = gasLimit;
+
+                return this;
+            }
+
+            public Builder To(Predicate<Address> to)
+            {
+                _filter.To = to;
+
+                return this;
+            }
+
+            public Builder Value(Predicate<UInt256> value)
+            {
+                _filter.Value = value;
+
+                return this;
+            }
+
+            public Builder Data(Predicate<byte[]> data)
+            {
+                _filter.Data = data;
+
+                return this;
+            }
+
+            public Builder Init(Predicate<byte[]> init)
+            {
+                _filter.Init = init;
+
+                return this;
+            }
+
+            public Builder SenderAddress(Predicate<Address> senderAddress)
+            {
+                _filter.SenderAddress = senderAddress;
+
+                return this;
+            }
+
+            public Builder Signature(Predicate<Signature> signature)
+            {
+                _filter.Signature = signature;
+
+                return this;
+            }
+
+            public Builder Hash(Predicate<Keccak> hash)
+            {
+                _filter.Hash = hash;
+
+                return this;
+            }
+
+            public Builder DeliveredBy(Predicate<PublicKey> deliveredBy)
+            {
+                _filter.DeliveredBy = deliveredBy;
+
+                return this;
+            }
+
+            public AcceptWhenTransactionFilter Build() => new AcceptWhenTransactionFilter(_filter, _logManager);
+        }
+
+        public class Filter
+        {
+            public Predicate<UInt256> Nonce { get; set; }
+            public Predicate<UInt256> GasPrice { get; set; }
+            public Predicate<UInt256> GasLimit { get; set; }
+            public Predicate<Address> To { get; set; }
+            public Predicate<UInt256> Value { get; set; }
+            public Predicate<byte[]> Data { get; set; }
+            public Predicate<byte[]> Init { get; set; }
+            public Predicate<Address> SenderAddress { get; set; }
+            public Predicate<Signature> Signature { get; set; }
+            public Predicate<Keccak> Hash { get; set; }
+            public Predicate<PublicKey> DeliveredBy { get; set; }
         }
     }
 }

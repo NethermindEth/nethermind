@@ -458,7 +458,7 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _transactionPool.DeleteTransaction(block.Transactions[i].Hash);
+                _transactionPool.RemoveTransaction(block.Transactions[i].Hash);
             }
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");

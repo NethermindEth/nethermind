@@ -2,6 +2,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -12,8 +14,10 @@ namespace Nethermind.Blockchain.TransactionPools
 {
     public class TransactionPool : ITransactionPool
     {
-        private static readonly Random GlobalRandom = new Random();
-        [ThreadStatic] private static Random _random;
+        private static int _seed = Environment.TickCount;
+
+        private static readonly ThreadLocal<Random> Random =
+            new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
 
         private readonly ConcurrentDictionary<Keccak, Transaction> _pendingTransactions =
             new ConcurrentDictionary<Keccak, Transaction>();
@@ -41,13 +45,11 @@ namespace Nethermind.Blockchain.TransactionPools
             _peerThreshold = peerThreshold;
         }
 
-        public Transaction[] PendingTransactions => _pendingTransactions.Values.ToArray();
+        public Transaction[] GetPendingTransactions() => _pendingTransactions.Values.ToArray();
         public TransactionReceipt GetReceipt(Keccak hash) => _receiptStorage.Get(hash);
 
         public void AddFilter<T>(T filter) where T : ITransactionFilter
             => _filters.TryAdd(filter.GetType(), filter);
-
-        public void DeleteFilter(Type type) => _filters.TryRemove(type, out _);
 
         public void AddPeer(ISynchronizationPeer peer)
         {
@@ -56,10 +58,7 @@ namespace Nethermind.Blockchain.TransactionPools
                 return;
             }
 
-            if (_logger.IsDebug)
-            {
-                _logger.Debug($"Added peer: {peer.ClientId}");
-            }
+            if (_logger.IsDebug) _logger.Debug($"Added a peer: {peer.ClientId}");
         }
 
         public void DeletePeer(NodeId nodeId)
@@ -69,15 +68,12 @@ namespace Nethermind.Blockchain.TransactionPools
                 return;
             }
 
-            if (_logger.IsDebug)
-            {
-                _logger.Debug($"Removed peer: {nodeId}");
-            }
+            if (_logger.IsDebug) _logger.Debug($"Removed a peer: {nodeId}");
         }
 
         public void AddTransaction(Transaction transaction, UInt256 blockNumber)
         {
-            if (_pendingTransactions.ContainsKey(transaction.Hash))
+            if (!_pendingTransactions.TryAdd(transaction.Hash, transaction))
             {
                 return;
             }
@@ -88,49 +84,28 @@ namespace Nethermind.Blockchain.TransactionPools
                 throw new InvalidOperationException("Invalid signature");
             }
 
-            _pendingTransactions.TryAdd(transaction.Hash, transaction);
             NewPending?.Invoke(this, new TransactionEventArgs(transaction));
-            NotifyPeers(SelectPeers(GetAvailablePeers(transaction)), transaction);
+            NotifyPeers(SelectPeers(transaction), transaction);
             FilterAndStoreTransaction(transaction, blockNumber);
         }
 
         private void FilterAndStoreTransaction(Transaction transaction, UInt256 blockNumber)
         {
-            var filters = _filters.Values.ToArray();
-            for (var i = 0; i < filters.Length; i++)
+            var filters = _filters.Values;
+            if (filters.Any(filter => !filter.IsValid(transaction)))
             {
-                var filter = filters[i];
-                if (!filter.CanAdd(transaction))
-                {
-                    return;
-                }
+                return;
             }
 
             _transactionStorage.Add(transaction, blockNumber);
-            if (_logger.IsDebug)
-            {
-                _logger.Debug($"Added transaction: {transaction.Hash}");
-            }
+            if (_logger.IsDebug) _logger.Debug($"Added a transaction: {transaction.Hash}");
         }
 
-        public void DeleteTransaction(Keccak hash)
+        public void RemoveTransaction(Keccak hash)
         {
             _pendingTransactions.TryRemove(hash, out var transaction);
-            var filters = _filters.Values.ToArray();
-            for (var i = 0; i < filters.Length; i++)
-            {
-                var filter = filters[i];
-                if (!filter.CanDelete(transaction))
-                {
-                    return;
-                }
-            }
-
             _transactionStorage.Delete(hash);
-            if (_logger.IsDebug)
-            {
-                _logger.Debug($"Deleted transaction: {hash}");
-            }
+            if (_logger.IsDebug) _logger.Debug($"Deleted a transaction: {hash}");
         }
 
         public void AddReceipt(TransactionReceipt receipt)
@@ -140,79 +115,41 @@ namespace Nethermind.Blockchain.TransactionPools
 
         public event EventHandler<TransactionEventArgs> NewPending;
 
-        private void NotifyPeers(ISynchronizationPeer[] peers, Transaction transaction)
+        private void NotifyPeers(List<ISynchronizationPeer> peers, Transaction transaction)
         {
-            if (peers.Length == 0)
+            if (peers.Count == 0)
             {
                 return;
             }
 
-            for (var i = 0; i < peers.Length; i++)
+            for (var i = 0; i < peers.Count; i++)
             {
                 var peer = peers[i];
                 peer.SendNewTransaction(transaction);
             }
 
-            if (_logger.IsDebug)
-            {
-                _logger.Debug($"Notified {peers.Length} about transaction: {transaction.Hash}");
-            }
+            if (_logger.IsDebug) _logger.Debug($"Notified {peers.Count} peers about a transaction: {transaction.Hash}");
         }
 
-        private ISynchronizationPeer[] SelectPeers(ISynchronizationPeer[] availablePeers)
+        private List<ISynchronizationPeer> SelectPeers(Transaction transaction)
         {
-            if (availablePeers.Length == 0)
-            {
-                return new ISynchronizationPeer[0];
-            }
-
             var selectedPeers = new List<ISynchronizationPeer>();
-            for (var i = 0; i < availablePeers.Length; i++)
+            foreach (var peer in _peers.Values)
             {
-                var peer = availablePeers[i];
-                if (_peerThreshold >= GetRandomNumber())
-                {
-                    selectedPeers.Add(peer);
-                }
-            }
-
-            return selectedPeers.ToArray();
-        }
-
-        private ISynchronizationPeer[] GetAvailablePeers(Transaction transaction)
-        {
-            var peers = _peers.Values.ToArray();
-            var availablePeers = new List<ISynchronizationPeer>();
-
-            for (var i = 0; i < peers.Length; i++)
-            {
-                var peer = peers[i];
                 if (transaction.DeliveredBy.Equals(peer.NodeId.PublicKey))
                 {
                     continue;
                 }
 
-                availablePeers.Add(peer);
-            }
-
-            return availablePeers.ToArray();
-        }
-
-        private static int GetRandomNumber()
-        {
-            var instance = _random;
-            if (instance == null)
-            {
-                int seed;
-                lock (GlobalRandom)
+                if (_peerThreshold < Random.Value.Next(1, 100))
                 {
-                    seed = GlobalRandom.Next();
+                    continue;
                 }
 
-                _random = instance = new Random(seed);
+                selectedPeers.Add(peer);
             }
 
-            return instance.Next(1, 100);
+            return selectedPeers;
         }
     }
 }

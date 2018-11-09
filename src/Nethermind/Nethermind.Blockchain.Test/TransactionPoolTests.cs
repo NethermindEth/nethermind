@@ -39,10 +39,10 @@ namespace Nethermind.Blockchain.Test
             _logManager = NullLogManager.Instance;
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
-            _noTransactionStorage = new NoTransactionStorage();
+            _noTransactionStorage = new NullTransactionStorage();
             _inMemoryTransactionStorage = new InMemoryTransactionStorage();
             _persistentTransactionStorage = new PersistentTransactionStorage(new MemDb(), _specProvider);
-            _noReceiptStorage = new NoReceiptStorage();
+            _noReceiptStorage = new NullReceiptStorage();
             _inMemoryReceiptStorage = new InMemoryReceiptStorage();
             _persistentReceiptStorage = new PersistentReceiptStorage(new MemDb(), _specProvider);
         }
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test
                 _transactionPool.AddTransaction(transaction, 1);
             }
 
-            _transactionPool.PendingTransactions.Length.Should().Be(transactions.Length);
+            _transactionPool.GetPendingTransactions().Length.Should().Be(transactions.Length);
         }
 
         [Test]
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Test
             _transactionPool = CreatePool(_noTransactionStorage, _noReceiptStorage);
             var transactions = AddTransactionsToPool();
             DeleteTransactionsFromPool(transactions);
-            _transactionPool.PendingTransactions.Should().BeEmpty();
+            _transactionPool.GetPendingTransactions().Should().BeEmpty();
         }
 
         [Test]
@@ -142,15 +142,9 @@ namespace Nethermind.Blockchain.Test
         {
             var filter = AcceptWhenTransactionFilter
                 .Create()
-                .AddWhen()
                 .Nonce(n => n >= 0)
                 .GasPrice(p => p > 2 && p < 1500)
-                .Build()
-                .DeleteWhen()
-                .GasLimit(l => l < 1000)
-                .Hash(h => h.Equals(Keccak.Zero))
-                .Build()
-                .BuildFilter();
+                .Build();
             var transactions = AddAndFilterTransactions(_inMemoryTransactionStorage, filter);
             transactions.Filtered.Count().Should().NotBe(0);
         }
@@ -224,7 +218,7 @@ namespace Nethermind.Blockchain.Test
         {
             foreach (var transaction in transactions)
             {
-                _transactionPool.DeleteTransaction(transaction.Hash);
+                _transactionPool.RemoveTransaction(transaction.Hash);
             }
         }
 

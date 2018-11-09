@@ -218,7 +218,7 @@ namespace Nethermind.Runner.Runners
             }
 
             public AlternativeChain(IBlockTree blockTree, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, ISpecProvider specProvider, IReadOnlyDbProvider dbProvider, IBlockDataRecoveryStep recoveryStep, IEthereumSigner signer, ILogManager logManager)
-                : this(blockTree, blockValidator, rewardCalculator, specProvider, dbProvider, recoveryStep, logManager, new TransactionPool(new NoTransactionStorage(), 
+                : this(blockTree, blockValidator, rewardCalculator, specProvider, dbProvider, recoveryStep, logManager, new TransactionPool(new NullTransactionStorage(), 
                     new PersistentReceiptStorage(dbProvider.ReceiptsDb, specProvider), signer, logManager))
             {
             }
@@ -292,7 +292,7 @@ namespace Nethermind.Runner.Runners
 //            IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig));
 //            _dbProvider = debugReader;
 
-            var transactionPool = new TransactionPool(new NoTransactionStorage(),
+            var transactionPool = new TransactionPool(new NullTransactionStorage(),
                 new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider),
                 ethereumSigner, _logManager);
 
@@ -430,7 +430,7 @@ namespace Nethermind.Runner.Runners
                     wallet,
                     rpcState.TransactionProcessor);
 
-                TransactionPool debugTransactionPool = new TransactionPool(new NoTransactionStorage(),
+                TransactionPool debugTransactionPool = new TransactionPool(new NullTransactionStorage(),
                     new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider),
                     ethereumSigner, _logManager);
                 AlternativeChain debugChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, rpcDbProvider, recoveryStep, _logManager, debugTransactionPool);
