@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain
 
         public static NullTransactionPool Instance { get; } = new NullTransactionPool();
 
-        public Transaction[] PendingTransactions => new Transaction[0];
+        public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
 
         public TransactionReceipt GetReceipt(Keccak txHash) => null;
 
@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain
         {
         }
 
-        public void DeleteTransaction(Keccak hash)
+        public void RemoveTransaction(Keccak hash)
         {
         }
 

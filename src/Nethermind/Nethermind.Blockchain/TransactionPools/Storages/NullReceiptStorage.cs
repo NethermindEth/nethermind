@@ -3,7 +3,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.TransactionPools.Storages
 {
-    public class NoReceiptStorage : IReceiptStorage
+    public class NullReceiptStorage : IReceiptStorage
     {
         public TransactionReceipt Get(Keccak hash) => null;
 

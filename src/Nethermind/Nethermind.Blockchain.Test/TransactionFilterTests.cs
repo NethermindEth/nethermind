@@ -32,10 +32,8 @@ namespace Nethermind.Blockchain.Test
         {
             _filter = new AcceptAllTransactionFilter();
             var transactions = GetTransactions();
-            var addedTransactions = ApplyCanAddFilter(transactions);
-            var deletedTransactions = ApplyCanDeleteFilter(transactions);
+            var addedTransactions = ApplyFilter(transactions);
             addedTransactions.Length.Should().Be(transactions.Length);
-            deletedTransactions.Length.Should().Be(transactions.Length);
         }
 
         [Test]
@@ -43,10 +41,8 @@ namespace Nethermind.Blockchain.Test
         {
             _filter = new RejectAllTransactionFilter();
             var transactions = GetTransactions();
-            var addedTransactions = ApplyCanAddFilter(transactions);
-            var deletedTransactions = ApplyCanDeleteFilter(transactions);
+            var addedTransactions = ApplyFilter(transactions);
             addedTransactions.Should().BeEmpty();
-            deletedTransactions.Should().BeEmpty();
         }
 
         [Test]
@@ -54,27 +50,16 @@ namespace Nethermind.Blockchain.Test
         {
             _filter = AcceptWhenTransactionFilter
                 .Create()
-                .AddWhen()
                 .Nonce(n => n >= 0)
                 .GasPrice(p => p > 2 && p < 1500)
-                .Build()
-                .DeleteWhen()
-                .GasLimit(l => l < 1000)
-                .Build()
-                .BuildFilter();
-
+                .Build();
             var transactions = GetTransactions();
-            var addedTransactions = ApplyCanAddFilter(transactions);
-            var deletedTransactions = ApplyCanDeleteFilter(transactions);
+            var addedTransactions = ApplyFilter(transactions);
             addedTransactions.Should().NotBeEmpty();
-            deletedTransactions.Should().NotBeEmpty();
         }
 
-        private Transaction[] ApplyCanAddFilter(IEnumerable<Transaction> transactions)
-            => transactions.Where(t => _filter.CanAdd(t)).ToArray();
-
-        private Transaction[] ApplyCanDeleteFilter(IEnumerable<Transaction> transactions)
-            => transactions.Where(t => _filter.CanDelete(t)).ToArray();
+        private Transaction[] ApplyFilter(IEnumerable<Transaction> transactions)
+            => transactions.Where(t => _filter.IsValid(t)).ToArray();
 
         private Transaction[] GetTransactions()
             => new[]

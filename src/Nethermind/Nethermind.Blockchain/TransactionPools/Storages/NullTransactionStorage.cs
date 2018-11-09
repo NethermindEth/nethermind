@@ -4,7 +4,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TransactionPools.Storages
 {
-    public class NoTransactionStorage : ITransactionStorage
+    public class NullTransactionStorage : ITransactionStorage
     {
         public Transaction Get(Keccak hash) => null;
 
