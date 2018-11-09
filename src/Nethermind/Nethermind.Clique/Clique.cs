@@ -81,7 +81,7 @@ namespace Nethermind.Clique
             BlockHeader header = block.Header;
 
             // Sealing the genesis block is not supported
-            ulong number = (ulong) header.Number;
+            UInt256 number = header.Number;
             if (number == 0)
             {
                 throw new InvalidOperationException("Can't sign genesis block");
@@ -107,8 +107,8 @@ namespace Nethermind.Clique
                 Address recent = item.Value;
                 if (recent == _key.Address)
                 {
-                    uint limit = (uint) snapshot.Signers.Count / 2 + 1;
-                    if (number < limit || seen > (uint) number - limit)
+                    ulong limit = (ulong)snapshot.Signers.Count / 2 + 1;
+                    if (number < limit || seen > number - limit)
                     {
                         return null;
                     }
@@ -117,7 +117,7 @@ namespace Nethermind.Clique
 
             // Sweet, the protocol permits us to sign the block, wait for our time
             long currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            long delay = (long) header.Timestamp - currentTimestamp;
+            long delay = (long)header.Timestamp - currentTimestamp;
             if (header.Difficulty == DiffNoTurn)
             {
                 var wiggle = snapshot.Signers.Count / 2 + 1 * WiggleTime;
@@ -138,16 +138,16 @@ namespace Nethermind.Clique
             header.ExtraData[header.ExtraData.Length - 1] = recoveryId;
 
             // Wait until sealing is terminated or delay timeout.
-            System.Threading.Thread.Sleep((int) delay);
+            System.Threading.Thread.Sleep((int)delay);
 
             return block;
         }
 
         public bool ValidateHeader(BlockHeader header)
         {
-            ulong number = (ulong) header.Number;
+            UInt256 number = header.Number;
             // Checkpoint blocks need to enforce zero beneficiary
-            bool checkpoint = ((ulong) number % _config.Epoch) == 0;
+            bool checkpoint = ((ulong)number % _config.Epoch) == 0;
             if (checkpoint && header.Beneficiary != Address.Zero)
             {
                 _logger.Warn($"Invalid block beneficiary ({header.Beneficiary}) - should be empty on checkpoint");
@@ -215,7 +215,7 @@ namespace Nethermind.Clique
 
         public bool ValidateSeal(BlockHeader header)
         {
-            ulong number = (ulong) header.Number;
+            UInt256 number = header.Number;
             // Retrieve the snapshot needed to validate this header and cache it
             Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
             // Resolve the authorization key and check against signers
@@ -233,8 +233,8 @@ namespace Nethermind.Clique
                 if (address == signer)
                 {
                     // Signer is among recent, only fail if the current block doesn't shift it out
-                    uint limit = (uint) snapshot.Signers.Count / 2 + 1;
-                    if (seen > (uint) number - limit)
+                    ulong limit = (ulong)snapshot.Signers.Count / 2 + 1;
+                    if (seen > number - limit)
                     {
                         _logger.Warn($"Invalid block signer {signer} - the signer is among recents");
                         return false;
@@ -259,7 +259,7 @@ namespace Nethermind.Clique
             return true;
         }
 
-        private Snapshot GetSnapshot(ulong number, Keccak hash)
+        private Snapshot GetSnapshot(UInt256 number, Keccak hash)
         {
             // Search for a snapshot in memory or on disk for checkpoints
             List<BlockHeader> headers = new List<BlockHeader>();
@@ -275,7 +275,7 @@ namespace Nethermind.Clique
                 }
 
                 // If an on-disk checkpoint snapshot can be found, use that
-                if (number % CheckpointInterval == 0)
+                if ((ulong)number % CheckpointInterval == 0)
                 {
                     memorySnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash);
                     if (memorySnapshot != null)
@@ -287,7 +287,7 @@ namespace Nethermind.Clique
 
                 // If we're at an checkpoint block, make a snapshot if it's known
                 Keccak parentHash = _blockTree.FindHeader(hash).ParentHash;
-                if (number == 0 || (number % _config.Epoch == 0 && _blockTree.FindHeader(parentHash) == null))
+                if (number == 0 || ((ulong)number % _config.Epoch == 0 && _blockTree.FindHeader(parentHash) == null))
                 {
                     BlockHeader checkpoint = _blockTree.FindHeader(hash);
                     if (checkpoint != null)
@@ -333,7 +333,7 @@ namespace Nethermind.Clique
 
             _recents.Set(snapshot.Hash, snapshot);
             // If we've generated a new checkpoint snapshot, save to disk
-            if ((uint) snapshot.Number % CheckpointInterval == 0 && headers.Count > 0)
+            if ((ulong)snapshot.Number % CheckpointInterval == 0 && headers.Count > 0)
             {
                 snapshot.Store(_blocksDb);
             }
@@ -344,10 +344,10 @@ namespace Nethermind.Clique
         private void Prepare(BlockHeader header)
         {
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
-            ulong number = (ulong) header.Number;
+            UInt256 number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
             Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
-            if ((uint) number % _config.Epoch != 0)
+            if ((ulong)number % _config.Epoch != 0)
             {
                 // Gather all the proposals that make sense voting on
                 List<Address> addresses = new List<Address>();
@@ -384,13 +384,13 @@ namespace Nethermind.Clique
             {
                 for (int i = 0; i < ExtraVanity - header.ExtraData.Length; i++)
                 {
-                    header.ExtraData.Append((byte) 0);
+                    header.ExtraData.Append((byte)0);
                 }
             }
 
             header.ExtraData = header.ExtraData.Take(ExtraVanity).ToArray();
 
-            if (number % _config.Epoch == 0)
+            if ((ulong)number % _config.Epoch == 0)
             {
                 foreach (Address signer in snapshot.Signers)
                 {
@@ -404,7 +404,7 @@ namespace Nethermind.Clique
             var extraSeal = new byte[ExtraSeal];
             for (int i = 0; i < ExtraSeal; i++)
             {
-                header.ExtraData.Append((byte) 0);
+                header.ExtraData.Append((byte)0);
             }
 
             // Mix digest is reserved for now, set to empty
@@ -427,14 +427,14 @@ namespace Nethermind.Clique
         {
             // No block rewards in PoA, so the state remains as is and uncles are dropped
             header.StateRoot = state.StateRoot;
-            header.OmmersHash = BlockHeader.CalculateHash((BlockHeader) null);
+            header.OmmersHash = BlockHeader.CalculateHash((BlockHeader)null);
             // Assemble and return the final block for sealing
             return new Block(header, txs, null);
         }
 
-        private UInt256 CalcDifficulty(uint time, BlockHeader parent)
+        private UInt256 CalcDifficulty(ulong time, BlockHeader parent)
         {
-            ulong parentNumber = (ulong) parent.Number;
+            UInt256 parentNumber = parent.Number;
             Snapshot snapshot = GetSnapshot(parentNumber, BlockHeader.CalculateHash(parent));
             return CalcDifficulty(snapshot, _key.Address);
         }
@@ -451,7 +451,7 @@ namespace Nethermind.Clique
 
         private bool ValidateCascadingFields(BlockHeader header)
         {
-            ulong number = (ulong) header.Number;
+            UInt256 number = header.Number;
             // Ensure that the block's timestamp isn't too close to it's parent
             BlockHeader parent = _blockTree.FindHeader(header.ParentHash);
             if (parent.Timestamp + _config.Period > header.Timestamp)
@@ -464,7 +464,7 @@ namespace Nethermind.Clique
             Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
 
             // If the block is a checkpoint block, validate the signer list
-            if (number % _config.Epoch == 0)
+            if ((ulong)number % _config.Epoch == 0)
             {
                 var signersBytes = new byte[snapshot.Signers.Count * AddressLength];
                 var signers = snapshot.GetSigners();
