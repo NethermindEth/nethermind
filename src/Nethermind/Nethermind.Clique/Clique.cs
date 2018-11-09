@@ -120,7 +120,7 @@ namespace Nethermind.Clique
             long delay = (long)header.Timestamp - currentTimestamp;
             if (header.Difficulty == DiffNoTurn)
             {
-                var wiggle = snapshot.Signers.Count / 2 + 1 * WiggleTime;
+                int wiggle = snapshot.Signers.Count / 2 + 1 * WiggleTime;
                 Random rnd = new Random();
                 delay += rnd.Next(wiggle);
             }
@@ -401,7 +401,7 @@ namespace Nethermind.Clique
                 }
             }
 
-            var extraSeal = new byte[ExtraSeal];
+            byte[] extraSeal = new byte[ExtraSeal];
             for (int i = 0; i < ExtraSeal; i++)
             {
                 header.ExtraData.Append((byte)0);
@@ -416,7 +416,7 @@ namespace Nethermind.Clique
             }
 
             header.Timestamp = parent.Timestamp + _config.Period;
-            var currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             if (header.Timestamp < currentTimestamp)
             {
                 header.Timestamp = new UInt256(currentTimestamp);
@@ -466,8 +466,8 @@ namespace Nethermind.Clique
             // If the block is a checkpoint block, validate the signer list
             if ((ulong)number % _config.Epoch == 0)
             {
-                var signersBytes = new byte[snapshot.Signers.Count * AddressLength];
-                var signers = snapshot.GetSigners();
+                byte[] signersBytes = new byte[snapshot.Signers.Count * AddressLength];
+                Address[] signers = snapshot.GetSigners();
                 for (int i = 0; i < signers.Length; i++)
                 {
                     Address signer = signers[i];
