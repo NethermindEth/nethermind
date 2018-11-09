@@ -1,0 +1,212 @@
+Nethermind Ethereum Under the Hood Workshop
+2018/11/10 - Poznan
+
+Przygotowanie:
+
+Wejdź na https://gitter.im/nethermindeth/workshop, aby dyskutować na bieżąco info z warsztatów
+W miarę możliwości używaj angielskiego - przyszli warsztatowicze będą mogli skorzystać z Twoich rozwiązań w przyszłości.
+
+Zainstaluj git z git bash na komputerze - będziemy używać komendy z git bash / odpowiednika, aby dostać się do repozytorium.
+Przygotuj na laptopie jedno z poniższych IDE, aby móc pracować podczas warsztatów
+•	Rider
+•	VS Code
+•	Visual Studio
+
+Znajdź instrukcje na https://github.com/NethermindEth/nethermind w celu zbudowania projektu
+
+Na Linux:
+  sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6
+
+Na MacOS:
+  brew install gmp
+  brew install snappy
+
+a następnie dla każdej platformy w git bash:
+  git clone https://github.com/NethermindEth/nethermind.git --recursive
+  git checkout workshop3
+  cd nethermind/src/Nethermind
+  dotnet build -c Release
+  cd Nethermind.Runner
+  dotnet run
+
+Prezentację możesz oworzyć z brancha workshop3 -> [checkout dir]\Workshop2.pptx
+
+Możliwe, że zapomniałeś / zapomniałaś kilku informacji, które będą dla nas bardzo istotne:
+•	https://en.wikipedia.org/wiki/Hash_function (to jest jedno z najważniejszych pojęć jakie musisz rozumieć dokładnie przed warsztatami ponieważ leży u podstaw większości rozwiązań blockchainowych – przeczytaj wszystko poza Finding similar records, Finding similar substrings and Geometric Hashing, Locality-sensitive hashing)
+•	https://en.wikipedia.org/wiki/Hexadecimal
+•	https://en.wikipedia.org/wiki/Endianness
+•	https://en.wikipedia.org/wiki/Byte
+•	https://en.wikipedia.org/wiki/Virtual_machine
+•	https://en.wikipedia.org/wiki/Call_stack
+•	https://en.wikipedia.org/wiki/Stack-based_memory_allocation
+
+Przejrzyj pobieżnie http://yellowpaper.io/ - warsztaty obejmą wszystkie elementy opisane w yellowpaper ale nie zraź się jeśli yellowpaper wyda Ci się z początku bardzo trudny – to normalne! 
+
+Zainstaluj truffle (będziesz potrzebować npm, który instaluje się razem z nodejs https://nodejs.org/en/download/)
+https://truffleframework.com/truffle
+
+Do programowania w Solidity możesz zainstalować VS Code z dodatkiem Solidity stworzonym przez Juana Blanco.
+
+-----------------------------------------------------------------------------------------------------------
+
+Zadanie 1 - Publikacja kontraktu w bytecode
+
+Wszystkie opcodes możesz znaleźć na yellowpaper.io oraz w klasie Instruction oraz VirtualMachine w Nethermind.
+
+Napiszesz własny bytecode w celu stworzenia konstruktora smart contractu. Wyślesz transakcję do Nethermind, żeby opublikować smart contract.
+Najpierw upewnij się, że masz uruchomiony node Nethermind da prywatnego blockchaina (mamy w Nethermind konfigurację dla prywatnej dev sieci - spaceneth).
+
+W katalogu [checkout_dir]\Nethermind.Runner\bin\Debug\netcoreapp2.1
+  dotnet Nethermind.Runner.dll --config configs/spaceneth_windows.config.json
+
+Następnie w katalogu [checkout_dir]\Nethermind.EvmPlayground\bin\Debug\netcoreapp2.1
+  dotnet Nethermind.EvmPlayground.dll
+
+W EvmPlaygroudn możesz wpisać ciąg wartości bajtów i wcisnąć ENTER.
+Resultatem powyższej operacji będzie następująca sekwencja:
+  * twoje bajty zostaną zapisane jako tak zwany init code (konstruktor)
+  * EvmPlayground utworzy tranzakcję typu contract init z podanym przez Ciebie kodem
+  * EvmPlayground wyśle tranzakcję do węzła sieci spaceneth przez JSON RPC
+  * Węzeł spaceneth użyje DevWallet aby podpisać Twoją tranzakcję
+  * Węzeł wykona tranzakcjęw ramach nowego bloku i powiadomi EvmPlayground o nowej tranzakcji
+  * EvmPlayground wyśle zapytanie o tak zwany transaction trace (czyli trace log dla anej tranzakcji w EVM)
+  * Na ekranie EvmPlayground wyświetli się trace
+
+Przykładowo
+96 1 96 1 1 0 ENTER
+
+Spowoduje wysłanie init kodu 0x600160010100.
+Kod konstruktora w naszym przypadku dodae do siebie dwi liczby (jeden oraz jeden) i wrzuca na stos liczbę 2 (wynik dodawania).
+Kod smart kontraktu jets pusty (aby opublikować smart kontrakt należy wywołać instrukcję return, która zwróci kod kontraktu do publikacji)
+
+Enter code and press [ENTER]
+96 1 96 1 1 0
+96 1 96 1 1 0
+{"id":67,"jsonrpc":"2.0","result":{"transactionHash":"0xe341ea9885a5426d8b2a1cfeaf2ef7100b5200a14f6817c93ff8daa23229ca68","transactionIndex":"0x00","blockHash":"0x8f551d5ccb535bd123699cf11fd49de19f66138758c44dffd5cd401e621fc517","blockNumber":"0x1b","cumulativeGasUsed":"0xd069","gasUsed":"0xd069","from":"0x7e5f4552091a69125d5dfcb7b8c2659029395bdf","to":null,"contractAddress":"0x91eb86019fd8d7c5a9e31143d422850a13f670a3","logs":[],"logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","root":null,"status":"0x01"}}
+{
+  "Gas": 53353,
+  "Failed": false,
+  "ReturnValue": "",
+  "StructLogs": [
+    {
+      "Pc": 0,
+      "Op": "PUSH1",
+      "Gas": 6668631,
+      "GasCost": 3,
+      "Depth": 1,
+      "Stack": [],
+      "Memory": [],
+      "Storage": {}
+    },
+    {
+      "Pc": 2,
+      "Op": "PUSH1",
+      "Gas": 6668628,
+      "GasCost": 3,
+      "Depth": 1,
+      "Stack": [
+        "0000000000000000000000000000000000000000000000000000000000000001"
+      ],
+      "Memory": [],
+      "Storage": {}
+    },
+    {
+      "Pc": 4,
+      "Op": "ADD",
+      "Gas": 6668625,
+      "GasCost": 3,
+      "Depth": 1,
+      "Stack": [
+        "0000000000000000000000000000000000000000000000000000000000000001",
+        "0000000000000000000000000000000000000000000000000000000000000001"
+      ],
+      "Memory": [],
+      "Storage": {}
+    },
+    {
+      "Pc": 5,
+      "Op": "STOP",
+      "Gas": 6668622,
+      "GasCost": 0,
+      "Depth": 1,
+      "Stack": [
+        "0000000000000000000000000000000000000000000000000000000000000002"
+      ],
+      "Memory": [],
+      "Storage": {}
+    }
+  ],
+  "StorageTrace": {
+    "Entries": []
+  }
+}
+
+======================================================
+
+Zadanie 2
+
+Opublikuj kontrakt, który potrafi wykonać operację dodawania na dwóch liczbach 256-bitowych podanych jako dane wejściowe.
+Bedzięsz potrzebować następujących opcodes:
+
+MSTORE
+MLOAD
+ADD
+PUSH
+CALLDATALOAD
+DELEGATECALL lub CALL (upewnij się, że rozumiesz różnicę)
+RETURN
+
+Ile gazu potrzebne było do wykonania tych tranzakcji?
+Spróbuj wykorzystać 'kalkulator' z tego zadania w konstruktorze innego kontraktu.
+
+======================================================
+
+Zadanie 3
+
+Napisz prosty smart kontrakt z truffle w VS Code i opublikuj go na prywatnej sieci Nethermind (spaceneth).
+Napisz testy i odpal testy na sieci spaceneth
+
+
+mkdir mycontract
+cd mycontract
+trufle init
+
+open VS Code
+
+in truffle.js
+
+module.exports = {
+  networks: {
+    spaceneth: {
+      host: '127.0.0.1',
+      port: 8345,
+      network_id: '*'
+    },
+    ganache: {
+      host: "127.0.0.1",
+      port: 7545,
+      network_id: "*"
+    }
+  }
+};
+
+truffle test --network spaceneth
+
+======================================================
+
+Zadanie 4
+
+W EvmPlaground spóbuj uzyskać następujące wyjątki:
+ * BadInstruction
+ * StackUnderflowException
+ * StackOverflowException
+ ** OutOfGasException
+ ** CallDepthException
+ *** StaticCallViolation
+
+ Ile gazu zużywa transakcja z wyjątkiem?
+ Jaki jest maksymalny rozmiar stosu?
+ **Jaki jest maksymalny rozmiar stosu wywołań?
+ ***Jakie problemy może powodować istnienie instrukcji JUMPI w Ethereum?
+
+======================================================
