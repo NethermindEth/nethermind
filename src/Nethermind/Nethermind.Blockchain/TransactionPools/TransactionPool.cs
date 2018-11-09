@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.TransactionPools
         private readonly ConcurrentDictionary<Type, ITransactionFilter> _filters =
             new ConcurrentDictionary<Type, ITransactionFilter>();
 
-        private readonly ITransactionStorage _storage;
+        private readonly ITransactionStorage _transactionStorage;
         private readonly IReceiptStorage _receiptStorage;
 
         private readonly ConcurrentDictionary<PublicKey, ISynchronizationPeer> _peers =
@@ -29,16 +29,16 @@ namespace Nethermind.Blockchain.TransactionPools
 
         private readonly IEthereumSigner _signer;
         private readonly ILogger _logger;
-        private readonly int _peerThrehshold;
+        private readonly int _peerThreshold;
 
-        public TransactionPool(ITransactionStorage storage, IReceiptStorage receiptStorage,
-            IEthereumSigner signer, ILogManager logManager, int peerThrehshold = 20)
+        public TransactionPool(ITransactionStorage transactionStorage, IReceiptStorage receiptStorage,
+            IEthereumSigner signer, ILogManager logManager, int peerThreshold = 20)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _storage = storage;
+            _transactionStorage = transactionStorage;
             _receiptStorage = receiptStorage;
             _signer = signer;
-            _peerThrehshold = peerThrehshold;
+            _peerThreshold = peerThreshold;
         }
 
         public Transaction[] PendingTransactions => _pendingTransactions.Values.ToArray();
@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.TransactionPools
                 }
             }
 
-            _storage.Add(transaction, blockNumber);
+            _transactionStorage.Add(transaction, blockNumber);
             if (_logger.IsDebug)
             {
                 _logger.Debug($"Added transaction: {transaction.Hash}");
@@ -116,18 +116,18 @@ namespace Nethermind.Blockchain.TransactionPools
 
         public void DeleteTransaction(Keccak hash)
         {
-            _pendingTransactions.TryRemove(hash, out _);
+            _pendingTransactions.TryRemove(hash, out var transaction);
             var filters = _filters.Values.ToArray();
             for (var i = 0; i < filters.Length; i++)
             {
                 var filter = filters[i];
-                if (!filter.CanDelete(hash))
+                if (!filter.CanDelete(transaction))
                 {
                     return;
                 }
             }
 
-            _storage.Delete(hash);
+            _transactionStorage.Delete(hash);
             if (_logger.IsDebug)
             {
                 _logger.Debug($"Deleted transaction: {hash}");
@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.TransactionPools
             for (var i = 0; i < availablePeers.Length; i++)
             {
                 var peer = availablePeers[i];
-                if (_peerThrehshold >= GetRandomNumber())
+                if (_peerThreshold >= GetRandomNumber())
                 {
                     selectedPeers.Add(peer);
                 }
@@ -205,7 +205,11 @@ namespace Nethermind.Blockchain.TransactionPools
             if (instance == null)
             {
                 int seed;
-                lock (GlobalRandom) seed = GlobalRandom.Next();
+                lock (GlobalRandom)
+                {
+                    seed = GlobalRandom.Next();
+                }
+
                 _random = instance = new Random(seed);
             }
 

@@ -3,9 +3,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.TransactionPools.Filters
 {
-    public class RejectAnyTransactionFilter : ITransactionFilter
+    public class RejectAllTransactionFilter : ITransactionFilter
     {
         public bool CanAdd(Transaction transaction) => false;
-        public bool CanDelete(Keccak hash) => false;
+        public bool CanDelete(Transaction transaction) => false;
     }
 }

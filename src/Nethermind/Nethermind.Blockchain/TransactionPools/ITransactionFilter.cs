@@ -6,6 +6,6 @@ namespace Nethermind.Blockchain.TransactionPools
     public interface ITransactionFilter
     {
         bool CanAdd(Transaction transaction);
-        bool CanDelete(Keccak hash);
+        bool CanDelete(Transaction transaction);
     }
 }
