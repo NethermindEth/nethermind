@@ -135,7 +135,6 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Encodes()
         {
-
             SnapshotDecoder decoder = new SnapshotDecoder();
             // Prepare snapshot
             Keccak hash = new Keccak("0xa33ea6f6c0f1c80a6c7af308a30cb7a7affa4d0d51e6639b739727af0518b50e");

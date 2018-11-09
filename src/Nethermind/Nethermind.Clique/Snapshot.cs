@@ -31,14 +31,14 @@ namespace Nethermind.Clique
 {
     internal class Snapshot
     {
-        public CliqueConfig Config;
-        public LruCache<Keccak, Address> SigCache;
-        public UInt256 Number;
-        public Keccak Hash;
-        public HashSet<Address> Signers;
-        public Dictionary<UInt256, Address> Recent;
-        public List<Vote> Votes;
-        public Dictionary<Address, Tally> Tally;
+        internal CliqueConfig Config {get; private set;}
+        internal LruCache<Keccak, Address> SigCache {get; private set;}
+        internal UInt256 Number {get; private set;}
+        internal Keccak Hash {get; private set;}
+        internal HashSet<Address> Signers {get; private set;}
+        internal Dictionary<UInt256, Address> Recent {get; private set;}
+        internal List<Vote> Votes;
+        internal Dictionary<Address, Tally> Tally {get; private set;}
 
         internal Snapshot()
         {
