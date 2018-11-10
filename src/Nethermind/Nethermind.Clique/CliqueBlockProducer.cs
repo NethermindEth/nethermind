@@ -34,7 +34,7 @@ namespace Nethermind.Clique
         private CliqueConfig _config;
         private BlockTree _blockTree;
         private Address _address;
-        private Dictionary<Address, Boolean> _proposals = new Dictionary<Address, bool>();
+        private Dictionary<Address, bool> _proposals = new Dictionary<Address, bool>();
 
         public CliqueBlockProducer(Clique clique, CliqueConfig config, BlockTree blockTree, Address address)
         {
