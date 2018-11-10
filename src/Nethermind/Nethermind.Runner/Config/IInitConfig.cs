@@ -45,5 +45,8 @@ namespace Nethermind.Runner.Config
         bool LogPerfStatsOnDebug { get; set; }
         int ReceiptsFillerStart { get; set; }
         int ReceiptsFillerEnd { get; set; }
+        int ObsoletePendingTransactionInterval { get; set; }
+        int RemovePendingTransactionInterval { get; set; }
+        int PeerNotificationThreshold { get; set; }
     }
 }

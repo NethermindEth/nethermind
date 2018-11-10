@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
@@ -198,7 +199,9 @@ namespace Nethermind.Blockchain.Test
         }
 
         private TransactionPool CreatePool(ITransactionStorage transactionStorage, IReceiptStorage receiptStorage)
-            => new TransactionPool(transactionStorage, receiptStorage, _ethereumSigner, _logManager);
+            => new TransactionPool(transactionStorage, receiptStorage,
+                new PendingTransactionThresholdValidator(),
+                new TransactionPoolTimer(), _ethereumSigner, _logManager);
 
         private ISynchronizationPeer GetPeer(PublicKey publicKey)
             => new SynchronizationPeerMock(_remoteBlockTree, publicKey);

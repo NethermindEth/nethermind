@@ -3,12 +3,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
+using System.Timers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.TransactionPools
 {
@@ -27,22 +28,34 @@ namespace Nethermind.Blockchain.TransactionPools
 
         private readonly ITransactionStorage _transactionStorage;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IPendingTransactionThresholdValidator _pendingTransactionThresholdValidator;
+        private readonly ITransactionPoolTimer _transactionPoolTimer;
 
         private readonly ConcurrentDictionary<PublicKey, ISynchronizationPeer> _peers =
             new ConcurrentDictionary<PublicKey, ISynchronizationPeer>();
 
         private readonly IEthereumSigner _signer;
         private readonly ILogger _logger;
-        private readonly int _peerThreshold;
+
+        private readonly int _peerNotificationThreshold;
+        private readonly Timer _timer = new Timer();
 
         public TransactionPool(ITransactionStorage transactionStorage, IReceiptStorage receiptStorage,
-            IEthereumSigner signer, ILogManager logManager, int peerThreshold = 20)
+            IPendingTransactionThresholdValidator pendingTransactionThresholdValidator,
+            ITransactionPoolTimer transactionPoolTimer, IEthereumSigner signer, ILogManager logManager,
+            int removePendingTransactionInterval = 600,
+            int peerNotificationThreshold = 20)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _transactionStorage = transactionStorage;
             _receiptStorage = receiptStorage;
+            _pendingTransactionThresholdValidator = pendingTransactionThresholdValidator;
+            _transactionPoolTimer = transactionPoolTimer;
             _signer = signer;
-            _peerThreshold = peerThreshold;
+            _peerNotificationThreshold = peerNotificationThreshold;
+            _timer.Interval = removePendingTransactionInterval * 1000;
+            _timer.Elapsed += OnTimerElapsed;
+            _timer.Start();
         }
 
         public Transaction[] GetPendingTransactions() => _pendingTransactions.Values.ToArray();
@@ -101,9 +114,32 @@ namespace Nethermind.Blockchain.TransactionPools
             if (_logger.IsDebug) _logger.Debug($"Added a transaction: {transaction.Hash}");
         }
 
+        private void OnTimerElapsed(object sender, ElapsedEventArgs eventArgs)
+        {
+            if (_pendingTransactions.Count == 0)
+            {
+                return;
+            }
+
+            var hashes = new List<Keccak>();
+            var currentTimestamp = _transactionPoolTimer.CurrentTimestamp;
+            foreach (var transaction in _pendingTransactions.Values)
+            {
+                if (_pendingTransactionThresholdValidator.IsRemovable(currentTimestamp, transaction.Timestamp))
+                {
+                    hashes.Add(transaction.Hash);
+                }
+            }
+
+            for (var i = 0; i < hashes.Count; i++)
+            {
+                _pendingTransactions.TryRemove(hashes[i], out _);
+            }
+        }
+
         public void RemoveTransaction(Keccak hash)
         {
-            _pendingTransactions.TryRemove(hash, out var transaction);
+            _pendingTransactions.TryRemove(hash, out _);
             _transactionStorage.Delete(hash);
             if (_logger.IsDebug) _logger.Debug($"Deleted a transaction: {hash}");
         }
@@ -118,6 +154,12 @@ namespace Nethermind.Blockchain.TransactionPools
         private void NotifyPeers(List<ISynchronizationPeer> peers, Transaction transaction)
         {
             if (peers.Count == 0)
+            {
+                return;
+            }
+
+            if (_pendingTransactionThresholdValidator.IsObsolete(_transactionPoolTimer.CurrentTimestamp,
+                transaction.Timestamp))
             {
                 return;
             }
@@ -141,7 +183,7 @@ namespace Nethermind.Blockchain.TransactionPools
                     continue;
                 }
 
-                if (_peerThreshold < Random.Value.Next(1, 100))
+                if (_peerNotificationThreshold < Random.Value.Next(1, 100))
                 {
                     continue;
                 }

@@ -60,7 +60,9 @@ namespace Nethermind.Blockchain.Test
             
             EthereumSigner ethereumSigner = new EthereumSigner(specProvider, NullLogManager.Instance);
             MemDb receiptsDb = new MemDb();
-            TransactionPool transactionPool = new TransactionPool(new NullTransactionStorage(), new NullReceiptStorage(), ethereumSigner, logger);
+            TransactionPool transactionPool = new TransactionPool(new NullTransactionStorage(),
+                new NullReceiptStorage(), new PendingTransactionThresholdValidator(),
+                new TransactionPoolTimer(), ethereumSigner, logger);
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, logger);
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, logger);

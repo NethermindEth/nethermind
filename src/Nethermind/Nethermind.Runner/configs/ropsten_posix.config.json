@@ -15,7 +15,10 @@
       "ChainSpecPath": "chainspec/ropsten.json",
       "GenesisHash": "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d",
       "BaseDbPath": "nethermind_db/ropsten",
-      "LogFileName": "ropsten.logs.txt"
+      "LogFileName": "ropsten.logs.txt",
+      "ObsoletePendingTransactionInterval": 15,
+      "RemovePendingTransactionInterval": 600,
+      "PeerNotificationThreshold": 20
     }
   },
   {

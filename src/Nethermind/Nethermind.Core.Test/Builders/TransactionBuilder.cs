@@ -33,6 +33,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Nonce = 0;
             TestObjectInternal.Value = 1;
             TestObjectInternal.Data = new byte[0];
+            TestObjectInternal.Timestamp = 0;
         }
 
         public TransactionBuilder WithNonce(UInt256 nonce)
@@ -68,6 +69,12 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder WithGasLimit(UInt256 gasLimit)
         {
             TestObjectInternal.GasLimit = gasLimit;
+            return this;
+        }
+
+        public TransactionBuilder WithTimestamp(UInt256 timestamp)
+        {
+            TestObject.Timestamp = timestamp;
             return this;
         }
         

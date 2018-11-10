@@ -144,6 +144,7 @@ namespace Nethermind.Runner.Runners
 
             var transactionPool = new TransactionPool(new NullTransactionStorage(),
                 new PersistentReceiptStorage(writableDbProvider.ReceiptsDb, _specProvider),
+                new PendingTransactionThresholdValidator(), new TransactionPoolTimer(),
                 ethereumSigner, _logManager);
             
             /* blockchain */

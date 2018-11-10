@@ -156,6 +156,7 @@ namespace Nethermind.PerfTest
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance,
                 new TransactionPool(new NullTransactionStorage(),
                     new PersistentReceiptStorage(new MemDb(), RopstenSpecProvider.Instance),
+                    new PendingTransactionThresholdValidator(), new TransactionPoolTimer(),
                     NullEthereumSigner.Instance, logManager), logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
 
@@ -326,6 +327,7 @@ namespace Nethermind.PerfTest
             /* store & validation */
             var transactionStore = new TransactionPool(new NullTransactionStorage(),
                 new PersistentReceiptStorage(receiptsDb, specProvider),
+                new PendingTransactionThresholdValidator(), new TransactionPoolTimer(),
                 NullEthereumSigner.Instance, _logManager);
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, transactionStore, _logManager));
             var headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, _logManager);
