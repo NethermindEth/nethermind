@@ -42,12 +42,12 @@ namespace Nethermind.Clique
         private const int WiggleTime = 500;
 
         private const int EpochLength = 30000;
-        private const int ExtraVanity = 32;
-        public const int ExtraSeal = 65;
+        internal const int ExtraVanity = 32;
+        internal const int ExtraSeal = 65;
         public const ulong NonceAuthVote = UInt64.MaxValue;
         public const ulong NonceDropVote = 0UL;
-        private const int DiffInTurn = 2;
-        private const int DiffNoTurn = 1;
+        internal const int DiffInTurn = 2;
+        internal const int DiffNoTurn = 1;
 
         private const int AddressLength = 20;
 
@@ -59,7 +59,6 @@ namespace Nethermind.Clique
         private IDb _blocksDb;
         private LruCache<Keccak, Snapshot> _recents = new LruCache<Keccak, Snapshot>(InmemorySnapshots);
         private LruCache<Keccak, Address> _signatures = new LruCache<Keccak, Address>(InmemorySignatures);
-        private Dictionary<Address, Boolean> _proposals = new Dictionary<Address, bool>();
 
         public Clique(CliqueConfig config, ISigner signer, PrivateKey key, IDb blocksDb, BlockTree blockTree, ILogManager logManager)
         {
@@ -259,7 +258,7 @@ namespace Nethermind.Clique
             return true;
         }
 
-        private Snapshot MakeSnapshot(UInt256 number, Keccak hash)
+        internal Snapshot MakeSnapshot(UInt256 number, Keccak hash)
         {
             // Search for a snapshot in memory or on disk for checkpoints
             List<BlockHeader> headers = new List<BlockHeader>();
@@ -346,114 +345,6 @@ namespace Nethermind.Clique
             }
 
             return null;
-        }
-
-        private void Prepare(BlockHeader header)
-        {
-            // If the block isn't a checkpoint, cast a random vote (good enough for now)
-            UInt256 number = header.Number;
-            // Assemble the voting snapshot to check which votes make sense
-            Snapshot snapshot = MakeSnapshot(number - 1, header.ParentHash);
-            if ((ulong)number % _config.Epoch != 0)
-            {
-                // Gather all the proposals that make sense voting on
-                List<Address> addresses = new List<Address>();
-                foreach (var proposal in _proposals)
-                {
-                    Address address = proposal.Key;
-                    bool authorize = proposal.Value;
-                    if (snapshot.ValidVote(address, authorize))
-                    {
-                        addresses.Append(address);
-                    }
-                }
-
-                // If there's pending proposals, cast a vote on them
-                if (addresses.Count > 0)
-                {
-                    Random rnd = new Random();
-                    header.Beneficiary = addresses[rnd.Next(addresses.Count)];
-                    if (_proposals[header.Beneficiary])
-                    {
-                        header.Nonce = NonceAuthVote;
-                    }
-                    else
-                    {
-                        header.Nonce = NonceDropVote;
-                    }
-                }
-            }
-
-            // Set the correct difficulty
-            header.Difficulty = CalcDifficulty(snapshot, _key.Address);
-            // Ensure the extra data has all it's components
-            if (header.ExtraData.Length < ExtraVanity)
-            {
-                for (int i = 0; i < ExtraVanity - header.ExtraData.Length; i++)
-                {
-                    header.ExtraData.Append((byte)0);
-                }
-            }
-
-            header.ExtraData = header.ExtraData.Take(ExtraVanity).ToArray();
-
-            if ((ulong)number % _config.Epoch == 0)
-            {
-                foreach (Address signer in snapshot.Signers)
-                {
-                    foreach (byte addressByte in signer.Bytes)
-                    {
-                        header.ExtraData.Append(addressByte);
-                    }
-                }
-            }
-
-            byte[] extraSeal = new byte[ExtraSeal];
-            for (int i = 0; i < ExtraSeal; i++)
-            {
-                header.ExtraData.Append((byte)0);
-            }
-
-            // Mix digest is reserved for now, set to empty
-            // Ensure the timestamp has the correct delay
-            BlockHeader parent = _blockTree.FindHeader(header.ParentHash);
-            if (parent == null)
-            {
-                throw new InvalidOperationException("Unknown ancestor");
-            }
-
-            header.Timestamp = parent.Timestamp + _config.Period;
-            long currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            if (header.Timestamp < currentTimestamp)
-            {
-                header.Timestamp = new UInt256(currentTimestamp);
-            }
-        }
-
-        private Block Finalize(StateProvider state, BlockHeader header, Transaction[] txs, BlockHeader[] uncles, TransactionReceipt[] receipts)
-        {
-            // No block rewards in PoA, so the state remains as is and uncles are dropped
-            header.StateRoot = state.StateRoot;
-            header.OmmersHash = BlockHeader.CalculateHash((BlockHeader)null);
-            // Assemble and return the final block for sealing
-            return new Block(header, txs, null);
-        }
-
-        private UInt256 CalcDifficulty(ulong time, BlockHeader parent)
-        {
-            UInt256 parentNumber = parent.Number;
-            Snapshot snapshot = MakeSnapshot(parentNumber, BlockHeader.CalculateHash(parent));
-            return CalcDifficulty(snapshot, _key.Address);
-        }
-
-        private UInt256 CalcDifficulty(Snapshot snapshot, Address signer)
-        {
-            if (snapshot.Inturn(snapshot.Number + 1, signer))
-            {
-                return new UInt256(DiffInTurn);
-            }
-
-            return new UInt256(DiffNoTurn);
         }
 
         private bool ValidateCascadingFields(BlockHeader header)
