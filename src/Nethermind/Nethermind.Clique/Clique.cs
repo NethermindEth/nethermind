@@ -360,15 +360,12 @@ namespace Nethermind.Clique
             // If the block is a checkpoint block, validate the signer list
             if ((ulong)number % _config.Epoch == 0)
             {
-                byte[] signersBytes = new byte[snapshot.Signers.Count * AddressLength];
                 Address[] signers = snapshot.GetSigners();
+                byte[] signersBytes = new byte[signers.Length * AddressLength];
                 for (int i = 0; i < signers.Length; i++)
                 {
-                    Address signer = signers[i];
-                    for (int j = 0; j < AddressLength; j++)
-                    {
-                        signersBytes[i * AddressLength + j] = signer[j];
-                    }
+                    byte[] signer = signers[i].Bytes;
+                    Array.Copy(signer, 0, signersBytes, i * AddressLength, AddressLength);
                 }
 
                 int extraSuffix = header.ExtraData.Length - ExtraSeal;
