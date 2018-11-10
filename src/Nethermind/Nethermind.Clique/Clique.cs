@@ -94,7 +94,7 @@ namespace Nethermind.Clique
             }
 
             // Bail out if we're unauthorized to sign a block
-            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = MakeSnapshot(number - 1, header.ParentHash);
             if (!snapshot.Signers.Contains(_key.Address))
             {
                 throw new InvalidOperationException("Not authorized to sign a block");
@@ -217,7 +217,7 @@ namespace Nethermind.Clique
         {
             UInt256 number = header.Number;
             // Retrieve the snapshot needed to validate this header and cache it
-            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = MakeSnapshot(number - 1, header.ParentHash);
             // Resolve the authorization key and check against signers
             Address signer = header.GetBlockSealer(_signatures);
             if (!snapshot.Signers.Contains(signer))
@@ -259,30 +259,17 @@ namespace Nethermind.Clique
             return true;
         }
 
-        private Snapshot GetSnapshot(UInt256 number, Keccak hash)
+        private Snapshot MakeSnapshot(UInt256 number, Keccak hash)
         {
             // Search for a snapshot in memory or on disk for checkpoints
             List<BlockHeader> headers = new List<BlockHeader>();
             Snapshot snapshot = null;
-            while (snapshot == null)
+            while (true)
             {
-                // If an in-memory snapshot was found, use that
-                Snapshot memorySnapshot = _recents.Get(hash);
-                if (memorySnapshot != null)
+                snapshot = GetSnapshot(number, hash);
+                if (snapshot != null)
                 {
-                    snapshot = memorySnapshot;
                     break;
-                }
-
-                // If an on-disk checkpoint snapshot can be found, use that
-                if ((ulong)number % CheckpointInterval == 0)
-                {
-                    memorySnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash);
-                    if (memorySnapshot != null)
-                    {
-                        snapshot = memorySnapshot;
-                        break;
-                    }
                 }
 
                 // If we're at an checkpoint block, make a snapshot if it's known
@@ -308,9 +295,7 @@ namespace Nethermind.Clique
                 }
 
                 // No snapshot for this header, gather the header and move backward
-                BlockHeader header;
-                // No explicit parents (or no more left), reach out to the database
-                header = _blockTree.FindHeader(hash);
+                BlockHeader header = _blockTree.FindHeader(hash);
                 if (header == null)
                 {
                     throw new InvalidOperationException("Unknown ancestor");
@@ -341,12 +326,34 @@ namespace Nethermind.Clique
             return snapshot;
         }
 
+        private Snapshot GetSnapshot(UInt256 number, Keccak hash)
+        {
+            // If an in-memory snapshot was found, use that
+            Snapshot memorySnapshot = _recents.Get(hash);
+            if (memorySnapshot != null)
+            {
+                return memorySnapshot;
+            }
+
+            // If an on-disk checkpoint snapshot can be found, use that
+            if ((ulong)number % CheckpointInterval == 0)
+            {
+                memorySnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash);
+                if (memorySnapshot != null)
+                {
+                    return memorySnapshot;
+                }
+            }
+
+            return null;
+        }
+
         private void Prepare(BlockHeader header)
         {
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
             UInt256 number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
-            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = MakeSnapshot(number - 1, header.ParentHash);
             if ((ulong)number % _config.Epoch != 0)
             {
                 // Gather all the proposals that make sense voting on
@@ -435,7 +442,7 @@ namespace Nethermind.Clique
         private UInt256 CalcDifficulty(ulong time, BlockHeader parent)
         {
             UInt256 parentNumber = parent.Number;
-            Snapshot snapshot = GetSnapshot(parentNumber, BlockHeader.CalculateHash(parent));
+            Snapshot snapshot = MakeSnapshot(parentNumber, BlockHeader.CalculateHash(parent));
             return CalcDifficulty(snapshot, _key.Address);
         }
 
@@ -461,7 +468,7 @@ namespace Nethermind.Clique
             }
 
             // Retrieve the snapshot needed to validate this header and cache it
-            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = MakeSnapshot(number - 1, header.ParentHash);
 
             // If the block is a checkpoint block, validate the signer list
             if ((ulong)number % _config.Epoch == 0)
