@@ -154,18 +154,18 @@ namespace Nethermind.Clique
             foreach (BlockHeader header in headers)
             {
                 // Remove any votes on checkpoint blocks
-                ulong number = (ulong)header.Number;
-                if (number % Config.Epoch == 0)
+                UInt256 number = header.Number;
+                if ((ulong)number % Config.Epoch == 0)
                 {
                     snapshot.Votes.Clear();
                     snapshot.Tally = new Dictionary<Address, Tally>();
                 }
                 // Delete the oldest signer from the recent list to allow it signing again
                 {
-                    ulong limit = (ulong)(snapshot.Signers.Count) / 2 + 1;
+                    ulong limit = (ulong)snapshot.Signers.Count / 2 + 1;
                     if (number >= limit)
                     {
-                        snapshot.Recent.Remove((uint)number - limit);
+                        snapshot.Recent.Remove(number - limit);
                     }
                 }
                 // Resolve the authorization key and check against signers
@@ -181,7 +181,7 @@ namespace Nethermind.Clique
                         throw new InvalidOperationException("Recently signed");
                     }
                 }
-                snapshot.Recent[(uint)number] = signer;
+                snapshot.Recent[number] = signer;
                 // Header authorized, discard any previous votes from the signer
                 for (int i = 0; i < snapshot.Votes.Count; i++)
                 {
@@ -218,7 +218,7 @@ namespace Nethermind.Clique
                     ulong limit = (ulong)snapshot.Signers.Count / 2 + 1;
                     if (number >= limit)
                     {
-                        snapshot.Recent.Remove((uint)number - limit);
+                        snapshot.Recent.Remove(number - limit);
                     }
                     // Discard any previous votes the deauthorized signer cast
                     for (int i = 0; i < snapshot.Votes.Count; i++)
@@ -245,7 +245,7 @@ namespace Nethermind.Clique
                     snapshot.Tally.Remove(header.Beneficiary);
                 }
             }
-            snapshot.Number += (uint)headers.Count;
+            snapshot.Number += (ulong)headers.Count;
             snapshot.Hash = BlockHeader.CalculateHash(headers[headers.Count - 1]);
             return snapshot;
         }
