@@ -1,6 +1,6 @@
 {
-	"name": "Rinkeby",
-	"dataDir": "rinkeby",
+	"name": "Görli",
+	"dataDir": "goerli",
 	"engine": {
 		"Clique": {
 			"params": {

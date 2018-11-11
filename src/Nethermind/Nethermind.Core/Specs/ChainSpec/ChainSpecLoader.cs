@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
@@ -102,7 +103,18 @@ namespace Nethermind.Core.Specs.ChainSpec
             {
                 if (account.Value.Balance != null)
                 {
-                    chainSpec.Allocations[new Address(account.Key)] = UInt256.Parse(account.Value.Balance);
+                    bool result = UInt256.TryParse(account.Value.Balance, out UInt256 allocationValue);
+                    if (!result)
+                    {
+                        result = UInt256.TryParse(account.Value.Balance.Replace("0x", string.Empty), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out allocationValue);
+                    }
+
+                    if (!result)
+                    {
+                        throw new InvalidDataException($"Cannot recognize allocation value format in {account.Value.Balance}");
+                    }
+                    
+                    chainSpec.Allocations[new Address(account.Key)] = allocationValue;
                 }
             }
         }
