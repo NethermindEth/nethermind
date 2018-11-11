@@ -51,13 +51,13 @@ namespace Nethermind.Clique.Test
         public void Setup_chain()
         {
             // Import blocks
-            var blockTree = Build.A.BlockTree().TestObject;
-            var block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
-            var block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
-            var block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
-            var block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
-            var block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
-            var genesisBlock = GetRinkebyGenesis();
+            BlockTree blockTree = Build.A.BlockTree().TestObject;
+            Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
+            Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
+            Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
+            Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
+            Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
+            Block genesisBlock = GetRinkebyGenesis();
             // Add blocks
             MineBlock(blockTree, genesisBlock);
             MineBlock(blockTree, block1);
@@ -68,8 +68,8 @@ namespace Nethermind.Clique.Test
             // Get a test private key
             PrivateKey key = Build.A.PrivateKey.TestObject;
             // Init snapshot db
-            var db = new MemDb();
-            var config = GetRinkebyConfig();
+            IDb db = new MemDb();
+            CliqueConfig config = GetRinkebyConfig();
             _clique = new Nethermind.Clique.Clique(config, NullEthereumSigner.Instance, key, db, blockTree, NullLogManager.Instance);
         }
 
@@ -114,7 +114,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Recognises_signer_turn()
         {
-            var config = GetRinkebyConfig();
+            CliqueConfig config = GetRinkebyConfig();
             LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
             Snapshot snapshot = Snapshot.LoadSnapshot(config, sigCache, _snapshotDb, genesis.Hash);
