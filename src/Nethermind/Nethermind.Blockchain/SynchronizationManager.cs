@@ -24,7 +24,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
         private readonly IPerfService _perfService;
-        private readonly ITransactionPool _transactionPool;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly ConcurrentDictionary<NodeId, PeerInfo> _peers = new ConcurrentDictionary<NodeId, PeerInfo>();
         private readonly ConcurrentDictionary<NodeId, CancellationTokenSource> _initCancelTokens = new ConcurrentDictionary<NodeId, CancellationTokenSource>();
 
@@ -77,13 +77,13 @@ namespace Nethermind.Blockchain
             ILogManager logManager,
             IBlockchainConfig blockchainConfig,
             IPerfService perfService,
-            ITransactionPool transactionPool)
+            IReceiptStorage receiptStorage)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _blockchainConfig = blockchainConfig ?? throw new ArgumentNullException(nameof(blockchainConfig));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            _receiptStorage = receiptStorage;
 
             _transactionValidator = transactionValidator ?? throw new ArgumentNullException(nameof(transactionValidator));
 
@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain
                         continue;
                     }
 
-                    blockReceipts[receiptIndex] = _transactionPool.GetReceipt(block.Transactions[receiptIndex].Hash);
+                    blockReceipts[receiptIndex] = _receiptStorage.Get(block.Transactions[receiptIndex].Hash);
                 }
 
                 receipts[blockIndex] = blockReceipts;
@@ -215,7 +215,6 @@ namespace Nethermind.Blockchain
         public void AddNewTransaction(Transaction transaction, NodeId receivedFrom)
         {
             if (_logger.IsTrace) _logger.Trace($"Received a pending transaction {transaction.Hash} from {receivedFrom}");
-            _transactionPool.AddTransaction(transaction, HeadNumber);
         }
 
         public async Task AddPeer(ISynchronizationPeer synchronizationPeer)
@@ -235,7 +234,6 @@ namespace Nethermind.Blockchain
 
             var peerInfo = new PeerInfo(synchronizationPeer);
             _peers.TryAdd(synchronizationPeer.NodeId, peerInfo);
-            _transactionPool.AddPeer(peerInfo.Peer);
 
             var initCancelSource = _initCancelTokens[synchronizationPeer.NodeId] = new CancellationTokenSource();
             var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _aggregateSyncCancellationTokenSource.Token);
@@ -280,7 +278,6 @@ namespace Nethermind.Blockchain
                 //possible if sync failed - we remove peer and eventually initiate disconnect, which calls remove peer again
                 return;
             }
-            _transactionPool.DeletePeer(peerInfo.Peer.NodeId);
 
             if (_currentSyncingPeerInfo?.Peer.NodeId.Equals(synchronizationPeer.NodeId) ?? false)
             {
@@ -866,7 +863,7 @@ namespace Nethermind.Blockchain
                         // receipt.Error = ...
                         // receipt.ContractAddress = ...
 
-                        _transactionPool.AddReceipt(receipt);
+                        _receiptStorage.Add(receipt);
                     }
                 }
             }

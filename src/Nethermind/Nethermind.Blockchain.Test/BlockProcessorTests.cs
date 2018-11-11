@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -48,6 +49,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 new StorageProvider(stateDb, stateProvider, NullLogManager.Instance),
                 NullTransactionPool.Instance,
+                NullReceiptStorage.Instance,
                 NullLogManager.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestObject.AddressD).TestObject;

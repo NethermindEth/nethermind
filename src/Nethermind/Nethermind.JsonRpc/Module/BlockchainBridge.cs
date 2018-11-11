@@ -22,6 +22,7 @@ using System.Numerics;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,12 +38,13 @@ namespace Nethermind.JsonRpc.Module
     public class BlockchainBridge : IBlockchainBridge
     {
         private readonly IBlockTree _blockTree;
+        private readonly ITransactionPool _transactionPool;
         private readonly IFilterManager _filterManager;
         private readonly IFilterStore _filterStore;
         private readonly IEthereumSigner _signer;
         private readonly IStateProvider _stateProvider;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly ITransactionPool _transactionPool;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly IWallet _wallet;
 
         private ReaderWriterLockSlim _readerWriterLockSlim = new ReaderWriterLockSlim();
@@ -51,6 +53,7 @@ namespace Nethermind.JsonRpc.Module
             IStateProvider stateProvider,
             IBlockTree blockTree,
             ITransactionPool transactionPool,
+            IReceiptStorage receiptStorage,
             IFilterStore filterStore,
             IFilterManager filterManager,
             IWallet wallet,
@@ -59,7 +62,8 @@ namespace Nethermind.JsonRpc.Module
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            _transactionPool = transactionPool;
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
@@ -101,7 +105,7 @@ namespace Nethermind.JsonRpc.Module
 
         public (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
-            TransactionReceipt receipt = _transactionPool.GetReceipt(transactionHash);
+            TransactionReceipt receipt = _receiptStorage.Get(transactionHash);
             if (receipt.BlockHash == null) return (null, null);
 
             Block block = _blockTree.FindBlock(receipt.BlockHash, true);
@@ -110,7 +114,7 @@ namespace Nethermind.JsonRpc.Module
 
         public Keccak GetBlockHash(Keccak transactionHash)
         {
-            return _transactionPool.GetReceipt(transactionHash).BlockHash;
+            return _receiptStorage.Get(transactionHash).BlockHash;
         }
 
         public Keccak SendTransaction(Transaction transaction)
@@ -141,7 +145,7 @@ namespace Nethermind.JsonRpc.Module
 
         public TransactionReceipt GetTransactionReceipt(Keccak txHash)
         {
-            return _transactionPool.GetReceipt(txHash);
+            return _receiptStorage.Get(txHash);
         }
 
         public byte[] Call(Block block, Transaction transaction)

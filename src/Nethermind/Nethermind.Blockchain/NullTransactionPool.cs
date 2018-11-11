@@ -35,22 +35,15 @@ namespace Nethermind.Blockchain
 
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
 
-        public TransactionReceipt GetReceipt(Keccak txHash) => null;
-
         public void AddFilter<T>(T filter) where T : ITransactionFilter
         {
         }
-
-        public void DeleteFilter(Type type)
-        {
-        }
-
 
         public void AddPeer(ISynchronizationPeer peer)
         {
         }
 
-        public void DeletePeer(NodeId nodeId)
+        public void RemovePeer(NodeId nodeId)
         {
         }
 
@@ -59,10 +52,6 @@ namespace Nethermind.Blockchain
         }
 
         public void RemoveTransaction(Keccak hash)
-        {
-        }
-
-        public void AddReceipt(TransactionReceipt receipt)
         {
         }
 

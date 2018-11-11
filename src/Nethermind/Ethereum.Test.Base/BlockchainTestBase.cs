@@ -26,6 +26,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
@@ -238,8 +239,8 @@ namespace Ethereum.Test.Base
 
             IEthereumSigner signer = new EthereumSigner(specProvider, _logManager);
             ITransactionPool transactionPool = new TransactionPool(new NullTransactionStorage(),
-                new NullReceiptStorage(), new PendingTransactionThresholdValidator(),
-                new TransactionPoolTimer(), signer, _logManager);
+                new PendingTransactionThresholdValidator(), new TransactionPoolTimer(), signer, _logManager);
+            IReceiptStorage receiptStorage = new NullReceiptStorage();
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
@@ -270,6 +271,7 @@ namespace Ethereum.Test.Base
                 stateProvider,
                 storageProvider,
                 transactionPool,
+                receiptStorage,
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(

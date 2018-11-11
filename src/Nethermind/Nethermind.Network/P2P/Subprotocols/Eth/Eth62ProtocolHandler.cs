@@ -24,6 +24,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -49,17 +50,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private Keccak _remoteHeadBlockHash;
         private BigInteger _remoteHeadBlockDifficulty;
         private IPerfService _perfService;
+        private readonly IBlockTree _blockTree;
+        private readonly ITransactionPool _transactionPool;
 
         public Eth62ProtocolHandler(
             IP2PSession p2PSession,
             IMessageSerializationService serializer,
             ISynchronizationManager syncManager,
             ILogManager logManager,
-            IPerfService perfService)
+            IPerfService perfService,
+            IBlockTree blockTree,
+            ITransactionPool transactionPool)
             : base(p2PSession, serializer, logManager)
         {
             SyncManager = syncManager;
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
+            _blockTree = blockTree;
+            _transactionPool = transactionPool;
         }
 
         public virtual byte ProtocolVersion => 62;
@@ -242,7 +249,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             for (int i = 0; i < msg.Transactions.Length; i++)
             {
-                SyncManager.AddNewTransaction(msg.Transactions[i], NodeId);
+                var transaction = msg.Transactions[i];
+                transaction.DeliveredBy = NodeId.PublicKey;
+                SyncManager.AddNewTransaction(transaction, NodeId);
+                _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
             }
         }
 

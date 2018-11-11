@@ -20,6 +20,7 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
@@ -61,8 +62,8 @@ namespace Nethermind.Blockchain.Test
             EthereumSigner ethereumSigner = new EthereumSigner(specProvider, NullLogManager.Instance);
             MemDb receiptsDb = new MemDb();
             TransactionPool transactionPool = new TransactionPool(new NullTransactionStorage(),
-                new NullReceiptStorage(), new PendingTransactionThresholdValidator(),
-                new TransactionPoolTimer(), ethereumSigner, logger);
+                new PendingTransactionThresholdValidator(), new TransactionPoolTimer(), ethereumSigner, logger);
+            IReceiptStorage receiptStorage = new NullReceiptStorage();
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, logger);
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, logger);
@@ -85,7 +86,8 @@ namespace Nethermind.Blockchain.Test
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logger);
             TransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logger);
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-            BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, logger);
+            BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator,
+                processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, logger);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumSigner), logger, false);
 
             /* load ChainSpec and init */
@@ -129,7 +131,7 @@ namespace Nethermind.Blockchain.Test
                 blockchainProcessor.SuggestBlock(block.Hash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
                 suggestEvent.WaitOne(1000);
                 
-                TxTracer tracer = new TxTracer(blockchainProcessor, transactionPool, blockTree);
+                TxTracer tracer = new TxTracer(blockchainProcessor, receiptStorage, blockTree);
 
                 int currentCount = receiptsDb.Keys.Count;
                 Console.WriteLine($"Current count of receipts {currentCount}");

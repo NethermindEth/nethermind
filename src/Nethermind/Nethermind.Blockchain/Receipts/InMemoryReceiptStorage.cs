@@ -16,13 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Dirichlet.Numerics;
+using System.Collections.Concurrent;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Blockchain.Receipts
 {
-    public class TransactionPoolTimer : ITransactionPoolTimer
+    public class InMemoryReceiptStorage : IReceiptStorage
     {
-        public UInt256 CurrentTimestamp => new UInt256(new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds());
+        private readonly ConcurrentDictionary<Keccak, TransactionReceipt> _receipts =
+            new ConcurrentDictionary<Keccak, TransactionReceipt>();
+
+        public TransactionReceipt Get(Keccak hash)
+        {
+            _receipts.TryGetValue(hash, out var transaction);
+
+            return transaction;
+        }
+
+        public void Add(TransactionReceipt receipt)
+            => _receipts.TryAdd(receipt.TransactionHash, receipt);
     }
 }

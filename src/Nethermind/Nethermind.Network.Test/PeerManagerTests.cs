@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -55,6 +56,8 @@ namespace Nethermind.Network.Test
         private IConfigProvider _configurationProvider;
         private IDiscoveryManager _discoveryManager;
         private ISynchronizationManager _synchronizationManager;
+        private ITransactionPool _transactionPool;
+        private IBlockTree _blockTree;
         private ILogManager _logManager;
         
         [SetUp]
@@ -93,11 +96,13 @@ namespace Nethermind.Network.Test
             IStatsConfig statsConfig = _configurationProvider.GetConfig<IStatsConfig>();
             _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _nodeFactory, _logManager), _configurationProvider, _logManager), _nodeFactory, nodeTable, new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
+            _transactionPool = NullTransactionPool.Instance;
+            _blockTree = Substitute.For<IBlockTree>();
             var app = new DiscoveryApp(new NodesLocator(nodeTable, _discoveryManager, _configurationProvider, _logManager), _discoveryManager, _nodeFactory, nodeTable, Substitute.For<IMessageSerializationService>(), new CryptoRandom(), Substitute.For<INetworkStorage>(), _configurationProvider, _logManager, new PerfService(_logManager));
             app.Initialize(key);
             
             var networkStorage = new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager));
-            _peerManager = new PeerManager(_localPeer, app, _synchronizationManager, new NodeStatsProvider(statsConfig, _nodeFactory, _logManager), networkStorage, _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
+            _peerManager = new PeerManager(_localPeer, app, _synchronizationManager, new NodeStatsProvider(statsConfig, _nodeFactory, _logManager), networkStorage, _nodeFactory, _configurationProvider, new PerfService(_logManager), _transactionPool, _logManager);
             _peerManager.Init(true);
         }
 
@@ -118,7 +123,7 @@ namespace Nethermind.Network.Test
             //Assert.IsTrue();
 
             //trigger eth62 initialization
-            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager));
+            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager), _blockTree, _transactionPool);
             var args = new EthProtocolInitializedEventArgs(eth62)
             {
                 ChainId = _synchronizationManager.ChainId
@@ -168,7 +173,7 @@ namespace Nethermind.Network.Test
             //Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized));
 
             //trigger eth62 initialization
-            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager));
+            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager), _blockTree, _transactionPool);
             var args = new EthProtocolInitializedEventArgs(eth62)
             {
                 ChainId = _synchronizationManager.ChainId
@@ -237,7 +242,7 @@ namespace Nethermind.Network.Test
             var p2pSession = InitializeNode();
 
             //trigger eth62 initialization
-            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager));
+            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager), _blockTree, _transactionPool);
             var args = new EthProtocolInitializedEventArgs(eth62)
             {
                 ChainId = 100

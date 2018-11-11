@@ -19,6 +19,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
@@ -46,7 +47,7 @@ namespace Nethermind.Blockchain.Test
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             _stateDb = new MemDb();
             _receiptsDb = new MemDb();
-            _transactionPool = Substitute.For<ITransactionPool>();
+            _receiptStorage = Substitute.For<IReceiptStorage>();
 
             IHeaderValidator headerValidator = Build.A.HeaderValidator.ThatAlwaysReturnsTrue.TestObject;
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
@@ -54,14 +55,14 @@ namespace Nethermind.Blockchain.Test
 
             _manager = new SynchronizationManager(_stateDb, _blockTree, blockValidator, headerValidator,
                 transactionValidator, NullLogManager.Instance, new BlockchainConfig(),
-                new PerfService(NullLogManager.Instance), _transactionPool);
+                new PerfService(NullLogManager.Instance), _receiptStorage);
         }
 
         private IDb _stateDb;
         private IDb _receiptsDb;
         private IBlockTree _blockTree;
         private IBlockTree _remoteBlockTree;
-        private ITransactionPool _transactionPool;
+        private IReceiptStorage _receiptStorage;
         private Block _genesisBlock;
         private SynchronizationManager _manager;
 

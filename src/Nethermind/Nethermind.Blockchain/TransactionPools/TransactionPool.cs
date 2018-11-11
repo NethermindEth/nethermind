@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -27,7 +45,6 @@ namespace Nethermind.Blockchain.TransactionPools
             new ConcurrentDictionary<Type, ITransactionFilter>();
 
         private readonly ITransactionStorage _transactionStorage;
-        private readonly IReceiptStorage _receiptStorage;
         private readonly IPendingTransactionThresholdValidator _pendingTransactionThresholdValidator;
         private readonly ITransactionPoolTimer _transactionPoolTimer;
 
@@ -40,7 +57,7 @@ namespace Nethermind.Blockchain.TransactionPools
         private readonly int _peerNotificationThreshold;
         private readonly Timer _timer = new Timer();
 
-        public TransactionPool(ITransactionStorage transactionStorage, IReceiptStorage receiptStorage,
+        public TransactionPool(ITransactionStorage transactionStorage, 
             IPendingTransactionThresholdValidator pendingTransactionThresholdValidator,
             ITransactionPoolTimer transactionPoolTimer, IEthereumSigner signer, ILogManager logManager,
             int removePendingTransactionInterval = 600,
@@ -48,7 +65,6 @@ namespace Nethermind.Blockchain.TransactionPools
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _transactionStorage = transactionStorage;
-            _receiptStorage = receiptStorage;
             _pendingTransactionThresholdValidator = pendingTransactionThresholdValidator;
             _transactionPoolTimer = transactionPoolTimer;
             _signer = signer;
@@ -59,7 +75,6 @@ namespace Nethermind.Blockchain.TransactionPools
         }
 
         public Transaction[] GetPendingTransactions() => _pendingTransactions.Values.ToArray();
-        public TransactionReceipt GetReceipt(Keccak hash) => _receiptStorage.Get(hash);
 
         public void AddFilter<T>(T filter) where T : ITransactionFilter
             => _filters.TryAdd(filter.GetType(), filter);
@@ -74,7 +89,7 @@ namespace Nethermind.Blockchain.TransactionPools
             if (_logger.IsDebug) _logger.Debug($"Added a peer: {peer.ClientId}");
         }
 
-        public void DeletePeer(NodeId nodeId)
+        public void RemovePeer(NodeId nodeId)
         {
             if (!_peers.TryRemove(nodeId.PublicKey, out _))
             {
@@ -142,11 +157,6 @@ namespace Nethermind.Blockchain.TransactionPools
             _pendingTransactions.TryRemove(hash, out _);
             _transactionStorage.Delete(hash);
             if (_logger.IsDebug) _logger.Debug($"Deleted a transaction: {hash}");
-        }
-
-        public void AddReceipt(TransactionReceipt receipt)
-        {
-            _receiptStorage.Add(receipt);
         }
 
         public event EventHandler<TransactionEventArgs> NewPending;

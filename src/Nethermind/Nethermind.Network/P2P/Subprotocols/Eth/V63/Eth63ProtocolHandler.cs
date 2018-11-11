@@ -21,6 +21,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -40,7 +41,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             IP2PSession p2PSession,
             IMessageSerializationService serializer,
             ISynchronizationManager syncManager,
-            ILogManager logManager, IPerfService perfService) : base(p2PSession, serializer, syncManager, logManager, perfService)
+            ILogManager logManager, IPerfService perfService,
+            IBlockTree blockTree, ITransactionPool transactionPool) : base(p2PSession, serializer, syncManager,
+            logManager, perfService, blockTree, transactionPool)
         {
         }
 

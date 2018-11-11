@@ -37,6 +37,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -64,6 +65,7 @@ namespace Nethermind.Network
         private bool _isPeerUpdateInProgress;
         private readonly object _isPeerUpdateInProgressLock = new object();
         private readonly IPerfService _perfService;
+        private readonly ITransactionPool _transactionPool;
         private bool _isDiscoveryEnabled;
         private Task _storageCommitTask;
         private long _prevActivePeersCount;
@@ -80,15 +82,18 @@ namespace Nethermind.Network
             INodeFactory nodeFactory,
             IConfigProvider configurationProvider,
             IPerfService perfService,
+            ITransactionPool transactionPool,
             ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _networkConfig = configurationProvider.GetConfig<INetworkConfig>();
             _rlpxPeer = rlpxPeer ?? throw new ArgumentNullException(nameof(rlpxPeer));
-            _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
+            _synchronizationManager =
+                synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
             _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _peerStorage.StartBatch();
@@ -649,6 +654,7 @@ namespace Nethermind.Network
                     //Add/Update peer to the storage and to sync manager
                     _peerStorage.UpdateNodes(new[] {new NetworkNode(peer.Node.Id.PublicKey, peer.Node.Host, peer.Node.Port, peer.Node.Description, peer.NodeStats.NewPersistedNodeReputation)});
                     await _synchronizationManager.AddPeer(ethProtocolHandler);
+                    _transactionPool.AddPeer(ethProtocolHandler);
 
                     break;
             }
@@ -875,6 +881,7 @@ namespace Nethermind.Network
                 if (activePeer.SynchronizationPeer != null)
                 {
                     _synchronizationManager.RemovePeer(activePeer.SynchronizationPeer);
+                    _transactionPool.RemovePeer(activePeer.Node.Id);
                 }
 
                 if (_logger.IsTrace)

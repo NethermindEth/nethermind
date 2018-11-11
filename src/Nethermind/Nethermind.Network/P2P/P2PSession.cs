@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
@@ -42,6 +43,8 @@ namespace Nethermind.Network.P2P
         private readonly ISynchronizationManager _syncManager;
         private readonly INodeStatsProvider _nodeStatsProvider;
         private readonly IPerfService _perfService;
+        private readonly IBlockTree _blockTree;
+        private readonly ITransactionPool _transactionPool;
         private readonly Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
 
         private readonly IChannel _channel;
@@ -63,12 +66,16 @@ namespace Nethermind.Network.P2P
             INodeStats nodeStats,
             ILogManager logManager,
             IChannel channel,
-            IPerfService perfService)
+            IPerfService perfService,
+            IBlockTree blockTree,
+            ITransactionPool transactionPool)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
             _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
+            _blockTree = blockTree;
+            _transactionPool = transactionPool;
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
             _logger = logManager.GetClassLogger();
@@ -254,8 +261,8 @@ namespace Nethermind.Network.P2P
                     }
 
                     protocolHandler = version == 62
-                        ? new Eth62ProtocolHandler(this, _serializer, _syncManager, _logManager, _perfService)
-                        : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logManager, _perfService);
+                        ? new Eth62ProtocolHandler(this, _serializer, _syncManager, _logManager, _perfService, _blockTree, _transactionPool)
+                        : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logManager, _perfService, _blockTree, _transactionPool);
                     protocolHandler.ProtocolInitialized += (sender, args) =>
                     {
                         ProtocolInitialized?.Invoke(this, args);

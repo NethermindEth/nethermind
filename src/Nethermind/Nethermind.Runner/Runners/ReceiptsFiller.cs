@@ -21,6 +21,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
@@ -143,10 +144,11 @@ namespace Nethermind.Runner.Runners
             _dbProvider = new ReadOnlyDbProvider(writableDbProvider, true);
 
             var transactionPool = new TransactionPool(new NullTransactionStorage(),
-                new PersistentReceiptStorage(writableDbProvider.ReceiptsDb, _specProvider),
                 new PendingTransactionThresholdValidator(), new TransactionPoolTimer(),
                 ethereumSigner, _logManager);
-            
+
+            var receiptStorage = new PersistentReceiptStorage(writableDbProvider.ReceiptsDb, _specProvider);
+
             /* blockchain */
             _blockTree = new BlockTree(
                 _dbProvider.BlocksDb,
@@ -228,6 +230,7 @@ namespace Nethermind.Runner.Runners
                 stateProvider,
                 storageProvider,
                 transactionPool,
+                receiptStorage,
                 _logManager);
 
             blockProcessor.BlockProcessed += (sender, args) =>

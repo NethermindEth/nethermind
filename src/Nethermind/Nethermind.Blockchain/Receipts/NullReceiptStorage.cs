@@ -16,13 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Blockchain.Receipts
 {
-    public class TransactionPoolTimer : ITransactionPoolTimer
+    public class NullReceiptStorage : IReceiptStorage
     {
-        public UInt256 CurrentTimestamp => new UInt256(new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds());
+        public TransactionReceipt Get(Keccak hash) => null;
+        
+        public static NullReceiptStorage Instance { get; } = new NullReceiptStorage();
+
+        public void Add(TransactionReceipt receipt)
+        {
+        }
     }
 }

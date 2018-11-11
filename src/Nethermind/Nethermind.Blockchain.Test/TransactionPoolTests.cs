@@ -1,4 +1,21 @@
-using System;
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
@@ -28,9 +45,6 @@ namespace Nethermind.Blockchain.Test
         private ITransactionStorage _noTransactionStorage;
         private ITransactionStorage _inMemoryTransactionStorage;
         private ITransactionStorage _persistentTransactionStorage;
-        private IReceiptStorage _noReceiptStorage;
-        private IReceiptStorage _inMemoryReceiptStorage;
-        private IReceiptStorage _persistentReceiptStorage;
 
         [SetUp]
         public void Setup()
@@ -43,15 +57,12 @@ namespace Nethermind.Blockchain.Test
             _noTransactionStorage = new NullTransactionStorage();
             _inMemoryTransactionStorage = new InMemoryTransactionStorage();
             _persistentTransactionStorage = new PersistentTransactionStorage(new MemDb(), _specProvider);
-            _noReceiptStorage = new NullReceiptStorage();
-            _inMemoryReceiptStorage = new InMemoryReceiptStorage();
-            _persistentReceiptStorage = new PersistentReceiptStorage(new MemDb(), _specProvider);
         }
 
         [Test]
         public void should_add_peers()
         {
-            _transactionPool = CreatePool(_noTransactionStorage, _noReceiptStorage);
+            _transactionPool = CreatePool(_noTransactionStorage);
             var peers = GetPeers();
 
             foreach ((ISynchronizationPeer peer, _) in peers)
@@ -63,7 +74,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void should_delete_peers()
         {
-            _transactionPool = CreatePool(_noTransactionStorage, _noReceiptStorage);
+            _transactionPool = CreatePool(_noTransactionStorage);
             var peers = GetPeers();
 
             foreach ((ISynchronizationPeer peer, _) in peers)
@@ -73,14 +84,14 @@ namespace Nethermind.Blockchain.Test
 
             foreach ((ISynchronizationPeer peer, _) in peers)
             {
-                _transactionPool.DeletePeer(peer.NodeId);
+                _transactionPool.RemovePeer(peer.NodeId);
             }
         }
 
         [Test]
         public void should_add_pending_transactions()
         {
-            _transactionPool = CreatePool(_noTransactionStorage, _noReceiptStorage);
+            _transactionPool = CreatePool(_noTransactionStorage);
             var transactions = AddTransactionsToPool();
 
             foreach (var transaction in transactions)
@@ -94,7 +105,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void should_delete_pending_transactions()
         {
-            _transactionPool = CreatePool(_noTransactionStorage, _noReceiptStorage);
+            _transactionPool = CreatePool(_noTransactionStorage);
             var transactions = AddTransactionsToPool();
             DeleteTransactionsFromPool(transactions);
             _transactionPool.GetPendingTransactions().Should().BeEmpty();
@@ -150,31 +161,9 @@ namespace Nethermind.Blockchain.Test
             transactions.Filtered.Count().Should().NotBe(0);
         }
 
-        [Test]
-        public void should_add_and_fetch_receipt_from_in_memory_storage()
-        {
-            _transactionPool = CreatePool(_noTransactionStorage, _inMemoryReceiptStorage);
-            var transaction = GetSignedTransaction();
-            var receipt = GetReceipt(transaction);
-            _transactionPool.AddReceipt(receipt);
-            var fetchedReceipt = _transactionPool.GetReceipt(transaction.Hash);
-            receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
-        }
-
-        [Test]
-        public void should_add_and_fetch_receipt_from_persistent_storage()
-        {
-            _transactionPool = CreatePool(_noTransactionStorage, _persistentReceiptStorage);
-            var transaction = GetSignedTransaction();
-            var receipt = GetReceipt(transaction);
-            _transactionPool.AddReceipt(receipt);
-            var fetchedReceipt = _transactionPool.GetReceipt(transaction.Hash);
-            receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
-        }
-
         private Transactions AddAndFilterTransactions(ITransactionStorage storage, params ITransactionFilter[] filters)
         {
-            _transactionPool = CreatePool(storage, _noReceiptStorage);
+            _transactionPool = CreatePool(storage);
             foreach (var filter in filters ?? Enumerable.Empty<ITransactionFilter>())
             {
                 _transactionPool.AddFilter(filter);
@@ -198,9 +187,8 @@ namespace Nethermind.Blockchain.Test
             return peers;
         }
 
-        private TransactionPool CreatePool(ITransactionStorage transactionStorage, IReceiptStorage receiptStorage)
-            => new TransactionPool(transactionStorage, receiptStorage,
-                new PendingTransactionThresholdValidator(),
+        private TransactionPool CreatePool(ITransactionStorage transactionStorage)
+            => new TransactionPool(transactionStorage, new PendingTransactionThresholdValidator(),
                 new TransactionPoolTimer(), _ethereumSigner, _logManager);
 
         private ISynchronizationPeer GetPeer(PublicKey publicKey)
@@ -244,9 +232,6 @@ namespace Nethermind.Blockchain.Test
             return transactions.ToArray();
         }
 
-        private Transaction GetSignedTransaction(Address to = null)
-            => GetTransaction(TestObject.PrivateKeyA, to);
-
         private Transaction GetTransaction(PrivateKey privateKey, Address to = null)
             => GetTransaction(0, 1, 1000, to, new byte[0], privateKey);
 
@@ -261,10 +246,6 @@ namespace Nethermind.Blockchain.Test
                 .DeliveredBy(privateKey.PublicKey)
                 .SignedAndResolved(_ethereumSigner, privateKey, 1)
                 .TestObject;
-
-        private static TransactionReceipt GetReceipt(Transaction transaction)
-            => Build.A.TransactionReceipt.WithState(TestObject.KeccakB)
-                .WithTransactionHash(transaction.Hash).TestObject;
 
         private class Transactions
         {

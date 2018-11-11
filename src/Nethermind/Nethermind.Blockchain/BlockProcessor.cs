@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -42,6 +43,7 @@ namespace Nethermind.Blockchain
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ITransactionPool _transactionPool;
+        private readonly IReceiptStorage _receiptStorage;
 
         public BlockProcessor(
             ISpecProvider specProvider,
@@ -53,6 +55,7 @@ namespace Nethermind.Blockchain
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             ITransactionPool transactionPool,
+            IReceiptStorage receiptStorage,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -61,6 +64,7 @@ namespace Nethermind.Blockchain
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            _receiptStorage = receiptStorage;
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
@@ -197,7 +201,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 receipts[i].BlockHash = block.Hash;
-                _transactionPool.AddReceipt(receipts[i]);
+                _receiptStorage.Add(receipts[i]);
                 _transactionPool.RemoveTransaction(receipts[i].TransactionHash);
             }
         }
