@@ -53,12 +53,13 @@ namespace Nethermind.Clique.Test
         private CliqueSealEngine _clique;
         private Block _lastBlock;
         private PrivateKey _currentSigner;
+        private BlockTree _blockTree;
 
         [OneTimeSetUp]
         public void Setup_chain()
         {
             // Import blocks
-            BlockTree blockTree = Build.A.BlockTree().TestObject;
+            _blockTree = Build.A.BlockTree().TestObject;
             Block genesisBlock = GetRinkebyGenesis();
             Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
             Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
@@ -67,12 +68,12 @@ namespace Nethermind.Clique.Test
             Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
             _lastBlock = block5;
             // Add blocks
-            MineBlock(blockTree, genesisBlock);
-            MineBlock(blockTree, block1);
-            MineBlock(blockTree, block2);
-            MineBlock(blockTree, block3);
-            MineBlock(blockTree, block4);           
-            MineBlock(blockTree, block5);
+            MineBlock(_blockTree, genesisBlock);
+            MineBlock(_blockTree, block1);
+            MineBlock(_blockTree, block2);
+            MineBlock(_blockTree, block3);
+            MineBlock(_blockTree, block4);           
+            MineBlock(_blockTree, block5);
             IEthereumSigner signer = new EthereumSigner(RinkebySpecProvider.Instance, NullLogManager.Instance);
             // Init snapshot db
             IDb db = new MemDb();
@@ -81,7 +82,7 @@ namespace Nethermind.Clique.Test
             int currentBlock = 6;
             int currentSignerIndex = (currentBlock % _signers.Count);
             _currentSigner = _signers[currentSignerIndex];
-            _clique = new CliqueSealEngine(config, signer, _currentSigner, db, blockTree, NullLogManager.Instance);
+            _clique = new CliqueSealEngine(config, signer, _currentSigner, db, _blockTree, NullLogManager.Instance);
         }
 
         [Test]
@@ -89,7 +90,7 @@ namespace Nethermind.Clique.Test
         {
             Block block6 = CreateBlock(2, 6, _lastBlock);
             Block signed = _clique.Mine(block6);
-            bool validHeader = _clique.ValidateParams(null, signed.Header);
+            bool validHeader = _clique.ValidateParams(_blockTree.FindBlock(signed.ParentHash, false), signed.Header);
             bool validSeal = _clique.ValidateSeal(signed.Header);
             Assert.True(validHeader);
             Assert.True(validSeal);

@@ -20,13 +20,13 @@ namespace Nethermind.Clique
 {
     public class CliqueConfig
     {
-        public CliqueConfig(ulong period, ulong epoch)
+        public CliqueConfig(ulong blockPeriod, ulong epoch)
         {
-            Period = period;
+            BlockPeriod = blockPeriod;
             Epoch = epoch;
         }
 
-        public ulong Period { get; set; }
+        public ulong BlockPeriod { get; set; }
 
         public ulong Epoch { get; set; }
     }

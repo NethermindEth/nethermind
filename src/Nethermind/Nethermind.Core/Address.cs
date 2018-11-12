@@ -28,7 +28,7 @@ namespace Nethermind.Core
 {
     public class Address : IEquatable<Address>
     {
-        private const int ByteLength = 20;
+        public const int ByteLength = 20;
         private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
         

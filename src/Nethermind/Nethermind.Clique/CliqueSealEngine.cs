@@ -77,79 +77,6 @@ namespace Nethermind.Clique
             return block;
         }
 
-        public bool ValidateParams(Block parent, BlockHeader header)
-        {
-            UInt256 number = header.Number;
-            bool checkpoint = ((ulong)number % _config.Epoch) == 0;
-            // Checkpoint blocks need to enforce zero beneficiary
-            if (checkpoint && header.Beneficiary != Address.Zero)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block beneficiary ({header.Beneficiary}) - should be empty on checkpoint");
-                return false;
-            }
-            
-            if (checkpoint && header.Nonce != NonceDropVote)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.Nonce}) - should be zeroes on checkpoints");
-                return false;
-            }
-
-            // Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
-            int singersBytes = header.ExtraData.Length - ExtraVanityLength - ExtraSealLength;
-            if (!checkpoint && singersBytes != 0)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block extra-data ({header.ExtraData}) - should be empty on non-checkpoints");
-                return false;
-            }
-
-            if (checkpoint && singersBytes % AddressLength != 0)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.ExtraData}) - should contain a list of signers on checkpoints");
-                return false;
-            }
-            
-            // Nonce must be 0x00..0 or 0xff..f, zeroes enforced on checkpoints
-            if (header.Nonce != NonceAuthVote && header.Nonce != NonceDropVote)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.Nonce})");
-                return false;
-            }
-            
-            if (header.ExtraData.Length < ExtraVanityLength)
-            {
-                if (_logger.IsWarn) _logger.Warn("Invalid block extra data length - missing vanity");
-                return false;
-            }
-
-            if (header.ExtraData.Length < ExtraVanityLength + ExtraSealLength)
-            {
-                if (_logger.IsWarn) _logger.Warn("Invalid block extra data length - missing seal");
-                return false;
-            }
-            
-            // Ensure that the mix digest is zero as we don't have fork protection currently
-            if (header.MixHash != Keccak.Zero)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block mix hash ({header.MixHash}) - should be zeroes");
-                return false;
-            }
-
-            // Ensure that the block doesn't contain any uncles which are meaningless in PoA
-            if (header.OmmersHash != Keccak.OfAnEmptySequenceRlp)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block ommers hash ({header.OmmersHash}) - ommers are meaningless in Clique");
-                return false;
-            }
-
-            if (header.Difficulty != DiffInTurn && header.Difficulty != DiffNoTurn)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty ({header.Difficulty}) - should be {DiffInTurn} or {DiffNoTurn}");
-                return false;
-            }
-
-            return ValidateCascadingFields(header);
-        }
-
         public bool IsMining { get; set; }
 
         private async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
@@ -187,8 +114,8 @@ namespace Nethermind.Clique
         internal const int ExtraSealLength = 65;
         public const ulong NonceAuthVote = UInt64.MaxValue;
         public const ulong NonceDropVote = 0UL;
-        internal const int DiffInTurn = 2;
-        internal const int DiffNoTurn = 1;
+        internal const int DifficultyInTurn = 2;
+        internal const int DifficultyNoTurn = 1;
 
         private const int AddressLength = 20;
 
@@ -209,6 +136,7 @@ namespace Nethermind.Clique
             {
                 return address;
             }
+
             // Retrieve the signature from the header extra-data
             if (header.ExtraData.Length < extraSeal)
             {
@@ -236,42 +164,34 @@ namespace Nethermind.Clique
             }
 
             // For 0-period chains, refuse to seal empty blocks (no reward but would spin sealing)
-            if (_config.Period == 0 && block.Transactions.Length == 0)
+            if (_config.BlockPeriod == 0 && block.Transactions.Length == 0)
             {
                 return null;
             }
 
             // Bail out if we're unauthorized to sign a block
             Snapshot snapshot = GetOrCreateSnapshot(number - 1, header.ParentHash);
-            if (!snapshot.Signers.Contains(_key.Address))
+            if (!snapshot.Signers.ContainsKey(_key.Address))
             {
                 throw new InvalidOperationException("Not authorized to sign a block");
             }
 
             // If we're amongst the recent signers, wait for the next block
-            foreach (var item in snapshot.Recent)
+            if (snapshot.HasSignedRecently(number, _key.Address))
             {
-                UInt256 seen = item.Key;
-                Address recent = item.Value;
-                if (recent == _key.Address)
-                {
-                    ulong limit = (ulong)snapshot.Signers.Count / 2 + 1;
-                    if (number < limit || seen > number - limit)
-                    {
-                        return null;
-                    }
-                }
+                return null;
             }
 
             // Sweet, the protocol permits us to sign the block, wait for our time
             long currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            long delay = (long)header.Timestamp - currentTimestamp;
-            if (header.Difficulty == DiffNoTurn)
+            long delay = (long) header.Timestamp - currentTimestamp;
+            if (header.Difficulty == DifficultyNoTurn)
             {
                 int wiggle = snapshot.Signers.Count / 2 + 1 * WiggleTime;
                 Random rnd = new Random();
                 delay += rnd.Next(wiggle);
             }
+
             // Sign immediately if the timestamp is in the past
             delay = delay > 0 ? delay : 0;
 
@@ -286,9 +206,81 @@ namespace Nethermind.Clique
             header.ExtraData[header.ExtraData.Length - 1] = recoveryId;
 
             // Wait until sealing is terminated or delay timeout.
-            System.Threading.Thread.Sleep((int)delay);
+            System.Threading.Thread.Sleep((int) delay);
 
             return block;
+        }
+
+        public bool ValidateParams(Block parent, BlockHeader header)
+        {
+            bool isEpochTransition = IsEpochTransition(header.Number);
+            // Checkpoint blocks need to enforce zero beneficiary
+            if (isEpochTransition && header.Beneficiary != Address.Zero)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block beneficiary ({header.Beneficiary}) - should be empty on checkpoint");
+                return false;
+            }
+
+            if (isEpochTransition && header.Nonce != NonceDropVote)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.Nonce}) - should be zeroes on checkpoints");
+                return false;
+            }
+
+            // Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
+            int singersBytes = header.ExtraData.Length - ExtraVanityLength - ExtraSealLength;
+            if (!isEpochTransition && singersBytes != 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block extra-data ({header.ExtraData}) - should be empty on non-checkpoints");
+                return false;
+            }
+
+            if (isEpochTransition && singersBytes % AddressLength != 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.ExtraData}) - should contain a list of signers on checkpoints");
+                return false;
+            }
+
+            // Nonce must be 0x00..0 or 0xff..f, zeroes enforced on checkpoints
+            if (header.Nonce != NonceAuthVote && header.Nonce != NonceDropVote)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.Nonce})");
+                return false;
+            }
+
+            if (header.ExtraData.Length < ExtraVanityLength)
+            {
+                if (_logger.IsWarn) _logger.Warn("Invalid block extra data length - missing vanity");
+                return false;
+            }
+
+            if (header.ExtraData.Length < ExtraVanityLength + ExtraSealLength)
+            {
+                if (_logger.IsWarn) _logger.Warn("Invalid block extra data length - missing seal");
+                return false;
+            }
+
+            // Ensure that the mix digest is zero as we don't have fork protection currently
+            if (header.MixHash != Keccak.Zero)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block mix hash ({header.MixHash}) - should be zeroes");
+                return false;
+            }
+
+            // Ensure that the block doesn't contain any uncles which are meaningless in PoA
+            if (header.OmmersHash != Keccak.OfAnEmptySequenceRlp)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block ommers hash ({header.OmmersHash}) - ommers are meaningless in Clique");
+                return false;
+            }
+
+            if (header.Difficulty != DifficultyInTurn && header.Difficulty != DifficultyNoTurn)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty ({header.Difficulty}) - should be {DifficultyInTurn} or {DifficultyNoTurn}");
+                return false;
+            }
+
+            return ValidateCascadingFields(parent, header);
         }
 
         public bool ValidateSeal(BlockHeader header)
@@ -299,39 +291,29 @@ namespace Nethermind.Clique
             // Resolve the authorization key and check against signers
             header.Author = header.Author ?? GetBlockSealer(header);
             Address signer = header.Author;
-            if (!snapshot.Signers.Contains(signer))
+            if (!snapshot.Signers.ContainsKey(signer))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block signer {signer} - not authorized to sign a block");
                 return false;
             }
 
-            foreach (var recent in snapshot.Recent)
+            if (snapshot.HasSignedRecently(number, signer))
             {
-                UInt256 seen = recent.Key;
-                Address address = recent.Value;
-                if (address == signer)
-                {
-                    // Signer is among recent, only fail if the current block doesn't shift it out
-                    ulong limit = (ulong)snapshot.Signers.Count / 2 + 1;
-                    if (seen > number - limit)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Invalid block signer {signer} - the signer is among recents");
-                        return false;
-                    }
-                }
-            }
-
-            // Ensure that the difficulty corresponds to the turn-ness of the signer
-            bool inturn = snapshot.Inturn(header.Number, signer);
-            if (inturn && header.Difficulty != DiffInTurn)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {DiffInTurn}");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block signer {signer} - the signer is among recents");
                 return false;
             }
 
-            if (!inturn && header.Difficulty != DiffNoTurn)
+            // Ensure that the difficulty corresponds to the turn-ness of the signer
+            bool inTurn = snapshot.InTurn(header.Number, signer);
+            if (inTurn && header.Difficulty != DifficultyInTurn)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be no-turn {DiffNoTurn}");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {DifficultyInTurn}");
+                return false;
+            }
+
+            if (!inTurn && header.Difficulty != DifficultyNoTurn)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be no-turn {DifficultyNoTurn}");
                 return false;
             }
 
@@ -364,15 +346,17 @@ namespace Nethermind.Clique
                 }
 
                 Keccak parentHash = header.ParentHash;
-                if (number == 0 || ((ulong)number % _config.Epoch == 0 && _blockTree.FindHeader(parentHash) == null))
+                if (number == 0 || (IsEpochTransition(number) && _blockTree.FindHeader(parentHash) == null))
                 {
-                    Address[] signers = new Address[(header.ExtraData.Length - ExtraVanityLength - ExtraSealLength) / AddressLength];
-                    for (int i = 0; i < signers.Length; i++)
+                    int signersCount = (header.ExtraData.Length - ExtraVanityLength - ExtraSealLength) / AddressLength;
+                    SortedList<Address, UInt256> signers = new SortedList<Address, UInt256>(signersCount, CliqueAddressComparer.Instance);
+                    for (int i = 0; i < signersCount; i++)
                     {
-                        signers[i] = new Address(header.ExtraData.Slice(ExtraVanityLength + i * AddressLength, AddressLength));
+                        Address signer = new Address(header.ExtraData.Slice(ExtraVanityLength + i * AddressLength, AddressLength));
+                        signers.Add(signer, UInt256.Zero);
                     }
 
-                    snapshot = Snapshot.NewSnapshot(_config, _signatures, number, header.Hash, signers);
+                    snapshot = new Snapshot(_config, _signatures, number, header.Hash, signers);
                     snapshot.Store(_blocksDb);
                     break;
                 }
@@ -400,7 +384,7 @@ namespace Nethermind.Clique
 
             _recent.Set(snapshot.Hash, snapshot);
             // If we've generated a new checkpoint snapshot, save to disk
-            if ((ulong)snapshot.Number % CheckpointInterval == 0 && headers.Count > 0)
+            if ((ulong) snapshot.Number % CheckpointInterval == 0 && headers.Count > 0)
             {
                 snapshot.Store(_blocksDb);
             }
@@ -418,7 +402,7 @@ namespace Nethermind.Clique
             }
 
             // If an on-disk checkpoint snapshot can be found, use that
-            if ((ulong)number % CheckpointInterval == 0)
+            if ((ulong) number % CheckpointInterval == 0)
             {
                 Snapshot persistedSnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash);
                 if (persistedSnapshot != null)
@@ -430,12 +414,15 @@ namespace Nethermind.Clique
             return null;
         }
 
-        private bool ValidateCascadingFields(BlockHeader header)
+        private bool IsEpochTransition(UInt256 number)
+        {
+            return (ulong) number % _config.Epoch == 0;
+        }
+
+        private bool ValidateCascadingFields(Block parent, BlockHeader header)
         {
             UInt256 number = header.Number;
-            // Ensure that the block's timestamp isn't too close to it's parent
-            BlockHeader parent = _blockTree.FindHeader(header.ParentHash);
-            if (parent.Timestamp + _config.Period > header.Timestamp)
+            if (parent.Timestamp + _config.BlockPeriod > header.Timestamp)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect block timestamp ({header.Timestamp}) - should have big enough different with parent");
                 return false;
@@ -445,14 +432,13 @@ namespace Nethermind.Clique
             Snapshot snapshot = GetOrCreateSnapshot(number - 1, header.ParentHash);
 
             // If the block is a checkpoint block, validate the signer list
-            if ((ulong)number % _config.Epoch == 0)
+            if (IsEpochTransition(number))
             {
-                Address[] signers = snapshot.GetSigners();
-                byte[] signersBytes = new byte[signers.Length * AddressLength];
-                for (int i = 0; i < signers.Length; i++)
+                byte[] signersBytes = new byte[snapshot.Signers.Count * AddressLength];
+                int signerIndex = 0;
+                foreach (Address signer in snapshot.Signers.Keys)
                 {
-                    byte[] signer = signers[i].Bytes;
-                    Array.Copy(signer, 0, signersBytes, i * AddressLength, AddressLength);
+                    Array.Copy(signer.Bytes, 0, signersBytes, signerIndex++ * AddressLength, AddressLength);
                 }
 
                 int extraSuffix = header.ExtraData.Length - ExtraSealLength;

@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,61 +31,38 @@ namespace Nethermind.Clique
 {
     internal class Snapshot
     {
-        internal CliqueConfig Config {get; private set;}
-        internal LruCache<Keccak, Address> SigCache {get; private set;}
-        internal UInt256 Number {get; private set;}
-        internal Keccak Hash {get; private set;}
-        internal HashSet<Address> Signers {get; private set;}
-        internal Dictionary<UInt256, Address> Recent {get; private set;}
+        internal CliqueConfig Config { get; private set; }
+        internal LruCache<Keccak, Address> SigCache { get; private set; }
+        internal UInt256 Number { get; private set; }
+        internal Keccak Hash { get; private set; }
+        internal SortedList<Address, UInt256> Signers { get; }
         internal List<Vote> Votes;
-        internal Dictionary<Address, Tally> Tally {get; private set;}
+        internal Dictionary<Address, Tally> Tally { get; private set; }
 
-        internal Snapshot()
-        {
-            Votes = new List<Vote>();
-        }
-
-        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, HashSet<Address> signers, Dictionary<UInt256, Address> recent, Dictionary<Address, Tally> tally)
+        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, SortedList<Address, UInt256> signers, Dictionary<Address, Tally> tally)
         {
             Config = config;
             SigCache = sigCache;
             Number = number;
             Hash = hash;
-            Signers = signers;
-            Recent = recent;
+            Signers = new SortedList<Address, UInt256>(signers, CliqueAddressComparer.Instance);
             Votes = new List<Vote>();
             Tally = tally;
         }
-        
+
+        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, SortedList<Address, UInt256> signers)
+            : this(config, sigCache, number, hash, signers, new Dictionary<Address, Tally>())
+        {
+        }
+
         private Snapshot Clone()
         {
-            Snapshot clone = new Snapshot();
-            clone.Config = Config;
-            clone.SigCache = SigCache;
-            clone.Number = Number;
-            clone.Hash = Hash;
-            clone.Signers = new HashSet<Address>(Signers);
-            clone.Recent = new Dictionary<UInt256, Address>(Recent);
+            Snapshot clone = new Snapshot(Config, SigCache, Number, Hash, new SortedList<Address, UInt256>(Signers, CliqueAddressComparer.Instance), new Dictionary<Address, Tally>(Tally));
             clone.Votes = new List<Vote>(Votes);
-            clone.Tally = new Dictionary<Address, Tally>(Tally);    
             return clone;
         }
 
-        public static Snapshot NewSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, Address[] signers)
-        {
-            HashSet<Address> signerSet = new HashSet<Address>();
-            Dictionary<UInt256, Address> signerDict = new Dictionary<UInt256, Address>();
-            Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
-            Snapshot snapshot = new Snapshot(config, sigCache, number, hash, signerSet, signerDict, tally);
-
-            foreach (Address signer in signers)
-            {
-                snapshot.Signers.Add(signer);
-            }
-            return snapshot;
-        }
-
-        public static Snapshot LoadSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, IDb db, Keccak hash)
+        public static Snapshot LoadSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, IDb db, Keccak hash)
         {
             Keccak key = GetSnapshotKey(hash);
             byte[] blob = db.Get(key);
@@ -92,10 +70,11 @@ namespace Nethermind.Clique
             {
                 return null;
             }
+
             SnapshotDecoder decoder = new SnapshotDecoder();
             Snapshot snapshot = decoder.Decode(blob.AsRlpContext());
             snapshot.Config = config;
-            snapshot.SigCache = sigcache;
+            snapshot.SigCache = sigCache;
             return snapshot;
         }
 
@@ -119,7 +98,7 @@ namespace Nethermind.Clique
             // Sanity check that the headers can be applied
             for (int i = 0; i < headers.Count - 1; i++)
             {
-                if (headers[i].Number != Number + (UInt256)i + 1)
+                if (headers[i].Number != Number + (UInt256) i + 1)
                 {
                     throw new InvalidOperationException("Invalid voting chain");
                 }
@@ -131,34 +110,27 @@ namespace Nethermind.Clique
             {
                 // Remove any votes on checkpoint blocks
                 UInt256 number = header.Number;
-                if ((ulong)number % Config.Epoch == 0)
+                if ((ulong) number % Config.Epoch == 0)
                 {
                     snapshot.Votes.Clear();
                     snapshot.Tally = new Dictionary<Address, Tally>();
                 }
-                // Delete the oldest signer from the recent list to allow it signing again
-                {
-                    ulong limit = (ulong)snapshot.Signers.Count / 2 + 1;
-                    if (number >= limit)
-                    {
-                        snapshot.Recent.Remove(number - limit);
-                    }
-                }
+
                 // Resolve the authorization key and check against signers
                 Address signer = header.Author;
-                if (!snapshot.Signers.Contains(signer))
+                if (!snapshot.Signers.ContainsKey(signer))
                 {
                     throw new InvalidOperationException("Unauthorized signer");
                 }
 
-                foreach (Address recent in snapshot.Recent.Values)
+                
+                if (HasSignedRecently(number, signer))
                 {
-                    if (recent == signer)
-                    {
-                        throw new InvalidOperationException("Recently signed");
-                    }
+                    throw new InvalidOperationException("Recently signed");
                 }
-                snapshot.Recent[number] = signer;
+                
+                snapshot.Signers[signer] = number;
+                
                 // Header authorized, discard any previous votes from the signer
                 for (int i = 0; i < snapshot.Votes.Count; i++)
                 {
@@ -172,6 +144,7 @@ namespace Nethermind.Clique
                         break;
                     }
                 }
+
                 // Tally up the new vote from the signer
                 bool authorize = header.Nonce == CliqueSealEngine.NonceAuthVote;
                 if (snapshot.Cast(header.Beneficiary, authorize))
@@ -179,24 +152,20 @@ namespace Nethermind.Clique
                     Vote vote = new Vote(signer, number, header.Beneficiary, authorize);
                     snapshot.Votes.Add(vote);
                 }
+
                 // If the vote passed, update the list of signers
                 Tally tally = snapshot.Tally[header.Beneficiary];
                 if (tally.Votes > snapshot.Signers.Count / 2)
                 {
                     if (tally.Authorize)
                     {
-                        snapshot.Signers.Add(header.Beneficiary);
+                        snapshot.Signers.Add(header.Beneficiary, 0);
                     }
                     else
                     {
                         snapshot.Signers.Remove(header.Beneficiary);
                     }
-                    // Signer list shrunk, delete any leftover recent caches
-                    ulong limit = (ulong)snapshot.Signers.Count / 2 + 1;
-                    if (number >= limit)
-                    {
-                        snapshot.Recent.Remove(number - limit);
-                    }
+
                     // Discard any previous votes the deauthorized signer cast
                     for (int i = 0; i < snapshot.Votes.Count; i++)
                     {
@@ -210,6 +179,7 @@ namespace Nethermind.Clique
                             i--;
                         }
                     }
+
                     // Discard any previous votes around the just changed account
                     for (int i = 0; i < snapshot.Votes.Count; i++)
                     {
@@ -219,17 +189,19 @@ namespace Nethermind.Clique
                             i--;
                         }
                     }
+
                     snapshot.Tally.Remove(header.Beneficiary);
                 }
             }
-            snapshot.Number += (ulong)headers.Count;
+
+            snapshot.Number += (ulong) headers.Count;
             snapshot.Hash = BlockHeader.CalculateHash(headers[headers.Count - 1]);
             return snapshot;
         }
 
         public bool ValidVote(Address address, bool authorize)
         {
-            bool signer = Signers.Contains(address);
+            bool signer = Signers.ContainsKey(address);
             return (signer && !authorize) || (!signer && authorize);
         }
 
@@ -239,11 +211,13 @@ namespace Nethermind.Clique
             {
                 Tally[address] = new Tally(authorize);
             }
+
             // Ensure the vote is meaningful
             if (!ValidVote(address, authorize))
             {
                 return false;
             }
+
             // Cast the vote into tally
             Tally[address].Votes++;
             return true;
@@ -256,12 +230,14 @@ namespace Nethermind.Clique
             {
                 return true;
             }
+
             Tally tally = Tally[address];
             // Ensure we only revert counted votes
             if (tally.Authorize != authorize)
             {
                 return false;
             }
+
             // Otherwise revert the vote
             if (tally.Votes > 1)
             {
@@ -271,40 +247,26 @@ namespace Nethermind.Clique
             {
                 Tally.Remove(address);
             }
+
             return true;
         }
 
-        public bool Inturn(UInt256 number, Address signer)
+        public ulong SignerLimit => (ulong) Signers.Count / 2 + 1;
+        
+        public bool HasSignedRecently(UInt256 number, Address signer)
         {
-            Address[] signers = GetSigners();
-            int offset = 0;
-            while (offset < Signers.Count && signers[offset] != signer)
+            UInt256 signedAt = Signers[signer];
+            if (signedAt.IsZero)
             {
-                offset++;
+                return false;
             }
-            return ((long)number % signers.Length == offset);
+            
+            return number - signedAt < SignerLimit;
         }
-
-        public Address[] GetSigners()
+        
+        public bool InTurn(UInt256 number, Address signer)
         {
-            Address[] sigs = new Address[Signers.Count];
-            Signers.CopyTo(sigs);
-            Array.Sort(sigs, (x, y) => {
-                int n = x.Bytes.Length;
-                for (int j = 0; j < n; j++)
-                {
-                    if (x.Bytes[j] < y.Bytes[j])
-                    {
-                        return -1;
-                    }
-                    if (x.Bytes[j] > y.Bytes[j])
-                    {
-                        return 1;
-                    }
-                }
-                return 0;
-            });
-            return sigs;
+            return (long) number % Signers.Count == Signers.IndexOfKey(signer);
         }
 
         private static byte[] _snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
@@ -315,7 +277,7 @@ namespace Nethermind.Clique
             byte[] keyBytes = new byte[hashBytes.Length];
             for (int i = 0; i < _snapshotBytes.Length; i++)
             {
-                keyBytes[i] = (byte)(hashBytes[i] ^ _snapshotBytes[i]);
+                keyBytes[i] = (byte) (hashBytes[i] ^ _snapshotBytes[i]);
             }
 
             return new Keccak(keyBytes);

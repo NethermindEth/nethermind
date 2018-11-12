@@ -76,18 +76,17 @@ namespace Nethermind.Clique.Test
         public void Creates_new_snapshot()
         {
             CliqueConfig config = GetRinkebyConfig();
-            LruCache<Keccak, Address> sigcache = new LruCache<Keccak, Address>(10);
+            LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
-            HashSet<Address> signers = new HashSet<Address>()
+            SortedList<Address, UInt256> signers = new SortedList<Address, UInt256>(CliqueAddressComparer.Instance)
             {
-                _signer1,
-                _signer2,
-                _signer3
+                {_signer1, 0},
+                {_signer2, 0},
+                {_signer3, 0},
             };
-            Dictionary<UInt256, Address> recents = new Dictionary<UInt256, Address>();
             Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
             Snapshot snapshot = new Snapshot(
-                config, sigcache, genesis.Number, genesis.Hash, signers, recents, tally);
+                config, sigCache, genesis.Number, genesis.Hash, signers, tally);
             snapshot.Store(_snapshotDb);
         }
 
@@ -95,19 +94,19 @@ namespace Nethermind.Clique.Test
         public void Loads_snapshot()
         {
             CliqueConfig config = GetRinkebyConfig();
-            LruCache<Keccak, Address> sigcache = new LruCache<Keccak, Address>(10);
+            LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
             Snapshot snapshot = Snapshot.LoadSnapshot(
-                config, sigcache, _snapshotDb, genesis.Hash);
+                config, sigCache, _snapshotDb, genesis.Hash);
             Assert.NotNull(snapshot);
             Assert.AreEqual(config, snapshot.Config);
-            Assert.AreEqual(sigcache, snapshot.SigCache);
+            Assert.AreEqual(sigCache, snapshot.SigCache);
             Assert.AreEqual(genesis.Hash, snapshot.Hash);
             Assert.AreEqual(genesis.Number, snapshot.Number);
             // Check signers
-            Assert.IsTrue(snapshot.Signers.Contains(_signer1));
-            Assert.IsTrue(snapshot.Signers.Contains(_signer2));
-            Assert.IsTrue(snapshot.Signers.Contains(_signer3));
+            Assert.IsTrue(snapshot.Signers.ContainsKey(_signer1));
+            Assert.IsTrue(snapshot.Signers.ContainsKey(_signer2));
+            Assert.IsTrue(snapshot.Signers.ContainsKey(_signer3));
         }
 
         [Test]
@@ -118,17 +117,17 @@ namespace Nethermind.Clique.Test
             Block genesis = GetRinkebyGenesis();
             Snapshot snapshot = Snapshot.LoadSnapshot(config, sigCache, _snapshotDb, genesis.Hash);
             // Block 1
-            Assert.IsTrue(snapshot.Inturn(1, _signer1));
-            Assert.IsFalse(snapshot.Inturn(1, _signer2));
-            Assert.IsFalse(snapshot.Inturn(1, _signer3));
+            Assert.IsTrue(snapshot.InTurn(1, _signer1));
+            Assert.IsFalse(snapshot.InTurn(1, _signer2));
+            Assert.IsFalse(snapshot.InTurn(1, _signer3));
             // Block 2
-            Assert.IsFalse(snapshot.Inturn(2, _signer1));
-            Assert.IsTrue(snapshot.Inturn(2, _signer2));
-            Assert.IsFalse(snapshot.Inturn(2, _signer3));
+            Assert.IsFalse(snapshot.InTurn(2, _signer1));
+            Assert.IsTrue(snapshot.InTurn(2, _signer2));
+            Assert.IsFalse(snapshot.InTurn(2, _signer3));
             // Block 3
-            Assert.IsFalse(snapshot.Inturn(3, _signer1));
-            Assert.IsFalse(snapshot.Inturn(3, _signer2));
-            Assert.IsTrue(snapshot.Inturn(3, _signer3));
+            Assert.IsFalse(snapshot.InTurn(3, _signer1));
+            Assert.IsFalse(snapshot.InTurn(3, _signer2));
+            Assert.IsTrue(snapshot.InTurn(3, _signer3));
         }
 
         [Test]
@@ -148,7 +147,6 @@ namespace Nethermind.Clique.Test
             Assert.AreEqual(expected.Number, actual.Number);
             Assert.AreEqual(expected.Hash, actual.Hash);
             Assert.AreEqual(expected.Signers, actual.Signers);
-            Assert.AreEqual(expected.Recent, actual.Recent);
             Assert.AreEqual(expected.Votes.Count, actual.Votes.Count);
             for (int i = 0; i < expected.Votes.Count; i++)
             {
@@ -196,15 +194,10 @@ namespace Nethermind.Clique.Test
         private Snapshot GenerateSnapshot(Keccak hash, UInt256 number, Address candidate)
         {
             CliqueConfig config = GetRinkebyConfig();
-            LruCache<Keccak, Address> sigCache = null;
-            HashSet<Address> signers = new HashSet<Address>();
-            signers.Add(_signer1);
-            signers.Add(_signer2);
-            signers.Add(_signer3);
-            Dictionary<UInt256, Address> recent = new Dictionary<UInt256, Address>();
-            recent[number - 1] = _signer2;
-            recent[number - 2] = _signer1;
-            recent[number - 3] = _signer3;
+            SortedList<Address, UInt256> signers = new SortedList<Address, UInt256>(CliqueAddressComparer.Instance);
+            signers.Add(_signer1, number - 2);
+            signers.Add(_signer2, number - 1);
+            signers.Add(_signer3, number - 3);
             List<Vote> votes = new List<Vote>();
             votes.Add(new Vote(_signer1, number - 2, candidate, true));
             votes.Add(new Vote(_signer3, number - 3, candidate, true));
@@ -214,7 +207,7 @@ namespace Nethermind.Clique.Test
             tally[candidate].Votes = 2;
             tally[_signer2] = new Tally(false);
             tally[_signer2].Votes = 1;
-            Snapshot snapshot = new Snapshot(config, sigCache, number, hash, signers, recent, tally);
+            Snapshot snapshot = new Snapshot(config, null, number, hash, signers, tally);
             snapshot.Votes = votes;
             return snapshot;
         }

@@ -40,14 +40,12 @@ namespace Nethermind.Clique
             // Hash
             Keccak hash = context.DecodeKeccak();
             // Signers
-            HashSet<Address> signers = DecodeSigners(context);
-            // Recent
-            Dictionary<UInt256, Address> recent = DecodeRecent(context);
+            SortedList<Address, UInt256> signers = DecodeSigners(context);
             // Votes
             List<Vote> votes = DecodeVotes(context);
             // Tally
             Dictionary<Address, Tally> tally = DecodeTally(context);
-            Snapshot snapshot = new Snapshot(config, sigCache, number, hash, signers, recent, tally);
+            Snapshot snapshot = new Snapshot(config, sigCache, number, hash, signers, tally);
             snapshot.Votes = votes;
 
             return snapshot;
@@ -59,37 +57,24 @@ namespace Nethermind.Clique
                 Rlp.Encode(item.Number),
                 Rlp.Encode(item.Hash),
                 Rlp.Encode(EncodeSigners(item.Signers)),
-                Rlp.Encode(EncodeRecent(item.Recent)),
                 Rlp.Encode(EncodeVotes(item.Votes)),
                 Rlp.Encode(EncodeTally(item.Tally))
             );
         }
 
-        private HashSet<Address> DecodeSigners(Rlp.DecoderContext context)
+        private SortedList<Address, UInt256> DecodeSigners(Rlp.DecoderContext context)
         {
             context.ReadSequenceLength();
-            HashSet<Address> signers = new HashSet<Address>();
+            SortedList<Address, UInt256> signers = new SortedList<Address, UInt256>(CliqueAddressComparer.Instance);
             int length = context.DecodeInt();
             for (int i = 0; i < length; i++)
             {
                 Address signer = context.DecodeAddress();
-                signers.Add(signer);
+                UInt256 signedAt = context.DecodeUInt256();
+                signers.Add(signer, signedAt);
             }
+            
             return signers;
-        }
-
-        private Dictionary<UInt256, Address> DecodeRecent(Rlp.DecoderContext context)
-        {
-            context.ReadSequenceLength();
-            Dictionary<UInt256, Address> recent = new Dictionary<UInt256, Address>();
-            int length = context.DecodeInt();
-            for (int i = 0; i < length; i++)
-            {
-                UInt256 number = context.DecodeUInt256();
-                Address signer = context.DecodeAddress();
-                recent[number] = signer;
-            }
-            return recent;
         }
 
         private List<Vote> DecodeVotes(Rlp.DecoderContext context)
@@ -126,34 +111,17 @@ namespace Nethermind.Clique
             return tally;
         }
 
-        private Rlp[] EncodeSigners(HashSet<Address> signers)
+        private Rlp[] EncodeSigners(SortedList<Address, UInt256> signers)
         {
             int signerCount = signers.Count;
-            Rlp[] rlp = new Rlp[signerCount + 1];
+            Rlp[] rlp = new Rlp[signerCount * 2 + 1];
             rlp[0] = Rlp.Encode(signerCount);
             int i = 0;
-            foreach (Address signer in signers)
+            foreach ((Address address, UInt256 signedAt) in signers)
             {
-                rlp[i + 1] = Rlp.Encode(signer);
-                i++;
-            }
-            return rlp;
-        }
-
-        private Rlp[] EncodeRecent(Dictionary<UInt256, Address> recent)
-        {
-            int recentCount = recent.Count;
-            Rlp[] rlp = new Rlp[2 * recentCount + 1];
-            rlp[0] = Rlp.Encode(recentCount);
-            int i = 0;
-            foreach (var signing in recent)
-            {
-                rlp[2 * i + 1] = Rlp.Encode(signing.Key);
-                rlp[2 * i + 2] = Rlp.Encode(signing.Value);
-                i++;
-            }
-            for (int j = 0; j < rlp.Count(); j++)
-            {
+                rlp[i + 1] = Rlp.Encode(address);
+                rlp[i + 2] = Rlp.Encode(signedAt);
+                i += 2;
             }
             return rlp;
         }

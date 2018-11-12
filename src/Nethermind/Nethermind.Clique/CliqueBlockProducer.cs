@@ -104,7 +104,7 @@ namespace Nethermind.Clique
 
             if ((ulong)number % _config.Epoch == 0)
             {
-                foreach (Address signer in snapshot.Signers)
+                foreach (Address signer in snapshot.Signers.Keys)
                 {
                     foreach (byte addressByte in signer.Bytes)
                     {
@@ -127,7 +127,7 @@ namespace Nethermind.Clique
                 throw new InvalidOperationException("Unknown ancestor");
             }
 
-            header.Timestamp = parent.Timestamp + _config.Period;
+            header.Timestamp = parent.Timestamp + _config.BlockPeriod;
             long currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             if (header.Timestamp < currentTimestamp)
             {
@@ -152,12 +152,12 @@ namespace Nethermind.Clique
 
         private UInt256 CalculateDifficulty(Snapshot snapshot, Address signer)
         {
-            if (snapshot.Inturn(snapshot.Number + 1, signer))
+            if (snapshot.InTurn(snapshot.Number + 1, signer))
             {
-                return new UInt256(CliqueSealEngine.DiffInTurn);
+                return new UInt256(CliqueSealEngine.DifficultyInTurn);
             }
 
-            return new UInt256(CliqueSealEngine.DiffNoTurn);
+            return new UInt256(CliqueSealEngine.DifficultyNoTurn);
         }
     }
 }
