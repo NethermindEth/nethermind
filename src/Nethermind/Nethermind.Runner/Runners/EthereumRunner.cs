@@ -323,7 +323,7 @@ namespace Nethermind.Runner.Runners
                 _logManager);
 
             var cliqueConfig = new CliqueConfig(15, 30000);
-            var clique = new CliqueSealEngine(cliqueConfig, ethereumSigner, _nodeKey, _dbProvider.BlocksDb, _blockTree, _logManager);
+            var clique = new CliqueSealEngine(cliqueConfig, _ethereumSigner, _nodeKey, _dbProvider.BlocksDb, _blockTree, _logManager);
 
             // TODO: read seal engine from ChainSpec
             var sealEngine =
