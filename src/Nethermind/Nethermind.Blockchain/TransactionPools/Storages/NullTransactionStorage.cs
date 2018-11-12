@@ -24,6 +24,8 @@ namespace Nethermind.Blockchain.TransactionPools.Storages
 {
     public class NullTransactionStorage : ITransactionStorage
     {
+        public static NullTransactionStorage Instance => new NullTransactionStorage();
+        
         public Transaction Get(Keccak hash) => null;
 
         public Transaction[] GetAll() => new Transaction[0];

@@ -155,7 +155,7 @@ namespace Nethermind.PerfTest
             StateTree stateTree = new StateTree(stateDb);
             IStateProvider stateProvider = new StateProvider(stateTree, new StateDb(), logManager);
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance,
-                new TransactionPool(new NullTransactionStorage(),
+                new TransactionPool(NullTransactionStorage.Instance,
                     new PendingTransactionThresholdValidator(), new Timestamp(),
                     NullEthereumSigner.Instance, logManager), logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
@@ -292,6 +292,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullStateDbPath = Path.Combine(DbBasePath, DbOnTheRocks.StateDbPath);
         private static readonly string FullCodeDbPath = Path.Combine(DbBasePath, DbOnTheRocks.CodeDbPath);
         private static readonly string FullReceiptsDbPath = Path.Combine(DbBasePath, DbOnTheRocks.ReceiptsDbPath);
+        private static readonly string FullPendingTxsDbPath = Path.Combine(DbBasePath, DbOnTheRocks.PendingTxsDbPath);
 
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlocksDbPath);
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlockInfosDbPath);
@@ -309,6 +310,7 @@ namespace Nethermind.PerfTest
             DeleteDb(FullStateDbPath);
             DeleteDb(FullCodeDbPath);
             DeleteDb(FullReceiptsDbPath);
+            DeleteDb(FullPendingTxsDbPath);
             if (_logger.IsInfo) _logger.Info("State DBs deleted");
 
             /* spec */
@@ -325,7 +327,7 @@ namespace Nethermind.PerfTest
             var receiptsDb = dbProvider.ReceiptsDb;
 
             /* store & validation */
-            var transactionPool = new TransactionPool(new NullTransactionStorage(),
+            var transactionPool = new TransactionPool(NullTransactionStorage.Instance,
                 new PendingTransactionThresholdValidator(), new Timestamp(),
                 NullEthereumSigner.Instance, _logManager);
             var receiptStorage = new InMemoryReceiptStorage();

@@ -25,6 +25,7 @@ namespace Nethermind.Store
         public IDb ReceiptsDb { get; } = new MemDb();
         public IDb BlocksDb { get; } = new MemDb();
         public IDb BlockInfosDb { get; } = new MemDb();
+        public IDb PendingTxsDb { get; } = new MemDb();
 
         public void Dispose()
         {
@@ -33,6 +34,7 @@ namespace Nethermind.Store
             ReceiptsDb?.Dispose();
             BlocksDb?.Dispose();
             BlockInfosDb?.Dispose();
+            PendingTxsDb?.Dispose();
         }
     }
 }

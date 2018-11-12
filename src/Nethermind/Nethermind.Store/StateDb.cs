@@ -64,6 +64,10 @@ namespace Nethermind.Store
             _db.CommitBatch();
         }
 
+        public void Remove(byte[] key)
+        {
+        }
+
         public void Restore(int snapshot)
         {
             if (snapshot > _currentPosition) throw new InvalidOperationException($"Trying to restore snapshot beyond current positions at {nameof(StateDb)}");

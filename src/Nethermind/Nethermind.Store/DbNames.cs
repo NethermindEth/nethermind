@@ -26,5 +26,6 @@ namespace Nethermind.Store
         public const string Blocks = "blocks";
         public const string Receipts = "receipts";
         public const string BlockInfos = "blockInfos";
+        public const string PendingTxs = "pendingtxs";
     }
 }

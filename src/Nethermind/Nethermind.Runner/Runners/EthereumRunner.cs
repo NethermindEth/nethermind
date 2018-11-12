@@ -157,13 +157,6 @@ namespace Nethermind.Runner.Runners
 
             _dbBasePath = _initConfig.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
             _perfService = new PerfService(_logManager) {LogOnDebug = _initConfig.LogPerfStatsOnDebug};
-            _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
-            _transactionPool = new TransactionPool(new NullTransactionStorage(),
-                new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
-                    _initConfig.RemovePendingTransactionInterval), new Timestamp(),
-                _ethereumSigner, _logManager, _initConfig.RemovePendingTransactionInterval,
-                _initConfig.PeerNotificationThreshold);
-            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
         }
 
         public async Task StopAsync()
@@ -304,6 +297,14 @@ namespace Nethermind.Runner.Runners
             }
 
             _dbProvider = new RocksDbProvider(_dbBasePath, dbConfig);
+            
+            _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
+            _transactionPool = new TransactionPool(new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
+                new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
+                    _initConfig.RemovePendingTransactionInterval), new Timestamp(),
+                _ethereumSigner, _logManager, _initConfig.RemovePendingTransactionInterval,
+                _initConfig.PeerNotificationThreshold);
+            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
 
 //            IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig);
 //            _dbProvider = new RpcDbProvider(_jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.NethVm1, _jsonSerializer, _logManager), _logManager, debugRecorder);
@@ -449,7 +450,7 @@ namespace Nethermind.Runner.Runners
                     wallet,
                     rpcState.TransactionProcessor);
 
-                TransactionPool debugTransactionPool = new TransactionPool(new NullTransactionStorage(),
+                TransactionPool debugTransactionPool = new TransactionPool(new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
                     new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
                         _initConfig.RemovePendingTransactionInterval), new Timestamp(),
                     _ethereumSigner, _logManager, _initConfig.RemovePendingTransactionInterval,

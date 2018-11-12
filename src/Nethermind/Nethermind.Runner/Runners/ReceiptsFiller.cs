@@ -143,7 +143,7 @@ namespace Nethermind.Runner.Runners
             IDbProvider writableDbProvider = new RocksDbProvider(dbBasePath, dbConfig);
             _dbProvider = new ReadOnlyDbProvider(writableDbProvider, true);
 
-            var transactionPool = new TransactionPool(new NullTransactionStorage(),
+            var transactionPool = new TransactionPool(new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
                 new PendingTransactionThresholdValidator(), new Timestamp(),
                 ethereumSigner, _logManager);
 

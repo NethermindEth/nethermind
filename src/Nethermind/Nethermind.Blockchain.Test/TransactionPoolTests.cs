@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Test
             _logManager = NullLogManager.Instance;
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
-            _noTransactionStorage = new NullTransactionStorage();
+            _noTransactionStorage = NullTransactionStorage.Instance;
             _inMemoryTransactionStorage = new InMemoryTransactionStorage();
             _persistentTransactionStorage = new PersistentTransactionStorage(new MemDb(), _specProvider);
         }

@@ -33,6 +33,7 @@ namespace Nethermind.Db
         public const string ReceiptsDbPath = "receipts";
         public const string TxsDbPath = "txs";
         public const string BlockInfosDbPath = "blockInfos";
+        public const string PendingTxsDbPath = "pendingtxs";
 
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
 
@@ -71,6 +72,10 @@ namespace Nethermind.Db
             else if (dbPath.EndsWith(ReceiptsDbPath))
             {
                 _dbInstance = DbInstance.Receipts;
+            }
+            else if (dbPath.EndsWith(PendingTxsDbPath))
+            {
+                _dbInstance = DbInstance.PendingTxs;
             }
             else
             {
@@ -140,6 +145,9 @@ namespace Nethermind.Db
                     case DbInstance.Receipts:
                         Metrics.ReceiptsDbReads++;
                         break;
+                    case DbInstance.PendingTxs:
+                        Metrics.PendingTxsDbReads++;
+                        break;
                     case DbInstance.Other:
                         Metrics.OtherDbReads++;
                         break;
@@ -173,6 +181,9 @@ namespace Nethermind.Db
                         break;
                     case DbInstance.Receipts:
                         Metrics.ReceiptsDbWrites++;
+                        break;
+                    case DbInstance.PendingTxs:
+                        Metrics.PendingTxsDbWrites++;
                         break;
                     case DbInstance.Other:
                         Metrics.OtherDbWrites++;
@@ -231,6 +242,7 @@ namespace Nethermind.Db
             Code,
             Receipts,
             Tx,
+            PendingTxs,
             Other
         }
 

@@ -66,8 +66,6 @@ namespace Nethermind.Blockchain.TransactionPools.Storages
         }
 
         public void Delete(Keccak hash)
-        {
-            throw new System.NotImplementedException();
-        }
+            => _database.Remove(hash.Bytes);
     }
 }

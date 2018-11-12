@@ -238,7 +238,7 @@ namespace Ethereum.Test.Base
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             IEthereumSigner signer = new EthereumSigner(specProvider, _logManager);
-            ITransactionPool transactionPool = new TransactionPool(new NullTransactionStorage(),
+            ITransactionPool transactionPool = new TransactionPool(NullTransactionStorage.Instance,
                 new PendingTransactionThresholdValidator(), new Timestamp(), signer, _logManager);
             IReceiptStorage receiptStorage = new NullReceiptStorage();
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
