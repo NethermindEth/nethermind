@@ -22,6 +22,7 @@ namespace Nethermind.Core
 {
     public static class ClientVersion
     {
-        public static readonly string Description = $"Nethermind/v0.9.0-eth63test/{RuntimeInformation.OSArchitecture}-{RuntimeInformation.OSDescription.Trim().Replace(" ", "_")}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+//        public static readonly string Description = $"Nethermind/v0.9.0-eth63test/{RuntimeInformation.OSArchitecture}-{RuntimeInformation.OSDescription.Trim().Replace(" ", "_")}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+        public static readonly string Description = $"Nethermind/v0.9.1-RC0/{RuntimeInformation.OSArchitecture}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
     }
 }
