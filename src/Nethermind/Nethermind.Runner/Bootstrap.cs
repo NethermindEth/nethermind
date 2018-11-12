@@ -41,6 +41,7 @@ namespace Nethermind.Runner
         public ILogManager LogManager { private get; set; }
         public IBlockchainBridge BlockchainBridge { private get; set; }
         public IDebugBridge DebugBridge { private get; set; }
+        public INetBridge NetBridge { private get; set; }
 
         public void RegisterJsonRpcServices(IServiceCollection services)
         {
@@ -62,6 +63,7 @@ namespace Nethermind.Runner
             services.AddSingleton<ILogManager>(LogManager);
             services.AddSingleton<IBlockchainBridge>(BlockchainBridge);
             services.AddSingleton<IDebugBridge>(DebugBridge);
+            services.AddSingleton<INetBridge>(NetBridge);
             services.AddSingleton<IJsonSerializer, JsonSerializer>();
             services.AddSingleton<IJsonRpcModelMapper, JsonRpcModelMapper>();
             services.AddSingleton<IModuleProvider, ModuleProvider>();

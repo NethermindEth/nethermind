@@ -37,6 +37,7 @@ namespace Nethermind.Blockchain
         void AddNewTransaction(Transaction transaction, NodeId receivedFrom);
         Task AddPeer(ISynchronizationPeer synchronizationPeer);
         void RemovePeer(ISynchronizationPeer synchronizationPeer);
+        int GetPeerCount();
         void Start();
         Task StopAsync();
         

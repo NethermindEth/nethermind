@@ -291,6 +291,11 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public int GetPeerCount()
+        {
+            return _peers.Count;
+        }
+
         public void Start()
         {
             _isInitialized = true;

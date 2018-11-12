@@ -16,31 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.Module;
-using NSubstitute;
-using NUnit.Framework;
+using Nethermind.Blockchain;
 
-namespace Nethermind.JsonRpc.Test
+namespace Nethermind.JsonRpc.Module
 {
-    [TestFixture]
-    public class NetModuleTests
+    public class NetBridge : INetBridge
     {
-        private INetModule _netModule;
+        private readonly ISynchronizationManager _manager;
 
-        [SetUp]
-        public void Initialize()
+        public NetBridge(ISynchronizationManager manager)
         {
-            _netModule = new NetModule(new JsonConfigProvider(), NullLogManager.Instance, new JsonSerializer(NullLogManager.Instance), Substitute.For<INetBridge>());
+            _manager = manager;
         }
 
-        [Test]
-        public void NetVersionSuccessTest()
-        {
-            var result = _netModule.net_version();
-            Assert.AreEqual(result.Data, "0");
-        }
+        public int NetworkId => _manager.ChainId;
+        public int PeerCount => _manager.GetPeerCount();
     }
 }

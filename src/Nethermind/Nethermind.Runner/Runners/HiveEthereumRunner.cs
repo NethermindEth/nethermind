@@ -226,7 +226,8 @@ namespace Nethermind.Runner.Runners
             return directory;
         }
 
-        public IDebugBridge DebugBridge { get; }
-        public IBlockchainBridge BlockchainBridge { get; }
+        public IBlockchainBridge BlockchainBridge => null;
+        public INetBridge NetBridge => null;
+        public IDebugBridge DebugBridge => null;
     }
 }

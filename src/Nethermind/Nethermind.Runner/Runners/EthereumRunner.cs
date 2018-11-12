@@ -106,6 +106,7 @@ namespace Nethermind.Runner.Runners
 
         public IBlockchainBridge BlockchainBridge { get; private set; }
         public IDebugBridge DebugBridge { get; private set; }
+        public INetBridge NetBridge { get; private set; }
 
         public async Task Start()
         {
@@ -429,6 +430,7 @@ namespace Nethermind.Runner.Runners
                 AlternativeChain debugChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, rpcDbProvider, recoveryStep, _logManager, debugTransactionStore);
                 IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 DebugBridge = new DebugBridge(debugDbProvider, txTracer, debugChain.Processor);
+                NetBridge = new NetBridge(_syncManager);
             }
 
             if (_initConfig.IsMining)

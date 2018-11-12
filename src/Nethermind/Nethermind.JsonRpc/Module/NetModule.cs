@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
@@ -26,18 +25,19 @@ namespace Nethermind.JsonRpc.Module
 {
     public class NetModule : ModuleBase, INetModule
     {
-        private readonly IBlockchainBridge _blockchainBridge;
+        private readonly INetBridge _netBridge;
 
-        public NetModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer, IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager, jsonSerializer)
+        public NetModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer, INetBridge netBridge) : base(configurationProvider, logManager, jsonSerializer)
         {
-            _blockchainBridge = blockchainBridge;
+            _netBridge = netBridge;
         }
 
         public ResultWrapper<string> net_version()
         {
-            return ResultWrapper<string>.Success(_blockchainBridge.GetNetworkId().ToString());
+            return ResultWrapper<string>.Success(_netBridge.NetworkId.ToString());
         }
 
+        [Todo(Improve.MissingFunctionality, "Implement net_listening")]
         public ResultWrapper<bool> net_listening()
         {
             return ResultWrapper<bool>.Success(false);
@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> net_peerCount()
         {
-            throw new System.NotImplementedException();
+            return ResultWrapper<Quantity>.Success(new Quantity(_netBridge.PeerCount));
         }
     }
 }

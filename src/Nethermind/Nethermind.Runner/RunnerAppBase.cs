@@ -155,6 +155,7 @@ namespace Nethermind.Runner
                 Bootstrap.Instance.LogManager = logManager;
                 Bootstrap.Instance.BlockchainBridge = _ethereumRunner.BlockchainBridge;
                 Bootstrap.Instance.DebugBridge = _ethereumRunner.DebugBridge;
+                Bootstrap.Instance.NetBridge = _ethereumRunner.NetBridge;
 
                 _jsonRpcRunner = new JsonRpcRunner(configProvider, logManager);
                 await _jsonRpcRunner.Start().ContinueWith(x =>

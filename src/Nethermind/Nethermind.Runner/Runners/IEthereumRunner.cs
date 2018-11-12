@@ -24,5 +24,6 @@ namespace Nethermind.Runner.Runners
     {
         IDebugBridge DebugBridge { get; }
         IBlockchainBridge BlockchainBridge { get; }
+        INetBridge NetBridge { get; }
     }
 }

@@ -61,6 +61,7 @@ namespace Nethermind.Runner.Runners
         }
 
         public IBlockchainBridge BlockchainBridge => null;
+        public INetBridge NetBridge => null;
         public IDebugBridge DebugBridge => null;
 
         public async Task Start()
