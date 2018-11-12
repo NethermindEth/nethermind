@@ -641,6 +641,7 @@ namespace Nethermind.Blockchain
 
             const int maxLookup = 2 * MaxBatchSize;
             int ancestorLookupLevel = 0;
+            int emptyBlockListCounter = 0;
             bool isCommonAncestorKnown = false;
 
             peerInfo.NumberReceived = bestNumber;
@@ -731,7 +732,7 @@ namespace Nethermind.Blockchain
                     throw bodiesTask.Exception;
                 }
 
-                if (blocks.Length == 0)
+                if (blocks.Length == 0 && ++emptyBlockListCounter == 10)
                 {
                     if (_batchSize == MinBatchSize)
                     {
@@ -744,6 +745,7 @@ namespace Nethermind.Blockchain
                     continue;
                 }
 
+                emptyBlockListCounter = 0;
                 _sinceLastTimeout++;
                 if (_sinceLastTimeout > 8)
                 {
