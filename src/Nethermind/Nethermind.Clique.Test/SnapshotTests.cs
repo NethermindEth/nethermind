@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -33,7 +32,7 @@ namespace Nethermind.Clique.Test
 {
     public class SnapshotTests
     {
-        private Clique _clique;
+        private CliqueSealEngine _clique;
 
         private IDb _snapshotDb = new MemDb();
 
@@ -70,7 +69,7 @@ namespace Nethermind.Clique.Test
             // Init snapshot db
             IDb db = new MemDb();
             CliqueConfig config = GetRinkebyConfig();
-            _clique = new Nethermind.Clique.Clique(config, NullEthereumSigner.Instance, key, db, blockTree, NullLogManager.Instance);
+            _clique = new CliqueSealEngine(config, NullEthereumSigner.Instance, key, db, blockTree, NullLogManager.Instance);
         }
 
         [Test]
@@ -184,11 +183,7 @@ namespace Nethermind.Clique.Test
 
         private CliqueConfig GetRinkebyConfig()
         {
-            return new CliqueConfig()
-            {
-                Period = 15,
-                Epoch = 30000
-            };
+            return new CliqueConfig(15, 30000);
         }
 
         private void MineBlock(BlockTree tree, Block block)

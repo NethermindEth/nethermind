@@ -50,7 +50,7 @@ namespace Nethermind.Clique.Test
             new PrivateKey("9BD8E918E3176E86D406BFCE261D4CD2589167E3DBD0236B08B0B285783D7553"),
             new PrivateKey("7DC56B10FD1EC64A8BF7547D3BAA254ACB96E8F2AD5A006DD2EBF9C40409A2CE")
         };
-        private Clique _clique;
+        private CliqueSealEngine _clique;
         private Block _lastBlock;
         private PrivateKey _currentSigner;
 
@@ -73,19 +73,15 @@ namespace Nethermind.Clique.Test
             MineBlock(blockTree, block3);
             MineBlock(blockTree, block4);           
             MineBlock(blockTree, block5);
-            ISigner signer = new EthereumSigner(RinkebySpecProvider.Instance, NullLogManager.Instance);
+            IEthereumSigner signer = new EthereumSigner(RinkebySpecProvider.Instance, NullLogManager.Instance);
             // Init snapshot db
             IDb db = new MemDb();
-            CliqueConfig config = new CliqueConfig()
-            {
-                Period = 15,
-                Epoch = 30000
-            };
+            CliqueConfig config = new CliqueConfig(15, 30000);
             // Select in-turn signer
             int currentBlock = 6;
             int currentSignerIndex = (currentBlock % _signers.Count);
             _currentSigner = _signers[currentSignerIndex];
-            _clique = new Clique(config, signer, _currentSigner, db, blockTree, NullLogManager.Instance);
+            _clique = new CliqueSealEngine(config, signer, _currentSigner, db, blockTree, NullLogManager.Instance);
         }
 
         [Test]
@@ -93,7 +89,7 @@ namespace Nethermind.Clique.Test
         {
             Block block6 = CreateBlock(2, 6, _lastBlock);
             Block signed = _clique.Mine(block6);
-            bool validHeader = _clique.ValidateHeader(signed.Header);
+            bool validHeader = _clique.ValidateParams(null, signed.Header);
             bool validSeal = _clique.ValidateSeal(signed.Header);
             Assert.True(validHeader);
             Assert.True(validSeal);
@@ -153,6 +149,38 @@ namespace Nethermind.Clique.Test
             block.Hash = BlockHeader.CalculateHash(block);
             block.Header.Hash = BlockHeader.CalculateHash(block.Header);
             return block;
+        }
+
+        [Test]
+        public void BlockSealer()
+        {
+            BlockHeader header = BuildCliqueBlock();
+
+            Address expectedBlockSealer = new Address("0xb279182d99e65703f0076e4812653aab85fca0f0");
+            Address blockSealer = _clique.GetBlockSealer(header);
+            Assert.AreEqual(expectedBlockSealer, blockSealer);
+        }
+
+        private static BlockHeader BuildCliqueBlock()
+        {
+            BlockHeader header = Build.A.BlockHeader
+                .WithParentHash(new Keccak("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
+                .WithOmmersHash(Keccak.OfAnEmptySequenceRlp)
+                .WithBeneficiary(Address.Zero)
+                .WithBloom(Bloom.Empty)
+                .WithStateRoot(new Keccak("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
+                .WithTransactionsRoot(PatriciaTree.EmptyTreeHash)
+                .WithReceiptsRoot(PatriciaTree.EmptyTreeHash)
+                .WithDifficulty(2)
+                .WithNumber(269)
+                .WithGasLimit(4712388)
+                .WithGasUsed(0)
+                .WithTimestamp(1492014479)
+                .WithExtraData(Bytes.FromHexString("0xd783010600846765746887676f312e372e33856c696e757800000000000000004e2b663c52c4c1ef0db29649f1f4addd93257f33d6fe0ae6bd365e63ac9aac4169e2b761aa245fabbf0302055f01b8b5391fa0a134bab19710fd225ffac3afdf01"))
+                .WithMixHash(Keccak.Zero)
+                .WithNonce(0UL)
+                .TestObject;
+            return header;
         }
     }
 }

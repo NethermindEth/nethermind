@@ -74,9 +74,9 @@ namespace Nethermind.Runner.Runners
         private readonly INetworkHelper _networkHelper;
 
         private PrivateKey _nodeKey;
-        private ICryptoRandom _cryptoRandom = new CryptoRandom();
-        private IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
-        private ISigner _signer = new Signer();
+        private readonly ICryptoRandom _cryptoRandom = new CryptoRandom();
+        private readonly IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
+        private readonly ISigner _signer = new Signer();
 
         private IBlockchainProcessor _blockchainProcessor;
         private IDiscoveryApp _discoveryApp;
@@ -299,12 +299,15 @@ namespace Nethermind.Runner.Runners
                 transactionStore,
                 _logManager);
 
+            var cliqueConfig = new CliqueConfig(15, 30000);
+            var clique = new CliqueSealEngine(cliqueConfig, ethereumSigner, _nodeKey, _dbProvider.BlocksDb, _blockTree, _logManager);
+
             // TODO: read seal engine from ChainSpec
             var sealEngine =
                 (_specProvider is MainNetSpecProvider) ? ConfigureSealEngine() :
                 (_specProvider is RopstenSpecProvider) ? ConfigureSealEngine() :
-                (_specProvider is RinkebySpecProvider) ? ConfigureCliqueSealEngine() :
-                (_specProvider is GoerliSpecProvider) ? ConfigureCliqueSealEngine() :
+                (_specProvider is RinkebySpecProvider) ? clique :
+                (_specProvider is GoerliSpecProvider) ? (ISealEngine)clique :
                 NullSealEngine.Instance;
             
             var rewardCalculator = (sealEngine is CliqueSealEngine)
@@ -364,7 +367,7 @@ namespace Nethermind.Runner.Runners
             
             var txRecoveryStep = new TxSignaturesRecoveryStep(ethereumSigner);
             IBlockDataRecoveryStep recoveryStep = sealEngine is CliqueSealEngine
-                ? new CompositeDataRecoveryStep(txRecoveryStep, new AuthorRecoveryStep())
+                ? new CompositeDataRecoveryStep(txRecoveryStep, new AuthorRecoveryStep(clique))
                 : (IBlockDataRecoveryStep)txRecoveryStep;
 
             var blockProcessor = new BlockProcessor(
@@ -562,18 +565,6 @@ namespace Nethermind.Runner.Runners
 //                TestTransactionsGenerator testTransactionsGenerator =
 //                    new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, _logManager);
 //                // stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
-            return sealEngine;
-        }
-
-        private ISealEngine ConfigureCliqueSealEngine()
-        {
-            var config = new CliqueConfig()
-            {
-                Period = 15,
-                Epoch = 30000
-            };
-            var clique = new Clique.Clique(config, _signer, _nodeKey, _dbProvider.BlocksDb, _blockTree, _logManager);
-            var sealEngine = new CliqueSealEngine(clique, _logManager);
             return sealEngine;
         }
 

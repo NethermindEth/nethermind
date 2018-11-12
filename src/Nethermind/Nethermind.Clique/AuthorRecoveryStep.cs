@@ -23,10 +23,18 @@ namespace Nethermind.Clique
 {
     public class AuthorRecoveryStep : IBlockDataRecoveryStep
     {
+        private readonly CliqueSealEngine _clique;
+
+        [Todo(Improve.Refactor, "Strong coupling here")]
+        public AuthorRecoveryStep(CliqueSealEngine clique)
+        {
+            _clique = clique;
+        }
+
         public void RecoverData(Block block)
         {
             if (block.Header.Author != null) return;
-            block.Header.Author = block.Header.GetBlockSealer();
+            block.Author = _clique.GetBlockSealer(block.Header);
         }
     }
 }

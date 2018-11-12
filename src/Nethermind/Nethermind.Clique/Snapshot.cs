@@ -63,40 +63,19 @@ namespace Nethermind.Clique
             clone.SigCache = SigCache;
             clone.Number = Number;
             clone.Hash = Hash;
-            clone.Signers = new HashSet<Address>();
-            clone.Recent = new Dictionary<UInt256, Address>();
-            clone.Votes = new List<Vote>();
-            clone.Tally = new Dictionary<Address, Tally>();
-
-            foreach (Address signer in Signers)
-            {
-                clone.Signers.Add(signer);
-            }
-            
-            foreach (var pair in Recent)
-            {
-                clone.Recent[pair.Key] = pair.Value;
-            }
-            
-            foreach (Vote vote in Votes)
-            {
-                clone.Votes.Add(vote);
-            }
-            
-            foreach (var pair in Tally)
-            {
-                clone.Tally[pair.Key] = pair.Value;
-            }
-            
+            clone.Signers = new HashSet<Address>(Signers);
+            clone.Recent = new Dictionary<UInt256, Address>(Recent);
+            clone.Votes = new List<Vote>(Votes);
+            clone.Tally = new Dictionary<Address, Tally>(Tally);    
             return clone;
         }
 
-        public static Snapshot NewSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, UInt256 number, Keccak hash, Address[] signers)
+        public static Snapshot NewSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, Address[] signers)
         {
             HashSet<Address> signerSet = new HashSet<Address>();
             Dictionary<UInt256, Address> signerDict = new Dictionary<UInt256, Address>();
             Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
-            Snapshot snapshot = new Snapshot(config, sigcache, number, hash, signerSet, signerDict, tally);
+            Snapshot snapshot = new Snapshot(config, sigCache, number, hash, signerSet, signerDict, tally);
 
             foreach (Address signer in signers)
             {
@@ -136,18 +115,16 @@ namespace Nethermind.Clique
             {
                 return this;
             }
+
             // Sanity check that the headers can be applied
             for (int i = 0; i < headers.Count - 1; i++)
             {
-                if (headers[i + 1].Number != headers[i].Number + 1)
+                if (headers[i].Number != Number + (UInt256)i + 1)
                 {
                     throw new InvalidOperationException("Invalid voting chain");
                 }
             }
-            if (headers[0].Number != Number + 1)
-            {
-                throw new InvalidOperationException("Invalid voting chain");
-            }
+
             // Iterate through the headers and create a new snapshot
             Snapshot snapshot = Clone();
             foreach (BlockHeader header in headers)
@@ -168,11 +145,12 @@ namespace Nethermind.Clique
                     }
                 }
                 // Resolve the authorization key and check against signers
-                Address signer = header.GetBlockSealer(SigCache);
+                Address signer = header.Author;
                 if (!snapshot.Signers.Contains(signer))
                 {
                     throw new InvalidOperationException("Unauthorized signer");
                 }
+
                 foreach (Address recent in snapshot.Recent.Values)
                 {
                     if (recent == signer)
@@ -195,7 +173,7 @@ namespace Nethermind.Clique
                     }
                 }
                 // Tally up the new vote from the signer
-                bool authorize = header.Nonce == Clique.NonceAuthVote;
+                bool authorize = header.Nonce == CliqueSealEngine.NonceAuthVote;
                 if (snapshot.Cast(header.Beneficiary, authorize))
                 {
                     Vote vote = new Vote(signer, number, header.Beneficiary, authorize);
@@ -329,16 +307,17 @@ namespace Nethermind.Clique
             return sigs;
         }
 
+        private static byte[] _snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
+
         private static Keccak GetSnapshotKey(Keccak blockHash)
         {
             byte[] hashBytes = blockHash.Bytes;
-            byte[] snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
             byte[] keyBytes = new byte[hashBytes.Length];
-            Array.Copy(hashBytes, keyBytes, hashBytes.Length);
-            for (int i = 0; i < snapshotBytes.Length; i++)
+            for (int i = 0; i < _snapshotBytes.Length; i++)
             {
-                keyBytes[i] ^= snapshotBytes[i];
+                keyBytes[i] = (byte)(hashBytes[i] ^ _snapshotBytes[i]);
             }
+
             return new Keccak(keyBytes);
         }
     }

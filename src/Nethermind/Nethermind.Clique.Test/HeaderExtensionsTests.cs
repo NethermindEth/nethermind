@@ -29,16 +29,6 @@ namespace Nethermind.Clique.Test
     public class BlockHeaderTests
     {
         [Test]
-        public void BlockSealer()
-        {
-            BlockHeader header = BuildCliqueBlock();
-
-            Address expectedBlockSealer = new Address("0xb279182d99e65703f0076e4812653aab85fca0f0");
-            Address blockSealer = header.GetBlockSealer();
-            Assert.AreEqual(expectedBlockSealer, blockSealer);
-        }
-
-        [Test]
         public void CliqueHashHeader()
         {
             BlockHeader header = BuildCliqueBlock();

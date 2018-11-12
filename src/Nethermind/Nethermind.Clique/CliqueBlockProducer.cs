@@ -30,15 +30,15 @@ namespace Nethermind.Clique
 {
     public class CliqueBlockProducer : IBlockProducer
     {
-        private Clique _clique;
+        private CliqueSealEngine _sealEngine;
         private CliqueConfig _config;
         private BlockTree _blockTree;
         private Address _address;
         private Dictionary<Address, bool> _proposals = new Dictionary<Address, bool>();
 
-        public CliqueBlockProducer(Clique clique, CliqueConfig config, BlockTree blockTree, Address address)
+        public CliqueBlockProducer(CliqueSealEngine cliqueSealEngine, CliqueConfig config, BlockTree blockTree, Address address)
         {
-            _clique = clique;
+            _sealEngine = cliqueSealEngine;
             _config = config;
             _blockTree = blockTree;
             _address = address;
@@ -58,7 +58,7 @@ namespace Nethermind.Clique
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
             UInt256 number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
-            Snapshot snapshot = _clique.MakeSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = _sealEngine.GetOrCreateSnapshot(number - 1, header.ParentHash);
             if ((ulong)number % _config.Epoch != 0)
             {
                 // Gather all the proposals that make sense voting on
@@ -80,11 +80,11 @@ namespace Nethermind.Clique
                     header.Beneficiary = addresses[rnd.Next(addresses.Count)];
                     if (_proposals[header.Beneficiary])
                     {
-                        header.Nonce = Clique.NonceAuthVote;
+                        header.Nonce = CliqueSealEngine.NonceAuthVote;
                     }
                     else
                     {
-                        header.Nonce = Clique.NonceDropVote;
+                        header.Nonce = CliqueSealEngine.NonceDropVote;
                     }
                 }
             }
@@ -92,15 +92,15 @@ namespace Nethermind.Clique
             // Set the correct difficulty
             header.Difficulty = CalculateDifficulty(snapshot, _address);
             // Ensure the extra data has all it's components
-            if (header.ExtraData.Length < Clique.ExtraVanity)
+            if (header.ExtraData.Length < CliqueSealEngine.ExtraVanity)
             {
-                for (int i = 0; i < Clique.ExtraVanity - header.ExtraData.Length; i++)
+                for (int i = 0; i < CliqueSealEngine.ExtraVanity - header.ExtraData.Length; i++)
                 {
                     header.ExtraData.Append((byte)0);
                 }
             }
 
-            header.ExtraData = header.ExtraData.Take(Clique.ExtraVanity).ToArray();
+            header.ExtraData = header.ExtraData.Take(CliqueSealEngine.ExtraVanity).ToArray();
 
             if ((ulong)number % _config.Epoch == 0)
             {
@@ -113,8 +113,8 @@ namespace Nethermind.Clique
                 }
             }
 
-            byte[] extraSeal = new byte[Clique.ExtraSeal];
-            for (int i = 0; i < Clique.ExtraSeal; i++)
+            byte[] extraSeal = new byte[CliqueSealEngine.ExtraSeal];
+            for (int i = 0; i < CliqueSealEngine.ExtraSeal; i++)
             {
                 header.ExtraData.Append((byte)0);
             }
@@ -146,8 +146,7 @@ namespace Nethermind.Clique
 
         private UInt256 CalculateDifficulty(ulong time, BlockHeader parent)
         {
-            UInt256 parentNumber = parent.Number;
-            Snapshot snapshot = _clique.MakeSnapshot(parentNumber, BlockHeader.CalculateHash(parent));
+            Snapshot snapshot = _sealEngine.GetOrCreateSnapshot(parent.Number, parent.Hash);
             return CalculateDifficulty(snapshot, _address);
         }
 
@@ -155,10 +154,10 @@ namespace Nethermind.Clique
         {
             if (snapshot.Inturn(snapshot.Number + 1, signer))
             {
-                return new UInt256(Clique.DiffInTurn);
+                return new UInt256(CliqueSealEngine.DiffInTurn);
             }
 
-            return new UInt256(Clique.DiffNoTurn);
+            return new UInt256(CliqueSealEngine.DiffNoTurn);
         }
     }
 }
