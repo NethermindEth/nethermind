@@ -51,6 +51,8 @@ namespace Nethermind.Store
             }
         }
 
+        public byte[][] GetAll() => _memDb.GetAll();
+
         public void StartBatch()
         {
         }

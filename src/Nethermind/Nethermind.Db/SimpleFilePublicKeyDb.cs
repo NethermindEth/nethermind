@@ -67,6 +67,8 @@ namespace Nethermind.Db
             _cache.TryRemove(new PublicKey(key), out _);
         }
 
+        public byte[][] GetAll() => _cache.Values.Select(v => v).ToArray();
+
         public void StartBatch()
         {
         }

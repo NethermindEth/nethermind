@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using Nethermind.Db.Config;
 using Nethermind.Store;
@@ -220,6 +221,22 @@ namespace Nethermind.Db
         public void Remove(byte[] key)
         {
             _db.Remove(key);
+        }
+
+        public byte[][] GetAll()
+        {
+            var iterator = _db.NewIterator();
+            iterator = iterator.SeekToFirst();
+            var values = new List<byte[]>();
+            while (iterator.Valid())
+            {
+                values.Add(iterator.Value());
+                iterator = iterator.Next();
+            }
+
+            iterator.Dispose();
+
+            return values.ToArray();
         }
 
         public void StartBatch()

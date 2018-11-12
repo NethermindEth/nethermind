@@ -54,6 +54,8 @@ namespace Nethermind.Store
             set => Set(key, value);
         }
 
+        public byte[][] GetAll() => _db.GetAll();
+
         public void StartBatch()
         {
             _db.StartBatch();

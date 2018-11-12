@@ -38,18 +38,29 @@ namespace Nethermind.Blockchain.TransactionPools.Storages
         }
 
         public Transaction Get(Keccak hash)
-        {
-            var transactionData = _database.Get(hash);
-
-            return transactionData == null
-                ? null
-                : Rlp.Decode<Transaction>(new Rlp(transactionData), RlpBehaviors.Storage);
-        }
+            => Decode(_database.Get(hash));
 
         public Transaction[] GetAll()
         {
-            throw new System.NotImplementedException();
+            var transactionsBytes = _database.GetAll();
+            if (transactionsBytes.Length == 0)
+            {
+                return Array.Empty<Transaction>();
+            }
+
+            var transactions = new Transaction[transactionsBytes.Length];
+            for (var i = 0; i < transactionsBytes.Length; i++)
+            {
+                transactions[i] = Decode(transactionsBytes[i]);
+            }
+
+            return transactions;
         }
+
+        private static Transaction Decode(byte[] bytes)
+            => bytes == null
+                ? null
+                : Rlp.Decode<Transaction>(new Rlp(bytes), RlpBehaviors.Storage);
 
         public void Add(Transaction transaction, UInt256 blockNumber)
         {

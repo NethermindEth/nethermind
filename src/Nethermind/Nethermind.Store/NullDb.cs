@@ -42,6 +42,11 @@ namespace Nethermind.Store
             throw new System.NotSupportedException();
         }
 
+        public byte[][] GetAll()
+        {
+            throw new System.NotImplementedException();
+        }
+
         public void StartBatch()
         {
             throw new System.NotSupportedException();
