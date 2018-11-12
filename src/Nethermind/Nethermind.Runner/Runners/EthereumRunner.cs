@@ -305,6 +305,10 @@ namespace Nethermind.Runner.Runners
                 (_specProvider is RinkebySpecProvider) ? ConfigureCliqueSealEngine() :
                 (_specProvider is GoerliSpecProvider) ? ConfigureCliqueSealEngine() :
                 NullSealEngine.Instance;
+            
+            var rewardCalculator = (sealEngine is CliqueSealEngine)
+                ? (IRewardCalculator) new NoBlockRewards()
+                : new RewardCalculator(_specProvider);
 
             /* validation */
             var headerValidator = new HeaderValidator(
@@ -356,13 +360,9 @@ namespace Nethermind.Runner.Runners
                 storageProvider,
                 virtualMachine,
                 _logManager);
-
-            var rewardCalculator = (_specProvider is RinkebySpecProvider)
-                ? (IRewardCalculator) new NoBlockRewards()
-                : new RewardCalculator(_specProvider);
             
             var txRecoveryStep = new TxSignaturesRecoveryStep(ethereumSigner);
-            IBlockDataRecoveryStep recoveryStep = (_specProvider is RinkebySpecProvider)
+            IBlockDataRecoveryStep recoveryStep = sealEngine is CliqueSealEngine
                 ? new CompositeDataRecoveryStep(txRecoveryStep, new AuthorRecoveryStep())
                 : (IBlockDataRecoveryStep)txRecoveryStep;
 
