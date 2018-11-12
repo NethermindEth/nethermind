@@ -16,13 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Core
 {
     public static class ClientVersion
     {
+        static ClientVersion()
+        {
+            string osDescription = RuntimeInformation.OSDescription;
+            if (osDescription.Contains('#'))
+            {
+                int indexOfHash = osDescription.IndexOf('#');
+                osDescription = osDescription.Substring(0, Math.Max(0, indexOfHash - 1));
+            }
+
+            Description = $"Nethermind/v0.9.1-RC0/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+        }
+        
 //        public static readonly string Description = $"Nethermind/v0.9.0-eth63test/{RuntimeInformation.OSArchitecture}-{RuntimeInformation.OSDescription.Trim().Replace(" ", "_")}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
-        public static readonly string Description = $"Nethermind/v0.9.1-RC0/{RuntimeInformation.OSArchitecture}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+        public static string Description { get; }
     }
 }
