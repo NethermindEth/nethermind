@@ -56,7 +56,7 @@ namespace Nethermind.Runner.Controllers
             using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
             {
                 var body = await reader.ReadToEndAsync();
-                _logger.Info($"Received request: {body}");
+                if(_logger.IsTrace) _logger.Trace($"Received request: {body}");
 
 
                 (JsonRpcRequest Model, IEnumerable<JsonRpcRequest> Collection) rpcRequest;
@@ -66,7 +66,7 @@ namespace Nethermind.Runner.Controllers
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"Error during parsing/validation, request: {body}", ex);
+                    if(_logger.IsError) _logger.Error($"Error during parsing/validation, request: {body}", ex);
                     var response = _jsonRpcService.GetErrorResponse(ErrorType.ParseError, "Incorrect message");
                     return new JsonResult(response);
                 }
