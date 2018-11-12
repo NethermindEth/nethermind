@@ -85,7 +85,7 @@ namespace Nethermind.JsonRpc
             blockModel.ReceiptsRoot = new Data(block.Header.ReceiptsRoot);
             blockModel.Miner = block.Header.Beneficiary != null ? new Data(block.Header.Beneficiary) : null;
             blockModel.Difficulty = new Quantity(block.Header.Difficulty);
-            //TotalDifficulty = new Quantity(block.Header.Difficulty),
+            blockModel.TotalDifficulty = new Quantity(block.Header.TotalDifficulty ?? 0);
             blockModel.ExtraData = new Data(block.Header.ExtraData);
             //Size = new Quantity(block.Header.)
             blockModel.GasLimit = new Quantity(block.Header.GasLimit);
