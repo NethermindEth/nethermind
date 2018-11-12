@@ -36,7 +36,7 @@ namespace Nethermind.Runner
 {
     public class RunnerApp : RunnerAppBase, IRunnerApp
     {
-        private readonly string _defaultConfigFile = Path.Combine("configs", "mainnet_" + (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows" : "posix") + ".config.json");
+        private readonly string _defaultConfigFile = Path.Combine("configs", "mainnet.cfg");
 
         public RunnerApp(ILogger logger) : base(logger)
         {

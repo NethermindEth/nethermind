@@ -2,21 +2,21 @@
   "profiles": {
     "Ropsten": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\ropsten_windows.config.json --baseDbPath C:\\nethermind_db",
+      "commandLineArgs": "--config configs\\ropsten.cfg --baseDbPath C:\\nethermind_db",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "MainNet": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet_windows.config.json --baseDbPath C:\\nethermind_db",
+      "commandLineArgs": "--config configs\\mainnet.cfg --baseDbPath C:\\nethermind_db",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Rinkeby": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\rinkeby_windows.config.json --baseDbPath C:\\nethermind_db",
+      "commandLineArgs": "--config configs\\rinkeby.cfg --baseDbPath C:\\nethermind_db",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
