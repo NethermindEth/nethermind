@@ -79,6 +79,7 @@ namespace Nethermind.Core.Specs.ChainSpec
                 timestamp,
                 extraData);
 
+            genesisHeader.Author = beneficiary;
             genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
             genesisHeader.Bloom = new Bloom();
             genesisHeader.GasUsed = 0;
