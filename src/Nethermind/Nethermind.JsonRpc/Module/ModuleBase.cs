@@ -42,13 +42,6 @@ namespace Nethermind.JsonRpc.Module
         {
         }
 
-        protected Data Sha3(Data data)
-        {
-            var keccak = Keccak.Compute(data.Value);
-            var keccakValue = keccak.ToString();
-            return new Data(keccakValue);
-        }
-
         protected string GetJsonLog(object model)
         {
             return JsonSerializer.Serialize(model);

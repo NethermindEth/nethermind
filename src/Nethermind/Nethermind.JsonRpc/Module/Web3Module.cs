@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Reflection;
-using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,17 +32,16 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<string> web3_clientVersion()
         {
-            var version = Assembly.GetAssembly(typeof(IBlockchainProcessor)).GetName().Version;
-            var clientVersion = $"EthereumNet v{version}";
-            Logger.Debug($"web3_clientVersion request, result: {clientVersion}");
+            var clientVersion = ClientVersion.Description;
+            if(Logger.IsDebug) Logger.Debug($"web3_clientVersion request, result: {clientVersion}");
             return ResultWrapper<string>.Success(clientVersion);
         }
 
         public ResultWrapper<Data> web3_sha3(Data data)
         {
-            var keccak = Sha3(data);
-            Logger.Debug($"web3_sha3 request, result: {keccak.ToJson()}");
-            return ResultWrapper<Data>.Success(keccak);
+            Keccak keccak = Keccak.Compute(data.Value);
+            if(Logger.IsDebug) Logger.Debug($"web3_sha3 request, result: {keccak}");
+            return ResultWrapper<Data>.Success(new Data(keccak));
         }
     }
 }

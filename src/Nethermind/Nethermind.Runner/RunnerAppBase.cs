@@ -71,7 +71,7 @@ namespace Nethermind.Runner
                 if (!string.IsNullOrWhiteSpace(pathDbPath))
                 {
                     var newDbPath = Path.Combine(pathDbPath, initConfig.BaseDbPath);
-                    Logger.Info($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
+                    if(Logger.IsInfo) Logger.Info($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
                     initConfig.BaseDbPath = newDbPath;
                 }
 
@@ -79,7 +79,7 @@ namespace Nethermind.Runner
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
                 var serializer = new UnforgivingJsonSerializer();
-                Logger.Info($"Running Nethermind Runner, parameters:\n{serializer.Serialize(initConfig, true)}\n");
+                if(Logger.IsInfo) Logger.Info($"Running Nethermind Runner, parameters:\n{serializer.Serialize(initConfig, true)}\n");
 
                 _cancelKeySource = new TaskCompletionSource<object>();
                 Task userCancelTask = Task.Factory.StartNew(() =>
@@ -165,10 +165,7 @@ namespace Nethermind.Runner
             }
             else
             {
-                if (Logger.IsInfo)
-                {
-                    Logger.Info("Json RPC is disabled");
-                }
+                if (Logger.IsInfo) Logger.Info("Json RPC is disabled");
             }
         }
 
