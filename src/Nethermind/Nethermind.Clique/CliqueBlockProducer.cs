@@ -92,15 +92,15 @@ namespace Nethermind.Clique
             // Set the correct difficulty
             header.Difficulty = CalculateDifficulty(snapshot, _address);
             // Ensure the extra data has all it's components
-            if (header.ExtraData.Length < CliqueSealEngine.ExtraVanity)
+            if (header.ExtraData.Length < CliqueSealEngine.ExtraVanityLength)
             {
-                for (int i = 0; i < CliqueSealEngine.ExtraVanity - header.ExtraData.Length; i++)
+                for (int i = 0; i < CliqueSealEngine.ExtraVanityLength - header.ExtraData.Length; i++)
                 {
                     header.ExtraData.Append((byte)0);
                 }
             }
 
-            header.ExtraData = header.ExtraData.Take(CliqueSealEngine.ExtraVanity).ToArray();
+            header.ExtraData = header.ExtraData.Take(CliqueSealEngine.ExtraVanityLength).ToArray();
 
             if ((ulong)number % _config.Epoch == 0)
             {
@@ -113,8 +113,8 @@ namespace Nethermind.Clique
                 }
             }
 
-            byte[] extraSeal = new byte[CliqueSealEngine.ExtraSeal];
-            for (int i = 0; i < CliqueSealEngine.ExtraSeal; i++)
+            byte[] extraSeal = new byte[CliqueSealEngine.ExtraSealLength];
+            for (int i = 0; i < CliqueSealEngine.ExtraSealLength; i++)
             {
                 header.ExtraData.Append((byte)0);
             }

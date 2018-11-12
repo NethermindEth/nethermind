@@ -50,7 +50,7 @@ namespace Nethermind.Clique
 
             if (config.Epoch == 0)
             {
-                config.Epoch = EpochLength;
+                config.Epoch = DefaultEpochLength;
             }
         }
 
@@ -80,41 +80,22 @@ namespace Nethermind.Clique
         public bool ValidateParams(Block parent, BlockHeader header)
         {
             UInt256 number = header.Number;
-            // Checkpoint blocks need to enforce zero beneficiary
             bool checkpoint = ((ulong)number % _config.Epoch) == 0;
+            // Checkpoint blocks need to enforce zero beneficiary
             if (checkpoint && header.Beneficiary != Address.Zero)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block beneficiary ({header.Beneficiary}) - should be empty on checkpoint");
                 return false;
             }
-
-            // Nonce must be 0x00..0 or 0xff..f, zeroes enforced on checkpoints
-            if (header.Nonce != NonceAuthVote && header.Nonce != NonceDropVote)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.Nonce})");
-                return false;
-            }
-
+            
             if (checkpoint && header.Nonce != NonceDropVote)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.Nonce}) - should be zeroes on checkpoints");
                 return false;
             }
 
-            if (header.ExtraData.Length < ExtraVanity)
-            {
-                if (_logger.IsWarn) _logger.Warn("Invalid block extra data length - missing vanity");
-                return false;
-            }
-
-            if (header.ExtraData.Length < ExtraVanity + ExtraSeal)
-            {
-                if (_logger.IsWarn) _logger.Warn("Invalid block extra data length - missing seal");
-                return false;
-            }
-
             // Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
-            int singersBytes = header.ExtraData.Length - ExtraVanity - ExtraSeal;
+            int singersBytes = header.ExtraData.Length - ExtraVanityLength - ExtraSealLength;
             if (!checkpoint && singersBytes != 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block extra-data ({header.ExtraData}) - should be empty on non-checkpoints");
@@ -126,7 +107,26 @@ namespace Nethermind.Clique
                 if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.ExtraData}) - should contain a list of signers on checkpoints");
                 return false;
             }
+            
+            // Nonce must be 0x00..0 or 0xff..f, zeroes enforced on checkpoints
+            if (header.Nonce != NonceAuthVote && header.Nonce != NonceDropVote)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.Nonce})");
+                return false;
+            }
+            
+            if (header.ExtraData.Length < ExtraVanityLength)
+            {
+                if (_logger.IsWarn) _logger.Warn("Invalid block extra data length - missing vanity");
+                return false;
+            }
 
+            if (header.ExtraData.Length < ExtraVanityLength + ExtraSealLength)
+            {
+                if (_logger.IsWarn) _logger.Warn("Invalid block extra data length - missing seal");
+                return false;
+            }
+            
             // Ensure that the mix digest is zero as we don't have fork protection currently
             if (header.MixHash != Keccak.Zero)
             {
@@ -182,9 +182,9 @@ namespace Nethermind.Clique
         internal const int InMemorySignatures = 4096;
         private const int WiggleTime = 500;
 
-        private const int EpochLength = 30000;
-        internal const int ExtraVanity = 32;
-        internal const int ExtraSeal = 65;
+        private const int DefaultEpochLength = 30000;
+        internal const int ExtraVanityLength = 32;
+        internal const int ExtraSealLength = 65;
         public const ulong NonceAuthVote = UInt64.MaxValue;
         public const ulong NonceDropVote = 0UL;
         internal const int DiffInTurn = 2;
@@ -280,7 +280,7 @@ namespace Nethermind.Clique
             Signature signature = _signer.Sign(_key, headerHash);
             // Copy signature bytes (R and S)
             byte[] signatureBytes = signature.Bytes;
-            Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - ExtraSeal, signatureBytes.Length);
+            Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - ExtraSealLength, signatureBytes.Length);
             // Copy signature's recovery id (V)
             byte recoveryId = signature.RecoveryId;
             header.ExtraData[header.ExtraData.Length - 1] = recoveryId;
@@ -366,10 +366,10 @@ namespace Nethermind.Clique
                 Keccak parentHash = header.ParentHash;
                 if (number == 0 || ((ulong)number % _config.Epoch == 0 && _blockTree.FindHeader(parentHash) == null))
                 {
-                    Address[] signers = new Address[(header.ExtraData.Length - ExtraVanity - ExtraSeal) / AddressLength];
+                    Address[] signers = new Address[(header.ExtraData.Length - ExtraVanityLength - ExtraSealLength) / AddressLength];
                     for (int i = 0; i < signers.Length; i++)
                     {
-                        signers[i] = new Address(header.ExtraData.Slice(ExtraVanity + i * AddressLength, AddressLength));
+                        signers[i] = new Address(header.ExtraData.Slice(ExtraVanityLength + i * AddressLength, AddressLength));
                     }
 
                     snapshot = Snapshot.NewSnapshot(_config, _signatures, number, header.Hash, signers);
@@ -455,10 +455,10 @@ namespace Nethermind.Clique
                     Array.Copy(signer, 0, signersBytes, i * AddressLength, AddressLength);
                 }
 
-                int extraSuffix = header.ExtraData.Length - ExtraSeal;
-                for (int i = 0; i < extraSuffix - ExtraVanity; i++)
+                int extraSuffix = header.ExtraData.Length - ExtraSealLength;
+                for (int i = 0; i < extraSuffix - ExtraVanityLength; i++)
                 {
-                    if (header.ExtraData[ExtraVanity + i] != signersBytes[i])
+                    if (header.ExtraData[ExtraVanityLength + i] != signersBytes[i])
                     {
                         return false;
                     }
