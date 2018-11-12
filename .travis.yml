@@ -45,6 +45,8 @@ jobs:
       name: "Ethereum.VM.Test"
     - script: dotnet test src/Nethermind/Nethermind.Blockchain.Test
       name: "Nethermind.Blockchain.Test"
+    - script: dotnet test src/Nethermind/Nethermind.Clique.Test
+      name: "Nethermind.Clique.Test"
     - script: dotnet test src/Nethermind/Nethermind.Config.Test
       name: "Nethermind.Config.Test"
     - script: dotnet test src/Nethermind/Nethermind.Core.Test
@@ -82,3 +84,5 @@ jobs:
       os: osx
     - script: dotnet test src/Nethermind/Nethermind.Store.Test
       name: "Nethermind.Store.Test"
+    - script: dotnet test src/Nethermind/Nethermind.Wallet.Test
+      name: "Nethermind.Wallet.Test"

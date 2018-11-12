@@ -18,15 +18,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
@@ -42,12 +38,12 @@ namespace Nethermind.Clique
         private const int WiggleTime = 500;
 
         private const int EpochLength = 30000;
-        private const int ExtraVanity = 32;
-        public const int ExtraSeal = 65;
+        internal const int ExtraVanity = 32;
+        internal const int ExtraSeal = 65;
         public const ulong NonceAuthVote = UInt64.MaxValue;
         public const ulong NonceDropVote = 0UL;
-        private const int DiffInTurn = 2;
-        private const int DiffNoTurn = 1;
+        internal const int DiffInTurn = 2;
+        internal const int DiffNoTurn = 1;
 
         private const int AddressLength = 20;
 
@@ -59,7 +55,6 @@ namespace Nethermind.Clique
         private IDb _blocksDb;
         private LruCache<Keccak, Snapshot> _recents = new LruCache<Keccak, Snapshot>(InmemorySnapshots);
         private LruCache<Keccak, Address> _signatures = new LruCache<Keccak, Address>(InmemorySignatures);
-        private Dictionary<Address, Boolean> _proposals = new Dictionary<Address, bool>();
 
         public Clique(CliqueConfig config, ISigner signer, PrivateKey key, IDb blocksDb, BlockTree blockTree, ILogManager logManager)
         {
@@ -94,7 +89,7 @@ namespace Nethermind.Clique
             }
 
             // Bail out if we're unauthorized to sign a block
-            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = MakeSnapshot(number - 1, header.ParentHash);
             if (!snapshot.Signers.Contains(_key.Address))
             {
                 throw new InvalidOperationException("Not authorized to sign a block");
@@ -217,7 +212,7 @@ namespace Nethermind.Clique
         {
             UInt256 number = header.Number;
             // Retrieve the snapshot needed to validate this header and cache it
-            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = MakeSnapshot(number - 1, header.ParentHash);
             // Resolve the authorization key and check against signers
             Address signer = header.GetBlockSealer(_signatures);
             if (!snapshot.Signers.Contains(signer))
@@ -259,30 +254,17 @@ namespace Nethermind.Clique
             return true;
         }
 
-        private Snapshot GetSnapshot(UInt256 number, Keccak hash)
+        internal Snapshot MakeSnapshot(UInt256 number, Keccak hash)
         {
             // Search for a snapshot in memory or on disk for checkpoints
             List<BlockHeader> headers = new List<BlockHeader>();
             Snapshot snapshot = null;
-            while (snapshot == null)
+            while (true)
             {
-                // If an in-memory snapshot was found, use that
-                Snapshot memorySnapshot = _recents.Get(hash);
-                if (memorySnapshot != null)
+                snapshot = GetSnapshot(number, hash);
+                if (snapshot != null)
                 {
-                    snapshot = memorySnapshot;
                     break;
-                }
-
-                // If an on-disk checkpoint snapshot can be found, use that
-                if ((ulong)number % CheckpointInterval == 0)
-                {
-                    memorySnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash);
-                    if (memorySnapshot != null)
-                    {
-                        snapshot = memorySnapshot;
-                        break;
-                    }
                 }
 
                 // If we're at an checkpoint block, make a snapshot if it's known
@@ -308,9 +290,7 @@ namespace Nethermind.Clique
                 }
 
                 // No snapshot for this header, gather the header and move backward
-                BlockHeader header;
-                // No explicit parents (or no more left), reach out to the database
-                header = _blockTree.FindHeader(hash);
+                BlockHeader header = _blockTree.FindHeader(hash);
                 if (header == null)
                 {
                     throw new InvalidOperationException("Unknown ancestor");
@@ -341,112 +321,26 @@ namespace Nethermind.Clique
             return snapshot;
         }
 
-        private void Prepare(BlockHeader header)
+        private Snapshot GetSnapshot(UInt256 number, Keccak hash)
         {
-            // If the block isn't a checkpoint, cast a random vote (good enough for now)
-            UInt256 number = header.Number;
-            // Assemble the voting snapshot to check which votes make sense
-            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
-            if ((ulong)number % _config.Epoch != 0)
+            // If an in-memory snapshot was found, use that
+            Snapshot memorySnapshot = _recents.Get(hash);
+            if (memorySnapshot != null)
             {
-                // Gather all the proposals that make sense voting on
-                List<Address> addresses = new List<Address>();
-                foreach (var proposal in _proposals)
-                {
-                    Address address = proposal.Key;
-                    bool authorize = proposal.Value;
-                    if (snapshot.ValidVote(address, authorize))
-                    {
-                        addresses.Append(address);
-                    }
-                }
+                return memorySnapshot;
+            }
 
-                // If there's pending proposals, cast a vote on them
-                if (addresses.Count > 0)
+            // If an on-disk checkpoint snapshot can be found, use that
+            if ((ulong)number % CheckpointInterval == 0)
+            {
+                memorySnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash);
+                if (memorySnapshot != null)
                 {
-                    Random rnd = new Random();
-                    header.Beneficiary = addresses[rnd.Next(addresses.Count)];
-                    if (_proposals[header.Beneficiary])
-                    {
-                        header.Nonce = NonceAuthVote;
-                    }
-                    else
-                    {
-                        header.Nonce = NonceDropVote;
-                    }
+                    return memorySnapshot;
                 }
             }
 
-            // Set the correct difficulty
-            header.Difficulty = CalcDifficulty(snapshot, _key.Address);
-            // Ensure the extra data has all it's components
-            if (header.ExtraData.Length < ExtraVanity)
-            {
-                for (int i = 0; i < ExtraVanity - header.ExtraData.Length; i++)
-                {
-                    header.ExtraData.Append((byte)0);
-                }
-            }
-
-            header.ExtraData = header.ExtraData.Take(ExtraVanity).ToArray();
-
-            if ((ulong)number % _config.Epoch == 0)
-            {
-                foreach (Address signer in snapshot.Signers)
-                {
-                    foreach (byte addressByte in signer.Bytes)
-                    {
-                        header.ExtraData.Append(addressByte);
-                    }
-                }
-            }
-
-            byte[] extraSeal = new byte[ExtraSeal];
-            for (int i = 0; i < ExtraSeal; i++)
-            {
-                header.ExtraData.Append((byte)0);
-            }
-
-            // Mix digest is reserved for now, set to empty
-            // Ensure the timestamp has the correct delay
-            BlockHeader parent = _blockTree.FindHeader(header.ParentHash);
-            if (parent == null)
-            {
-                throw new InvalidOperationException("Unknown ancestor");
-            }
-
-            header.Timestamp = parent.Timestamp + _config.Period;
-            long currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            if (header.Timestamp < currentTimestamp)
-            {
-                header.Timestamp = new UInt256(currentTimestamp);
-            }
-        }
-
-        private Block Finalize(StateProvider state, BlockHeader header, Transaction[] txs, BlockHeader[] uncles, TransactionReceipt[] receipts)
-        {
-            // No block rewards in PoA, so the state remains as is and uncles are dropped
-            header.StateRoot = state.StateRoot;
-            header.OmmersHash = BlockHeader.CalculateHash((BlockHeader)null);
-            // Assemble and return the final block for sealing
-            return new Block(header, txs, null);
-        }
-
-        private UInt256 CalcDifficulty(ulong time, BlockHeader parent)
-        {
-            UInt256 parentNumber = parent.Number;
-            Snapshot snapshot = GetSnapshot(parentNumber, BlockHeader.CalculateHash(parent));
-            return CalcDifficulty(snapshot, _key.Address);
-        }
-
-        private UInt256 CalcDifficulty(Snapshot snapshot, Address signer)
-        {
-            if (snapshot.Inturn(snapshot.Number + 1, signer))
-            {
-                return new UInt256(DiffInTurn);
-            }
-
-            return new UInt256(DiffNoTurn);
+            return null;
         }
 
         private bool ValidateCascadingFields(BlockHeader header)
@@ -461,20 +355,17 @@ namespace Nethermind.Clique
             }
 
             // Retrieve the snapshot needed to validate this header and cache it
-            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = MakeSnapshot(number - 1, header.ParentHash);
 
             // If the block is a checkpoint block, validate the signer list
             if ((ulong)number % _config.Epoch == 0)
             {
-                byte[] signersBytes = new byte[snapshot.Signers.Count * AddressLength];
                 Address[] signers = snapshot.GetSigners();
+                byte[] signersBytes = new byte[signers.Length * AddressLength];
                 for (int i = 0; i < signers.Length; i++)
                 {
-                    Address signer = signers[i];
-                    for (int j = 0; j < AddressLength; j++)
-                    {
-                        signersBytes[i * AddressLength + j] = signer[j];
-                    }
+                    byte[] signer = signers[i].Bytes;
+                    Array.Copy(signer, 0, signersBytes, i * AddressLength, AddressLength);
                 }
 
                 int extraSuffix = header.ExtraData.Length - ExtraSeal;
