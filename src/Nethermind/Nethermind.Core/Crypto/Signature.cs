@@ -35,10 +35,9 @@ namespace Nethermind.Core.Crypto
             }
 
             Buffer.BlockCopy(bytes, 0, Bytes, 0, 64);
-            V = (byte)(recoveryId + 27);
+            V = recoveryId + 27;
         }
 
-        // TODO: here depending on whether it is Ethereum signature we may need to treat V differently
         public Signature(byte[] bytes)
         {
             if (bytes.Length != 65)
@@ -50,7 +49,7 @@ namespace Nethermind.Core.Crypto
             V = bytes[64];
         }
 
-        public Signature(byte[] r, byte[] s, byte v)
+        public Signature(byte[] r, byte[] s, int v)
         {
             if (r.Length != 32)
             {
@@ -72,7 +71,7 @@ namespace Nethermind.Core.Crypto
             V = v;
         }
 
-        public Signature(BigInteger r, BigInteger s, byte v)
+        public Signature(BigInteger r, BigInteger s, int v)
         {
             if (v < 27)
             {
@@ -93,7 +92,9 @@ namespace Nethermind.Core.Crypto
         }
 
         public byte[] Bytes { get; } = new byte[64];
-        public byte V { get; set; }
+        public int V { get; set; }
+        
+        /* is it correct for Goerli? */
         public byte RecoveryId
         {
             get
@@ -112,7 +113,7 @@ namespace Nethermind.Core.Crypto
 
         public override string ToString()
         {
-            return string.Concat(Bytes.ToHexString(true), new[] { V }.ToHexString(false));
+            return string.Concat(Bytes.ToHexString(true), V.ToString("X"));
         }
 
         public bool Equals(Signature other)

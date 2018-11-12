@@ -212,8 +212,6 @@ namespace Nethermind.Blockchain
             header.MixHash = s.MixHash;
             header.Nonce = s.Nonce;
             header.TransactionsRoot = suggestedBlock.TransactionsRoot;
-            // TODO: make sure that Clique blocks will have this field set before we get here
-//            header.Author = suggestedBlock.Header.GetAuthor(_specProvider);
             return processedBlock;
         }
 

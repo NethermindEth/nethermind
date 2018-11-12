@@ -81,8 +81,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 	ProjectSection(SolutionItems) = preProject
 		Chains\foundation.json = Chains\foundation.json
 		Chains\kovan.json = Chains\kovan.json
-		Chains\morden.json = Chains\morden.json
-		Chains\olympic.json = Chains\olympic.json
 		Chains\private_bootnode.json = Chains\private_bootnode.json
 		Chains\private_client.json = Chains\private_client.json
 		Chains\private_miner1.json = Chains\private_miner1.json
@@ -90,6 +88,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\ropsten.json = Chains\ropsten.json
 		Chains\spaceneth.json = Chains\spaceneth.json
 		Chains\rinkeby.json = Chains\rinkeby.json
+		Chains\goerli.json = Chains\goerli.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"
