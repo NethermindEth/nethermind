@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Numerics;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
@@ -30,6 +29,11 @@ namespace Nethermind.Core.Extensions
         }
 
         public static UInt256 Wei(this int @this)
+        {
+            return (uint)@this * Unit.Wei;
+        }
+        
+        public static UInt256 GWei(this int @this)
         {
             return (uint)@this * Unit.Wei;
         }

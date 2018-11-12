@@ -22,11 +22,9 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
 using Block = Nethermind.Core.Block;
 using Transaction = Nethermind.Core.Transaction;
 using TransactionReceipt = Nethermind.Core.TransactionReceipt;
-using TransactionTrace = Nethermind.Evm.TransactionTrace;
 
 namespace Nethermind.JsonRpc.Module
 {
@@ -38,6 +36,9 @@ namespace Nethermind.JsonRpc.Module
         int GetNetworkId();
         BlockHeader Head { get; }
         BlockHeader BestSuggested { get; }
+        UInt256 BestKnown { get; }
+        bool IsSyncing { get; }
+        
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
         Block FindBlock(UInt256 blockNumber);
         Block RetrieveHeadBlock();

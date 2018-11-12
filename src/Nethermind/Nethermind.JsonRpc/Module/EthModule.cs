@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security;
 using System.Text;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
@@ -53,10 +52,16 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<string>.Success("62");
         }
 
-        [Todo("Bind with synchronization manager")]
         public ResultWrapper<SynchingResult> eth_syncing()
         {
-            var result = new SynchingResult {IsSynching = false};
+            var result = new SynchingResult
+            {
+                IsSynching = true,
+                CurrentBlock = new Quantity(_blockchainBridge.Head.Number),
+                HighestBlock = new Quantity(_blockchainBridge.BestKnown),
+                StartingBlock = new Quantity(0)
+            };
+            
             if (Logger.IsTrace) Logger.Trace($"eth_syncing request, result: {result.ToJson()}");
             return ResultWrapper<SynchingResult>.Success(result);
         }
@@ -68,23 +73,23 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Data> eth_coinbase()
         {
-            return ResultWrapper<Data>.Fail("eth_coinbase not supported");
+            return ResultWrapper<Data>.Success(new Data(Address.Zero));
         }
 
         public ResultWrapper<bool> eth_mining()
         {
-            return ResultWrapper<bool>.Fail("eth_mining not supported");
+            return ResultWrapper<bool>.Success(false);
         }
 
         public ResultWrapper<Quantity> eth_hashrate()
         {
-            return ResultWrapper<Quantity>.Fail("eth_hashrate not supported");
+            return ResultWrapper<Quantity>.Success(new Quantity(0));
         }
 
         [Todo("Gas pricer to be implemented")]
         public ResultWrapper<Quantity> eth_gasPrice()
         {
-            return ResultWrapper<Quantity>.Success(new Quantity(1));
+            return ResultWrapper<Quantity>.Success(new Quantity(20.Wei()));
         }
 
         public ResultWrapper<IEnumerable<Data>> eth_accounts()
@@ -235,8 +240,8 @@ namespace Nethermind.JsonRpc.Module
             try
             {
                 Address address = new Address(addressData.Value);
-                var messageText = Encoding.GetEncoding(ConfigurationProvider.MessageEncoding).GetString(message.Value);
-                var signatureText = string.Format(ConfigurationProvider.SignatureTemplate, messageText.Length, messageText);
+                var messageText = Encoding.GetEncoding(JsonRpcConfig.MessageEncoding).GetString(message.Value);
+                var signatureText = string.Format(JsonRpcConfig.SignatureTemplate, messageText.Length, messageText);
                 sig = _blockchainBridge.Sign(address, Keccak.Compute(signatureText));
             }
             catch (Exception)
@@ -462,22 +467,22 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<IEnumerable<string>> eth_getCompilers()
         {
-            return ResultWrapper<IEnumerable<string>>.Fail("eth_getCompilers not supported");
+            return ResultWrapper<IEnumerable<string>>.Fail("eth_getCompilers is DEPRECATED");
         }
 
         public ResultWrapper<Data> eth_compileLLL(string code)
         {
-            return ResultWrapper<Data>.Fail("eth_compileLLL not supported");
+            return ResultWrapper<Data>.Fail("eth_compileLLL is DEPRECATED");
         }
 
         public ResultWrapper<Data> eth_compileSolidity(string code)
         {
-            return ResultWrapper<Data>.Fail("eth_compileSolidity not supported");
+            return ResultWrapper<Data>.Fail("eth_compileSolidity is DEPRECATED");
         }
 
         public ResultWrapper<Data> eth_compileSerpent(string code)
         {
-            return ResultWrapper<Data>.Fail("eth_compileSerpent not supported");
+            return ResultWrapper<Data>.Fail("eth_compileSerpent is DEPRECATED");
         }
 
         public ResultWrapper<Quantity> eth_newFilter(Filter filter)

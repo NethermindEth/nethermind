@@ -77,6 +77,8 @@ namespace Nethermind.JsonRpc.Module
 
         public BlockHeader Head => _blockTree.Head;
         public BlockHeader BestSuggested => _blockTree.BestSuggested;
+        public UInt256 BestKnown => _blockTree.BestKnownNumber;
+        public bool IsSyncing => _blockTree.CanAcceptNewBlocks;
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
         {
