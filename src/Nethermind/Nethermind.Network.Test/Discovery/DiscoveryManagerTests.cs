@@ -46,6 +46,7 @@ namespace Nethermind.Network.Test.Discovery
         private IMessageSender _messageSender;
         private INodeTable _nodeTable;
         private INodeFactory _nodeFactory;
+        private ITimestamp _timestamp;
         private int _port = 1;
         private string _host = "192.168.1.17";
         private Node[] _nodes;
@@ -70,9 +71,11 @@ namespace Nethermind.Network.Test.Discovery
 
             _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(config, new JsonSerializer(logManager), new AesEncrypter(config, logManager), new CryptoRandom(), logManager), calculator, config, logManager);
             _nodeTable.Initialize();
+            
+            _timestamp = new Timestamp();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(config), evictionManager, new NodeStatsProvider(statsConfig, _nodeFactory, logManager), config, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(config, _timestamp), evictionManager, new NodeStatsProvider(statsConfig, _nodeFactory, logManager), config, logManager);
 
             _nodes = new[] { _nodeFactory.CreateNode("192.168.1.18", 1), _nodeFactory.CreateNode("192.168.1.19", 2) };
 

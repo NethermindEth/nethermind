@@ -42,6 +42,7 @@ namespace Nethermind.Blockchain
         private readonly IBlockchainProcessor _processor;
         private readonly ISealEngine _sealEngine;
         private readonly IBlockTree _blockTree;
+        private readonly ITimestamp _timestamp;
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ITransactionPool _transactionPool;
         private readonly ILogger _logger;
@@ -52,6 +53,7 @@ namespace Nethermind.Blockchain
             IBlockchainProcessor processor,
             ISealEngine sealEngine,
             IBlockTree blockTree,
+            ITimestamp timestamp,
             ILogManager logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
@@ -59,6 +61,7 @@ namespace Nethermind.Blockchain
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _sealEngine = sealEngine ?? throw new ArgumentNullException(nameof(sealEngine));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _timestamp = timestamp;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -122,9 +125,9 @@ namespace Nethermind.Blockchain
             }
 
             Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
-            UInt256 timestamp = Timestamp.UnixUtcUntilNowSecs;
+            UInt256 timestamp = _timestamp.EpochSeconds;
 
-            UInt256 difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, Timestamp.UnixUtcUntilNowSecs, parent.Number + 1, parent.Ommers.Length > 0);
+            UInt256 difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, _timestamp.EpochSeconds, parent.Number + 1, parent.Ommers.Length > 0);
             BlockHeader header = new BlockHeader(
                 parent.Hash,
                 Keccak.OfAnEmptySequenceRlp,

@@ -55,6 +55,7 @@ namespace Nethermind.Network.Rlpx
         private readonly IPerfService _perfService;
         private readonly IBlockTree _blockTree;
         private readonly ITransactionPool _transactionPool;
+        private readonly ITimestamp _timestamp;
 
         public RlpxPeer(NodeId localNodeId, int localPort, ISynchronizationManager synchronizationManager,
             IMessageSerializationService messageSerializationService,
@@ -69,6 +70,7 @@ namespace Nethermind.Network.Rlpx
             _perfService = perfService;
             _blockTree = blockTree;
             _transactionPool = transactionPool;
+            _timestamp = new Timestamp();
             _logger = logManager.GetClassLogger();
             _serializationService = messageSerializationService ??
                                     throw new ArgumentNullException(nameof(messageSerializationService));
@@ -177,7 +179,7 @@ namespace Nethermind.Network.Rlpx
                 _synchronizationManager,
                 _nodeStatsProvider,
                 nodeStats,
-                _logManager, channel, _perfService, _blockTree, _transactionPool);
+                _logManager, channel, _perfService, _blockTree, _transactionPool, _timestamp);
 
             if (connectionDirection == ConnectionDirection.Out)
             {

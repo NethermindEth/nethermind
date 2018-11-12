@@ -52,6 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private IPerfService _perfService;
         private readonly IBlockTree _blockTree;
         private readonly ITransactionPool _transactionPool;
+        private readonly ITimestamp _timestamp;
 
         public Eth62ProtocolHandler(
             IP2PSession p2PSession,
@@ -60,13 +61,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ILogManager logManager,
             IPerfService perfService,
             IBlockTree blockTree,
-            ITransactionPool transactionPool)
+            ITransactionPool transactionPool,
+            ITimestamp timestamp)
             : base(p2PSession, serializer, logManager)
         {
             SyncManager = syncManager;
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _blockTree = blockTree;
             _transactionPool = transactionPool;
+            _timestamp = timestamp;
         }
 
         public virtual byte ProtocolVersion => 62;
@@ -251,6 +254,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 var transaction = msg.Transactions[i];
                 transaction.DeliveredBy = NodeId.PublicKey;
+                transaction.Timestamp = _timestamp.EpochSeconds;
                 SyncManager.AddNewTransaction(transaction, NodeId);
                 _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
             }

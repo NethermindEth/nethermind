@@ -189,7 +189,7 @@ namespace Nethermind.Blockchain.Test
 
         private TransactionPool CreatePool(ITransactionStorage transactionStorage)
             => new TransactionPool(transactionStorage, new PendingTransactionThresholdValidator(),
-                new TransactionPoolTimer(), _ethereumSigner, _logManager);
+                new Timestamp(), _ethereumSigner, _logManager);
 
         private ISynchronizationPeer GetPeer(PublicKey publicKey)
             => new SynchronizationPeerMock(_remoteBlockTree, publicKey);

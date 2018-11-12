@@ -102,6 +102,7 @@ namespace Nethermind.Runner.Runners
         private IPeerManager _peerManager;
         private BlockTree _blockTree;
         private ISpecProvider _specProvider;
+        private readonly ITimestamp _timestamp = new Timestamp();
 
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
@@ -163,7 +164,7 @@ namespace Nethermind.Runner.Runners
             _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
             _transactionPool = new TransactionPool(new NullTransactionStorage(),
                 new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
-                    _initConfig.RemovePendingTransactionInterval), new TransactionPoolTimer(),
+                    _initConfig.RemovePendingTransactionInterval), new Timestamp(),
                 _ethereumSigner, _logManager, _initConfig.RemovePendingTransactionInterval,
                 _initConfig.PeerNotificationThreshold);
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
@@ -449,7 +450,7 @@ namespace Nethermind.Runner.Runners
 
                 TransactionPool debugTransactionPool = new TransactionPool(new NullTransactionStorage(),
                     new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
-                        _initConfig.RemovePendingTransactionInterval), new TransactionPoolTimer(),
+                        _initConfig.RemovePendingTransactionInterval), new Timestamp(),
                     _ethereumSigner, _logManager, _initConfig.RemovePendingTransactionInterval,
                     _initConfig.PeerNotificationThreshold);
                 var debugReceiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
@@ -462,7 +463,7 @@ namespace Nethermind.Runner.Runners
             {
                 IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 AlternativeChain devChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, minerDbProvider, recoveryStep, _ethereumSigner, _logManager, _transactionPool, _receiptStorage);
-                var producer = new DevBlockProducer(_transactionPool, devChain.Processor, _blockTree, _logManager);
+                var producer = new DevBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, _logManager);
                 producer.Start();
             }
 
@@ -732,7 +733,7 @@ namespace Nethermind.Runner.Runners
             _configProvider.GetConfig<INetworkConfig>().MasterPort = _initConfig.DiscoveryPort;
 
             var privateKeyProvider = new SameKeyGenerator(_nodeKey);
-            var discoveryMessageFactory = new DiscoveryMessageFactory(_configProvider);
+            var discoveryMessageFactory = new DiscoveryMessageFactory(_configProvider, _timestamp);
             var nodeIdResolver = new NodeIdResolver(_signer);
 
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(

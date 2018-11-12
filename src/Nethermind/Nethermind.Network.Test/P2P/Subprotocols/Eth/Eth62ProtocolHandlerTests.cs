@@ -44,11 +44,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             var syncManager = Substitute.For<ISynchronizationManager>();
             var blockTree = Substitute.For<IBlockTree>();
             var transactionPool = Substitute.For<ITransactionPool>();
+            var timestamp = Substitute.For<ITimestamp>();
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
             var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogManager.Instance,
-                new PerfService(NullLogManager.Instance), blockTree, transactionPool);
+                new PerfService(NullLogManager.Instance), blockTree, transactionPool, timestamp);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
@@ -74,12 +75,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             var syncManager = Substitute.For<ISynchronizationManager>();
             var blockTree = Substitute.For<IBlockTree>();
             var transactionPool = Substitute.For<ITransactionPool>();
+            var timestamp = Substitute.For<ITimestamp>();
             syncManager.Find(null, Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>()).Throws(new ArgumentNullException());
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
             var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogManager.Instance,
-                new PerfService(NullLogManager.Instance), blockTree, transactionPool);
+                new PerfService(NullLogManager.Instance), blockTree, transactionPool, timestamp);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();

@@ -32,8 +32,11 @@ namespace Nethermind.Network.Test.Builders
 {
     public class SerializationBuilder : BuilderBase<IMessageSerializationService>
     {
-        public SerializationBuilder()
+        private readonly ITimestamp _timestamp;
+
+        public SerializationBuilder(ITimestamp timestamp = null)
         {
+            _timestamp = timestamp ?? new Timestamp();
             TestObject = new MessageSerializationService();
         }
 
@@ -77,10 +80,10 @@ namespace Nethermind.Network.Test.Builders
             Signer signer = new Signer();
             var privateKeyProvider = new SameKeyGenerator(privateKey);
 
-            PingMessageSerializer pingSerializer = new PingMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
-            PongMessageSerializer pongSerializer = new PongMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
-            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
-            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
+            PingMessageSerializer pingSerializer = new PingMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory());
+            PongMessageSerializer pongSerializer = new PongMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory());
+            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory());
+            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory());
 
             return With(pingSerializer)
                 .With(pongSerializer)

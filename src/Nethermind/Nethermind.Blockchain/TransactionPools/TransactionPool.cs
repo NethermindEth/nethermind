@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.TransactionPools
 
         private readonly ITransactionStorage _transactionStorage;
         private readonly IPendingTransactionThresholdValidator _pendingTransactionThresholdValidator;
-        private readonly ITransactionPoolTimer _transactionPoolTimer;
+        private readonly ITimestamp _timestamp;
 
         private readonly ConcurrentDictionary<PublicKey, ISynchronizationPeer> _peers =
             new ConcurrentDictionary<PublicKey, ISynchronizationPeer>();
@@ -59,14 +59,14 @@ namespace Nethermind.Blockchain.TransactionPools
 
         public TransactionPool(ITransactionStorage transactionStorage, 
             IPendingTransactionThresholdValidator pendingTransactionThresholdValidator,
-            ITransactionPoolTimer transactionPoolTimer, IEthereumSigner signer, ILogManager logManager,
+            ITimestamp timestamp, IEthereumSigner signer, ILogManager logManager,
             int removePendingTransactionInterval = 600,
             int peerNotificationThreshold = 20)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _transactionStorage = transactionStorage;
             _pendingTransactionThresholdValidator = pendingTransactionThresholdValidator;
-            _transactionPoolTimer = transactionPoolTimer;
+            _timestamp = timestamp;
             _signer = signer;
             _peerNotificationThreshold = peerNotificationThreshold;
             _timer.Interval = removePendingTransactionInterval * 1000;
@@ -137,10 +137,10 @@ namespace Nethermind.Blockchain.TransactionPools
             }
 
             var hashes = new List<Keccak>();
-            var currentTimestamp = _transactionPoolTimer.CurrentTimestamp;
+            var timestamp = new UInt256(_timestamp.EpochSeconds);
             foreach (var transaction in _pendingTransactions.Values)
             {
-                if (_pendingTransactionThresholdValidator.IsRemovable(currentTimestamp, transaction.Timestamp))
+                if (_pendingTransactionThresholdValidator.IsRemovable(timestamp, transaction.Timestamp))
                 {
                     hashes.Add(transaction.Hash);
                 }
@@ -168,8 +168,8 @@ namespace Nethermind.Blockchain.TransactionPools
                 return;
             }
 
-            if (_pendingTransactionThresholdValidator.IsObsolete(_transactionPoolTimer.CurrentTimestamp,
-                transaction.Timestamp))
+            var timestamp = new UInt256(_timestamp.EpochSeconds);
+            if (_pendingTransactionThresholdValidator.IsObsolete(timestamp, transaction.Timestamp))
             {
                 return;
             }

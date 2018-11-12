@@ -144,7 +144,7 @@ namespace Nethermind.Runner.Runners
             _dbProvider = new ReadOnlyDbProvider(writableDbProvider, true);
 
             var transactionPool = new TransactionPool(new NullTransactionStorage(),
-                new PendingTransactionThresholdValidator(), new TransactionPoolTimer(),
+                new PendingTransactionThresholdValidator(), new Timestamp(),
                 ethereumSigner, _logManager);
 
             var receiptStorage = new PersistentReceiptStorage(writableDbProvider.ReceiptsDb, _specProvider);

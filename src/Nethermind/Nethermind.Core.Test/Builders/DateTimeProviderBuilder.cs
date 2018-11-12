@@ -16,12 +16,34 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
+using System;
 
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Core.Test.Builders
 {
-    public interface ITransactionPoolTimer
+    public class DateTimeProviderBuilder : BuilderBase<IDateTimeProvider>
     {
-        UInt256 CurrentTimestamp { get; }
+        private readonly TestDateTimeProvider _dateTimeProvider = new TestDateTimeProvider();
+
+        public DateTimeProviderBuilder()
+        {
+            TestObject = _dateTimeProvider;
+        }
+
+        public DateTimeProviderBuilder WithUtcNow(DateTime utcNow)
+        {
+            _dateTimeProvider.UtcNow = utcNow;
+
+            return this;
+        }
+
+        private class TestDateTimeProvider : IDateTimeProvider
+        {
+            public DateTime UtcNow { get; set; }
+
+            public TestDateTimeProvider(DateTime? utcNow = null)
+            {
+                UtcNow = utcNow ?? DateTime.UtcNow;
+            }
+        }
     }
 }

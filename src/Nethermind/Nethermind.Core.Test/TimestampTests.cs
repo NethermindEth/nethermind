@@ -16,18 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using System;
+using FluentAssertions;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
 {
+    [TestFixture]
     public class TimestampTests
     {
+        private static readonly DateTime Jan1St1970 = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
         [Test]
-        public void Test()
+        public void epoch_timestamp_in_seconds_and_milliseconds_should_be_valid()
         {
-            BigInteger stamp = Timestamp.UnixUtcUntilNowSecs;
-            Assert.Greater(0, BigInteger.Compare(1507626119, stamp));
+            var utcNow = DateTime.UtcNow;
+            var dateTimeProvider = Build.A.DateTimeProvider.WithUtcNow(utcNow).TestObject;
+            var timestamp = new Timestamp(dateTimeProvider);
+            var epochSeconds = timestamp.EpochSeconds;
+            var epochMilliseconds = timestamp.EpochMilliseconds;
+            var unixUtcUntilNowSeconds = (ulong) utcNow.Subtract(Jan1St1970).TotalSeconds;
+            var unixUtcUntilNowMilliseconds = (ulong) utcNow.Subtract(Jan1St1970).TotalMilliseconds;
+
+            epochSeconds.Should().Be(unixUtcUntilNowSeconds);
+            epochMilliseconds.Should().Be(unixUtcUntilNowMilliseconds);
         }
     }
 }

@@ -239,7 +239,7 @@ namespace Ethereum.Test.Base
 
             IEthereumSigner signer = new EthereumSigner(specProvider, _logManager);
             ITransactionPool transactionPool = new TransactionPool(new NullTransactionStorage(),
-                new PendingTransactionThresholdValidator(), new TransactionPoolTimer(), signer, _logManager);
+                new PendingTransactionThresholdValidator(), new Timestamp(), signer, _logManager);
             IReceiptStorage receiptStorage = new NullReceiptStorage();
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);

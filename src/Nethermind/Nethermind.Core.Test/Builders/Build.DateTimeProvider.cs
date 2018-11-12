@@ -16,13 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Dirichlet.Numerics;
-
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Core.Test.Builders
 {
-    public class TransactionPoolTimer : ITransactionPoolTimer
+    public partial class Build
     {
-        public UInt256 CurrentTimestamp => new UInt256(new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds());
+        public DateTimeProviderBuilder DateTimeProvider => new DateTimeProviderBuilder();
     }
 }

@@ -42,8 +42,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             IMessageSerializationService serializer,
             ISynchronizationManager syncManager,
             ILogManager logManager, IPerfService perfService,
-            IBlockTree blockTree, ITransactionPool transactionPool) : base(p2PSession, serializer, syncManager,
-            logManager, perfService, blockTree, transactionPool)
+            IBlockTree blockTree, ITransactionPool transactionPool, ITimestamp timestamp) : base(p2PSession, serializer,
+            syncManager, logManager, perfService, blockTree, transactionPool, timestamp)
         {
         }
 
