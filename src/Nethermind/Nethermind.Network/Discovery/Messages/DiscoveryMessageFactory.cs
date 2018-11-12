@@ -27,10 +27,12 @@ namespace Nethermind.Network.Discovery.Messages
 {
     public class DiscoveryMessageFactory : IDiscoveryMessageFactory
     {
+        private readonly ITimestamp _timestamp;
         private readonly INetworkConfig _configurationProvider;
 
-        public DiscoveryMessageFactory(IConfigProvider configurationProvider)
+        public DiscoveryMessageFactory(IConfigProvider configurationProvider, ITimestamp timestamp)
         {
+            _timestamp = timestamp;
             _configurationProvider = configurationProvider.GetConfig<INetworkConfig>();
         }
 
@@ -38,7 +40,8 @@ namespace Nethermind.Network.Discovery.Messages
         {
             T message = Activator.CreateInstance<T>();
             message.FarAddress = destination.Address;
-            message.ExpirationTime = (long)_configurationProvider.DiscoveryMsgExpiryTime + (long)Timestamp.UnixUtcUntilNowMilisecs;
+            message.ExpirationTime = _configurationProvider.DiscoveryMsgExpiryTime +
+                                     (long) _timestamp.EpochMilliseconds;
             return message;
         }
 

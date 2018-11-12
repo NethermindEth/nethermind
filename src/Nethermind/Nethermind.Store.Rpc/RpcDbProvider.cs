@@ -34,6 +34,7 @@ namespace Nethermind.Store.Rpc
             ReceiptsDb = new ReadOnlyDb(new RpcDb(DbNames.Receipts, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
             BlocksDb = new ReadOnlyDb(new RpcDb(DbNames.Blocks, serializer, client, logManager, recordDbProvider?.BlocksDb), true);
             BlockInfosDb = new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb), true);
+            PendingTxsDb = new ReadOnlyDb(new RpcDb(DbNames.PendingTxs, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -41,6 +42,7 @@ namespace Nethermind.Store.Rpc
         public IDb ReceiptsDb { get; }
         public IDb BlocksDb { get; }
         public IDb BlockInfosDb { get; }
+        public IDb PendingTxsDb { get; }
 
         public void Dispose()
         {
@@ -49,6 +51,7 @@ namespace Nethermind.Store.Rpc
             ReceiptsDb?.Dispose();
             BlocksDb?.Dispose();
             BlockInfosDb?.Dispose();
+            PendingTxsDb?.Dispose();
             _recordDbProvider?.Dispose();
         }
     }

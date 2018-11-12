@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,22 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.TransactionPools.Filters
 {
-    public interface ITransactionStore
+    public class AcceptAllTransactionFilter : ITransactionFilter
     {
-        void StoreProcessedTransaction(Keccak txHash, TransactionReceipt receipt);
-        TransactionReceipt GetReceipt(Keccak txHash);
-        
-        // tks: there will be split of TxPool and TxStore where one is responsible for pooling and serving txs for mining and broadcast and the other for storing processed txs and receipts
-        AddTransactionResult AddPending(Transaction transaction, UInt256 blockNumber);
-        void RemovePending(Transaction transaction);
-        Transaction[] GetAllPending();
-        event EventHandler<TransactionEventArgs> NewPending;
+        public bool IsValid(Transaction transaction) => true;
     }
 }

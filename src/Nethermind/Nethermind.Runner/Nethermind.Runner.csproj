@@ -42,4 +42,31 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="out\linux-x64\NLog.config" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\web.config" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\chainspec\foundation.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\chainspec\kovan.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\chainspec\morden.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\chainspec\olympic.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\chainspec\private_bootnode.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\chainspec\private_client.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\chainspec\private_miner1.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\chainspec\private_miner2.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\chainspec\rinkeby.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\chainspec\ropsten.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\chainspec\spaceneth.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\configs\mainnet_posix.config.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\configs\mainnet_windows.config.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\configs\rinkeby_posix.config.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\configs\rinkeby_windows.config.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\configs\ropsten_posix.config.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\configs\ropsten_tnodes.config.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\configs\ropsten_windows.config.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\configs\spaceneth_posix.config.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\configs\spaceneth_windows.config.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\Data\genesis.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\Nethermind.Runner.deps.json" />
+    <_ContentIncludedByDefault Remove="out\linux-x64\Nethermind.Runner.runtimeconfig.json" />
+  </ItemGroup>
 </Project>

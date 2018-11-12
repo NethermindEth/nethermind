@@ -22,6 +22,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -30,36 +31,39 @@ using Nethermind.Evm;
 
 namespace Nethermind.Blockchain
 {
-    [Todo("Introduce strategy for collecting Transacions for the block?")]
+    [Todo("Introduce strategy for collecting Transactions for the block?")]
     public class DevBlockProducer : IBlockProducer
     {
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockTree _blockTree;
+        private readonly ITimestamp _timestamp;
         private readonly ILogger _logger;
 
         private readonly IBlockchainProcessor _processor;
-        private readonly ITransactionStore _transactionStore;
+        private readonly ITransactionPool _transactionPool;
 
         public DevBlockProducer(
-            ITransactionStore transactionStore,
+            ITransactionPool transactionPool,
             IBlockchainProcessor devProcessor,
             IBlockTree blockTree,
+            ITimestamp timestamp,
             ILogManager logManager)
         {
-            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _processor = devProcessor ?? throw new ArgumentNullException(nameof(devProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _timestamp = timestamp;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void Start()
         {
-            _transactionStore.NewPending += OnNewPendingTx;
+            _transactionPool.NewPending += OnNewPendingTx;
         }
 
         public async Task StopAsync()
         {
-            _transactionStore.NewPending -= OnNewPendingTx;
+            _transactionPool.NewPending -= OnNewPendingTx;
             await Task.CompletedTask;
         }
 
@@ -69,7 +73,7 @@ namespace Nethermind.Blockchain
             if (parentHeader == null) return null;
 
             Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
-            UInt256 timestamp = Timestamp.UnixUtcUntilNowSecs;
+            UInt256 timestamp = _timestamp.EpochSeconds;
 
             BlockHeader header = new BlockHeader(
                 parent.Hash,
@@ -84,7 +88,7 @@ namespace Nethermind.Blockchain
             header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
 
-            var transactions = _transactionStore.GetAllPending().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
+            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
 
             var selectedTxs = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;

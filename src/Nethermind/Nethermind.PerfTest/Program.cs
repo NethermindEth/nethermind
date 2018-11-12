@@ -25,6 +25,9 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -151,7 +154,10 @@ namespace Nethermind.PerfTest
             ISnapshotableDb stateDb = new StateDb();
             StateTree stateTree = new StateTree(stateDb);
             IStateProvider stateProvider = new StateProvider(stateTree, new StateDb(), logManager);
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, new TransactionStore(new MemDb(), RopstenSpecProvider.Instance, NullEthereumSigner.Instance), logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance,
+                new TransactionPool(NullTransactionStorage.Instance,
+                    new PendingTransactionThresholdValidator(), new Timestamp(),
+                    NullEthereumSigner.Instance, logManager), logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
 
             Stopwatch stopwatch = new Stopwatch();
@@ -286,6 +292,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullStateDbPath = Path.Combine(DbBasePath, DbOnTheRocks.StateDbPath);
         private static readonly string FullCodeDbPath = Path.Combine(DbBasePath, DbOnTheRocks.CodeDbPath);
         private static readonly string FullReceiptsDbPath = Path.Combine(DbBasePath, DbOnTheRocks.ReceiptsDbPath);
+        private static readonly string FullPendingTxsDbPath = Path.Combine(DbBasePath, DbOnTheRocks.PendingTxsDbPath);
 
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlocksDbPath);
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlockInfosDbPath);
@@ -303,6 +310,7 @@ namespace Nethermind.PerfTest
             DeleteDb(FullStateDbPath);
             DeleteDb(FullCodeDbPath);
             DeleteDb(FullReceiptsDbPath);
+            DeleteDb(FullPendingTxsDbPath);
             if (_logger.IsInfo) _logger.Info("State DBs deleted");
 
             /* spec */
@@ -319,8 +327,11 @@ namespace Nethermind.PerfTest
             var receiptsDb = dbProvider.ReceiptsDb;
 
             /* store & validation */
-            var transactionStore = new TransactionStore(receiptsDb, specProvider, NullEthereumSigner.Instance);
-            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, transactionStore, _logManager));
+            var transactionPool = new TransactionPool(NullTransactionStorage.Instance,
+                new PendingTransactionThresholdValidator(), new Timestamp(),
+                NullEthereumSigner.Instance, _logManager);
+            var receiptStorage = new InMemoryReceiptStorage();
+            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, transactionPool, _logManager));
             var headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, _logManager);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
@@ -339,7 +350,7 @@ namespace Nethermind.PerfTest
             //var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, new TransactionTracer("D:\\tx_traces\\perf_test", new UnforgivingJsonSerializer()), _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionStore, _logManager);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumSigner), _logManager, true);
 
             /* load ChainSpec and init */

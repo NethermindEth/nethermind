@@ -23,6 +23,7 @@ using System.Numerics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -33,7 +34,7 @@ using Nethermind.Mining.Difficulty;
 
 namespace Nethermind.Blockchain
 {
-    [Todo("Introduce strategy for collecting Transacions for the block?")]
+    [Todo("Introduce strategy for collecting Transactions for the block?")]
     public class MinedBlockProducer : IBlockProducer
     {
         private static readonly BigInteger MinGasPriceForMining = 1;
@@ -41,23 +42,26 @@ namespace Nethermind.Blockchain
         private readonly IBlockchainProcessor _processor;
         private readonly ISealEngine _sealEngine;
         private readonly IBlockTree _blockTree;
+        private readonly ITimestamp _timestamp;
         private readonly IDifficultyCalculator _difficultyCalculator;
-        private readonly ITransactionStore _transactionStore;
+        private readonly ITransactionPool _transactionPool;
         private readonly ILogger _logger;
 
         public MinedBlockProducer(
             IDifficultyCalculator difficultyCalculator,
-            ITransactionStore transactionStore,
+            ITransactionPool transactionPool,
             IBlockchainProcessor processor,
             ISealEngine sealEngine,
             IBlockTree blockTree,
+            ITimestamp timestamp,
             ILogManager logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
-            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _sealEngine = sealEngine ?? throw new ArgumentNullException(nameof(sealEngine));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _timestamp = timestamp;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -121,9 +125,9 @@ namespace Nethermind.Blockchain
             }
 
             Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
-            UInt256 timestamp = Timestamp.UnixUtcUntilNowSecs;
+            UInt256 timestamp = _timestamp.EpochSeconds;
 
-            UInt256 difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, Timestamp.UnixUtcUntilNowSecs, parent.Number + 1, parent.Ommers.Length > 0);
+            UInt256 difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, _timestamp.EpochSeconds, parent.Number + 1, parent.Ommers.Length > 0);
             BlockHeader header = new BlockHeader(
                 parent.Hash,
                 Keccak.OfAnEmptySequenceRlp,
@@ -137,7 +141,7 @@ namespace Nethermind.Blockchain
             header.TotalDifficulty = parent.TotalDifficulty + difficulty;
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
-            var transactions = _transactionStore.GetAllPending().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
+            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
 
             List<Transaction> selected = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,10 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
+
+namespace Nethermind.Blockchain.TransactionPools
 {
-    public interface ITransactionReceiptStore
+    public interface ITransactionStorage
     {
-        
+        Transaction Get(Keccak hash);
+        Transaction[] GetAll();
+        void Add(Transaction transaction, UInt256 blockNumber);
+        void Delete(Keccak hash);
     }
 }

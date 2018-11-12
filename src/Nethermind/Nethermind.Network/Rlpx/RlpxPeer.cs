@@ -26,6 +26,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
@@ -52,21 +53,34 @@ namespace Nethermind.Network.Rlpx
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IPerfService _perfService;
+        private readonly IBlockTree _blockTree;
+        private readonly ITransactionPool _transactionPool;
+        private readonly ITimestamp _timestamp;
 
-        public RlpxPeer(NodeId localNodeId, int localPort, ISynchronizationManager synchronizationManager, IMessageSerializationService messageSerializationService, IEncryptionHandshakeService encryptionHandshakeService, INodeStatsProvider nodeStatsProvider, ILogManager logManager, IPerfService perfService)
+        public RlpxPeer(NodeId localNodeId, int localPort, ISynchronizationManager synchronizationManager,
+            IMessageSerializationService messageSerializationService,
+            IEncryptionHandshakeService encryptionHandshakeService, INodeStatsProvider nodeStatsProvider,
+            ILogManager logManager, IPerfService perfService,
+            IBlockTree blockTree, ITransactionPool transactionPool)
         {
-            _encryptionHandshakeService = encryptionHandshakeService ?? throw new ArgumentNullException(nameof(encryptionHandshakeService));
+            _encryptionHandshakeService = encryptionHandshakeService ??
+                                          throw new ArgumentNullException(nameof(encryptionHandshakeService));
             _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _perfService = perfService;
+            _blockTree = blockTree;
+            _transactionPool = transactionPool;
+            _timestamp = new Timestamp();
             _logger = logManager.GetClassLogger();
-            _serializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
-            _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
-            
-            LocalNodeId =  localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
+            _serializationService = messageSerializationService ??
+                                    throw new ArgumentNullException(nameof(messageSerializationService));
+            _synchronizationManager =
+                synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
+
+            LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             _localPort = localPort;
         }
-        
+
         public async Task Init()
         {
             if (_isInitialized)
@@ -165,7 +179,7 @@ namespace Nethermind.Network.Rlpx
                 _synchronizationManager,
                 _nodeStatsProvider,
                 nodeStats,
-                _logManager, channel, _perfService);
+                _logManager, channel, _perfService, _blockTree, _transactionPool, _timestamp);
 
             if (connectionDirection == ConnectionDirection.Out)
             {

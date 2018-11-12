@@ -33,6 +33,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Nonce = 0;
             TestObjectInternal.Value = 1;
             TestObjectInternal.Data = new byte[0];
+            TestObjectInternal.Timestamp = 0;
         }
 
         public TransactionBuilder WithNonce(UInt256 nonce)
@@ -42,6 +43,12 @@ namespace Nethermind.Core.Test.Builders
         }
         
         public TransactionBuilder WithTo(Address address)
+        {
+            TestObjectInternal.To = address;
+            return this;
+        }
+        
+        public TransactionBuilder To(Address address)
         {
             TestObjectInternal.To = address;
             return this;
@@ -64,6 +71,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.GasLimit = gasLimit;
             return this;
         }
+
+        public TransactionBuilder WithTimestamp(UInt256 timestamp)
+        {
+            TestObject.Timestamp = timestamp;
+            return this;
+        }
         
         public TransactionBuilder Signed(IEthereumSigner signer, PrivateKey privateKey, UInt256 blockNumber)
         {
@@ -76,6 +89,12 @@ namespace Nethermind.Core.Test.Builders
         {
             signer.Sign(privateKey, TestObjectInternal, blockNumber);
             TestObjectInternal.SenderAddress = privateKey.Address;
+            return this;
+        }
+
+        public TransactionBuilder DeliveredBy(PublicKey publicKey)
+        {
+            TestObject.DeliveredBy = publicKey;
             return this;
         }
 

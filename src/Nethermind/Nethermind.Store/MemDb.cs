@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
@@ -46,6 +47,8 @@ namespace Nethermind.Store
         {
             _db.Remove(key);
         }
+
+        public byte[][] GetAll() => Values.Select(v => v).ToArray();
 
         public void StartBatch()
         {

@@ -51,6 +51,8 @@ namespace Nethermind.Store
             }
         }
 
+        public byte[][] GetAll() => _memDb.GetAll();
+
         public void StartBatch()
         {
         }
@@ -58,7 +60,11 @@ namespace Nethermind.Store
         public void CommitBatch()
         {
         }
-        
+
+        public void Remove(byte[] key)
+        {
+        }
+
         public void ClearTempChanges()
         {
             _memDb = new MemDb();

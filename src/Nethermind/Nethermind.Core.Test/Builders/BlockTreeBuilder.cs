@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -42,7 +43,7 @@ namespace Nethermind.Core.Test.Builders
             blocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             
             _genesisBlock = genesisBlock;
-            TestObjectInternal = new BlockTree(blocksDb, new MemDb(), RopstenSpecProvider.Instance, Substitute.For<ITransactionStore>(), NullLogManager.Instance);
+            TestObjectInternal = new BlockTree(blocksDb, new MemDb(), RopstenSpecProvider.Instance, Substitute.For<ITransactionPool>(), NullLogManager.Instance);
         }
 
         public BlockTreeBuilder OfChainLength(int chainLength, int splitBlockNumber = 0, int splitVariant = 0)

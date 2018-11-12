@@ -54,6 +54,8 @@ namespace Nethermind.Store
             set => Set(key, value);
         }
 
+        public byte[][] GetAll() => _db.GetAll();
+
         public void StartBatch()
         {
             _db.StartBatch();
@@ -62,6 +64,10 @@ namespace Nethermind.Store
         public void CommitBatch()
         {
             _db.CommitBatch();
+        }
+
+        public void Remove(byte[] key)
+        {
         }
 
         public void Restore(int snapshot)

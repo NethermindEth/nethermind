@@ -50,6 +50,7 @@ namespace Nethermind.Network.Test.Discovery
         private INodeTable _nodeTable;
         private INodeFactory _nodeFactory;
         private IConfigProvider _configurationProvider;
+        private ITimestamp _timestamp;
         private int _port = 1;
         private string _host = "192.168.1.27";
 
@@ -72,9 +73,11 @@ namespace Nethermind.Network.Test.Discovery
 
             _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(_configurationProvider, new JsonSerializer(logManager), new AesEncrypter(_configurationProvider, logManager), new CryptoRandom(), logManager), calculator, _configurationProvider, logManager);
             _nodeTable.Initialize();
+            
+            _timestamp = new Timestamp();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(_configurationProvider), evictionManager, new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _nodeFactory, logManager), _configurationProvider, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(_configurationProvider, _timestamp), evictionManager, new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _nodeFactory, logManager), _configurationProvider, logManager);
 
             _udpClient = Substitute.For<IMessageSender>();
 

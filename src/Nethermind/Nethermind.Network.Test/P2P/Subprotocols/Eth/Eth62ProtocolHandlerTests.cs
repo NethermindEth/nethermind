@@ -18,6 +18,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
@@ -41,10 +42,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             var session = Substitute.For<IP2PSession>();
             var syncManager = Substitute.For<ISynchronizationManager>();
+            var blockTree = Substitute.For<IBlockTree>();
+            var transactionPool = Substitute.For<ITransactionPool>();
+            var timestamp = Substitute.For<ITimestamp>();
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogManager.Instance, new PerfService(NullLogManager.Instance));
+            var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogManager.Instance,
+                new PerfService(NullLogManager.Instance), blockTree, transactionPool, timestamp);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
@@ -68,11 +73,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             var session = Substitute.For<IP2PSession>();
             var syncManager = Substitute.For<ISynchronizationManager>();
+            var blockTree = Substitute.For<IBlockTree>();
+            var transactionPool = Substitute.For<ITransactionPool>();
+            var timestamp = Substitute.For<ITimestamp>();
             syncManager.Find(null, Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>()).Throws(new ArgumentNullException());
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogManager.Instance, new PerfService(NullLogManager.Instance));
+            var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogManager.Instance,
+                new PerfService(NullLogManager.Instance), blockTree, transactionPool, timestamp);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();

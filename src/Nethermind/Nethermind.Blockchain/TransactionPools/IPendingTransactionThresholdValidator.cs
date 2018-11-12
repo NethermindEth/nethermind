@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,31 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core
+namespace Nethermind.Blockchain.TransactionPools
 {
-    public static class Timestamp
+    public interface IPendingTransactionThresholdValidator
     {
-        private static readonly DateTime Jan1St1970 = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
-        // TODO: make it testable
-        public static ulong UnixUtcUntilNowSecs
-        {
-            get
-            {
-                var timestamp = (ulong)DateTime.UtcNow.Subtract(Jan1St1970).TotalSeconds;
-                return timestamp;
-            }
-        }
-
-        public static ulong UnixUtcUntilNowMilisecs
-        {
-            get
-            {
-                var timestamp = (ulong)DateTime.UtcNow.Subtract(Jan1St1970).TotalMilliseconds;
-                return timestamp;
-            }
-        }
+        bool IsObsolete(UInt256 currentTimestamp, UInt256 transactionTimestamp);
+        bool IsRemovable(UInt256 currentTimestamp, UInt256 transactionTimestamp);
     }
 }

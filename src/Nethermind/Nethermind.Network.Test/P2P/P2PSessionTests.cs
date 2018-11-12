@@ -18,6 +18,7 @@
 
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
@@ -43,7 +44,7 @@ namespace Nethermind.Network.Test.P2P
             IPacketSender sender = Substitute.For<IPacketSender>();
 
             IMessageSerializationService service = Build.A.SerializationService().WithP2P().TestObject;
-            
+
             P2PSession factory = new P2PSession(
                 new NodeId(NetTestVectors.StaticKeyA.PublicKey),
                 new NodeId(NetTestVectors.StaticKeyA.PublicKey),
@@ -53,9 +54,10 @@ namespace Nethermind.Network.Test.P2P
                 Substitute.For<ISynchronizationManager>(),
                 Substitute.For<INodeStatsProvider>(),
                 Substitute.For<INodeStats>(),
-                NullLogManager.Instance, Substitute.For<IChannel>(), Substitute.For<IPerfService>());
+                NullLogManager.Instance, Substitute.For<IChannel>(), Substitute.For<IPerfService>(),
+                Substitute.For<IBlockTree>(), Substitute.For<ITransactionPool>(), Substitute.For<ITimestamp>());
             factory.Init(4, Substitute.For<IChannelHandlerContext>(), sender);
-            
+
             sender.Received().Enqueue(Arg.Is<Packet>(p => p.PacketType == 0 && p.Protocol == "p2p"));
         }
     }

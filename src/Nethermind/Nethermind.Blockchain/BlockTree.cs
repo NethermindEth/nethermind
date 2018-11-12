@@ -20,6 +20,7 @@ using System;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -51,21 +52,21 @@ namespace Nethermind.Blockchain
         private readonly IDb _blockInfoDb;
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
-        private readonly ITransactionStore _transactionStore;
+        private readonly ITransactionPool _transactionPool;
 
         // TODO: validators should be here
         public BlockTree(
             IDb blockDb,
             IDb blockInfoDb,
             ISpecProvider specProvider,
-            ITransactionStore transactionStore,
+            ITransactionPool transactionPool,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockDb = blockDb;
             _blockInfoDb = blockInfoDb;
             _specProvider = specProvider;
-            _transactionStore = transactionStore;
+            _transactionPool = transactionPool;
 
             ChainLevelInfo genesisLevel = LoadLevel(0);
             if (genesisLevel != null)
@@ -457,7 +458,7 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _transactionStore.RemovePending(block.Transactions[i]);
+                _transactionPool.RemoveTransaction(block.Transactions[i].Hash);
             }
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");

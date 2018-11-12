@@ -17,47 +17,44 @@
  */
 
 using System;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
 {
-    public class NullTransactionStore : ITransactionStore
+    public class NullTransactionPool : ITransactionPool
     {
-        private NullTransactionStore()
+        private NullTransactionPool()
         {
         }
 
-        public static NullTransactionStore Instance { get; } = new NullTransactionStore();
+        public static NullTransactionPool Instance { get; } = new NullTransactionPool();
 
-        public void StoreProcessedTransaction(Keccak txHash, TransactionReceipt receipt)
+        public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
+
+        public void AddFilter<T>(T filter) where T : ITransactionFilter
         {
         }
 
-        public TransactionReceipt GetReceipt(Keccak txHash)
-        {
-            throw new NotSupportedException();
-        }
-
-        public AddTransactionResult AddPending(Transaction transaction, UInt256 blockNumber)
-        {
-            return AddTransactionResult.Added;
-        }
-
-        public void RemovePending(Transaction transaction)
+        public void AddPeer(ISynchronizationPeer peer)
         {
         }
 
-        public Transaction[] GetAllPending()
+        public void RemovePeer(NodeId nodeId)
         {
-            return Array.Empty<Transaction>();
         }
 
-        public event EventHandler<TransactionEventArgs> NewPending
+        public void AddTransaction(Transaction transaction, UInt256 blockNumber)
         {
-            add { }
-            remove { }
         }
+
+        public void RemoveTransaction(Keccak hash)
+        {
+        }
+
+        public event EventHandler<TransactionEventArgs> NewPending;
     }
 }

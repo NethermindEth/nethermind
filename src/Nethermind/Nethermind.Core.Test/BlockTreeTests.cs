@@ -20,6 +20,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
@@ -38,7 +39,7 @@ namespace Nethermind.Core.Test
         public void Add_genesis_shall_notify()
         {
             bool hasNotified = false;
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(), NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(), NullLogManager.Instance);
             blockTree.NewHeadBlock += (sender, args) => { hasNotified = true; };
 
             Block block = Build.A.Block.WithNumber(0).TestObject;
@@ -54,7 +55,7 @@ namespace Nethermind.Core.Test
         public void Add_genesis_shall_work_even_with_0_difficulty()
         {
             bool hasNotified = false;
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(), NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(), NullLogManager.Instance);
             blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotified = true; };
 
             Block block = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
@@ -67,7 +68,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Can_only_add_genesis_once()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block blockA = Build.A.Block.WithNumber(0).TestObject;
             Block blockB = Build.A.Block.WithNumber(0).TestObject;
             blockTree.SuggestBlock(blockA);
@@ -78,7 +79,7 @@ namespace Nethermind.Core.Test
         public void Shall_notify_on_new_head_block_after_genesis()
         {
             bool hasNotified = false;
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.SuggestBlock(block0);
@@ -95,7 +96,7 @@ namespace Nethermind.Core.Test
         public void Shall_notify_on_new_suggested_block_after_genesis()
         {
             bool hasNotified = false;
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.SuggestBlock(block0);
@@ -111,7 +112,7 @@ namespace Nethermind.Core.Test
         {
             bool hasNotifiedBest = false;
             bool hasNotifiedHead = false;
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
@@ -129,7 +130,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Shall_ignore_orphans()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).TestObject;
             blockTree.SuggestBlock(block0);
@@ -140,7 +141,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Shall_ignore_known()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.SuggestBlock(block0);
@@ -152,7 +153,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Add_and_find_branch()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
             Block found = blockTree.FindBlock(block.Hash, false);
@@ -162,7 +163,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Add_on_branch_move_find()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block = Build.A.Block.TestObject;
             AddToMain(blockTree, block);
             Block found = blockTree.FindBlock(block.Hash, true);
@@ -172,7 +173,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Add_on_main_move_find()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block = Build.A.Block.TestObject;
             AddToMain(blockTree, block);
             blockTree.MoveToBranch(block.Hash);
@@ -183,7 +184,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Add_on_branch_and_not_find_on_main()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
             Block found = blockTree.FindBlock(block.Hash, true);
@@ -193,7 +194,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Find_by_number_basic()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
@@ -208,7 +209,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Find_by_number_beyond_what_is_known_returns_null()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
@@ -223,7 +224,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Find_by_number_missing()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             AddToMain(blockTree, block0);
@@ -236,7 +237,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Find_sequence_basic()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
@@ -253,7 +254,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Find_sequence_reverse()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
@@ -278,7 +279,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Find_sequence_zero_blocks()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
@@ -293,7 +294,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Find_sequence_basic_skip()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
@@ -310,7 +311,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Find_sequence_some_empty()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
@@ -326,7 +327,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Total_difficulty_is_calculated_when_exists_parent_with_total_difficulty()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
 
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             blockTree.SuggestBlock(block0);
@@ -338,7 +339,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Total_difficulty_is_null_when_no_parent()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
 
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             blockTree.SuggestBlock(block0);
@@ -351,7 +352,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Head_block_gets_updated()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             AddToMain(blockTree, block0);
@@ -363,7 +364,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Best_suggested_block_gets_updated()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             AddToMain(blockTree, block0);
@@ -376,7 +377,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Sets_genesis_block()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             AddToMain(blockTree, block0);
 
@@ -386,7 +387,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Stores_multiple_blocks_per_level()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;
@@ -415,7 +416,7 @@ namespace Nethermind.Core.Test
             
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
 
-            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Assert.AreEqual(headBlock.Hash, blockTree.Head?.Hash, "head");
             Assert.AreEqual(headBlock.Hash, blockTree.Genesis?.Hash, "genesis");
         }
@@ -442,7 +443,7 @@ namespace Nethermind.Core.Test
 
                 blocksDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock).Bytes);
 
-                BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+                BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
                 await blockTree.LoadBlocksFromDb(CancellationToken.None);
 
 //                Assert.AreEqual(genesisBlock.Hash, blockTree.Genesis?.Hash, $"genesis {chainLength}");
@@ -472,7 +473,7 @@ namespace Nethermind.Core.Test
 
                 blocksDb.Set(Keccak.Zero, Rlp.Encode(testTree.FindBlock(1)).Bytes);
 
-                BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+                BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
                 await blockTree.LoadBlocksFromDb(CancellationToken.None);
 
 //                Assert.AreEqual(genesisBlock.Hash, blockTree.Genesis?.Hash, $"genesis {chainLength}");
@@ -486,7 +487,7 @@ namespace Nethermind.Core.Test
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
 
-            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
 
@@ -503,7 +504,7 @@ namespace Nethermind.Core.Test
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
 
-            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionStore>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;
