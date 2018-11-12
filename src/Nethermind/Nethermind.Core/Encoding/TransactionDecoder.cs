@@ -61,7 +61,7 @@ namespace Nethermind.Core.Encoding
                     throw new RlpException("R and S lengths expected to be less or equal 32");
                 }
 
-                byte v = vBytes[0]; // TODO: support higher chain IDs
+                int v = vBytes.ToInt32();
                 BigInteger r = rBytes.ToUnsignedBigInteger();
                 BigInteger s = sBytes.ToUnsignedBigInteger();
 

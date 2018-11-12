@@ -77,7 +77,7 @@ namespace Nethermind.RunnerSpawner
             foreach ((string name, JToken parameters) in spawnerConfig.Runners)
             {
                 string serialized = serializer.Serialize(parameters, true);
-                string singleConfigPath = Path.Combine(configTempDir, $"nethermind.runner.{name}.config.json");
+                string singleConfigPath = Path.Combine(configTempDir, $"nethermind.runner.{name}.cfg");
                 File.WriteAllText(singleConfigPath, serialized);
 
                 try

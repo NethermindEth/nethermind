@@ -129,7 +129,7 @@ namespace Nethermind.Clique
             byte[] signatureBytes = signature.Bytes;
             Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - ExtraSeal, signatureBytes.Length);
             // Copy signature's recovery id (V)
-            byte recoveryId = signature.V >= 27 ? (byte)(signature.V - 27) : signature.V;
+            byte recoveryId = signature.RecoveryId;
             header.ExtraData[header.ExtraData.Length - 1] = recoveryId;
 
             // Wait until sealing is terminated or delay timeout.

@@ -17,13 +17,10 @@
  */
 
 using System.Diagnostics;
-using System.Linq;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
-using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core

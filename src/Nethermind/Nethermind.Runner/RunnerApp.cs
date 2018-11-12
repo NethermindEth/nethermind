@@ -36,7 +36,7 @@ namespace Nethermind.Runner
 {
     public class RunnerApp : RunnerAppBase, IRunnerApp
     {
-        private readonly string _defaultConfigFile = Path.Combine("configs", "mainnet_" + (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows" : "posix") + ".config.json");
+        private readonly string _defaultConfigFile = Path.Combine("configs", "mainnet.cfg");
 
         public RunnerApp(ILogger logger) : base(logger)
         {
@@ -63,6 +63,13 @@ namespace Nethermind.Runner
 
                 var configProvider = new JsonConfigProvider();
                 string configFilePath = configFile.HasValue() ? configFile.Value() : _defaultConfigFile;
+                if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
+                {
+                    string redirectedConfigPath = Path.Combine("configs", string.Concat(configFilePath, ".cfg")); 
+                    Console.WriteLine($"Redirecting config {configFilePath} to {redirectedConfigPath}");
+                    configFilePath = redirectedConfigPath;
+                }
+                
                 Console.WriteLine($"Reading config file from {configFilePath}");
                 configProvider.LoadJsonConfig(configFilePath);
                 return configProvider;

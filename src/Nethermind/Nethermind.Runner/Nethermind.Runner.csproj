@@ -33,11 +33,11 @@
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <Content Update="configs\*.config.json">
+    <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+  <ItemGroup>
     <Content Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
