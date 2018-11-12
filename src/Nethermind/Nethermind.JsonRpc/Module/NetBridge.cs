@@ -16,20 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Blockchain;
 
 namespace Nethermind.JsonRpc.Module
 {
     public class NetBridge : INetBridge
     {
-        private readonly ISynchronizationManager _manager;
+        private readonly ISynchronizationManager _syncManager;
 
-        public NetBridge(ISynchronizationManager manager)
+        public NetBridge(ISynchronizationManager syncManager)
         {
-            _manager = manager;
+            _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
         }
 
-        public int NetworkId => _manager.ChainId;
-        public int PeerCount => _manager.GetPeerCount();
+        public int NetworkId => _syncManager.ChainId;
+        public int PeerCount => _syncManager.GetPeerCount();
     }
 }

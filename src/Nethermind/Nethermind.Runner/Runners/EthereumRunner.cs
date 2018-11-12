@@ -430,7 +430,6 @@ namespace Nethermind.Runner.Runners
                 AlternativeChain debugChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, rpcDbProvider, recoveryStep, _logManager, debugTransactionStore);
                 IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 DebugBridge = new DebugBridge(debugDbProvider, txTracer, debugChain.Processor);
-                NetBridge = new NetBridge(_syncManager);
             }
 
             if (_initConfig.IsMining)
@@ -541,6 +540,11 @@ namespace Nethermind.Runner.Runners
             var localIp = _networkHelper.GetLocalIp();
             if (_logger.IsInfo) _logger.Info($"Node is up and listening on {localIp}:{_initConfig.P2PPort}");
             if (_logger.IsInfo) _logger.Info($"enode://{_nodeKey.PublicKey}@{localIp}:{_initConfig.P2PPort}");
+
+            if (_initConfig.JsonRpcEnabled)
+            {
+                NetBridge = new NetBridge(_syncManager);
+            }
         }
 
         private ISealEngine ConfigureSealEngine()
