@@ -140,9 +140,9 @@ namespace Nethermind.Clique
             // Ensure the extra data has all it's components
             if (header.ExtraData.Length < CliqueSealEngine.ExtraVanityLength)
             {
-                for (int i = 0; i < CliqueSealEngine.ExtraVanityLength - header.ExtraData.Length; i++)
+                for (int i = 0; i < CliqueSealEngine.ExtraVanityLength; i++)
                 {
-                    header.ExtraData.Append((byte)0);
+                    header.ExtraData = header.ExtraData.Append((byte)0).ToArray();
                 }
             }
 
@@ -154,15 +154,14 @@ namespace Nethermind.Clique
                 {
                     foreach (byte addressByte in signer.Bytes)
                     {
-                        header.ExtraData.Append(addressByte);
+                        header.ExtraData = header.ExtraData.Append(addressByte).ToArray();
                     }
                 }
             }
 
-            byte[] extraSeal = new byte[CliqueSealEngine.ExtraSealLength];
             for (int i = 0; i < CliqueSealEngine.ExtraSealLength; i++)
             {
-                header.ExtraData.Append((byte)0);
+                header.ExtraData = header.ExtraData.Append((byte)0).ToArray();
             }
 
             // Mix digest is reserved for now, set to empty
