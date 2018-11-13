@@ -20,46 +20,90 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
+using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 using Nethermind.Store;
 
 namespace Nethermind.Clique
 {
     public class CliqueBlockProducer : IBlockProducer
     {
+        private static readonly BigInteger MinGasPriceForMining = 1;
+        private readonly IBlockTree _blockTree;
+        private readonly ITimestamp _timestamp;
+        private readonly ILogger _logger;
+
+        private readonly IBlockchainProcessor _processor;
+        private readonly ITransactionPool _transactionPool;
         private CliqueSealEngine _sealEngine;
         private CliqueConfig _config;
-        private BlockTree _blockTree;
         private Address _address;
         private Dictionary<Address, bool> _proposals = new Dictionary<Address, bool>();
 
-        public CliqueBlockProducer(CliqueSealEngine cliqueSealEngine, CliqueConfig config, BlockTree blockTree, Address address)
+        public CliqueBlockProducer(
+            ITransactionPool transactionPool,
+            IBlockchainProcessor devProcessor,
+            IBlockTree blockTree,
+            ITimestamp timestamp,
+            CliqueSealEngine cliqueSealEngine,
+            CliqueConfig config,
+            Address address,
+            ILogManager logManager)
         {
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            _processor = devProcessor ?? throw new ArgumentNullException(nameof(devProcessor));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _timestamp = timestamp;
             _sealEngine = cliqueSealEngine;
             _config = config;
             _blockTree = blockTree;
             _address = address;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void Start()
         {
+            _transactionPool.NewPending += OnNewPendingTx;
         }
 
         public async Task StopAsync()
         {
+            _transactionPool.NewPending -= OnNewPendingTx;
             await Task.CompletedTask;
         }
 
-        private void Prepare(BlockHeader header)
+        private Block PrepareBlock()
         {
+            BlockHeader parentHeader = _blockTree.Head;
+            if (parentHeader == null) return null;
+
+            Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
+            UInt256 timestamp = _timestamp.EpochSeconds;
+
+            BlockHeader header = new BlockHeader(
+                parent.Hash,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                1,
+                parent.Number + 1,
+                parent.GasLimit,
+                timestamp > parent.Timestamp ? timestamp : parent.Timestamp + 1,
+                new byte[0]);
+
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
             UInt256 number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
             Snapshot snapshot = _sealEngine.GetOrCreateSnapshot(number - 1, header.ParentHash);
-            if ((ulong)number % _config.Epoch != 0)
+            bool isEpochBlock = (ulong)number % 30000 == 0;
+            if (!isEpochBlock)
             {
                 // Gather all the proposals that make sense voting on
                 List<Address> addresses = new List<Address>();
@@ -91,63 +135,93 @@ namespace Nethermind.Clique
 
             // Set the correct difficulty
             header.Difficulty = CalculateDifficulty(snapshot, _address);
-            // Ensure the extra data has all it's components
-            if (header.ExtraData.Length < CliqueSealEngine.ExtraVanityLength)
+            header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
+            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
+
+            // Set extra data
+            int mainBytesLength = CliqueSealEngine.ExtraVanityLength + CliqueSealEngine.ExtraSealLength;
+            int signerBytesLength = isEpochBlock ? 20 * snapshot.Signers.Count : 0;
+            int extraDataLength = mainBytesLength + signerBytesLength;
+            header.ExtraData = new byte[extraDataLength];
+
+            byte[] clientName = Encoding.UTF8.GetBytes("Nethermind");
+            Array.Copy(clientName, header.ExtraData, clientName.Length);
+
+            if (isEpochBlock)
             {
-                for (int i = 0; i < CliqueSealEngine.ExtraVanityLength - header.ExtraData.Length; i++)
+                for (int i = 0; i < snapshot.Signers.Keys.Count; i++)
                 {
-                    header.ExtraData.Append((byte)0);
+                    Address signer = snapshot.Signers.Keys[i];
+                    int index = CliqueSealEngine.ExtraVanityLength + 20 * i;
+                    Array.Copy(signer.Bytes, 0, header.ExtraData, index, signer.Bytes.Length);
                 }
-            }
-
-            header.ExtraData = header.ExtraData.Take(CliqueSealEngine.ExtraVanityLength).ToArray();
-
-            if ((ulong)number % _config.Epoch == 0)
-            {
-                foreach (Address signer in snapshot.Signers.Keys)
-                {
-                    foreach (byte addressByte in signer.Bytes)
-                    {
-                        header.ExtraData.Append(addressByte);
-                    }
-                }
-            }
-
-            byte[] extraSeal = new byte[CliqueSealEngine.ExtraSealLength];
-            for (int i = 0; i < CliqueSealEngine.ExtraSealLength; i++)
-            {
-                header.ExtraData.Append((byte)0);
             }
 
             // Mix digest is reserved for now, set to empty
+            header.MixHash = Keccak.Zero;
             // Ensure the timestamp has the correct delay
-            BlockHeader parent = _blockTree.FindHeader(header.ParentHash);
-            if (parent == null)
-            {
-                throw new InvalidOperationException("Unknown ancestor");
-            }
-
             header.Timestamp = parent.Timestamp + _config.BlockPeriod;
             long currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             if (header.Timestamp < currentTimestamp)
             {
                 header.Timestamp = new UInt256(currentTimestamp);
             }
+
+            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
+
+            var selectedTxs = new List<Transaction>();
+            BigInteger gasRemaining = header.GasLimit;
+
+            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
+
+            int total = 0;
+            foreach (Transaction transaction in transactions)
+            {
+                total++;
+                if (transaction == null) throw new InvalidOperationException("Block transaction is null");
+
+                if (transaction.GasPrice < MinGasPriceForMining)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
+                    continue;
+                }
+
+                if (transaction.GasLimit > gasRemaining)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
+                    break;
+                }
+
+                selectedTxs.Add(transaction);
+                gasRemaining -= transaction.GasLimit;
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"Collected {selectedTxs.Count} out of {total} pending transactions.");
+
+
+            Block block = new Block(header, selectedTxs, new BlockHeader[0]);
+            header.TransactionsRoot = block.CalculateTransactionsRoot();
+            return block;
         }
 
-        private Block Finalize(StateProvider state, BlockHeader header, Transaction[] txs, BlockHeader[] uncles, TransactionReceipt[] receipts)
+        private void OnNewPendingTx(object sender, TransactionEventArgs e)
         {
-            // No block rewards in PoA, so the state remains as is and uncles are dropped
-            header.StateRoot = state.StateRoot;
-            header.OmmersHash = BlockHeader.CalculateHash((BlockHeader)null);
-            // Assemble and return the final block for sealing
-            return new Block(header, txs, null);
-        }
+            Block block = PrepareBlock();
+            if (block == null)
+            {
+                if (_logger.IsError) _logger.Error("Failed to prepare block for mining.");
+                return;
+            }
 
-        private UInt256 CalculateDifficulty(ulong time, BlockHeader parent)
-        {
-            Snapshot snapshot = _sealEngine.GetOrCreateSnapshot(parent.Number, parent.Hash);
-            return CalculateDifficulty(snapshot, _address);
+            Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
+            if (processedBlock == null)
+            {
+                if (_logger.IsError) _logger.Error("Block prepared by block producer was rejected by processor");
+                return;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Suggesting newly mined block {processedBlock.ToString(Block.Format.HashAndNumber)}");
+            _blockTree.SuggestBlock(processedBlock);
         }
 
         private UInt256 CalculateDifficulty(Snapshot snapshot, Address signer)
