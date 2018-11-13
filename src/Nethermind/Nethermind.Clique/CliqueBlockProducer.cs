@@ -232,12 +232,6 @@ namespace Nethermind.Clique
             _blockTree.SuggestBlock(processedBlock);
         }
 
-        private UInt256 CalculateDifficulty(ulong time, BlockHeader parent)
-        {
-            Snapshot snapshot = _sealEngine.GetOrCreateSnapshot(parent.Number, parent.Hash);
-            return CalculateDifficulty(snapshot, _address);
-        }
-
         private UInt256 CalculateDifficulty(Snapshot snapshot, Address signer)
         {
             if (snapshot.InTurn(snapshot.Number + 1, signer))
