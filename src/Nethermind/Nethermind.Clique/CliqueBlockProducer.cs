@@ -102,7 +102,8 @@ namespace Nethermind.Clique
             UInt256 number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
             Snapshot snapshot = _sealEngine.GetOrCreateSnapshot(number - 1, header.ParentHash);
-            if ((ulong)number % _config.Epoch != 0)
+            bool isEpochBlock = (ulong)number % 30000 == 0;
+            if (!isEpochBlock)
             {
                 // Gather all the proposals that make sense voting on
                 List<Address> addresses = new List<Address>();
@@ -137,34 +138,23 @@ namespace Nethermind.Clique
             header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
 
-            // Ensure the extra data has all it's components
-            if (header.ExtraData.Length < CliqueSealEngine.ExtraVanityLength)
-            {
-                for (int i = 0; i < CliqueSealEngine.ExtraVanityLength; i++)
-                {
-                    header.ExtraData = header.ExtraData.Append((byte)0).ToArray();
-                }
-            }
-
-            header.ExtraData = header.ExtraData.Take(CliqueSealEngine.ExtraVanityLength).ToArray();
+            // Set extra data
+            int mainBytesLength = CliqueSealEngine.ExtraVanityLength + CliqueSealEngine.ExtraSealLength;
+            int signerBytesLength = isEpochBlock ? 20 * snapshot.Signers.Count : 0;
+            int extraDataLength = mainBytesLength + signerBytesLength;
+            header.ExtraData = new byte[extraDataLength];
 
             byte[] clientName = Encoding.UTF8.GetBytes("Nethermind");
             Array.Copy(clientName, header.ExtraData, clientName.Length);
 
-            if ((ulong)number % _config.Epoch == 0)
+            if (isEpochBlock)
             {
-                foreach (Address signer in snapshot.Signers.Keys)
+                for (int i = 0; i < snapshot.Signers.Keys.Count; i++)
                 {
-                    foreach (byte addressByte in signer.Bytes)
-                    {
-                        header.ExtraData = header.ExtraData.Append(addressByte).ToArray();
-                    }
+                    Address signer = snapshot.Signers.Keys[i];
+                    int index = CliqueSealEngine.ExtraVanityLength + 20 * i;
+                    Array.Copy(signer.Bytes, 0, header.ExtraData, index, signer.Bytes.Length);
                 }
-            }
-
-            for (int i = 0; i < CliqueSealEngine.ExtraSealLength; i++)
-            {
-                header.ExtraData = header.ExtraData.Append((byte)0).ToArray();
             }
 
             // Mix digest is reserved for now, set to empty
