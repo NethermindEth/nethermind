@@ -98,9 +98,6 @@ namespace Nethermind.Clique
                 timestamp > parent.Timestamp ? timestamp : parent.Timestamp + 1,
                 new byte[0]);
 
-            header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
-            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
-
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
             UInt256 number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
@@ -137,6 +134,9 @@ namespace Nethermind.Clique
 
             // Set the correct difficulty
             header.Difficulty = CalculateDifficulty(snapshot, _address);
+            header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
+            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
+
             // Ensure the extra data has all it's components
             if (header.ExtraData.Length < CliqueSealEngine.ExtraVanityLength)
             {
