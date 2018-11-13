@@ -74,7 +74,15 @@ namespace Nethermind.Blockchain.Test
             BlockHeader[] result = new BlockHeader[maxBlocks];
             for (int i = 0; i < maxBlocks; i++)
             {
-                result[i] = _blockTree.FindBlock((ulong)firstNumber + (ulong)i + (ulong)skip).Header;
+                ulong blockNumber = (ulong) firstNumber + (ulong) i + (ulong) skip;
+                if (blockNumber > (_blockTree.Head?.Number ?? 0))
+                {
+                    result[i] = null;
+                }
+                else
+                {
+                    result[i] = _blockTree.FindBlock(blockNumber).Header;
+                }
             }
             
             return Task.FromResult(result);

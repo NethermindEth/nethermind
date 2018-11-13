@@ -593,7 +593,7 @@ namespace Nethermind.Blockchain
 
         private PeerInfo SelectBestPeerForSync()
         {
-            var availablePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestKnownNumber).Where(x => x.IsInitialized).Select(x => new {PeerInfo = x, AvLat = x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders)})
+            var availablePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestKnownNumber).Where(x => x.IsInitialized).Select(x => new {PeerInfo = x, AvLat = x.Peer?.NodeStats?.GetAverageLatency(NodeLatencyStatType.BlockHeaders)})
                 .OrderBy(x => x.AvLat ?? 100000).ToArray();
             if (!availablePeers.Any())
             {
@@ -687,6 +687,11 @@ namespace Nethermind.Blockchain
                 Dictionary<Keccak, BlockHeader> headersByHash = new Dictionary<Keccak, BlockHeader>();
                 for (int i = 1; i < headers.Length; i++)
                 {
+                    if (headers[i] == null)
+                    {
+                        break;
+                    }
+                    
                     hashes.Add(headers[i].Hash);
                     headersByHash[headers[i].Hash] = headers[i];
                 }
@@ -726,8 +731,16 @@ namespace Nethermind.Blockchain
                     DecreaseBatchSize();
                     continue;
                 }
-
-                emptyBlockListCounter = 0;
+                
+                if (blocks.Length != 0)
+                {
+                    emptyBlockListCounter = 0;    
+                }
+                else
+                {
+                    continue;
+                }
+                
                 _sinceLastTimeout++;
                 if (_sinceLastTimeout > 8)
                 {

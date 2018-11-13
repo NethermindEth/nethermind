@@ -20,16 +20,10 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Store;
 using NSubstitute;
@@ -48,14 +42,14 @@ namespace Nethermind.Blockchain.Test
             _stateDb = new MemDb();
             _receiptsDb = new MemDb();
             _receiptStorage = Substitute.For<IReceiptStorage>();
+            BlockchainConfig quickConfig = new BlockchainConfig();
+            quickConfig.SyncTimerInterval = 100;
 
             IHeaderValidator headerValidator = Build.A.HeaderValidator.ThatAlwaysReturnsTrue.TestObject;
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
             ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 
-            _manager = new SynchronizationManager(_stateDb, _blockTree, blockValidator, headerValidator,
-                transactionValidator, NullLogManager.Instance, new BlockchainConfig(),
-                new PerfService(NullLogManager.Instance), _receiptStorage);
+            _manager = new SynchronizationManager(_stateDb, _blockTree, blockValidator, headerValidator, transactionValidator, NullLogManager.Instance, quickConfig, new PerfService(NullLogManager.Instance), _receiptStorage);
         }
 
         private IDb _stateDb;
@@ -73,12 +67,16 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) =>
+            {
+                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+            };
+            _manager.Start();
             Task addPeerTask = _manager.AddPeer(peer);
             Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
             Assert.AreSame(addPeerTask, firstToComplete);
-            _manager.Start();
-            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
+            
+            resetEvent.WaitOne(2000);
             Assert.AreEqual(SynchronizationManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
 
@@ -87,14 +85,12 @@ namespace Nethermind.Blockchain.Test
         {
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
-
-            ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
+            
+            _manager.Start();
             Task addPeerTask = _manager.AddPeer(peer);
             Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
             Assert.AreSame(addPeerTask, firstToComplete);
-            _manager.Start();
-            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
+            
             Assert.AreEqual(0, (int) _blockTree.BestSuggested.Number);
         }
 
@@ -107,10 +103,11 @@ namespace Nethermind.Blockchain.Test
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
+            _manager.Start();
             Task addPeerTask = _manager.AddPeer(peer);
             Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
             Assert.AreSame(addPeerTask, firstToComplete);
-            _manager.Start();
+            
             resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
             Assert.AreEqual(SynchronizationManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
@@ -121,16 +118,21 @@ namespace Nethermind.Blockchain.Test
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SynchronizationManager.MaxBatchSize).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
-            ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
+            SemaphoreSlim semaphore = new SemaphoreSlim(0);
+            _manager.SyncEvent += (sender, args) =>
+            {
+                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) semaphore.Release(1);
+            };
+            _manager.Start();
             Task addPeerTask = _manager.AddPeer(peer);
             Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
             Assert.AreSame(addPeerTask, firstToComplete);
-            _manager.Start();
-            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
 
             BlockTreeBuilder.ExtendTree(_remoteBlockTree, SynchronizationManager.MaxBatchSize * 2);
             _manager.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.NodeId);
+            
+            semaphore.Wait(TimeSpan.FromMilliseconds(2000));
+            semaphore.Wait(TimeSpan.FromMilliseconds(2000));
 
             Assert.AreEqual(SynchronizationManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
@@ -142,17 +144,22 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) =>
+            {
+                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+            };
+            
+            _manager.Start();
             Task addPeerTask = _manager.AddPeer(peer);
             Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
             Assert.AreSame(addPeerTask, firstToComplete);
-            _manager.Start();
-            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
 
             Block block = Build.A.Block.WithParent(_remoteBlockTree.Head).TestObject;
             _manager.AddNewBlock(block, peer.NodeId);
 
-            Assert.AreEqual(SynchronizationManager.MaxBatchSize, (int) _blockTree.BestSuggested.Number);
+            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
+
+            Assert.AreEqual(SynchronizationManager.MaxBatchSize - 1, (int) _blockTree.BestSuggested.Number);
         }
 
         [Test]
@@ -162,7 +169,12 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer miner1 = new SynchronizationPeerMock(miner1Tree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) =>
+            {
+                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+            };
+            
+            _manager.Start();
 
             Task addMiner1Task = _manager.AddPeer(miner1);
 
@@ -200,7 +212,12 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer miner1 = new SynchronizationPeerMock(miner1Tree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) =>
+            {
+                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+            };
+            
+            _manager.Start();
 
             Task addMiner1Task = _manager.AddPeer(miner1);
 
@@ -229,14 +246,15 @@ namespace Nethermind.Blockchain.Test
             BlockTree minerTree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
             ISynchronizationPeer miner1 = new SynchronizationPeerMock(minerTree);
 
-            ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
-
-            Task addMiner1Task = _manager.AddPeer(miner1);
-
-            await Task.WhenAll(addMiner1Task);
-
-            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+            AutoResetEvent resetEvent = new AutoResetEvent(false);
+            _manager.SyncEvent += (sender, args) =>
+            {
+                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+            };
+            
+            _manager.Start();
+            await _manager.AddPeer(miner1);
+            resetEvent.WaitOne(2000);
 
             Assert.AreEqual(minerTree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
 
@@ -246,14 +264,15 @@ namespace Nethermind.Blockchain.Test
             minerTree.MoveToMain(newBlock.Hash);
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
-            miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockNumber(Arg.Any<CancellationToken>()));
-            miner2.GetHeadBlockHash(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHash(default(CancellationToken)));
+            miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockNumber(CancellationToken.None));
+            miner2.GetHeadBlockHash(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHash(CancellationToken.None));
             miner2.NodeId.Returns(new NodeId(TestObject.PublicKeyB));
 
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()), "number as expected");
             Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(default(CancellationToken)), "hash as expected");
 
             await _manager.AddPeer(miner2);
+            resetEvent.WaitOne(2000);
 
             await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
         }
@@ -264,14 +283,17 @@ namespace Nethermind.Blockchain.Test
             BlockTree minerTree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
             ISynchronizationPeer miner1 = new SynchronizationPeerMock(minerTree);
 
-            ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
+            AutoResetEvent resetEvent = new AutoResetEvent(false);
+            _manager.SyncEvent += (sender, args) =>
+            {
+                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+            };
+            
+            _manager.Start();
 
             Task addMiner1Task = _manager.AddPeer(miner1);
-
             await Task.WhenAll(addMiner1Task);
-
-            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+            resetEvent.WaitOne(2000);
 
             Assert.AreEqual(minerTree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
 
@@ -281,14 +303,15 @@ namespace Nethermind.Blockchain.Test
             minerTree.MoveToMain(newBlock.Hash);
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
-            miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockNumber(Arg.Any<CancellationToken>()));
-            miner2.GetHeadBlockHash(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHash(default(CancellationToken)));
+            miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockNumber(CancellationToken.None));
+            miner2.GetHeadBlockHash(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHash(CancellationToken.None));
             miner2.NodeId.Returns(new NodeId(TestObject.PublicKeyB));
 
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()), "number as expected");
             Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(default(CancellationToken)), "hash as expected");
 
             await _manager.AddPeer(miner2);
+            resetEvent.WaitOne(2000);
 
             await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
         }
@@ -300,18 +323,18 @@ namespace Nethermind.Blockchain.Test
             byte[][] values = _manager.GetNodeData(new[] {TestObject.KeccakA, TestObject.KeccakB});
             Assert.AreEqual(2, values.Length, "data.Length");
             Assert.AreEqual(TestObject.RandomDataA, values[0], "data[0]");
-            Assert.AreEqual(Bytes.Empty, values[1], "data[1]");
+            Assert.AreEqual(null, values[1], "data[1]");
         }
-        
+
         [Test]
         public void Can_retrieve_empty_receipts()
         {
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(2).TestObject;
             Block block0 = _blockTree.FindBlock(0);
             Block block1 = _blockTree.FindBlock(1);
-            
+
             TransactionReceipt[][] receipts = _manager.GetReceipts(new[] {block0.Hash, block1.Hash, TestObject.KeccakA});
-            
+
             Assert.AreEqual(3, receipts.Length, "data.Length");
             Assert.AreEqual(0, receipts[0].Length, "data[0]");
             Assert.AreEqual(0, receipts[1].Length, "data[1]");
