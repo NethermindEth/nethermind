@@ -21,4 +21,10 @@
       <Name>Nethermind.Core.Test</Name>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <None Remove="chainspec.json" />
+    <Content Include="chainspec.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

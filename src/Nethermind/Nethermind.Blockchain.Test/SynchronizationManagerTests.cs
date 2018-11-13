@@ -131,8 +131,8 @@ namespace Nethermind.Blockchain.Test
             BlockTreeBuilder.ExtendTree(_remoteBlockTree, SynchronizationManager.MaxBatchSize * 2);
             _manager.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.NodeId);
             
-            semaphore.Wait(TimeSpan.FromMilliseconds(2000));
-            semaphore.Wait(TimeSpan.FromMilliseconds(2000));
+            semaphore.Wait(TimeSpan.FromMilliseconds(5000));
+            semaphore.Wait(TimeSpan.FromMilliseconds(5000));
 
             Assert.AreEqual(SynchronizationManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }

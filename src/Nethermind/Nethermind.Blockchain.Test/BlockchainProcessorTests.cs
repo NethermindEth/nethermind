@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Test
             MemDb receiptsDb = new MemDb();
             TransactionPool transactionPool = new TransactionPool(new NullTransactionStorage(),
                 new PendingTransactionThresholdValidator(), new Timestamp(), ethereumSigner, logger);
-            IReceiptStorage receiptStorage = new NullReceiptStorage();
+            IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider);
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, logger);
             Timestamp timestamp = new Timestamp();
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Test
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
-            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
+            string path = "chainspec.json";
             logger.GetClassLogger().Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
             foreach (var allocation in chainSpec.Allocations) stateProvider.CreateAccount(allocation.Key, allocation.Value);
@@ -128,10 +128,10 @@ namespace Nethermind.Blockchain.Test
                 Block block = blockTree.FindBlock(new UInt256(i));
                 Console.WriteLine($"Block {i} with {block.Transactions.Length} txs");
                 
-                ManualResetEvent suggestEvent = new ManualResetEvent(false);
-                blockchainProcessor.ProcessingQueueEmpty += (sender, args) => suggestEvent.Set(); 
+                ManualResetEvent blockProcessedEvent = new ManualResetEvent(false);
+                blockchainProcessor.ProcessingQueueEmpty += (sender, args) => blockProcessedEvent.Set(); 
                 blockchainProcessor.SuggestBlock(block.Hash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
-                suggestEvent.WaitOne(1000);
+                blockProcessedEvent.WaitOne(1000);
                 
                 TxTracer tracer = new TxTracer(blockchainProcessor, receiptStorage, blockTree);
 
