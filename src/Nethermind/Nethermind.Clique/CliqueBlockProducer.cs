@@ -96,7 +96,7 @@ namespace Nethermind.Clique
                 parent.Number + 1,
                 parent.GasLimit,
                 timestamp > parent.Timestamp ? timestamp : parent.Timestamp + 1,
-                Encoding.UTF8.GetBytes("Nethermind"));
+                new byte[0]);
 
             header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
@@ -147,6 +147,9 @@ namespace Nethermind.Clique
             }
 
             header.ExtraData = header.ExtraData.Take(CliqueSealEngine.ExtraVanityLength).ToArray();
+
+            byte[] clientName = Encoding.UTF8.GetBytes("Nethermind");
+            Array.Copy(clientName, header.ExtraData, clientName.Length);
 
             if ((ulong)number % _config.Epoch == 0)
             {
