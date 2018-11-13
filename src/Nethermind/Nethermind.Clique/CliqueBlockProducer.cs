@@ -101,65 +101,6 @@ namespace Nethermind.Clique
             header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
 
-            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
-
-            var selectedTxs = new List<Transaction>();
-            BigInteger gasRemaining = header.GasLimit;
-
-            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
-
-            int total = 0;
-            foreach (Transaction transaction in transactions)
-            {
-                total++;
-                if (transaction == null) throw new InvalidOperationException("Block transaction is null");
-
-                if (transaction.GasPrice < MinGasPriceForMining)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
-                    continue;
-                }
-
-                if (transaction.GasLimit > gasRemaining)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
-                    break;
-                }
-
-                selectedTxs.Add(transaction);
-                gasRemaining -= transaction.GasLimit;
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"Collected {selectedTxs.Count} out of {total} pending transactions.");
-
-
-            Block block = new Block(header, selectedTxs, new BlockHeader[0]);
-            header.TransactionsRoot = block.CalculateTransactionsRoot();
-            return block;
-        }
-
-        private void OnNewPendingTx(object sender, TransactionEventArgs e)
-        {
-            Block block = PrepareBlock();
-            if (block == null)
-            {
-                if (_logger.IsError) _logger.Error("Failed to prepare block for mining.");
-                return;
-            }
-
-            Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
-            if (processedBlock == null)
-            {
-                if (_logger.IsError) _logger.Error("Block prepared by block producer was rejected by processor");
-                return;
-            }
-
-            if (_logger.IsInfo) _logger.Info($"Suggesting newly mined block {processedBlock.ToString(Block.Format.HashAndNumber)}");
-            _blockTree.SuggestBlock(processedBlock);
-        }
-
-        private void Prepare(BlockHeader header)
-        {
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
             UInt256 number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
@@ -225,28 +166,70 @@ namespace Nethermind.Clique
             }
 
             // Mix digest is reserved for now, set to empty
+            header.MixHash = Keccak.Zero;
             // Ensure the timestamp has the correct delay
-            BlockHeader parent = _blockTree.FindHeader(header.ParentHash);
-            if (parent == null)
-            {
-                throw new InvalidOperationException("Unknown ancestor");
-            }
-
             header.Timestamp = parent.Timestamp + _config.BlockPeriod;
             long currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             if (header.Timestamp < currentTimestamp)
             {
                 header.Timestamp = new UInt256(currentTimestamp);
             }
+
+            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
+
+            var selectedTxs = new List<Transaction>();
+            BigInteger gasRemaining = header.GasLimit;
+
+            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
+
+            int total = 0;
+            foreach (Transaction transaction in transactions)
+            {
+                total++;
+                if (transaction == null) throw new InvalidOperationException("Block transaction is null");
+
+                if (transaction.GasPrice < MinGasPriceForMining)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
+                    continue;
+                }
+
+                if (transaction.GasLimit > gasRemaining)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
+                    break;
+                }
+
+                selectedTxs.Add(transaction);
+                gasRemaining -= transaction.GasLimit;
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"Collected {selectedTxs.Count} out of {total} pending transactions.");
+
+
+            Block block = new Block(header, selectedTxs, new BlockHeader[0]);
+            header.TransactionsRoot = block.CalculateTransactionsRoot();
+            return block;
         }
 
-        private Block Finalize(StateProvider state, BlockHeader header, Transaction[] txs, BlockHeader[] uncles, TransactionReceipt[] receipts)
+        private void OnNewPendingTx(object sender, TransactionEventArgs e)
         {
-            // No block rewards in PoA, so the state remains as is and uncles are dropped
-            header.StateRoot = state.StateRoot;
-            header.OmmersHash = BlockHeader.CalculateHash((BlockHeader)null);
-            // Assemble and return the final block for sealing
-            return new Block(header, txs, null);
+            Block block = PrepareBlock();
+            if (block == null)
+            {
+                if (_logger.IsError) _logger.Error("Failed to prepare block for mining.");
+                return;
+            }
+
+            Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
+            if (processedBlock == null)
+            {
+                if (_logger.IsError) _logger.Error("Block prepared by block producer was rejected by processor");
+                return;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Suggesting newly mined block {processedBlock.ToString(Block.Format.HashAndNumber)}");
+            _blockTree.SuggestBlock(processedBlock);
         }
 
         private UInt256 CalculateDifficulty(ulong time, BlockHeader parent)
