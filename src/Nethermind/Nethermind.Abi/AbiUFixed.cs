@@ -20,7 +20,7 @@ using System;
 using System.Numerics;
 using MathNet.Numerics;
 
-namespace Nethermind.Evm.Abi
+namespace Nethermind.Abi
 {
     public class AbiUFixed : AbiType
     {

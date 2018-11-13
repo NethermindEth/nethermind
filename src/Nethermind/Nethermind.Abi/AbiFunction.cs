@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,17 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
-
-namespace Nethermind.Evm
+namespace Nethermind.Abi
 {
-    public class StorageTraceEntry
+    public class AbiFunction : AbiBytes
     {
-        public string Address { get; set; }
-        public BigInteger Index { get; set; }
-        public string OldValue { get; set; }
-        public string NewValue { get; set; }
-        public long Cost { get; set; }
-        public long Refund { get; set; }
+        private AbiFunction() : base(24)
+        {
+        }
+
+        public static AbiFunction Instance = new AbiFunction();
+
+        public override string Name => "function";
     }
 }

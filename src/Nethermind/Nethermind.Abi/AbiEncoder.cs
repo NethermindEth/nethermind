@@ -22,7 +22,7 @@ using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Evm.Abi
+namespace Nethermind.Abi
 {
     public class AbiEncoder
     {

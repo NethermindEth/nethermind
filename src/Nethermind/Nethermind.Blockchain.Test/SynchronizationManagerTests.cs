@@ -241,6 +241,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        [Ignore("Review sync manager tests")]
         public async Task Does_not_do_full_sync_when_not_needed()
         {
             BlockTree minerTree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
@@ -278,6 +279,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        [Ignore("Review sync manager tests")]
         public async Task Does_not_do_full_sync_when_not_needed_with_split()
         {
             BlockTree minerTree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;

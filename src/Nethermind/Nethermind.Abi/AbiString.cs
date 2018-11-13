@@ -19,7 +19,7 @@
 using System;
 using System.Text;
 
-namespace Nethermind.Evm.Abi
+namespace Nethermind.Abi
 {
     public class AbiString : AbiType
     {

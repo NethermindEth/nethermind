@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Validators
             _intrinsicGasCalculator = new IntrinsicGasCalculator();
         }
 
-        /* Full and orrect validation is only possible in the context of a specific block
+        /* Full and correct validation is only possible in the context of a specific block
            as we cannot generalize correctness of the transaction without knowing the EIPs implemented
            and the world state (account nonce in particular ).
            Even without protocol change the tx can become invalid if another tx
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Validators
                    Validator.IsInP256(transaction.Nonce) &&
                    Validator.IsInP256(transaction.GasPrice) &&
                    Validator.IsInP256(transaction.GasLimit) &&
-                   /* This is unnecessarilly calculated twice - at validation and execution times. */
+                   /* This is unnecessarily calculated twice - at validation and execution times. */
                    transaction.GasLimit >= _intrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */

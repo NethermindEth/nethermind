@@ -27,6 +27,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain

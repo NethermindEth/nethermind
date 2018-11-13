@@ -28,6 +28,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 
 [assembly:InternalsVisibleTo("Nethermind.Evm.Test")]
@@ -2346,7 +2347,7 @@ namespace Nethermind.Evm
                         EvmState callState = new EvmState(
                             gasLimitUl,
                             callEnv,
-                            isPrecompile ? ExecutionType.Precompile : (instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? ExecutionType.Call : ExecutionType.Callcode),
+                            isPrecompile ? ExecutionType.Precompile : (instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? ExecutionType.Call : ExecutionType.CallCode),
                             stateSnapshot,
                             storageSnapshot,
                             (long)outputOffset,

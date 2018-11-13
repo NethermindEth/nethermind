@@ -24,6 +24,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 using Transaction = Nethermind.Core.Transaction;
 

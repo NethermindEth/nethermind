@@ -16,14 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
+
 namespace Nethermind.Evm
 {
-    // TODO: refactor
+    [Todo(Improve.Refactor, "We can have an EVM without the execution type IMHO")]
     public enum ExecutionType
     {
         Transaction,
         Call,
-        Callcode,
+        CallCode,
         Create,
         Precompile,
         DirectPrecompile,

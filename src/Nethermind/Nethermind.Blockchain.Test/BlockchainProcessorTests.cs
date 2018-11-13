@@ -31,6 +31,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
 using Nethermind.Store;

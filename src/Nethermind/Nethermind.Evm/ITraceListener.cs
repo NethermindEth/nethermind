@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm
 {

@@ -18,7 +18,7 @@
 
 using System;
 
-namespace Nethermind.Evm.Abi
+namespace Nethermind.Abi
 {
     public abstract class AbiType
     {

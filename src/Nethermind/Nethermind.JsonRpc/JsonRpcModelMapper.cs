@@ -24,6 +24,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.JsonRpc.DataModel.Block;
 using StorageTrace = Nethermind.JsonRpc.DataModel.StorageTrace;
@@ -182,7 +183,7 @@ namespace Nethermind.JsonRpc
             return mapped;
         }
 
-        public TransactionTrace MapTransactionTrace(Evm.TransactionTrace transactionTrace)
+        public TransactionTrace MapTransactionTrace(Evm.Tracing.TransactionTrace transactionTrace)
         {
             if (transactionTrace == null)
             {
@@ -210,7 +211,7 @@ namespace Nethermind.JsonRpc
             };
         }
         
-        public StorageTrace MapStorageTrace(Evm.StorageTrace storageTrace)
+        public StorageTrace MapStorageTrace(Evm.Tracing.StorageTrace storageTrace)
         {
             if (storageTrace == null)
             {

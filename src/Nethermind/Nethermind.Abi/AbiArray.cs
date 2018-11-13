@@ -20,7 +20,7 @@ using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Evm.Abi
+namespace Nethermind.Abi
 {
     public class AbiArray : AbiType
     {

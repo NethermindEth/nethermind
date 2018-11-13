@@ -16,14 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using System.Numerics;
 
-namespace Nethermind.Evm.Abi
+namespace Nethermind.Evm.Tracing
 {
-    public class AbiException : Exception
+    public class StorageTraceEntry
     {
-        public AbiException(string message) : base(message)
-        {
-        }
+        public string Address { get; set; }
+        public BigInteger Index { get; set; }
+        public string OldValue { get; set; }
+        public string NewValue { get; set; }
+        public long Cost { get; set; }
+        public long Refund { get; set; }
     }
 }

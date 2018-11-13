@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm
 {

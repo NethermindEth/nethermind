@@ -17,28 +17,35 @@
  */
 
 using System;
-using System.Text;
+using System.Numerics;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Evm.Abi
+namespace Nethermind.Abi
 {
-    public class AbiBytes : AbiType
+    public class AbiInt : AbiType
     {
-        private const int MaxLength = 32;
-        private const int MinLength = 0;
+        private const int MaxSize = 256;
 
-        public AbiBytes(int length)
+        private const int MinSize = 0;
+
+        public AbiInt(int length)
         {
-            if (length > MaxLength)
+            if (length % 8 != 0)
             {
                 throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiBytes)} has to be less or equal to {MaxLength}");
+                    $"{nameof(length)} of {nameof(AbiInt)} has to be a multiple of 8");
             }
 
-            if (length <= MinLength)
+            if (length > MaxSize)
             {
                 throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiBytes)} has to be greater than {MinLength}");
+                    $"{nameof(length)} of {nameof(AbiInt)} has to be less or equal to {MinSize}");
+            }
+
+            if (length <= MinSize)
+            {
+                throw new ArgumentException(nameof(length),
+                    $"{nameof(length)} of {nameof(AbiInt)} has to be greater than {MinSize}");
             }
 
             Length = length;
@@ -46,33 +53,31 @@ namespace Nethermind.Evm.Abi
 
         public int Length { get; }
 
-        public override string Name => $"bytes{Length}";
+        public int LengthInBytes => Length / 8;
+
+        public override string Name => $"int{Length}";
 
         public override (object, int) Decode(byte[] data, int position)
         {
-            return (data.Slice(position, Length), position + MaxLength);
+            byte[] input = data.Slice(position, LengthInBytes);
+            return (input.ToSignedBigInteger(LengthInBytes), position + LengthInBytes);
+        }
+
+        public (BigInteger, int) DecodeInt(byte[] data, int position)
+        {
+            return ((BigInteger, int))Decode(data, position);
         }
 
         public override byte[] Encode(object arg)
         {
-            if (arg is byte[] input)
+            if (arg is BigInteger input)
             {
-                if (input.Length != Length)
-                {
-                    throw new AbiException(AbiEncodingExceptionMessage);
-                }
-
-                return Bytes.PadRight(input, MaxLength);
-            }
-
-            if (arg is string stringInput)
-            {
-                return Encode(Encoding.ASCII.GetBytes(stringInput));
+                return input.ToBigEndianByteArray(32);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);
         }
 
-        public override Type CSharpType { get; } = typeof(byte[]);
+        public override Type CSharpType { get; } = typeof(BigInteger);
     }
 }

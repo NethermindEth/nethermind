@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,40 +16,34 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Evm.Abi
+namespace Nethermind.Evm.Tracing
 {
-    public class AbiAddress : AbiUInt
+    public class BlockTraceListener : ITraceListener
     {
-        private AbiAddress() : base(160)
+        private Keccak _blockHash;
+        private int _currentIndex;
+
+        public BlockTraceListener(Block block)
         {
+            _blockHash = block.Hash;
+            BlockTrace = new BlockTrace(new TransactionTrace[block.Transactions.Length]);
         }
 
-        public static AbiAddress Instance = new AbiAddress();
+        public BlockTrace BlockTrace { get; set; }
 
-        public override string Name => "address";
-
-        public override byte[] Encode(object arg)
+        public bool ShouldTrace(Keccak txHash)
         {
-            if (arg is Address input)
-            {
-                byte[] bytes = input.Bytes;
-                return UInt.Encode(bytes.ToUnsignedBigInteger());
-            }
-
-            if (arg is string stringInput)
-            {
-                return Encode(new Address(stringInput));
-            }
-
-            throw new AbiException(AbiEncodingExceptionMessage);
+            return true;
         }
 
-        public override (object, int) Decode(byte[] data, int position)
+        public void RecordTrace(Keccak txHash, TransactionTrace trace)
         {
-            return (new Address(data.Slice(position + 12, Address.LengthInBytes)), position + UInt.LengthInBytes);
+            if (_currentIndex > BlockTrace.TxTraces.Length - 1) throw new InvalidOperationException($"Unexpected trace for tx {txHash} beyond the number of transactions in block {_blockHash}");
+            BlockTrace.TxTraces[_currentIndex++] = trace;
         }
     }
 }

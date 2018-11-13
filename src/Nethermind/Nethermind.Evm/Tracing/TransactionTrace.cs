@@ -17,16 +17,30 @@
  */
 
 using System.Collections.Generic;
+using System.Numerics;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.Tracing
 {
-    public class StorageTrace
+    public class TransactionTrace
     {
-        public StorageTrace()
+        public List<Dictionary<string, string>> StoragesByDepth { get; } = new List<Dictionary<string, string>>();
+
+        public TransactionTrace()
         {
-            Entries = new List<StorageTraceEntry>();
+            Entries = new List<TransactionTraceEntry>();
+            StorageTrace = new StorageTrace();
         }
+
+        public StorageTrace StorageTrace { get; set; }
         
-        public List<StorageTraceEntry> Entries { get; set; }
+        public BigInteger Gas { get; set; }
+
+        public bool Failed { get; set; }
+
+        public string ReturnValue { get; set; }
+        
+        public List<TransactionTraceEntry> Entries { get; set; }
+
+        public static TransactionTrace QuickFail { get; } = new TransactionTrace {Failed = true, ReturnValue = string.Empty};
     }
 }

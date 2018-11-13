@@ -17,34 +17,13 @@
  */
 
 using System;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Evm
+namespace Nethermind.Abi
 {
-    public class TraceListener : ITraceListener
+    public class AbiException : Exception
     {
-        public TransactionTrace Trace { get; private set; }
-
-        private readonly Keccak _txHash;
-
-        public TraceListener(Keccak txHash)
+        public AbiException(string message) : base(message)
         {
-            _txHash = txHash;
-        }
-
-        public bool ShouldTrace(Keccak txHash)
-        {
-            return txHash == _txHash;
-        }
-
-        public void RecordTrace(Keccak txHash, TransactionTrace trace)
-        {
-            if (_txHash != txHash)
-            {
-                throw new InvalidOperationException($"Received a trace for {txHash} while only interested in {_txHash}");
-            }
-
-            Trace = trace;
         }
     }
 }

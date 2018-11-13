@@ -22,10 +22,9 @@ using MathNet.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Abi;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test
+namespace Nethermind.Abi.Test
 {
     [TestFixture]
     public class AbiTests

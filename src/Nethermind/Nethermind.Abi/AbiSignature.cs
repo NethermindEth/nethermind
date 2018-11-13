@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,16 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Evm.Abi
+namespace Nethermind.Abi
 {
-    public class AbiFunction : AbiBytes
+    public class AbiSignature
     {
-        private AbiFunction() : base(24)
+        public AbiSignature(string name, params AbiType[] types)
         {
+            Name = name;
+            Types = types;
         }
 
-        public static AbiFunction Instance = new AbiFunction();
-
-        public override string Name => "function";
+        public string Name { get; }
+        public AbiType[] Types { get; }
     }
 }

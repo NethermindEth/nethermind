@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,23 +16,32 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Evm.Abi
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+
+namespace Nethermind.Abi
 {
-    public class AbiBool : AbiUInt
+    public class AbiAddress : AbiUInt
     {
-        private AbiBool() : base(8)
+        private AbiAddress() : base(160)
         {
         }
 
-        public static AbiBool Instance = new AbiBool();
+        public static AbiAddress Instance = new AbiAddress();
 
-        public override string Name => "bool";
+        public override string Name => "address";
 
         public override byte[] Encode(object arg)
         {
-            if (arg is bool input)
+            if (arg is Address input)
             {
-                return new[] {input ? (byte) 1 : (byte) 0};
+                byte[] bytes = input.Bytes;
+                return UInt.Encode(bytes.ToUnsignedBigInteger());
+            }
+
+            if (arg is string stringInput)
+            {
+                return Encode(new Address(stringInput));
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);
@@ -40,7 +49,7 @@ namespace Nethermind.Evm.Abi
 
         public override (object, int) Decode(byte[] data, int position)
         {
-            return (data[position] == 1, position + 1);
+            return (new Address(data.Slice(position + 12, Address.LengthInBytes)), position + UInt.LengthInBytes);
         }
     }
 }

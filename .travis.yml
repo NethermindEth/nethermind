@@ -43,6 +43,8 @@ jobs:
       name: "Ethereum.Trie.Test"
     - script: dotnet test src/Nethermind/Ethereum.VM.Test
       name: "Ethereum.VM.Test"
+    - script: dotnet test src/Nethermind/Nethermind.Abi.Test
+      name: "Nethermind.Abi.Test"
     - script: dotnet test src/Nethermind/Nethermind.Blockchain.Test
       name: "Nethermind.Blockchain.Test"
     - script: dotnet test src/Nethermind/Nethermind.Clique.Test

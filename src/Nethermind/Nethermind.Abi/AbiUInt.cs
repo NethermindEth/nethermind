@@ -20,32 +20,32 @@ using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Evm.Abi
+namespace Nethermind.Abi
 {
-    public class AbiInt : AbiType
+    public class AbiUInt : AbiType
     {
         private const int MaxSize = 256;
 
         private const int MinSize = 0;
 
-        public AbiInt(int length)
+        public AbiUInt(int length)
         {
             if (length % 8 != 0)
             {
                 throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiInt)} has to be a multiple of 8");
+                    $"{nameof(length)} of {nameof(AbiUInt)} has to be a multiple of 8");
             }
 
             if (length > MaxSize)
             {
                 throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiInt)} has to be less or equal to {MinSize}");
+                    $"{nameof(length)} of {nameof(AbiUInt)} has to be less or equal to {MaxSize}");
             }
 
             if (length <= MinSize)
             {
                 throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiInt)} has to be greater than {MinSize}");
+                    $"{nameof(length)} of {nameof(AbiUInt)} has to be greater than {MinSize}");
             }
 
             Length = length;
@@ -55,15 +55,15 @@ namespace Nethermind.Evm.Abi
 
         public int LengthInBytes => Length / 8;
 
-        public override string Name => $"int{Length}";
+        public override string Name => $"uint{Length}";
 
         public override (object, int) Decode(byte[] data, int position)
         {
-            byte[] input = data.Slice(position, LengthInBytes);
-            return (input.ToSignedBigInteger(LengthInBytes), position + LengthInBytes);
+            BigInteger lengthData = data.Slice(position, LengthInBytes).ToUnsignedBigInteger();
+            return (lengthData, position + LengthInBytes);
         }
 
-        public (BigInteger, int) DecodeInt(byte[] data, int position)
+        public (BigInteger, int) DecodeUInt(byte[] data, int position)
         {
             return ((BigInteger, int))Decode(data, position);
         }
@@ -72,7 +72,17 @@ namespace Nethermind.Evm.Abi
         {
             if (arg is BigInteger input)
             {
-                return input.ToBigEndianByteArray(32);
+                return input.ToBigEndianByteArray().PadLeft(UInt.LengthInBytes);
+            }
+
+            if (arg is int intInput)
+            {
+                return intInput.ToBigEndianByteArray().PadLeft(UInt.LengthInBytes);
+            }
+
+            if (arg is long longInput)
+            {
+                return longInput.ToBigEndianByteArray().PadLeft(UInt.LengthInBytes);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

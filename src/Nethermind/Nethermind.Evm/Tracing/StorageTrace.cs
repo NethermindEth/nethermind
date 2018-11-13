@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Evm
-{
-    public class InvalidInstructionException : EvmException
-    {
-        public byte Instruction1 { get; }
+using System.Collections.Generic;
 
-        public InvalidInstructionException(byte instruction)
+namespace Nethermind.Evm.Tracing
+{
+    public class StorageTrace
+    {
+        public StorageTrace()
         {
-            Instruction1 = instruction;
+            Entries = new List<StorageTraceEntry>();
         }
+        
+        public List<StorageTraceEntry> Entries { get; set; }
     }
 }

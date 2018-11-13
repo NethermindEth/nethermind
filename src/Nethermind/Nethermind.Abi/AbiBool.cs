@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-
-namespace Nethermind.Evm
+namespace Nethermind.Abi
 {
-    public class InstructionCostCalculator
+    public class AbiBool : AbiUInt
     {
-        public void Calculate(Instruction instruction, byte[] data)
+        private AbiBool() : base(8)
         {
-            throw new NotImplementedException();
+        }
+
+        public static AbiBool Instance = new AbiBool();
+
+        public override string Name => "bool";
+
+        public override byte[] Encode(object arg)
+        {
+            if (arg is bool input)
+            {
+                return new[] {input ? (byte) 1 : (byte) 0};
+            }
+
+            throw new AbiException(AbiEncodingExceptionMessage);
+        }
+
+        public override (object, int) Decode(byte[] data, int position)
+        {
+            return (data[position] == 1, position + 1);
         }
     }
 }

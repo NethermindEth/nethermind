@@ -21,7 +21,7 @@ using System.Numerics;
 using System.Text;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Evm.Abi
+namespace Nethermind.Abi
 {
     public class AbiDynamicBytes : AbiType
     {

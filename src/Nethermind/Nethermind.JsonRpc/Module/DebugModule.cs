@@ -28,6 +28,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.DataModel;
 using TransactionTrace = Nethermind.JsonRpc.DataModel.TransactionTrace;
 
