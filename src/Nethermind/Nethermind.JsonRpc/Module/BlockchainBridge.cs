@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Threading;
 using Nethermind.Blockchain;
@@ -29,9 +30,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 using Nethermind.Wallet;
+using Block = Nethermind.Core.Block;
+using Transaction = Nethermind.Core.Transaction;
+using TransactionReceipt = Nethermind.Core.TransactionReceipt;
+using TransactionTrace = Nethermind.Evm.Tracing.TransactionTrace;
 
 namespace Nethermind.JsonRpc.Module
 {
@@ -266,6 +270,55 @@ namespace Nethermind.JsonRpc.Module
         {
             LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
             return new FilterLog[0];
+        }
+
+        public TransactionPoolInfo GetTransactionPoolInfo()
+        {
+            var groupedTransactions = _transactionPool
+                .GetPendingTransactions()
+                .GroupBy(t => t.SenderAddress);
+            var pendingTransactions = new Dictionary<Address, IDictionary<UInt256, Transaction[]>>();
+            var queuedTransactions = new Dictionary<Address, IDictionary<UInt256, Transaction[]>>();
+            foreach (var group in groupedTransactions)
+            {
+                var address = group.Key;
+                var accountNonce = _stateProvider.GetNonce(address);
+                var expectedNonce = accountNonce;
+                var pending = new Dictionary<UInt256, Transaction[]>();
+                var queued = new Dictionary<UInt256, Transaction[]>();
+                var transactionsGroupedByNonce = group.OrderBy(t => t.Nonce).GroupBy(t => t.Nonce);
+
+                foreach (var nonceGroup in transactionsGroupedByNonce)
+                {
+                    if (nonceGroup.Key < accountNonce)
+                    {
+                        queued.Add(nonceGroup.Key, nonceGroup.ToArray());
+                        continue;
+                    }
+
+                    if (nonceGroup.Key == accountNonce ||
+                        accountNonce != expectedNonce && nonceGroup.Key == expectedNonce)
+                    {
+                        pending.Add(nonceGroup.Key, nonceGroup.ToArray());
+                        expectedNonce = nonceGroup.Key + 1;
+                        continue;
+                    }
+
+                    queued.Add(nonceGroup.Key, nonceGroup.ToArray());
+                }
+
+                if (pending.Any())
+                {
+                    pendingTransactions[address] = pending;
+                }
+
+                if (queued.Any())
+                {
+                    queuedTransactions[address] = queued;
+                }
+            }
+
+            return new TransactionPoolInfo(pendingTransactions, queuedTransactions);
         }
 
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,

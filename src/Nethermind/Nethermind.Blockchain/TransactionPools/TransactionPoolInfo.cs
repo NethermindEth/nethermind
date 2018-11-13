@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,23 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.JsonRpc.DataModel
+namespace Nethermind.Blockchain.TransactionPools
 {
-    public enum ModuleType
+    public class TransactionPoolInfo
     {
-        Eth,
-        Net,
-        Web3,
-        Db,
-        Shh,
-        Nethm,
-        Debug,
-        TxPool
+        public IDictionary<Address, IDictionary<UInt256, Transaction[]>> Pending { get; }
+        public IDictionary<Address, IDictionary<UInt256, Transaction[]>> Queued { get; }
+
+        public TransactionPoolInfo(IDictionary<Address, IDictionary<UInt256, Transaction[]>> pending,
+            IDictionary<Address, IDictionary<UInt256, Transaction[]>> queued)
+        {
+            Pending = pending;
+            Queued = queued;
+        }
     }
 }

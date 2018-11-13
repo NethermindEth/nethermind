@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.TransactionPools
             _timer.Start();
         }
 
-        public Transaction[] GetPendingTransactions() => _pendingTransactions.Values.ToArray();
+        public Transaction[] GetPendingTransactions() => _transactionStorage.GetAll();
 
         public void AddFilter<T>(T filter) where T : ITransactionFilter
             => _filters.TryAdd(filter.GetType(), filter);

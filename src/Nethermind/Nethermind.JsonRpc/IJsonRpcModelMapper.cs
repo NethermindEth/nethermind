@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -38,5 +39,8 @@ namespace Nethermind.JsonRpc
         TransactionTrace MapTransactionTrace(Evm.Tracing.TransactionTrace transactionTrace);
         BlockTraceItem[] MapBlockTrace(BlockTrace blockTrace);
         Log MapLog(LogEntry logEntry);
+        TransactionPoolStatus MapTransactionPoolStatus(TransactionPoolInfo transactionPoolInfo);
+        TransactionPoolContent MapTransactionPoolContent(TransactionPoolInfo transactionPoolInfo);
+        TransactionPoolInspection MapTransactionPoolInspection(TransactionPoolInfo transactionPoolInfo);
     }
 }

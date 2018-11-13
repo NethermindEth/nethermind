@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,23 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.DataModel
 {
-    public enum ModuleType
+    public class TransactionPoolContent : IJsonRpcResult
     {
-        Eth,
-        Net,
-        Web3,
-        Db,
-        Shh,
-        Nethm,
-        Debug,
-        TxPool
+        public IDictionary<Data, Dictionary<Quantity, Transaction[]>> Pending { get; set; }
+        public IDictionary<Data, Dictionary<Quantity, Transaction[]>> Queued { get; set; }
+
+        public object ToJson()
+            => new
+            {
+                pending = Pending.ToDictionary(k => k.Key.ToJson(),
+                    k => k.Value.ToDictionary(v => v.Key.ToJson(),
+                        v => v.Value.Select(t => t.ToJson()).ToArray())),
+                queued = Queued.ToDictionary(k => k.Key.ToJson(),
+                    k => k.Value.ToDictionary(v => v.Key.ToJson(),
+                        v => v.Value.Select(t => t.ToJson()).ToArray())),
+            };
     }
 }
