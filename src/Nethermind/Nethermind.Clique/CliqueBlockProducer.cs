@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.TransactionPools;
@@ -48,6 +49,9 @@ namespace Nethermind.Clique
         private Address _address;
         private Dictionary<Address, bool> _proposals = new Dictionary<Address, bool>();
 
+        private object _syncToken = new object();
+        private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+
         public CliqueBlockProducer(
             ITransactionPool transactionPool,
             IBlockchainProcessor devProcessor,
@@ -71,12 +75,19 @@ namespace Nethermind.Clique
 
         public void Start()
         {
-            _transactionPool.NewPending += OnNewPendingTx;
+            _processor.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+            _blockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
         }
 
         public async Task StopAsync()
         {
-            _transactionPool.NewPending -= OnNewPendingTx;
+            _processor.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
+            _blockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
+            lock (_syncToken)
+            {
+                _cancellationTokenSource?.Cancel();
+            }
+            
             await Task.CompletedTask;
         }
 
@@ -204,8 +215,20 @@ namespace Nethermind.Clique
             return block;
         }
 
-        private void OnNewPendingTx(object sender, TransactionEventArgs e)
+        private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
         {
+            CancellationToken token;
+            lock (_syncToken)
+            {
+                _cancellationTokenSource = new CancellationTokenSource();
+                token = _cancellationTokenSource.Token;
+            }
+
+            if (!_sealEngine.IsMining)
+            {
+                return;
+            }
+            
             Block block = PrepareBlock();
             if (block == null)
             {
@@ -214,14 +237,29 @@ namespace Nethermind.Clique
             }
 
             Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
-            if (processedBlock == null)
+            _sealEngine.MineAsync(processedBlock, token).ContinueWith(t =>
             {
-                if (_logger.IsError) _logger.Error("Block prepared by block producer was rejected by processor");
-                return;
-            }
+                if (t.IsCompletedSuccessfully)
+                {
+                    _blockTree.SuggestBlock(t.Result);
+                }
+                else if(t.IsFaulted)
+                {
+                    _logger.Error("Mining failer", t.Exception);
+                }
+                else if(t.IsCanceled)
+                {
+                    if(_logger.IsDebug) _logger.Debug($"Mining block {processedBlock.ToString(Block.Format.HashAndNumber)} cancelled");
+                }
+            }, token);
+        }
 
-            if (_logger.IsInfo) _logger.Info($"Suggesting newly mined block {processedBlock.ToString(Block.Format.HashAndNumber)}");
-            _blockTree.SuggestBlock(processedBlock);
+        private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
+        {
+            lock (_syncToken)
+            {
+                _cancellationTokenSource?.Cancel();
+            }
         }
 
         private UInt256 CalculateDifficulty(Snapshot snapshot, Address signer)
