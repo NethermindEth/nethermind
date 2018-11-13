@@ -113,7 +113,8 @@ namespace Nethermind.Core.Crypto
 
         public override string ToString()
         {
-            return string.Concat(Bytes.ToHexString(true), V.ToString("X"));
+            string vString = V.ToString("X").ToLower();            
+            return string.Concat(Bytes.ToHexString(true), vString.Length % 2 == 0 ? vString : string.Concat("0", vString));
         }
 
         public bool Equals(Signature other)
