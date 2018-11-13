@@ -4,7 +4,6 @@
 // Type: NLog.Internal.StackTraceUsageUtils
 // Assembly: NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c
 // MVID: A2EA6CB6-1E12-422B-8404-0D46451CF9D2
-// Assembly location: C:\Users\tksta\.nuget\packages\nlog\4.5.6\lib\netstandard2.0\NLog.dll
 
     using NLog.Config;
     using System;

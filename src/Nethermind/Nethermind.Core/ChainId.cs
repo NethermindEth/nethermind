@@ -25,6 +25,7 @@ namespace Nethermind.Core
         public const int Morden = 2;
         public const int Ropsten = 3;
         public const int Rinkeby = 4;
+        public const int Goerli = 0x188c;
         public const int RootstockMainnet = 30;
         public const int RootstockTestnet = 31;
         public const int Kovan = 42;
@@ -46,6 +47,8 @@ namespace Nethermind.Core
                     return "Ropsten";
                 case Rinkeby:
                     return "Rinkeby";
+                case Goerli:
+                    return "Goerli";
                 case RootstockMainnet:
                     return "RootstockMainnet";
                 case RootstockTestnet:

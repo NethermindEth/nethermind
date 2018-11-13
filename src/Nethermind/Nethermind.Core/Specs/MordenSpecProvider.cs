@@ -37,11 +37,6 @@ namespace Nethermind.Core.Specs
             {
                 return Homestead.Instance;
             }
-            // cannot find info on TangerineWhistle fork on Morden
-//                    else if (blockNumber < 1885000)
-//                    {
-//                        return TangerineWhistle.Instance;
-//                    }
 
             return SpuriousDragon.Instance;
         }

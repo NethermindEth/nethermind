@@ -127,7 +127,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
             {
-                Diagnostics.TestExceptionHere("HandleMessage no status", Logger);
                 throw new SubprotocolException($"{P2PSession.RemoteNodeId} No {nameof(StatusMessage)} received prior to communication.");
             }
 
