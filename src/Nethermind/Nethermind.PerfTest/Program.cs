@@ -301,7 +301,7 @@ namespace Nethermind.PerfTest
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var sealEngine = new EthashSealEngine(new Ethash(_logManager), difficultyCalculator, _logManager);
 
-            var dbProvider = new RocksDbProvider(DbBasePath, DbConfig.Default);
+            var dbProvider = new RocksDbProvider(DbBasePath, DbConfig.Default, _logManager);
             var stateDb = dbProvider.StateDb;
             var codeDb = dbProvider.CodeDb;
             var blocksDb = dbProvider.BlocksDb;

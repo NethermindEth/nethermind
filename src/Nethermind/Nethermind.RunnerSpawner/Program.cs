@@ -45,7 +45,7 @@ namespace Nethermind.RunnerSpawner
 
         public static int Main(string[] args)
         {
-            _logger = new NLogLogger("spawner.logs.txt");
+            _logger = new SimpleConsoleLogger();
 
             if (args.Length > 1)
             {
@@ -71,7 +71,8 @@ namespace Nethermind.RunnerSpawner
             {
                 File.Delete(file);
             }
-            _logger.Info($"Configs dir: {configTempDir}");
+            
+            _logger.Info($"Storing all runner configs in: {configTempDir}");
 
             List<ProcessWrapper> wrappers = new List<ProcessWrapper>();
             foreach ((string name, JToken parameters) in spawnerConfig.Runners)
@@ -122,7 +123,12 @@ namespace Nethermind.RunnerSpawner
             process.StartInfo.UseShellExecute = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
             process.StartInfo.CreateNoWindow = true;
             process.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
+            
             _logger.Info($"Starting {process.StartInfo.WorkingDirectory} {process.StartInfo.FileName} {process.StartInfo.Arguments}");
+            if (!Directory.Exists(path))
+            {
+                _logger.Info($"Cannot find directory {path}");
+            }
 
             return new ProcessWrapper(name, process);
         }

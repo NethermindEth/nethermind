@@ -17,6 +17,7 @@
  */
 
 using System.IO;
+using Nethermind.Core.Logging;
 using Nethermind.Db.Config;
 using Nethermind.Store;
 
@@ -24,29 +25,29 @@ namespace Nethermind.Db
 {
     public class RocksDbProvider : IDbProvider
     {
-        public RocksDbProvider(string basePath, IDbConfig dbConfig)
+        public RocksDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager)
         {
             BlocksDb = new DbOnTheRocks(
                 Path.Combine(basePath, DbOnTheRocks.BlocksDbPath),
-                dbConfig);
+                dbConfig, logManager);
             
             BlockInfosDb = new DbOnTheRocks(
                 Path.Combine(basePath, DbOnTheRocks.BlockInfosDbPath),
-                dbConfig);
+                dbConfig, logManager);
             
             ReceiptsDb = new DbOnTheRocks(
                 Path.Combine(basePath, DbOnTheRocks.ReceiptsDbPath),
-                dbConfig);
+                dbConfig, logManager);
             
             StateDb = new StateDb(
-                new DbOnTheRocks(Path.Combine(basePath, DbOnTheRocks.StateDbPath), dbConfig));
+                new DbOnTheRocks(Path.Combine(basePath, DbOnTheRocks.StateDbPath), dbConfig, logManager));
             
             CodeDb = new StateDb(
-                new DbOnTheRocks(Path.Combine(basePath, DbOnTheRocks.CodeDbPath), dbConfig));
+                new DbOnTheRocks(Path.Combine(basePath, DbOnTheRocks.CodeDbPath), dbConfig, logManager));
             
             PendingTxsDb = new DbOnTheRocks(
                 Path.Combine(basePath, DbOnTheRocks.PendingTxsDbPath),
-                dbConfig);
+                dbConfig, logManager);
         }
         
         public ISnapshotableDb StateDb { get; }

@@ -141,7 +141,7 @@ namespace Nethermind.Runner.Runners
             }
 
             string dbBasePath = _initConfig.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
-            IDbProvider writableDbProvider = new RocksDbProvider(dbBasePath, dbConfig);
+            IDbProvider writableDbProvider = new RocksDbProvider(dbBasePath, dbConfig, _logManager);
             _dbProvider = new ReadOnlyDbProvider(writableDbProvider, true);
 
             var transactionPool = new TransactionPool(new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),

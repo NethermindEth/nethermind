@@ -20,6 +20,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core.Logging;
 using Nethermind.Db.Config;
 using Nethermind.Store;
 using RocksDbSharp;
@@ -44,11 +45,17 @@ namespace Nethermind.Db
 
         private WriteBatch _currentBatch;
 
-        public DbOnTheRocks(string dbPath, IDbConfig dbConfig) // TODO: check column families
+        public DbOnTheRocks(string dbPath, IDbConfig dbConfig, ILogManager logManager = null) // TODO: check column families
         {
+            ILogger logger = logManager?.GetClassLogger();
             if (!Directory.Exists(dbPath))
             {
                 Directory.CreateDirectory(dbPath);
+            }
+            
+            if (logger != null)
+            {
+                if (logger.IsInfo) logger.Info($"Using database directory {dbPath}");
             }
 
             DbOptions options = BuildOptions(dbConfig);
@@ -117,7 +124,7 @@ namespace Nethermind.Db
 
             //options.SetMaxOpenFiles(32);
             options.SetWriteBufferSize(dbConfig.WriteBufferSize);
-            options.SetMaxWriteBufferNumber((int)dbConfig.WriteBufferNumber);
+            options.SetMaxWriteBufferNumber((int) dbConfig.WriteBufferNumber);
             options.SetMinWriteBufferNumberToMerge(2);
             options.SetBlockBasedTableFactory(tableOptions);
             options.IncreaseParallelism(Environment.ProcessorCount);
@@ -249,7 +256,7 @@ namespace Nethermind.Db
             _db.Write(_currentBatch);
             _currentBatch.Dispose();
             _currentBatch = null;
-        }        
+        }
 
         private enum DbInstance
         {

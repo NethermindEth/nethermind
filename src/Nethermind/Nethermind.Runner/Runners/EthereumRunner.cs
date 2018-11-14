@@ -297,7 +297,7 @@ namespace Nethermind.Runner.Runners
                 _logger.Info($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
-            _dbProvider = new RocksDbProvider(_dbBasePath, dbConfig);
+            _dbProvider = new RocksDbProvider(_dbBasePath, dbConfig, _logManager);
             
             _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
             _transactionPool = new TransactionPool(new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
