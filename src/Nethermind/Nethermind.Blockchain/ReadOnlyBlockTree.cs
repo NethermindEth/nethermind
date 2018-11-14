@@ -96,11 +96,6 @@ namespace Nethermind.Blockchain
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MoveToMain)} calls");
         }
 
-        public void MoveToBranch(Keccak blockHash)
-        {
-            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MoveToBranch)} calls");
-        }
-
         public bool WasProcessed(Keccak blockHash)
         {
             return _wrapped.WasProcessed(blockHash);
@@ -127,6 +122,11 @@ namespace Nethermind.Blockchain
         {
             add { }
             remove { }
+        }
+
+        public void UpdateMainChain(Block[] processedBlocks)
+        {
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkAsProcessed)} calls");
         }
     }
 }

@@ -52,8 +52,7 @@ namespace Nethermind.Core.Test.Builders
             for (int i = 0; i < chainLength; i++)
             {
                 TestObjectInternal.SuggestBlock(previous);
-                TestObjectInternal.MarkAsProcessed(previous.Hash);
-                TestObjectInternal.MoveToMain(previous.Hash);
+                TestObjectInternal.UpdateMainChain(previous);
                 previous = Build.A.Block.WithNumber((ulong)i + 1).WithParent(previous).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong)splitVariant).TestObject;
             }
 
@@ -68,8 +67,7 @@ namespace Nethermind.Core.Test.Builders
             {
                 previous = Build.A.Block.WithNumber((ulong)i).WithParent(previous).TestObject;
                 blockTree.SuggestBlock(previous);
-                blockTree.MarkAsProcessed(previous.Hash);
-                blockTree.MoveToMain(previous.Hash);
+                blockTree.UpdateMainChain(new []{previous});
             }
         }
     }

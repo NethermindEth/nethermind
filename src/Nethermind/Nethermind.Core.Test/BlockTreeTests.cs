@@ -44,8 +44,7 @@ namespace Nethermind.Core.Test
         private static void AddToMain(BlockTree blockTree, Block block0)
         {
             blockTree.SuggestBlock(block0);
-            blockTree.MarkAsProcessed(block0.Hash);
-            blockTree.MoveToMain(block0.Hash);
+            blockTree.UpdateMainChain(new[] {block0});
         }
         
         [Test]
@@ -57,8 +56,7 @@ namespace Nethermind.Core.Test
 
             Block block = Build.A.Block.WithNumber(0).TestObject;
             var result = blockTree.SuggestBlock(block);
-            blockTree.MarkAsProcessed(block.Hash);
-            blockTree.MoveToMain(block.Hash);
+            blockTree.UpdateMainChain(block);
 
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
@@ -98,8 +96,7 @@ namespace Nethermind.Core.Test
             blockTree.SuggestBlock(block0);
             blockTree.NewHeadBlock += (sender, args) => { hasNotified = true; };
             var result = blockTree.SuggestBlock(block1);
-            blockTree.MarkAsProcessed(block1.Hash);
-            blockTree.MoveToMain(block1.Hash);
+            blockTree.UpdateMainChain(block1);
 
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
@@ -180,17 +177,6 @@ namespace Nethermind.Core.Test
             Block block = Build.A.Block.TestObject;
             AddToMain(blockTree, block);
             Block found = blockTree.FindBlock(block.Hash, true);
-            Assert.AreEqual(block.Hash, BlockHeader.CalculateHash(found.Header));
-        }
-
-        [Test]
-        public void Add_on_main_move_find()
-        {
-            BlockTree blockTree = BuildBlockTree();
-            Block block = Build.A.Block.TestObject;
-            AddToMain(blockTree, block);
-            blockTree.MoveToBranch(block.Hash);
-            Block found = blockTree.FindBlock(block.Hash, false);
             Assert.AreEqual(block.Hash, BlockHeader.CalculateHash(found.Header));
         }
 
@@ -562,8 +548,7 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
-            blockTree.MarkAsProcessed(block1.Hash);
-            blockTree.MoveToMain(block1);
+            blockTree.UpdateMainChain(block1);
             Assert.True(blockTree.IsMainChain(block1.Hash));
         }
         
@@ -585,7 +570,7 @@ namespace Nethermind.Core.Test
             blockTree.SuggestBlock(block1);
             blockTree.MarkAsProcessed(block1.Hash);
             
-            blockTree.MoveToMain(block1.Hash);
+            blockTree.UpdateMainChain(block1);
 
             BlockHeader storedInDb = Rlp.Decode<BlockHeader>(new Rlp(blockInfosDb.Get(Keccak.Zero)));
             Assert.AreEqual(block1.Hash, storedInDb.Hash);

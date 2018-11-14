@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Resources;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
@@ -280,7 +281,7 @@ namespace Nethermind.Blockchain
                 Keccak stateRoot = branchingPoint?.StateRoot;
                 if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
 
-                List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
+                List<Block> blocksToProcess = new List<Block>();
                 Block[] blocks;
                 if ((options & ProcessingOptions.ForceProcessing) != 0)
                 {
@@ -299,13 +300,13 @@ namespace Nethermind.Blockchain
                             break;
                         }
 
-                        unprocessedBlocksToBeAddedToMain.Add(block);
+                        blocksToProcess.Add(block);
                     }
 
-                    blocks = new Block[unprocessedBlocksToBeAddedToMain.Count];
-                    for (int i = 0; i < unprocessedBlocksToBeAddedToMain.Count; i++)
+                    blocks = new Block[blocksToProcess.Count];
+                    for (int i = 0; i < blocksToProcess.Count; i++)
                     {
-                        blocks[blocks.Length - i - 1] = unprocessedBlocksToBeAddedToMain[i];
+                        blocks[blocks.Length - i - 1] = blocksToProcess[i];
                     }
                 }
 
@@ -320,42 +321,19 @@ namespace Nethermind.Blockchain
                 processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, traceListener);
                 if ((options & ProcessingOptions.ReadOnlyChain) == 0)
                 {
-                    // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only
-                    List<BlockHeader> blocksToBeRemovedFromMain = new List<BlockHeader>();
-                    if (_blockTree.Head?.Hash != branchingPoint?.Hash && _blockTree.Head != null)
-                    {
-                        blocksToBeRemovedFromMain.Add(_blockTree.Head);
-                        BlockHeader teBeRemovedFromMain = _blockTree.FindHeader(_blockTree.Head.ParentHash);
-                        while (teBeRemovedFromMain != null && teBeRemovedFromMain.Hash != branchingPoint?.Hash)
-                        {
-                            blocksToBeRemovedFromMain.Add(teBeRemovedFromMain);
-                            teBeRemovedFromMain = _blockTree.FindHeader(teBeRemovedFromMain.ParentHash);
-                        }
-                    }
-
-                    for (int i = 0; i < processedBlocks.Length; i++)
-                    {
-                        _blockTree.MarkAsProcessed(processedBlocks[i].Hash);
-                        if (i == processedBlocks.Length - 1)
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"Setting total on last processed to {processedBlocks[i].ToString(Block.Format.Short)}");
-                            processedBlocks[i].Header.TotalDifficulty = suggestedBlock.TotalDifficulty;
-                        }
-                    }
-
-                    foreach (BlockHeader blockHeader in blocksToBeRemovedFromMain)
-                    {
-                        _blockTree.MoveToBranch(blockHeader.Hash);
-                    }
-
-                    foreach (Block block in blocksToBeAddedToMain)
-                    {
-                        _blockTree.MoveToMain(block);
-                    }
+                    _blockTree.UpdateMainChain(blocksToBeAddedToMain.ToArray());
                 }
             }
 
-            return (processedBlocks?.Length ?? 0) > 0 ? processedBlocks[processedBlocks.Length - 1] : null;
+            Block lastProcessed = null;
+            if (processedBlocks != null && processedBlocks.Length > 0)
+            {
+                lastProcessed = processedBlocks[processedBlocks.Length - 1];
+                if (_logger.IsTrace) _logger.Trace($"Setting total on last processed to {lastProcessed.ToString(Block.Format.Short)}");
+                lastProcessed.TotalDifficulty = suggestedBlock.TotalDifficulty;
+            }
+
+            return lastProcessed;
         }
 
         private void RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)

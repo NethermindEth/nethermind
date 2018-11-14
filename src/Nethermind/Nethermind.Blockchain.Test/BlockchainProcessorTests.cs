@@ -191,6 +191,9 @@ namespace Nethermind.Blockchain.Test
                 private readonly Block _block;
                 private readonly BlockHeader _headBefore;
 
+                private const int ProcessingWait = 1000;
+                private const int IgnoreWait = 200;
+                
                 public AfterBlock(ProcessingTestContext processingTestContext, Block block)
                 {
                     _processingTestContext = processingTestContext;
@@ -198,23 +201,25 @@ namespace Nethermind.Blockchain.Test
 
                     _headBefore = _processingTestContext._blockTree.Head;
                     _processingTestContext._blockTree.SuggestBlock(_block);
-                    _processingTestContext._resetEvent.WaitOne(200);
                 }
 
                 public ProcessingTestContext BecomesGenesis()
                 {
+                    _processingTestContext._resetEvent.WaitOne(ProcessingWait);
                     Assert.AreEqual(_block.Header, _processingTestContext._blockTree.Genesis, "genesis");
                     return _processingTestContext;
                 }
                 
                 public ProcessingTestContext BecomesNewHead()
                 {
+                    _processingTestContext._resetEvent.WaitOne(ProcessingWait);
                     Assert.AreEqual(_block.Header, _processingTestContext._blockTree.Head, "head");
                     return _processingTestContext;
                 }
                 
                 public ProcessingTestContext IsKeptOnBranch()
                 {
+                    _processingTestContext._resetEvent.WaitOne(IgnoreWait);
                     Assert.AreEqual(_headBefore, _processingTestContext._blockTree.Head, "head");
                     return _processingTestContext;
                 }

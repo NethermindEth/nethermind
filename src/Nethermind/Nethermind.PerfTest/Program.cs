@@ -249,19 +249,9 @@ namespace Nethermind.PerfTest
                 return _blockTree.IsKnownBlock(blockHash);
             }
 
-            public void MoveToMain(Block block)
+            public void UpdateMainChain(Block[] blocks)
             {
-                _blockTree.MoveToMain(block);
-            }
-
-            public void MoveToMain(Keccak blockHash)
-            {
-                _blockTree.MoveToMain(blockHash);
-            }
-
-            public void MoveToBranch(Keccak blockHash)
-            {
-                _blockTree.MoveToBranch(blockHash);
+                _blockTree.UpdateMainChain(blocks);
             }
 
             public bool WasProcessed(Keccak blockHash)

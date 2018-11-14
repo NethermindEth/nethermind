@@ -187,8 +187,7 @@ namespace Nethermind.Clique.Test
         private void MineBlock(BlockTree tree, Block block)
         {
             tree.SuggestBlock(block);
-            tree.MarkAsProcessed(block.Hash);
-            tree.MoveToMain(block);
+            tree.UpdateMainChain(block);
         }
 
         private Snapshot GenerateSnapshot(Keccak hash, UInt256 number, Address candidate)

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
 
@@ -26,16 +27,24 @@ namespace Nethermind.Core.Test.Builders
         public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
             BlockTree alternative = Build.A.BlockTree(blockTree.RetrieveGenesisBlock()).OfChainLength(branchLength, splitBlockNumber, splitVariant).TestObject;
+            List<Block> blocks = new List<Block>();
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
                 Block block = alternative.FindBlock((ulong)i);
                 blockTree.SuggestBlock(block);
                 blockTree.MarkAsProcessed(block.Hash);
-                if (branchLength > blockTree.Head.Number)
-                {
-                    blockTree.MoveToMain(block.Hash);    
-                }
+                blocks.Add(block);
             }
+            
+            if (branchLength > blockTree.Head.Number)
+            {
+                blockTree.UpdateMainChain(blocks.ToArray());    
+            }
+        }
+        
+        public static void UpdateMainChain(this BlockTree blockTree, Block block)
+        {
+            blockTree.UpdateMainChain(new [] {block});
         }
     }
 }

@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain
                     Genesis = genesisBlock.Header;
                     LoadHeadBlock();
                 }
-                
+
                 LoadBestKnown();
             }
 
@@ -361,16 +361,6 @@ namespace Nethermind.Blockchain
             return level.HasBlockOnMainChain && level.BlockInfos[0].BlockHash.Equals(blockHash);
         }
 
-        public void MoveToBranch(Keccak blockHash)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Moving {blockHash} to branch");
-            BigInteger number = LoadNumberOnly(blockHash);
-            ChainLevelInfo level = LoadLevel(number);
-            level.HasBlockOnMainChain = false;
-            PersistLevel(number, level);
-            if (_logger.IsTrace) _logger.Trace($"{blockHash} moved to branch");
-        }
-
         public void MarkAsProcessed(Keccak blockHash)
         {
             if (_logger.IsTrace) _logger.Trace($"Marking {blockHash} as processed");
@@ -400,24 +390,66 @@ namespace Nethermind.Blockchain
             return levelInfo.BlockInfos[index.Value].WasProcessed;
         }
 
-        public void MoveToMain(Block block)
+        public void UpdateMainChain(Block[] processedBlocks)
         {
-            if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
-            ChainLevelInfo level = LoadLevel(block.Number);
-            MoveToMain(level, block);
-        }
+            if (processedBlocks.Length == 0)
+            {
+                return;
+            }
 
-        public void MoveToMain(Keccak blockHash) // TODO: still needed?
-        {
-            if (_logger.IsTrace) _logger.Trace($"Moving {blockHash} to main");
-            (Block block, BlockInfo _, ChainLevelInfo level) = Load(blockHash);
-            MoveToMain(level, block);
+            bool ascendingOrder = true;
+            if (processedBlocks.Length > 1)
+            {
+                if (processedBlocks[processedBlocks.Length - 1].Number < processedBlocks[0].Number)
+                {
+                    ascendingOrder = false;
+                }
+            }
+            
+#if DEBUG
+            for (int i = 0; i < processedBlocks.Length; i++)
+            {
+                if (i != 0)
+                {
+                    if (ascendingOrder && processedBlocks[i].Number != processedBlocks[i - 1].Number + 1)
+                    {
+                        throw new InvalidOperationException("Update main chain invoked with gaps");
+                    }
+                    
+                    if (!ascendingOrder && processedBlocks[i - 1].Number != processedBlocks[i].Number + 1)
+                    {
+                        throw new InvalidOperationException("Update main chain invoked with gaps");
+                    }
+                }
+            }
+#endif
+
+            UInt256 lastNumber = ascendingOrder ? processedBlocks[processedBlocks.Length - 1].Number : processedBlocks[0].Number;
+            UInt256 previousHeadNumber = Head?.Number ?? UInt256.Zero;
+            if (previousHeadNumber > lastNumber)
+            {
+                for (UInt256 i = 0; i < UInt256.Subtract(previousHeadNumber, lastNumber); i++)
+                {
+                    UInt256 levelNumber = previousHeadNumber - i;
+                    ChainLevelInfo level = LoadLevel(levelNumber);
+                    level.HasBlockOnMainChain = false;
+                    PersistLevel(levelNumber, level);
+                }
+            }
+
+            for (int i = 0; i < processedBlocks.Length; i++)
+            {
+                MoveToMain(processedBlocks[i]);
+            }
         }
 
         private TaskCompletionSource<object> _dbBatchProcessed;
 
-        private void MoveToMain(ChainLevelInfo level, Block block)
+        private void MoveToMain(Block block)
         {
+            if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
+            ChainLevelInfo level = LoadLevel(block.Number);
+            
             int? index = FindIndex(block.Hash, level);
             if (index == null)
             {
@@ -425,10 +457,7 @@ namespace Nethermind.Blockchain
             }
 
             BlockInfo info = level.BlockInfos[index.Value];
-            if (!info.WasProcessed)
-            {
-                throw new InvalidOperationException($"Cannot move unprocessed block {block.ToString(Block.Format.HashAndNumber)} to main");
-            }
+            info.WasProcessed = true;
 
             if (index.Value != 0)
             {
@@ -516,9 +545,9 @@ namespace Nethermind.Blockchain
             {
                 if (block.Number == _currentDbLoadBatchEnd)
                 {
-                    TaskCompletionSource<object> completionSoruce = _dbBatchProcessed;
+                    TaskCompletionSource<object> completionSource = _dbBatchProcessed;
                     _dbBatchProcessed = null;
-                    completionSoruce.SetResult(null);
+                    completionSource.SetResult(null);
                 }
             }
         }
