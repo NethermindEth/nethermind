@@ -68,8 +68,8 @@ namespace Nethermind.JsonRpc.Module
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _transactionPool = transactionPool;
-            _transactionPoolInfoProvider = transactionPoolInfoProvider;
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(_transactionPool));
+            _transactionPoolInfoProvider = transactionPoolInfoProvider ?? throw new ArgumentNullException(nameof(transactionPoolInfoProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));

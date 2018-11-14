@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
-            _receiptStorage = receiptStorage;
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
