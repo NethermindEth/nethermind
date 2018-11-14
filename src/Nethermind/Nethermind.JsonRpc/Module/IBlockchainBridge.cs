@@ -58,6 +58,7 @@ namespace Nethermind.JsonRpc.Module
         Account GetAccount(Address address, Keccak stateRoot);
 
         int NewBlockFilter();
+        int NewPendingTransactionFilter();
 
         int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
@@ -66,6 +67,7 @@ namespace Nethermind.JsonRpc.Module
         bool FilterExists(int filterId);
         FilterLog[] GetLogFilterChanges(int filterId);
         Keccak[] GetBlockFilterChanges(int filterId);
+        Keccak[] GetPendingTransactionFilterChanges(int filterId);
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
 

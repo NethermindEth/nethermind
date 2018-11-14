@@ -26,5 +26,6 @@ namespace Nethermind.Blockchain.Filters
         FilterLog[] PollLogs(int filterId);
         Keccak[] GetBlocksHashes(int filterId);
         Keccak[] PollBlockHashes(int filterId);
+        Keccak[] PollPendingTransactionHashes(int filterId);
     }
 }

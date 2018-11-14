@@ -48,5 +48,10 @@ namespace Nethermind.Blockchain.Filters
         {
             return Array.Empty<Keccak>();
         }
+
+        public Keccak[] PollPendingTransactionHashes(int filterId)
+        {
+            return Array.Empty<Keccak>();
+        }
     }
 }

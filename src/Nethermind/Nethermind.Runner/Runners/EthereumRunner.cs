@@ -441,7 +441,7 @@ namespace Nethermind.Runner.Runners
 
                 ITxTracer txTracer = new TxTracer(rpcChain.Processor, _receiptStorage, _blockTree);
                 IFilterStore filterStore = new FilterStore();
-                IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, _logManager);
+                IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, _transactionPool, _logManager);
                 IWallet wallet = new DevWallet(_logManager);
                 RpcState rpcState = new RpcState(_blockTree, _specProvider, rpcDbProvider, _logManager);
 

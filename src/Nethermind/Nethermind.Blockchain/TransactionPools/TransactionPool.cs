@@ -148,18 +148,26 @@ namespace Nethermind.Blockchain.TransactionPools
 
             for (var i = 0; i < hashes.Count; i++)
             {
-                _pendingTransactions.TryRemove(hashes[i], out _);
+                if (_pendingTransactions.TryRemove(hashes[i], out var transaction))
+                {
+                    RemovedPending?.Invoke(this, new TransactionEventArgs(transaction));
+                }
             }
         }
 
         public void RemoveTransaction(Keccak hash)
         {
-            _pendingTransactions.TryRemove(hash, out _);
+            if (_pendingTransactions.TryRemove(hash, out var transaction))
+            {
+                RemovedPending?.Invoke(this, new TransactionEventArgs(transaction));
+            }
+
             _transactionStorage.Delete(hash);
             if (_logger.IsDebug) _logger.Debug($"Deleted a transaction: {hash}");
         }
 
         public event EventHandler<TransactionEventArgs> NewPending;
+        public event EventHandler<TransactionEventArgs> RemovedPending;
 
         private void NotifyPeers(List<ISynchronizationPeer> peers, Transaction transaction)
         {

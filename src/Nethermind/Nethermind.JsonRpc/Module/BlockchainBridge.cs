@@ -91,26 +91,10 @@ namespace Nethermind.JsonRpc.Module
         public BlockHeader BestSuggested => _blockTree.BestSuggested;
         public UInt256 BestKnown => _blockTree.BestKnownNumber;
         public bool IsSyncing => _blockTree.CanAcceptNewBlocks;
-
-        public Block FindBlock(Keccak blockHash, bool mainChainOnly)
-        {
-            return _blockTree.FindBlock(blockHash, mainChainOnly);
-        }
-
-        public Block FindBlock(UInt256 blockNumber)
-        {
-            return _blockTree.FindBlock(blockNumber);
-        }
-
-        public Block RetrieveHeadBlock()
-        {
-            return _blockTree.FindBlock(_blockTree.Head.Hash, false);
-        }
-
-        public Block RetrieveGenesisBlock()
-        {
-            return _blockTree.FindBlock(_blockTree.Genesis.Hash, true);
-        }
+        public Block FindBlock(Keccak blockHash, bool mainChainOnly) => _blockTree.FindBlock(blockHash, mainChainOnly);
+        public Block FindBlock(UInt256 blockNumber) => _blockTree.FindBlock(blockNumber);
+        public Block RetrieveHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, false);
+        public Block RetrieveGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, true);
 
         public (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
@@ -121,10 +105,7 @@ namespace Nethermind.JsonRpc.Module
             return (receipt, block.Transactions[receipt.Index]);
         }
 
-        public Keccak GetBlockHash(Keccak transactionHash)
-        {
-            return _receiptStorage.Get(transactionHash).BlockHash;
-        }
+        public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Get(transactionHash).BlockHash;
 
         public Keccak SendTransaction(Transaction transaction)
         {
@@ -153,10 +134,7 @@ namespace Nethermind.JsonRpc.Module
             }
         }
 
-        public TransactionReceipt GetTransactionReceipt(Keccak txHash)
-        {
-            return _receiptStorage.Get(txHash);
-        }
+        public TransactionReceipt GetTransactionReceipt(Keccak txHash) => _receiptStorage.Get(txHash);
 
         public byte[] Call(Block block, Transaction transaction)
         {
@@ -250,25 +228,10 @@ namespace Nethermind.JsonRpc.Module
             }
         }
 
-        public int GetNetworkId()
-        {
-            return _blockTree.ChainId;
-        }
-
-        public bool FilterExists(int filterId)
-        {
-            return _filterStore.FilterExists(filterId);
-        }
-
-        public FilterType GetFilterType(int filterId)
-        {
-            return _filterStore.GetFilterType(filterId);
-        }
-
-        public FilterLog[] GetFilterLogs(int filterId)
-        {
-            return _filterManager.GetLogs(filterId);
-        }
+        public int GetNetworkId() => _blockTree.ChainId;
+        public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
+        public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
+        public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);
 
         public FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null)
@@ -295,24 +258,20 @@ namespace Nethermind.JsonRpc.Module
             return filter.Id;
         }
 
-        public void UninstallFilter(int filterId)
+        public int NewPendingTransactionFilter()
         {
-            _filterStore.RemoveFilter(filterId);
+            PendingTransactionFilter filter = _filterStore.CreatePendingTransactionFilter();
+            _filterStore.SaveFilter(filter);
+            return filter.Id;
         }
 
-        public FilterLog[] GetLogFilterChanges(int filterId)
-        {
-            return _filterManager.PollLogs(filterId);
-        }
+        public void UninstallFilter(int filterId) => _filterStore.RemoveFilter(filterId);
+        public FilterLog[] GetLogFilterChanges(int filterId) => _filterManager.PollLogs(filterId);
+        public Keccak[] GetBlockFilterChanges(int filterId) => _filterManager.PollBlockHashes(filterId);
 
-        public Keccak[] GetBlockFilterChanges(int filterId)
-        {
-            return _filterManager.PollBlockHashes(filterId);
-        }
+        public Keccak[] GetPendingTransactionFilterChanges(int filterId) =>
+            _filterManager.PollPendingTransactionHashes(filterId);
 
-        public Signature Sign(PrivateKey privateKey, Keccak message)
-        {
-            return _signer.Sign(privateKey, message);
-        }
+        public Signature Sign(PrivateKey privateKey, Keccak message) => _signer.Sign(privateKey, message);
     }
 }

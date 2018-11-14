@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<Data> eth_compileSerpent(string code);
         ResultWrapper<Quantity> eth_newFilter(Filter filter);
         ResultWrapper<Quantity> eth_newBlockFilter();
-        ResultWrapper<Quantity> eth_newPendingTransactionFilter(Filter filter);
+        ResultWrapper<Quantity> eth_newPendingTransactionFilter();
         ResultWrapper<bool> eth_uninstallFilter(Quantity filterId);
         ResultWrapper<IEnumerable<object>> eth_getFilterChanges(Quantity filterId);
         ResultWrapper<IEnumerable<Log>> eth_getFilterLogs(Quantity filterId);

@@ -33,5 +33,6 @@ namespace Nethermind.Blockchain.TransactionPools
         void AddTransaction(Transaction transaction, UInt256 blockNumber);
         void RemoveTransaction(Keccak hash);
         event EventHandler<TransactionEventArgs> NewPending;
+        event EventHandler<TransactionEventArgs> RemovedPending;
     }
 }
