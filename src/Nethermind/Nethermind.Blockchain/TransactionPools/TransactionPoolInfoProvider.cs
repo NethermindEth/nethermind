@@ -41,6 +41,11 @@ namespace Nethermind.Blockchain.TransactionPools
             foreach (var group in groupedTransactions)
             {
                 var address = group.Key;
+                if (address == null)
+                {
+                    continue;
+                }
+
                 var accountNonce = _stateProvider.GetNonce(address);
                 var expectedNonce = accountNonce;
                 var pending = new Dictionary<UInt256, Transaction[]>();
