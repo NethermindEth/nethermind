@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,12 +30,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
 using Nethermind.Store;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -43,10 +46,10 @@ namespace Nethermind.Blockchain.Test
     public class BlockchainProcessorTests
     {
         [Test]
-        public async Task Test()
+        public async Task Can_process_mined_blocks()
         {
             int timeMultiplier = 1; // for debugging
-            
+
             TimeSpan miningDelay = TimeSpan.FromMilliseconds(50 * timeMultiplier);
 
             /* logging & instrumentation */
@@ -59,7 +62,7 @@ namespace Nethermind.Blockchain.Test
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            
+
             EthereumSigner ethereumSigner = new EthereumSigner(specProvider, NullLogManager.Instance);
             MemDb receiptsDb = new MemDb();
             TransactionPool transactionPool = new TransactionPool(new NullTransactionStorage(),
@@ -107,7 +110,7 @@ namespace Nethermind.Blockchain.Test
             /* start processing */
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
-            
+
             MinedBlockProducer minedBlockProducer = new MinedBlockProducer(difficultyCalculator, transactionPool, blockchainProcessor, sealEngine, blockTree, timestamp, NullLogManager.Instance);
             minedBlockProducer.Start();
 
@@ -120,25 +123,25 @@ namespace Nethermind.Blockchain.Test
 
             manualResetEvent.WaitOne(miningDelay * 12 * timeMultiplier * 1000);
             await minedBlockProducer.StopAsync();
-            
+
             int previousCount = 0;
             int totalTx = 0;
             for (int i = 0; i < 6; i++)
             {
                 Block block = blockTree.FindBlock(new UInt256(i));
                 Console.WriteLine($"Block {i} with {block.Transactions.Length} txs");
-                
+
                 ManualResetEvent blockProcessedEvent = new ManualResetEvent(false);
-                blockchainProcessor.ProcessingQueueEmpty += (sender, args) => blockProcessedEvent.Set(); 
+                blockchainProcessor.ProcessingQueueEmpty += (sender, args) => blockProcessedEvent.Set();
                 blockchainProcessor.SuggestBlock(block.Hash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
                 blockProcessedEvent.WaitOne(1000);
-                
+
                 TxTracer tracer = new TxTracer(blockchainProcessor, receiptStorage, blockTree);
 
                 int currentCount = receiptsDb.Keys.Count;
                 Console.WriteLine($"Current count of receipts {currentCount}");
                 Console.WriteLine($"Previous count of receipts {previousCount}");
-                
+
                 if (block.Transactions.Length > 0)
                 {
                     TransactionTrace trace = tracer.Trace(block.Transactions[0].Hash);
@@ -146,11 +149,194 @@ namespace Nethermind.Blockchain.Test
                     Assert.AreNotEqual(previousCount, currentCount, $"receipts at block {i}");
                     totalTx += block.Transactions.Length;
                 }
-                
+
                 previousCount = currentCount;
             }
-            
+
             Assert.AreNotEqual(0, totalTx, "no tx in blocks");
+        }
+
+        private class ProcessingTestContext
+        {
+            private BlockTree _blockTree;
+            private AutoResetEvent _resetEvent;
+            
+            public ProcessingTestContext()
+            {
+                MemDb blockDb = new MemDb();
+                MemDb blockInfoDb = new MemDb();
+                _blockTree = new BlockTree(blockDb, blockInfoDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, NullLogManager.Instance);
+                IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
+                BlockchainProcessor processor = new BlockchainProcessor(_blockTree, blockProcessor, NullRecoveryStep.Instance, NullLogManager.Instance, false);
+                _resetEvent = new AutoResetEvent(false);
+                bool ignoreNextSignal = true;
+                processor.ProcessingQueueEmpty += (sender, args) =>
+                {
+                    if (ignoreNextSignal)
+                    {
+                        ignoreNextSignal = false;
+                        return;
+                    }
+                
+                    _resetEvent.Set();
+                };
+
+                blockProcessor.Process(Arg.Any<Keccak>(), Arg.Any<Block[]>(), ProcessingOptions.None, NullTraceListener.Instance).Returns(ci => ci.ArgAt<Block[]>(1));
+                processor.Start();
+            }
+
+            public class AfterBlock
+            {
+                private readonly ProcessingTestContext _processingTestContext;
+                private readonly Block _block;
+                private readonly BlockHeader _headBefore;
+
+                public AfterBlock(ProcessingTestContext processingTestContext, Block block)
+                {
+                    _processingTestContext = processingTestContext;
+                    _block = block;
+
+                    _headBefore = _processingTestContext._blockTree.Head;
+                    _processingTestContext._blockTree.SuggestBlock(_block);
+                    _processingTestContext._resetEvent.WaitOne(200);
+                }
+
+                public ProcessingTestContext BecomesGenesis()
+                {
+                    Assert.AreEqual(_block.Header, _processingTestContext._blockTree.Genesis, "genesis");
+                    return _processingTestContext;
+                }
+                
+                public ProcessingTestContext BecomesNewHead()
+                {
+                    Assert.AreEqual(_block.Header, _processingTestContext._blockTree.Head, "head");
+                    return _processingTestContext;
+                }
+                
+                public ProcessingTestContext IsKeptOnBranch()
+                {
+                    Assert.AreEqual(_headBefore, _processingTestContext._blockTree.Head, "head");
+                    return _processingTestContext;
+                }
+            }
+            
+            public AfterBlock Then(Block block)
+            {
+                return new AfterBlock(this, block);
+            }
+        }
+
+        private static class When
+        {
+            public static ProcessingTestContext ProcessingBlocks => new ProcessingTestContext();
+        }
+        
+        private static Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;
+        private static Block _block1D2 = Build.A.Block.WithNumber(1).WithNonce(1).WithParent(_block0).WithDifficulty(2).TestObject;
+        private static Block _block2D4 = Build.A.Block.WithNumber(2).WithNonce(2).WithParent(_block1D2).WithDifficulty(2).TestObject;
+        private static Block _block3D6 = Build.A.Block.WithNumber(3).WithNonce(3).WithParent(_block2D4).WithDifficulty(2).TestObject;
+        private static Block _block4D8 = Build.A.Block.WithNumber(4).WithNonce(4).WithParent(_block3D6).WithDifficulty(2).TestObject;
+        private static Block _block5D10 = Build.A.Block.WithNumber(5).WithNonce(5).WithParent(_block4D8).WithDifficulty(2).TestObject;
+        private static Block _blockB2D4 = Build.A.Block.WithNumber(2).WithNonce(6).WithParent(_block1D2).WithDifficulty(2).TestObject;
+        private static Block _blockB3D8 = Build.A.Block.WithNumber(3).WithNonce(7).WithParent(_blockB2D4).WithDifficulty(4).TestObject;
+        private static Block _blockC2D100 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(98).TestObject;
+        private static Block _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
+        private static Block _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
+        
+        [Test]
+        public void Can_process_sequence()
+        {
+            When.ProcessingBlocks
+                .Then(_block0).BecomesGenesis()
+                .Then(_block1D2).BecomesNewHead()
+                .Then(_block2D4).BecomesNewHead()
+                .Then(_block3D6).BecomesNewHead()
+                .Then(_block4D8).BecomesNewHead();
+        }
+        
+        [Test]
+        public void Can_ignore_lower_difficulty()
+        {
+            When.ProcessingBlocks
+                .Then(_block0).BecomesGenesis()
+                .Then(_block1D2).BecomesNewHead()
+                .Then(_blockB2D4).BecomesNewHead()
+                .Then(_blockB3D8).BecomesNewHead()
+                .Then(_block2D4).IsKeptOnBranch()
+                .Then(_block3D6).IsKeptOnBranch();
+        }
+        
+        [Test]
+        public void Can_ignore_same_difficulty()
+        {
+            When.ProcessingBlocks
+                .Then(_block0).BecomesGenesis()
+                .Then(_block1D2).BecomesNewHead()
+                .Then(_block2D4).BecomesNewHead()
+                .Then(_blockB2D4).IsKeptOnBranch();
+        }
+        
+        [Test]
+        public void Can_reorganize_to_same_length()
+        {
+            When.ProcessingBlocks
+                .Then(_block0).BecomesGenesis()
+                .Then(_block1D2).BecomesNewHead()
+                .Then(_block2D4).BecomesNewHead()
+                .Then(_block3D6).BecomesNewHead()
+                .Then(_blockB2D4).IsKeptOnBranch()
+                .Then(_blockB3D8).BecomesNewHead();
+        }
+        
+        [Test]
+        public void Can_reorganize_there_and_back()
+        {
+            When.ProcessingBlocks
+                .Then(_block0).BecomesGenesis()
+                .Then(_block1D2).BecomesNewHead()
+                .Then(_block2D4).BecomesNewHead()
+                .Then(_block3D6).BecomesNewHead()
+                .Then(_blockB2D4).IsKeptOnBranch()
+                .Then(_blockB3D8).BecomesNewHead()
+                .Then(_block4D8).IsKeptOnBranch()
+                .Then(_block5D10).BecomesNewHead();
+        }
+        
+        [Test]
+        public void Can_reorganize_to_longer_path()
+        {
+            When.ProcessingBlocks
+                .Then(_block0).BecomesGenesis()
+                .Then(_block1D2).BecomesNewHead()
+                .Then(_blockB2D4).BecomesNewHead()
+                .Then(_blockB3D8).BecomesNewHead()
+                .Then(_block2D4).IsKeptOnBranch()
+                .Then(_block3D6).IsKeptOnBranch()
+                .Then(_block4D8).IsKeptOnBranch()
+                .Then(_block5D10).BecomesNewHead();
+        }
+        
+        [Test]
+        public void Can_reorganize_to_shorter_path()
+        {
+            When.ProcessingBlocks
+                .Then(_block0).BecomesGenesis()
+                .Then(_block1D2).BecomesNewHead()
+                .Then(_block2D4).BecomesNewHead()
+                .Then(_block3D6).BecomesNewHead()
+                .Then(_blockC2D100).BecomesNewHead();
+        }
+        
+        [Test]
+        public void Can_reorganize_just_head_block_twice()
+        {
+            When.ProcessingBlocks
+                .Then(_block0).BecomesGenesis()
+                .Then(_block1D2).BecomesNewHead()
+                .Then(_block2D4).BecomesNewHead()
+                .Then(_blockC2D100).BecomesNewHead()
+                .Then(_blockD2D200).BecomesNewHead()
+                .Then(_blockE2D300).BecomesNewHead();
         }
     }
 }

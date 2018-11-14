@@ -32,7 +32,7 @@ namespace Nethermind.Core
                 osDescription = osDescription.Substring(0, Math.Max(0, indexOfHash - 1));
             }
 
-            Description = $"Nethermind/v0.9.1-RC0/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+            Description = $"Nethermind/v0.9.2-dev/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
         }
         
 //        public static readonly string Description = $"Nethermind/v0.9.0-eth63test/{RuntimeInformation.OSArchitecture}-{RuntimeInformation.OSDescription.Trim().Replace(" ", "_")}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";

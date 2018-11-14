@@ -251,7 +251,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
 
             Block[] processedBlocks = null;
-            if (totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0) || (options & ProcessingOptions.ForceProcessing) != 0)
+            if (_blockTree.Head == null || totalDifficulty > _blockTree.Head.TotalDifficulty || (options & ProcessingOptions.ForceProcessing) != 0)
             {
                 List<Block> blocksToBeAddedToMain = new List<Block>();
                 Block toBeProcessed = suggestedBlock;
