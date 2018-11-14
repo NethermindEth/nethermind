@@ -243,9 +243,9 @@ namespace Nethermind.PerfTest
                 return _blockTree.IsMainChain(blockHash);
             }
 
-            public bool IsKnownBlock(Keccak blockHash)
+            public bool IsKnownBlock(UInt256 number, Keccak blockHash)
             {
-                return _blockTree.IsKnownBlock(blockHash);
+                return _blockTree.IsKnownBlock(number, blockHash);
             }
 
             public void UpdateMainChain(Block[] blocks)

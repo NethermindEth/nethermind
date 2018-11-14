@@ -81,9 +81,9 @@ namespace Nethermind.Blockchain
             return _wrapped.IsMainChain(blockHash);
         }
 
-        public bool IsKnownBlock(Keccak blockHash)
+        public bool IsKnownBlock(UInt256 number, Keccak blockHash)
         {
-            return _wrapped.IsKnownBlock(blockHash);
+            return _wrapped.IsKnownBlock(number, blockHash);
         }
 
         public bool WasProcessed(UInt256 number, Keccak blockHash)

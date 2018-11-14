@@ -244,7 +244,7 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("Genesis block should be added only once"); // TODO: make sure it cannot happen
                 }
             }
-            else if (IsKnownBlock(block.Hash))
+            else if (IsKnownBlock(block.Number, block.Hash))
             {
                 if (_logger.IsTrace)
                 {
@@ -253,7 +253,7 @@ namespace Nethermind.Blockchain
 
                 return AddBlockResult.AlreadyKnown;
             }
-            else if (!IsKnownBlock(block.Header.ParentHash))
+            else if (!IsKnownBlock(block.Number - 1, block.Header.ParentHash))
             {
                 if (_logger.IsTrace)
                 {
@@ -264,7 +264,7 @@ namespace Nethermind.Blockchain
             }
 
             _blockDb.Set(block.Hash, Rlp.Encode(block).Bytes);
-            _blockCache.Set(block.Hash, block);
+//            _blockCache.Set(block.Hash, block);
 
             // TODO: when reviewing the entire data chain need to look at the transactional storing of level and block
             SetTotalDifficulty(block);
@@ -422,6 +422,7 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < processedBlocks.Length; i++)
             {
+                _blockCache.Set(processedBlocks[i].Hash, processedBlocks[i]);
                 MoveToMain(processedBlocks[i]);
             }
         }
@@ -503,15 +504,20 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public bool IsKnownBlock(Keccak blockHash)
+        public bool IsKnownBlock(UInt256 number, Keccak blockHash)
         {
             if (_blockCache.Get(blockHash) != null)
             {
                 return true;
             }
 
-            byte[] data = _blockDb.Get(blockHash);
-            return data != null;
+            ChainLevelInfo level = LoadLevel(number);
+            if (level == null)
+            {
+                return false;
+            }
+            
+            return FindIndex(blockHash, level).HasValue;
         }
 
         private void UpdateHeadBlock(Block block)
