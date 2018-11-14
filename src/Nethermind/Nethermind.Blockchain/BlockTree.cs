@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.IO;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -360,7 +361,7 @@ namespace Nethermind.Blockchain
             ChainLevelInfo level = LoadLevel(number);
             return level.HasBlockOnMainChain && level.BlockInfos[0].BlockHash.Equals(blockHash);
         }
-        
+
         public bool WasProcessed(UInt256 number, Keccak blockHash)
         {
             ChainLevelInfo levelInfo = LoadLevel(number);
@@ -388,7 +389,7 @@ namespace Nethermind.Blockchain
                     ascendingOrder = false;
                 }
             }
-            
+
 #if DEBUG
             for (int i = 0; i < processedBlocks.Length; i++)
             {
@@ -398,7 +399,7 @@ namespace Nethermind.Blockchain
                     {
                         throw new InvalidOperationException("Update main chain invoked with gaps");
                     }
-                    
+
                     if (!ascendingOrder && processedBlocks[i - 1].Number != processedBlocks[i].Number + 1)
                     {
                         throw new InvalidOperationException("Update main chain invoked with gaps");
@@ -433,7 +434,7 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
             ChainLevelInfo level = LoadLevel(block.Number);
-            
+
             int? index = FindIndex(block.Hash, level);
             if (index == null)
             {
@@ -464,6 +465,11 @@ namespace Nethermind.Blockchain
                 if (block.Number == 0)
                 {
                     Genesis = block.Header;
+                }
+
+                if (block.TotalDifficulty == null)
+                {
+                    throw new InvalidOperationException("Head block with null total difficulty");
                 }
 
                 UpdateHeadBlock(block);
@@ -500,6 +506,16 @@ namespace Nethermind.Blockchain
                     headBlockHeader = Rlp.Decode<Block>(data.AsRlpContext(), RlpBehaviors.AllowExtraData).Header;
                 }
 
+                ChainLevelInfo level = LoadLevel(headBlockHeader.Number);
+                int? index = FindIndex(headBlockHeader.Hash, level);
+                if (!index.HasValue)
+                {
+                    throw new InvalidDataException("Head block data missing from chain info");
+                }
+                
+                headBlockHeader.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
+                headBlockHeader.TotalTransactions = level.BlockInfos[index.Value].TotalTransactions;
+                
                 Head = BestSuggested = headBlockHeader;
             }
         }
@@ -516,7 +532,7 @@ namespace Nethermind.Blockchain
             {
                 return false;
             }
-            
+
             return FindIndex(blockHash, level).HasValue;
         }
 
