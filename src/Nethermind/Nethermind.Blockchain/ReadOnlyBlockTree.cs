@@ -86,6 +86,11 @@ namespace Nethermind.Blockchain
             return _wrapped.IsKnownBlock(blockHash);
         }
 
+        public bool WasProcessed(UInt256 number, Keccak blockHash)
+        {
+            return _wrapped.WasProcessed(number, blockHash);
+        }
+
         public void MoveToMain(Block block)
         {
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MoveToMain)} calls");
@@ -94,16 +99,6 @@ namespace Nethermind.Blockchain
         public void MoveToMain(Keccak blockHash)
         {
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MoveToMain)} calls");
-        }
-
-        public bool WasProcessed(Keccak blockHash)
-        {
-            return _wrapped.WasProcessed(blockHash);
-        }
-
-        public void MarkAsProcessed(Keccak blockHash)
-        {
-            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkAsProcessed)} calls");
         }
 
         public event EventHandler<BlockEventArgs> NewBestSuggestedBlock
@@ -126,7 +121,7 @@ namespace Nethermind.Blockchain
 
         public void UpdateMainChain(Block[] processedBlocks)
         {
-            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkAsProcessed)} calls");
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
         }
     }
 }

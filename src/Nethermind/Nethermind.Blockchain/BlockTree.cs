@@ -264,7 +264,7 @@ namespace Nethermind.Blockchain
             }
 
             _blockDb.Set(block.Hash, Rlp.Encode(block).Bytes);
-            //_blockCache.Set(block.Hash, block);
+            _blockCache.Set(block.Hash, block);
 
             // TODO: when reviewing the entire data chain need to look at the transactional storing of level and block
             SetTotalDifficulty(block);
@@ -360,10 +360,9 @@ namespace Nethermind.Blockchain
             ChainLevelInfo level = LoadLevel(number);
             return level.HasBlockOnMainChain && level.BlockInfos[0].BlockHash.Equals(blockHash);
         }
-
-        public bool WasProcessed(Keccak blockHash)
+        
+        public bool WasProcessed(UInt256 number, Keccak blockHash)
         {
-            BigInteger number = LoadNumberOnly(blockHash);
             ChainLevelInfo levelInfo = LoadLevel(number);
             int? index = FindIndex(blockHash, levelInfo);
             if (index == null)

@@ -497,9 +497,9 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
-            Assert.False(blockTree.WasProcessed(block1.Hash), "before");
+            Assert.False(blockTree.WasProcessed(block1.Number, block1.Hash), "before");
             blockTree.UpdateMainChain(new []{block0, block1});
-            Assert.True(blockTree.WasProcessed(block1.Hash), "after");
+            Assert.True(blockTree.WasProcessed(block1.Number, block1.Hash), "after");
         }
         
         [Test]

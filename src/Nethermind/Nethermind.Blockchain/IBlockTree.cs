@@ -76,9 +76,10 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Checks if the state changes of the block can be found in the state tree.
         /// </summary>
+        /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if processed, otherwise <value>False</value></returns>
-        bool WasProcessed(Keccak blockHash);
+        bool WasProcessed(UInt256 number, Keccak blockHash);
         
         /// <summary>
         /// Marks all <paramref name="processedBlocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>

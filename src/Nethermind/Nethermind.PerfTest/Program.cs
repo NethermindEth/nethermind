@@ -187,7 +187,6 @@ namespace Nethermind.PerfTest
         private class UnprocessedBlockTreeWrapper : IBlockTree
         {
             private readonly IBlockTree _blockTree;
-            private readonly ConcurrentDictionary<Keccak, byte> _processed = new ConcurrentDictionary<Keccak, byte>();
 
             public UnprocessedBlockTreeWrapper(IBlockTree blockTree)
             {
@@ -254,16 +253,9 @@ namespace Nethermind.PerfTest
                 _blockTree.UpdateMainChain(blocks);
             }
 
-            public bool WasProcessed(Keccak blockHash)
+            public bool WasProcessed(UInt256 number, Keccak blockHash)
             {
                 return false;
-                //return _processed.ContainsKey(blockHash) && _blockTree.WasProcessed(blockHash); // to mimic the reads at least
-            }
-
-            public void MarkAsProcessed(Keccak blockHash)
-            {
-                //const byte ignored = 1;
-                //_processed.TryAdd(blockHash, ignored);
             }
 
             public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;

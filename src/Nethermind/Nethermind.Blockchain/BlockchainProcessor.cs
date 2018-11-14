@@ -259,8 +259,7 @@ namespace Nethermind.Blockchain
                 do
                 {
                     blocksToBeAddedToMain.Add(toBeProcessed);
-                    toBeProcessed = toBeProcessed.Number == 0 ? null : _blockTree.FindParent(toBeProcessed);
-                    // TODO: need to remove the hardcoded head block store at keccak zero as it would be referenced by the genesis... 
+                    toBeProcessed = toBeProcessed.Number == 0 ? null : _blockTree.FindParent(toBeProcessed); 
                     if (toBeProcessed == null)
                     {
                         break;
@@ -293,7 +292,7 @@ namespace Nethermind.Blockchain
                 {
                     foreach (Block block in blocksToBeAddedToMain)
                     {
-                        if (block.Hash != null && _blockTree.WasProcessed(block.Hash))
+                        if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
                         {
                             stateRoot = block.Header.StateRoot;
                             if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
