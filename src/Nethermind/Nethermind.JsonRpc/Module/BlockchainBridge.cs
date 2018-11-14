@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using System.Threading;
 using Nethermind.Blockchain;
@@ -44,6 +43,7 @@ namespace Nethermind.JsonRpc.Module
     {
         private readonly IBlockTree _blockTree;
         private readonly ITransactionPool _transactionPool;
+        private readonly ITransactionPoolInfoProvider _transactionPoolInfoProvider;
         private readonly IFilterManager _filterManager;
         private readonly IFilterStore _filterStore;
         private readonly IEthereumSigner _signer;
@@ -58,6 +58,7 @@ namespace Nethermind.JsonRpc.Module
             IStateProvider stateProvider,
             IBlockTree blockTree,
             ITransactionPool transactionPool,
+            ITransactionPoolInfoProvider transactionPoolInfoProvider,
             IReceiptStorage receiptStorage,
             IFilterStore filterStore,
             IFilterManager filterManager,
@@ -68,6 +69,7 @@ namespace Nethermind.JsonRpc.Module
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _transactionPool = transactionPool;
+            _transactionPoolInfoProvider = transactionPoolInfoProvider;
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
@@ -137,7 +139,8 @@ namespace Nethermind.JsonRpc.Module
                 _wallet.Sign(transaction, _blockTree.ChainId);
                 transaction.Hash = Transaction.CalculateHash(transaction);
 
-                if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce) throw new InvalidOperationException("Invalid nonce");
+                if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce)
+                    throw new InvalidOperationException("Invalid nonce");
 
                 _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
 
@@ -161,10 +164,12 @@ namespace Nethermind.JsonRpc.Module
             {
                 _readerWriterLockSlim.EnterWriteLock();
                 _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-                BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary, block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
+                BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary,
+                    block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
                 transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                (TransactionReceipt receipt, TransactionTrace trace) = _transactionProcessor.CallAndRestore(0, transaction, header, true);
+                (TransactionReceipt receipt, TransactionTrace trace) =
+                    _transactionProcessor.CallAndRestore(0, transaction, header, true);
 
                 _stateProvider.Reset();
                 return Bytes.FromHexString(trace.ReturnValue);
@@ -273,53 +278,7 @@ namespace Nethermind.JsonRpc.Module
         }
 
         public TransactionPoolInfo GetTransactionPoolInfo()
-        {
-            var groupedTransactions = _transactionPool
-                .GetPendingTransactions()
-                .GroupBy(t => t.SenderAddress);
-            var pendingTransactions = new Dictionary<Address, IDictionary<UInt256, Transaction[]>>();
-            var queuedTransactions = new Dictionary<Address, IDictionary<UInt256, Transaction[]>>();
-            foreach (var group in groupedTransactions)
-            {
-                var address = group.Key;
-                var accountNonce = _stateProvider.GetNonce(address);
-                var expectedNonce = accountNonce;
-                var pending = new Dictionary<UInt256, Transaction[]>();
-                var queued = new Dictionary<UInt256, Transaction[]>();
-                var transactionsGroupedByNonce = group.OrderBy(t => t.Nonce).GroupBy(t => t.Nonce);
-
-                foreach (var nonceGroup in transactionsGroupedByNonce)
-                {
-                    if (nonceGroup.Key < accountNonce)
-                    {
-                        queued.Add(nonceGroup.Key, nonceGroup.ToArray());
-                        continue;
-                    }
-
-                    if (nonceGroup.Key == accountNonce ||
-                        accountNonce != expectedNonce && nonceGroup.Key == expectedNonce)
-                    {
-                        pending.Add(nonceGroup.Key, nonceGroup.ToArray());
-                        expectedNonce = nonceGroup.Key + 1;
-                        continue;
-                    }
-
-                    queued.Add(nonceGroup.Key, nonceGroup.ToArray());
-                }
-
-                if (pending.Any())
-                {
-                    pendingTransactions[address] = pending;
-                }
-
-                if (queued.Any())
-                {
-                    queuedTransactions[address] = queued;
-                }
-            }
-
-            return new TransactionPoolInfo(pendingTransactions, queuedTransactions);
-        }
+            => _transactionPoolInfoProvider.GetInfo(_transactionPool.GetPendingTransactions());
 
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)

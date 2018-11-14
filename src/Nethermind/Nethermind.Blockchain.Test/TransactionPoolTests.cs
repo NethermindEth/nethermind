@@ -93,12 +93,6 @@ namespace Nethermind.Blockchain.Test
         {
             _transactionPool = CreatePool(_noTransactionStorage);
             var transactions = AddTransactionsToPool();
-
-            foreach (var transaction in transactions)
-            {
-                _transactionPool.AddTransaction(transaction, 1);
-            }
-
             _transactionPool.GetPendingTransactions().Length.Should().Be(transactions.Length);
         }
 

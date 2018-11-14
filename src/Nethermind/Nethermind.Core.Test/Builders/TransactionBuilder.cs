@@ -78,6 +78,18 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
+        public TransactionBuilder WithValue(UInt256 value)
+        {
+            TestObjectInternal.Value = value;
+            return this;
+        }
+        
+        public TransactionBuilder WithSenderAddress(Address address)
+        {
+            TestObjectInternal.SenderAddress = address;
+            return this;
+        }
+        
         public TransactionBuilder Signed(IEthereumSigner signer, PrivateKey privateKey, UInt256 blockNumber)
         {
             signer.Sign(privateKey, TestObjectInternal, blockNumber);

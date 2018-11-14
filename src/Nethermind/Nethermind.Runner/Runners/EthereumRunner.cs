@@ -90,6 +90,7 @@ namespace Nethermind.Runner.Runners
         private INodeStatsProvider _nodeStatsProvider;
         private IPerfService _perfService;
         private ITransactionPool _transactionPool;
+        private ITransactionPoolInfoProvider _transactionPoolInfoProvider;
         private IReceiptStorage _receiptStorage;
         private IEthereumSigner _ethereumSigner;
         private CancellationTokenSource _runnerCancellation;
@@ -370,6 +371,8 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.StateDb,
                 stateProvider,
                 _logManager);
+            
+            _transactionPoolInfoProvider = new TransactionPoolInfoProvider(stateProvider);
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(
@@ -448,6 +451,7 @@ namespace Nethermind.Runner.Runners
                     rpcState.StateProvider,
                     rpcState.BlockTree,
                     _transactionPool,
+                    _transactionPoolInfoProvider, 
                     _receiptStorage,
                     filterStore,
                     filterManager,
