@@ -489,19 +489,6 @@ namespace Nethermind.Core.Test
         }
         
         [Test]
-        public void Cannot_mark_as_processed_twice()
-        {
-            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-            
-            BlockTree blockTree = BuildBlockTree();
-            blockTree.SuggestBlock(block0);
-            blockTree.SuggestBlock(block1);
-            blockTree.MarkAsProcessed(block1.Hash);
-            Assert.Throws<InvalidOperationException>(() => blockTree.MarkAsProcessed(block1.Hash));
-        }
-        
-        [Test]
         public void Can_check_if_block_was_processed()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -511,7 +498,7 @@ namespace Nethermind.Core.Test
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
             Assert.False(blockTree.WasProcessed(block1.Hash), "before");
-            blockTree.MarkAsProcessed(block1.Hash);
+            blockTree.UpdateMainChain(new []{block0, block1});
             Assert.True(blockTree.WasProcessed(block1.Hash), "after");
         }
         
@@ -566,10 +553,7 @@ namespace Nethermind.Core.Test
             AddToMain(blockTree, block0);
             
             blockTree.SuggestBlock(block2);
-            
             blockTree.SuggestBlock(block1);
-            blockTree.MarkAsProcessed(block1.Hash);
-            
             blockTree.UpdateMainChain(block1);
 
             BlockHeader storedInDb = Rlp.Decode<BlockHeader>(new Rlp(blockInfosDb.Get(Keccak.Zero)));

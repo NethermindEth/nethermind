@@ -361,22 +361,6 @@ namespace Nethermind.Blockchain
             return level.HasBlockOnMainChain && level.BlockInfos[0].BlockHash.Equals(blockHash);
         }
 
-        public void MarkAsProcessed(Keccak blockHash)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Marking {blockHash} as processed");
-            UInt256 number = LoadNumberOnly(blockHash);
-            (BlockInfo info, ChainLevelInfo level) = LoadInfo(number, blockHash);
-
-            if (info.WasProcessed)
-            {
-                throw new InvalidOperationException($"Marking already processed block {blockHash} as processed");
-            }
-
-            info.WasProcessed = true;
-            PersistLevel(number, level);
-            if (_logger.IsTrace) _logger.Trace($"{blockHash} marked as processed");
-        }
-
         public bool WasProcessed(Keccak blockHash)
         {
             BigInteger number = LoadNumberOnly(blockHash);

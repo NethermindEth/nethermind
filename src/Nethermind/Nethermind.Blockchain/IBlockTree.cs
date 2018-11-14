@@ -81,12 +81,6 @@ namespace Nethermind.Blockchain
         bool WasProcessed(Keccak blockHash);
         
         /// <summary>
-        /// Marks the block as processed which means that all the block state is in the state tree.
-        /// </summary>
-        /// <param name="blockHash">Hash of the block to mark</param>
-        void MarkAsProcessed(Keccak blockHash);
-        
-        /// <summary>
         /// Marks all <paramref name="processedBlocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>
         /// </summary>
         /// <param name="processedBlocks">Blocks that will now be at the top of the chain</param>

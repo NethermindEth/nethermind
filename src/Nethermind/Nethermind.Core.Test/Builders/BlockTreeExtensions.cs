@@ -32,7 +32,6 @@ namespace Nethermind.Core.Test.Builders
             {
                 Block block = alternative.FindBlock((ulong)i);
                 blockTree.SuggestBlock(block);
-                blockTree.MarkAsProcessed(block.Hash);
                 blocks.Add(block);
             }
             
