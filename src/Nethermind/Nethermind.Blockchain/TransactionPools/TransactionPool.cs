@@ -55,9 +55,8 @@ namespace Nethermind.Blockchain.TransactionPools
         private readonly ILogger _logger;
 
         private readonly int _peerNotificationThreshold;
-        private readonly Timer _timer = new Timer();
 
-        public TransactionPool(ITransactionStorage transactionStorage, 
+        public TransactionPool(ITransactionStorage transactionStorage,
             IPendingTransactionThresholdValidator pendingTransactionThresholdValidator,
             ITimestamp timestamp, IEthereumSigner signer, ILogManager logManager,
             int removePendingTransactionInterval = 600,
@@ -69,9 +68,14 @@ namespace Nethermind.Blockchain.TransactionPools
             _timestamp = timestamp;
             _signer = signer;
             _peerNotificationThreshold = peerNotificationThreshold;
-            _timer.Interval = removePendingTransactionInterval * 1000;
-            _timer.Elapsed += OnTimerElapsed;
-            _timer.Start();
+            if (removePendingTransactionInterval <= 0)
+            {
+                return;
+            }
+
+            var timer = new Timer {Interval = removePendingTransactionInterval * 1000};
+            timer.Elapsed += OnTimerElapsed;
+            timer.Start();
         }
 
         public Transaction[] GetPendingTransactions() => _pendingTransactions.Values.ToArray();
