@@ -102,7 +102,7 @@ namespace Nethermind.Network.Rlpx
                     .ChildOption(ChannelOption.SoBacklog, 100)
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
-                        InitializeChannel(ch, ConnectionDirection.In, null,
+                        InitializeChannel(ch, ConnectionDirection.Out, null,
                             ((IPEndPoint) ch.RemoteAddress).Address.ToString(), ((IPEndPoint) ch.RemoteAddress).Port)));
 
                 _bootstrapChannel = await bootstrap.BindAsync(_localPort).ContinueWith(t =>
