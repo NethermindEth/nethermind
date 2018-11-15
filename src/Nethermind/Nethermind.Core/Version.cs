@@ -18,8 +18,8 @@
 
 using System;
 using System.IO;
-using System.Net;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 namespace Nethermind.Core
 {
@@ -35,7 +35,7 @@ namespace Nethermind.Core
             }
 
             string gitHash = File.Exists("git-hash") ? File.ReadAllText("git-hash") : string.Empty;
-            gitHash = gitHash.Substring(gitHash.Length - 8, 8);
+            gitHash = Regex.Match(gitHash, "\\-g(\\w+)").Groups[1].Value;
             
             Description = $"Nethermind/v0.9.2-dev-{gitHash}/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
         }
