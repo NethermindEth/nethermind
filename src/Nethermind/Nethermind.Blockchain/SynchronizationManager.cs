@@ -256,7 +256,10 @@ namespace Nethermind.Blockchain
                 else
                 {
                     CheckIfNewPeerIsBetterSyncCandidate(peerInfo);
-                    RequestSync();
+                    if (peerInfo.NumberAvailable > _blockTree.BestKnownNumber)
+                    {
+                        RequestSync();
+                    }
                 }
 
                 initCancelSource.Dispose();
@@ -460,6 +463,21 @@ namespace Nethermind.Blockchain
             if (_aggregateSyncCancellationTokenSource.IsCancellationRequested)
             {
                 if (_logger.IsDebug) _logger.Debug("Cancellation requested will not start sync");
+                return;
+            }
+
+            bool anyPeerWithHigherNumber = false;
+            foreach (KeyValuePair<NodeId,PeerInfo> peer in _peers)
+            {
+                if (peer.Value.NumberAvailable > _blockTree.BestKnownNumber)
+                {
+                    anyPeerWithHigherNumber = true;
+                    break;
+                }
+            }
+
+            if (!anyPeerWithHigherNumber)
+            {
                 return;
             }
 
