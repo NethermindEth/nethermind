@@ -594,6 +594,7 @@ namespace Nethermind.Runner.Runners
 
             var localIp = _networkHelper.GetLocalIp();
             if (_logger.IsInfo) _logger.Info($"Node is up and listening on {localIp}:{_initConfig.P2PPort}");
+            if (_logger.IsInfo) _logger.Info($"{ClientVersion.Description}");
             if (_logger.IsInfo) _logger.Info($"enode://{_nodeKey.PublicKey.ToString(false)}@{localIp}:{_initConfig.P2PPort}");
             if (_logger.IsInfo) _logger.Info($"enode address for test purposes: {_nodeKey.Address}");
 
