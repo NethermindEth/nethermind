@@ -325,6 +325,7 @@ namespace Nethermind.Runner.Runners
 
             var cliqueConfig = new CliqueConfig(15, 30000);
             var clique = new CliqueSealEngine(cliqueConfig, _ethereumSigner, _nodeKey, _dbProvider.BlocksDb, _blockTree, _logManager);
+            clique.CanSeal = _initConfig.IsMining;
 
             // TODO: read seal engine from ChainSpec
             var sealEngine =
@@ -577,7 +578,8 @@ namespace Nethermind.Runner.Runners
 
             var localIp = _networkHelper.GetLocalIp();
             if (_logger.IsInfo) _logger.Info($"Node is up and listening on {localIp}:{_initConfig.P2PPort}");
-            if (_logger.IsInfo) _logger.Info($"enode://{_nodeKey.PublicKey}@{localIp}:{_initConfig.P2PPort}");
+            if (_logger.IsInfo) _logger.Info($"enode://{_nodeKey.PublicKey.ToString(false)}@{localIp}:{_initConfig.P2PPort}");
+            if (_logger.IsInfo) _logger.Info($"enode address for test purposes: {_nodeKey.Address}");
 
             if (_initConfig.JsonRpcEnabled)
             {

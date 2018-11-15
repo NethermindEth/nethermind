@@ -54,7 +54,7 @@ namespace Nethermind.Core.Specs.ChainSpec
             }
             catch (Exception e)
             {
-                throw new InvalidDataException("Error when loading chainspec", e);
+                throw new InvalidDataException($"Error when loading chainspec ({e.Message})", e);
             }
         }
 
@@ -124,6 +124,7 @@ namespace Nethermind.Core.Specs.ChainSpec
         {
             if (chainSpecJson.Nodes == null)
             {
+                chainSpec.NetworkNodes = new NetworkNode[0];
                 return;
             }
 

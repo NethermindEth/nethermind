@@ -88,6 +88,12 @@ namespace Nethermind.Clique
             {
                 return;
             }
+
+            if (_scheduledBlock.Timestamp + _config.BlockPeriod < _timestamp.EpochSeconds)
+            {
+                _scheduledBlock = null;
+                return;
+            }
             
             ulong extraDelayMilliseconds = 0;
             if (_scheduledBlock.Difficulty == CliqueSealEngine.DifficultyNoTurn)
@@ -98,7 +104,7 @@ namespace Nethermind.Clique
             }
             
             if(_scheduledBlock.Timestamp + extraDelayMilliseconds / 1000 < _timestamp.EpochSeconds)
-            {
+            {   
                 _blockTree.SuggestBlock(_scheduledBlock);
                 _scheduledBlock = null;
             }
@@ -109,10 +115,13 @@ namespace Nethermind.Clique
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
-        [Todo(Improve.Refactor, "Delay here to collect transactions")]
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            // delay here to collect transactions
+            if (e.Block.Timestamp + _config.BlockPeriod < _timestamp.EpochSeconds)
+            {
+                if (_logger.IsDebug) _logger.Debug("Skipping block production until synced");
+                return;
+            }
 
             CancellationToken token;
             lock (_syncToken)

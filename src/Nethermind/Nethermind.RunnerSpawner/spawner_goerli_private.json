@@ -2,7 +2,7 @@
   "ReleasePath": "D:/GoerliRunner/",
   "DbBasePath": "D:/GoerliRunner/",
   "Runners": {
-    "Miner1": [
+    "Sealer1": [
       {
         "ConfigModule": "InitConfig",
         "ConfigItems": {
@@ -23,7 +23,7 @@
         }
       }
     ],
-    "Miner2": [
+    "Sealer2": [
       {
         "ConfigModule": "InitConfig",
         "ConfigItems": {
