@@ -1,0 +1,1 @@
+git describe --all --long > git-hash

@@ -36,6 +36,9 @@
     <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="git-hash">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Content Update="NLog.config">
@@ -69,4 +72,7 @@
     <_ContentIncludedByDefault Remove="out\linux-x64\Nethermind.Runner.deps.json" />
     <_ContentIncludedByDefault Remove="out\linux-x64\Nethermind.Runner.runtimeconfig.json" />
   </ItemGroup>
+  <Target Name="MyPreCompileTarget" BeforeTargets="Build">
+    <Exec Command="addVersion.cmd" />
+  </Target>
 </Project>
