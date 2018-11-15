@@ -334,3 +334,4 @@ ASALocalRun/
 .vscode/
 out/
 db/
+src/Nethermind/Nethermind.Runner/git-hash
