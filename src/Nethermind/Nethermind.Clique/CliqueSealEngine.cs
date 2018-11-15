@@ -59,12 +59,12 @@ namespace Nethermind.Clique
         public async Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)
         {
             Block sealedBlock = Seal(processed);
-            sealedBlock.Hash = BlockHeader.CalculateHash(sealedBlock.Header);
             if (sealedBlock == null)
             {
-                throw new SealEngineException($"{nameof(SealBlock)} failed");
+                return null;
             }
             
+            sealedBlock.Hash = BlockHeader.CalculateHash(sealedBlock.Header);
             return await Task.FromResult(sealedBlock);
         }
 
@@ -132,6 +132,8 @@ namespace Nethermind.Clique
             // For 0-period chains, refuse to seal empty blocks (no reward but would spin sealing)
             if (_config.BlockPeriod == 0 && block.Transactions.Length == 0)
             {
+                // TODO: exception here?
+                if(_logger.IsInfo) _logger.Info($"Not sealing empty block on 0-period chain {block.Number}");
                 return null;
             }
 
@@ -139,12 +141,14 @@ namespace Nethermind.Clique
             Snapshot snapshot = GetOrCreateSnapshot(number - 1, header.ParentHash);
             if (!snapshot.Signers.ContainsKey(_key.Address))
             {
-                throw new InvalidOperationException("Not authorized to sign a block");
+                if(_logger.IsInfo) _logger.Info($"Not authorized to seal the block {block.Number}");
+                return null;
             }
 
             // If we're amongst the recent signers, wait for the next block
             if (snapshot.HasSignedRecently(number, _key.Address))
             {
+                if(_logger.IsInfo) _logger.Info($"Signed recently so skipping this block ({block.Number})");
                 return null;
             }
 

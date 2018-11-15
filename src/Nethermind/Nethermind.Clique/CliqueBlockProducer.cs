@@ -74,6 +74,7 @@ namespace Nethermind.Clique
 
             if (_sealEngine.CanSeal)
             {
+                _timer.AutoReset = false;
                 _timer.Elapsed += TimerOnElapsed;
                 _timer.Interval = 100;
                 _timer.Start();
@@ -86,15 +87,10 @@ namespace Nethermind.Clique
         {
             if (_scheduledBlock == null)
             {
+                _timer.Enabled = true;
                 return;
             }
-
-            if (_scheduledBlock.Timestamp + _config.BlockPeriod < _timestamp.EpochSeconds)
-            {
-                _scheduledBlock = null;
-                return;
-            }
-            
+           
             ulong extraDelayMilliseconds = 0;
             if (_scheduledBlock.Difficulty == CliqueSealEngine.DifficultyNoTurn)
             {
@@ -104,10 +100,16 @@ namespace Nethermind.Clique
             }
             
             if(_scheduledBlock.Timestamp + extraDelayMilliseconds / 1000 < _timestamp.EpochSeconds)
-            {   
-                _blockTree.SuggestBlock(_scheduledBlock);
+            {
+                if (_scheduledBlock.Number > _blockTree.Head.Number)
+                {
+                    _blockTree.SuggestBlock(_scheduledBlock);
+                }
+                
                 _scheduledBlock = null;
             }
+            
+            _timer.Enabled = true;
         }
 
         public void Start()
@@ -117,12 +119,6 @@ namespace Nethermind.Clique
 
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            if (e.Block.Timestamp + _config.BlockPeriod < _timestamp.EpochSeconds)
-            {
-                if (_logger.IsDebug) _logger.Debug("Skipping block production until synced");
-                return;
-            }
-
             CancellationToken token;
             lock (_syncToken)
             {
@@ -142,20 +138,30 @@ namespace Nethermind.Clique
                 return;
             }
 
+            if(_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
             Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
+            if(_logger.IsInfo) _logger.Info($"Sealing prepared block {processedBlock.Number}");
             _sealEngine.SealBlock(processedBlock, token).ContinueWith(t =>
             {
                 if (t.IsCompletedSuccessfully)
                 {
-                    _scheduledBlock = block;
+                    if (t.Result != null)
+                    {
+                        if(_logger.IsInfo) _logger.Info($"Sealed block {t.Result.Header.ToString(BlockHeader.Format.Short)}");
+                        _scheduledBlock = t.Result;
+                    }
+                    else
+                    {
+                        if(_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.Number} (null seal)");    
+                    }
                 }
                 else if (t.IsFaulted)
                 {
-                    _logger.Error("Mining failer", t.Exception);
+                    _logger.Error("Mining failed", t.Exception);
                 }
                 else if (t.IsCanceled)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Mining block {processedBlock.ToString(Block.Format.HashAndNumber)} cancelled");
+                    if (_logger.IsInfo) _logger.Info($"Sealing block {processedBlock.Number} cancelled");
                 }
             }, token);
         }
@@ -173,8 +179,14 @@ namespace Nethermind.Clique
 
         private Block PrepareBlock()
         {
+            if(_logger.IsInfo) _logger.Info($"Preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
+            
             BlockHeader parentHeader = _blockTree.Head;
-            if (parentHeader == null) return null;
+            if (parentHeader == null)
+            {
+                if(_logger.IsError) _logger.Error($"Preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)} - parent header is null");
+                return null;
+            }
 
             Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
             UInt256 timestamp = _timestamp.EpochSeconds;
@@ -193,11 +205,6 @@ namespace Nethermind.Clique
             UInt256 number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
             Snapshot snapshot = _sealEngine.GetOrCreateSnapshot(number - 1, header.ParentHash);
-            if (!snapshot.InTurn(number, _address))
-            {
-                return null;
-            }
-            
             bool isEpochBlock = (ulong) number % 30000 == 0;
             if (!isEpochBlock)
             {
@@ -257,10 +264,9 @@ namespace Nethermind.Clique
             header.MixHash = Keccak.Zero;
             // Ensure the timestamp has the correct delay
             header.Timestamp = parent.Timestamp + _config.BlockPeriod;
-            long currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            if (header.Timestamp < currentTimestamp)
+            if (header.Timestamp < _timestamp.EpochSeconds)
             {
-                header.Timestamp = new UInt256(currentTimestamp);
+                header.Timestamp = new UInt256(_timestamp.EpochSeconds);
             }
 
             var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
@@ -297,6 +303,7 @@ namespace Nethermind.Clique
 
             Block block = new Block(header, selectedTxs, new BlockHeader[0]);
             header.TransactionsRoot = block.CalculateTransactionsRoot();
+            block.Author = _address;
             return block;
         }
 
@@ -304,9 +311,11 @@ namespace Nethermind.Clique
         {
             if (snapshot.InTurn(snapshot.Number + 1, signer))
             {
+                if(_logger.IsInfo) _logger.Info("Producing in turn block");
                 return new UInt256(CliqueSealEngine.DifficultyInTurn);
             }
 
+            if(_logger.IsInfo) _logger.Info("Producing out of turn block");
             return new UInt256(CliqueSealEngine.DifficultyNoTurn);
         }
 

@@ -469,12 +469,25 @@ namespace Nethermind.Runner.Runners
                 IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 DebugBridge = new DebugBridge(debugDbProvider, txTracer, debugChain.Processor);
             }
-
+            
             if (_initConfig.IsMining)
             {
                 IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 AlternativeChain devChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, minerDbProvider, recoveryStep, _ethereumSigner, _logManager, _transactionPool, _receiptStorage);
-                var producer = new DevBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, _logManager);
+
+                IBlockProducer producer;
+                if (sealEngine is CliqueSealEngine)
+                {
+                    // TODO: need to introduce snapshot provider for clique and pass it here instead of CliqueSealEngine
+                    if(_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
+                    producer = new CliqueBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, sealEngine as CliqueSealEngine, cliqueConfig, _nodeKey.Address, _logManager);
+                }
+                else
+                {
+                    if(_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
+                    producer = new DevBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, _logManager);    
+                }
+                
                 producer.Start();
             }
 
