@@ -201,6 +201,10 @@ namespace Nethermind.Blockchain
             }
 
             peerInfo.NumberAvailable = UInt256.Max(number, peerInfo.NumberAvailable);
+            if (number > _blockTree.BestKnownNumber)
+            {
+                RequestSync();
+            }
         }
 
         public void AddNewTransaction(Transaction transaction, NodeId receivedFrom)
