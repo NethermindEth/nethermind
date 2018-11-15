@@ -165,15 +165,6 @@ namespace Nethermind.Blockchain
             peerInfo.NumberAvailable = UInt256.Max(block.Number, peerInfo.NumberAvailable);
 //            peerInfo.Difficulty = UInt256.Max(block.Difficulty, peerInfo.Difficulty);
 
-            lock (_isSyncingLock)
-            {
-                if (_isSyncing)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Ignoring new block {block.Hash} while syncing");
-                    return;
-                }
-            }
-
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.Hash} ({block.Number}) from {receivedFrom}");
 
             if (block.Number <= _blockTree.BestKnownNumber + 1)
@@ -460,6 +451,16 @@ namespace Nethermind.Blockchain
                 return;
             }
 
+            // first call to ignore expensive foreach - this one just returns but does not start the sync
+            lock (_isSyncingLock)
+            {
+                if (_isSyncing)
+                {
+                    if (_logger.IsTrace) _logger.Trace("Sync in progress - skipping sync call");
+                    return;
+                }
+            }
+            
             if (_aggregateSyncCancellationTokenSource.IsCancellationRequested)
             {
                 if (_logger.IsDebug) _logger.Debug("Cancellation requested will not start sync");
