@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain
                 token = _cancellationTokenSource.Token;
             }
 
-            if (!_sealEngine.IsMining)
+            if (!_sealEngine.CanSeal)
             {
                 return;
             }
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain
             }
 
             Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
-            _sealEngine.MineAsync(processedBlock, token).ContinueWith(t =>
+            _sealEngine.SealBlock(processedBlock, token).ContinueWith(t =>
             {
                 if (t.IsCompletedSuccessfully)
                 {

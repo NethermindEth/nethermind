@@ -56,58 +56,24 @@ namespace Nethermind.Clique
 
         public BigInteger MinGasPrice { get; set; } = 0;
 
-        public async Task<Block> MineAsync(Block processed, CancellationToken cancellationToken)
+        public async Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)
         {
-            Block block = await MineAsync(cancellationToken, processed, null).ContinueWith(t =>
+            Block sealedBlock = Seal(processed);
+            sealedBlock.Hash = BlockHeader.CalculateHash(sealedBlock.Header);
+            if (sealedBlock == null)
             {
-                if (t.IsFaulted)
-                {
-                    _logger.Error($"{nameof(MineAsync)} failed", t.Exception);
-                    return null;
-                }
-
-                return t.Result;
-            }, cancellationToken);
-
-            if (block == null)
-            {
-                throw new SealEngineException($"{nameof(MineAsync)} failed");
+                throw new SealEngineException($"{nameof(SealBlock)} failed");
             }
-
-            return block;
+            
+            return await Task.FromResult(sealedBlock);
         }
 
-        public bool IsMining { get; set; }
-
-        private async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
-        {
-            if (processed.Header.TransactionsRoot == null ||
-                processed.Header.StateRoot == null ||
-                processed.Header.ReceiptsRoot == null ||
-                processed.Header.OmmersHash == null ||
-                processed.Header.Bloom == null ||
-                processed.Header.ExtraData == null)
-            {
-                throw new InvalidOperationException($"Requested to mine an invalid block {processed.Header}");
-            }
-
-            Task<Block> miningTask = Task.Factory.StartNew(() => Mine(processed), cancellationToken);
-            await miningTask.ContinueWith(
-                t =>
-                {
-                    if (t.IsCompleted)
-                    {
-                        t.Result.Header.Hash = BlockHeader.CalculateHash(t.Result.Header);
-                    }
-                }, cancellationToken, TaskContinuationOptions.NotOnFaulted, TaskScheduler.Default);
-
-            return await miningTask;
-        }
+        public bool CanSeal { get; set; }
 
         private const int CheckpointInterval = 1024;
         private const int InMemorySnapshots = 128;
         internal const int InMemorySignatures = 4096;
-        private const int WiggleTime = 500;
+        public const int WiggleTime = 500;
 
         private const int DefaultEpochLength = 30000;
         internal const int ExtraVanityLength = 32;
@@ -152,7 +118,7 @@ namespace Nethermind.Clique
             return address;
         }
 
-        public Block Mine(Block block)
+        private Block Seal(Block block)
         {
             BlockHeader header = block.Header;
 
@@ -182,19 +148,6 @@ namespace Nethermind.Clique
                 return null;
             }
 
-            // Sweet, the protocol permits us to sign the block, wait for our time
-            long currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            long delay = (long) header.Timestamp - currentTimestamp;
-            if (header.Difficulty == DifficultyNoTurn)
-            {
-                int wiggle = snapshot.Signers.Count / 2 + 1 * WiggleTime;
-                Random rnd = new Random();
-                delay += rnd.Next(wiggle);
-            }
-
-            // Sign immediately if the timestamp is in the past
-            delay = delay > 0 ? delay : 0;
-
             // Sign all the things!
             Keccak headerHash = header.HashCliqueHeader();
             Signature signature = _signer.Sign(_key, headerHash);
@@ -204,9 +157,6 @@ namespace Nethermind.Clique
             // Copy signature's recovery id (V)
             byte recoveryId = signature.RecoveryId;
             header.ExtraData[header.ExtraData.Length - 1] = recoveryId;
-
-            // Wait until sealing is terminated or delay timeout.
-            System.Threading.Thread.Sleep((int) delay);
 
             return block;
         }
@@ -348,7 +298,7 @@ namespace Nethermind.Clique
                 Keccak parentHash = header.ParentHash;
                 if (number == 0 || (IsEpochTransition(number) && _blockTree.FindHeader(parentHash) == null))
                 {
-                    int signersCount = (header.ExtraData.Length - ExtraVanityLength - ExtraSealLength) / AddressLength;
+                    int signersCount = header.CalculateSignersCount();
                     SortedList<Address, UInt256> signers = new SortedList<Address, UInt256>(signersCount, CliqueAddressComparer.Instance);
                     for (int i = 0; i < signersCount; i++)
                     {

@@ -37,5 +37,10 @@ namespace Nethermind.Clique
             blockHeader.ExtraData = fullExtraData;
             return sigHash;
         }
+
+        public static int CalculateSignersCount(this BlockHeader blockHeader)
+        {
+            return (blockHeader.ExtraData.Length - CliqueSealEngine.ExtraVanityLength - CliqueSealEngine.ExtraSealLength) / Address.ByteLength;
+        }
     }
 }

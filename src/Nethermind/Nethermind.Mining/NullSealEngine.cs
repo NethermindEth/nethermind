@@ -30,7 +30,7 @@ namespace Nethermind.Mining
 
         public static NullSealEngine Instance { get; } = new NullSealEngine();
 
-        public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
+        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             return Task.FromResult(block);
         }
@@ -45,6 +45,6 @@ namespace Nethermind.Mining
             return true;
         }
 
-        public bool IsMining { get; set; }
+        public bool CanSeal { get; set; }
     }
 }

@@ -20,6 +20,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -86,10 +88,10 @@ namespace Nethermind.Clique.Test
         }
 
         [Test]
-        public void Can_sign_block()
+        public async Task Can_sign_block()
         {
             Block block6 = CreateBlock(2, 6, _lastBlock);
-            Block signed = _clique.Mine(block6);
+            Block signed = await _clique.SealBlock(block6, CancellationToken.None);
             bool validHeader = _clique.ValidateParams(_blockTree.FindBlock(signed.ParentHash, false), signed.Header);
             bool validSeal = _clique.ValidateSeal(signed.Header);
             Assert.True(validHeader);
@@ -107,9 +109,12 @@ namespace Nethermind.Clique.Test
             UInt256 timestamp = new UInt256(1492009146);
             byte[] extraData = Bytes.FromHexString(GetGenesisExtraData());
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
-            Block genesis = new Block(header, new BlockHeader[0]);
-            //genesis.Hash = new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177");
+            Block genesis = new Block(header, new BlockHeader[0]);            
             genesis.Hash = BlockHeader.CalculateHash(genesis);
+            
+            // this would need to be loaded from rinkeby chainspec to include allocations
+//            Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
+            
             genesis.Header.Hash = BlockHeader.CalculateHash(genesis.Header);
             return genesis;
         }

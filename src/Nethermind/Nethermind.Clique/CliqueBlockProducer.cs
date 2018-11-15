@@ -24,6 +24,7 @@ using System.Numerics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
@@ -31,11 +32,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
-using Nethermind.Store;
 
 namespace Nethermind.Clique
 {
-    public class CliqueBlockProducer : IBlockProducer
+    public class CliqueBlockProducer : IBlockProducer, IDisposable
     {
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockTree _blockTree;
@@ -51,6 +51,7 @@ namespace Nethermind.Clique
 
         private object _syncToken = new object();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        private System.Timers.Timer _timer = new System.Timers.Timer();
 
         public CliqueBlockProducer(
             ITransactionPool transactionPool,
@@ -62,32 +63,102 @@ namespace Nethermind.Clique
             Address address,
             ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _processor = devProcessor ?? throw new ArgumentNullException(nameof(devProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _timestamp = timestamp;
-            _sealEngine = cliqueSealEngine;
-            _config = config;
-            _blockTree = blockTree;
-            _address = address;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _timestamp = timestamp ?? throw new ArgumentNullException(nameof(_timestamp));
+            _sealEngine = cliqueSealEngine ?? throw new ArgumentNullException(nameof(_sealEngine));
+            _config = config ?? throw new ArgumentNullException(nameof(_config));
+            _address = address ?? throw new ArgumentNullException(nameof(_address));
+
+            if (_sealEngine.CanSeal)
+            {
+                _timer.Elapsed += TimerOnElapsed;
+                _timer.Interval = 100;
+                _timer.Start();
+            }
+        }
+
+        private Block _scheduledBlock;
+        
+        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            if (_scheduledBlock == null)
+            {
+                return;
+            }
+            
+            ulong extraDelayMilliseconds = 0;
+            if (_scheduledBlock.Difficulty == CliqueSealEngine.DifficultyNoTurn)
+            {
+                int wiggle = _scheduledBlock.Header.CalculateSignersCount() / 2 + 1 * CliqueSealEngine.WiggleTime;
+                Random rnd = new Random();
+                extraDelayMilliseconds += (ulong)rnd.Next(wiggle);
+            }
+            
+            if(_scheduledBlock.Timestamp + extraDelayMilliseconds / 1000 < _timestamp.EpochSeconds)
+            {
+                _blockTree.SuggestBlock(_scheduledBlock);
+                _scheduledBlock = null;
+            }
         }
 
         public void Start()
         {
-            _processor.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
-            _blockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
+            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+        }
+
+        [Todo(Improve.Refactor, "Delay here to collect transactions")]
+        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        {
+            // delay here to collect transactions
+
+            CancellationToken token;
+            lock (_syncToken)
+            {
+                _cancellationTokenSource = new CancellationTokenSource();
+                token = _cancellationTokenSource.Token;
+            }
+
+            if (!_sealEngine.CanSeal)
+            {
+                return;
+            }
+
+            Block block = PrepareBlock();
+            if (block == null)
+            {
+                if (_logger.IsDebug) _logger.Debug("Skipping block production or block production failed");
+                return;
+            }
+
+            Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
+            _sealEngine.SealBlock(processedBlock, token).ContinueWith(t =>
+            {
+                if (t.IsCompletedSuccessfully)
+                {
+                    _scheduledBlock = block;
+                }
+                else if (t.IsFaulted)
+                {
+                    _logger.Error("Mining failer", t.Exception);
+                }
+                else if (t.IsCanceled)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Mining block {processedBlock.ToString(Block.Format.HashAndNumber)} cancelled");
+                }
+            }, token);
         }
 
         public async Task StopAsync()
         {
-            _processor.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
-            _blockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
+            _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
             lock (_syncToken)
             {
                 _cancellationTokenSource?.Cancel();
             }
-            
+
             await Task.CompletedTask;
         }
 
@@ -113,7 +184,12 @@ namespace Nethermind.Clique
             UInt256 number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
             Snapshot snapshot = _sealEngine.GetOrCreateSnapshot(number - 1, header.ParentHash);
-            bool isEpochBlock = (ulong)number % 30000 == 0;
+            if (!snapshot.InTurn(number, _address))
+            {
+                return null;
+            }
+            
+            bool isEpochBlock = (ulong) number % 30000 == 0;
             if (!isEpochBlock)
             {
                 // Gather all the proposals that make sense voting on
@@ -215,53 +291,6 @@ namespace Nethermind.Clique
             return block;
         }
 
-        private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
-        {
-            CancellationToken token;
-            lock (_syncToken)
-            {
-                _cancellationTokenSource = new CancellationTokenSource();
-                token = _cancellationTokenSource.Token;
-            }
-
-            if (!_sealEngine.IsMining)
-            {
-                return;
-            }
-            
-            Block block = PrepareBlock();
-            if (block == null)
-            {
-                if (_logger.IsError) _logger.Error("Failed to prepare block for mining.");
-                return;
-            }
-
-            Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
-            _sealEngine.MineAsync(processedBlock, token).ContinueWith(t =>
-            {
-                if (t.IsCompletedSuccessfully)
-                {
-                    _blockTree.SuggestBlock(t.Result);
-                }
-                else if(t.IsFaulted)
-                {
-                    _logger.Error("Mining failer", t.Exception);
-                }
-                else if(t.IsCanceled)
-                {
-                    if(_logger.IsDebug) _logger.Debug($"Mining block {processedBlock.ToString(Block.Format.HashAndNumber)} cancelled");
-                }
-            }, token);
-        }
-
-        private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
-        {
-            lock (_syncToken)
-            {
-                _cancellationTokenSource?.Cancel();
-            }
-        }
-
         private UInt256 CalculateDifficulty(Snapshot snapshot, Address signer)
         {
             if (snapshot.InTurn(snapshot.Number + 1, signer))
@@ -270,6 +299,12 @@ namespace Nethermind.Clique
             }
 
             return new UInt256(CliqueSealEngine.DifficultyNoTurn);
+        }
+
+        public void Dispose()
+        {
+            _cancellationTokenSource?.Dispose();
+            _timer?.Dispose();
         }
     }
 }

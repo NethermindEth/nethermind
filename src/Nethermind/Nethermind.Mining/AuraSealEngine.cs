@@ -39,7 +39,7 @@ namespace Nethermind.Mining
 
         public BigInteger MinGasPrice { get; set; } = 0;
 
-        public Task<Block> MineAsync(Block processed, CancellationToken cancellationToken)
+        public Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)
         {
             throw new NotImplementedException();return null;
         }
@@ -54,7 +54,7 @@ namespace Nethermind.Mining
             throw new NotImplementedException();
         }
 
-        public bool IsMining { get; set; }
+        public bool CanSeal { get; set; }
 
         public bool Validate(BlockHeader header)
         {

@@ -46,13 +46,13 @@ namespace Nethermind.Mining
 
         public BigInteger MinGasPrice { get; set; } = 0;
 
-        public async Task<Block> MineAsync(Block processed, CancellationToken cancellationToken)
+        public async Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)
         {
             Block block = await MineAsync(cancellationToken, processed, null).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
-                    _logger.Error($"{nameof(MineAsync)} failed", t.Exception);
+                    _logger.Error($"{nameof(SealBlock)} failed", t.Exception);
                     return null;
                 }
 
@@ -61,7 +61,7 @@ namespace Nethermind.Mining
 
             if (block == null)
             {
-                throw new SealEngineException($"{nameof(MineAsync)} failed");
+                throw new SealEngineException($"{nameof(SealBlock)} failed");
             }
 
             return block;
@@ -103,7 +103,7 @@ namespace Nethermind.Mining
             return true;
         }
 
-        public bool IsMining { get; set; }
+        public bool CanSeal { get; set; }
 
         internal async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
         {

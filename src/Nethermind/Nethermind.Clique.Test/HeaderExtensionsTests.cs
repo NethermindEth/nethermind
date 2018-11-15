@@ -29,13 +29,26 @@ namespace Nethermind.Clique.Test
     public class BlockHeaderTests
     {
         [Test]
-        public void CliqueHashHeader()
+        public void Can_calculate_clique_header_hash()
         {
             BlockHeader header = BuildCliqueBlock();
 
             Keccak expectedHeaderHash = new Keccak("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
             Keccak headerHash = header.HashCliqueHeader();
             Assert.AreEqual(expectedHeaderHash, headerHash);
+        }
+        
+        [Test]
+        public void Can_calculate_signers_count()
+        {
+            BlockHeader header = BuildCliqueBlock();
+            for (int i = 0; i < 5; i++)
+            {
+                int signersCount = header.CalculateSignersCount();
+                Assert.AreEqual(i, signersCount);
+                byte[] newExtraData = new byte[header.ExtraData.Length + Address.ByteLength];
+                header.ExtraData = newExtraData;
+            }
         }
 
         private static BlockHeader BuildCliqueBlock()

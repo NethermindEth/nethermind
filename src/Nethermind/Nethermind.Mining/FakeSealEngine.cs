@@ -42,7 +42,7 @@ namespace Nethermind.Mining
             return _miningDelay + TimeSpan.FromMilliseconds((_exact ? 0 : 1) * (Random.Next((int)_miningDelay.TotalMilliseconds) - (int)_miningDelay.TotalMilliseconds / 2));
         }
         
-        public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
+        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             block.Header.MixHash = Keccak.Zero;
             block.Header.Hash = BlockHeader.CalculateHash(block.Header);
@@ -63,6 +63,6 @@ namespace Nethermind.Mining
             return true;
         }
 
-        public bool IsMining { get; set; }
+        public bool CanSeal { get; set; }
     }
 }

@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Test
 
             /* spec */
             FakeSealEngine sealEngine = new FakeSealEngine(miningDelay);
-            sealEngine.IsMining = true;
+            sealEngine.CanSeal = true;
 
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
 
