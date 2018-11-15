@@ -301,6 +301,7 @@ namespace Nethermind.JsonRpc.Module
             var result = GetBlock(blockParameter);
             if (result.Result.ResultType == ResultType.Failure)
             {
+                if (Logger.IsTrace) Logger.Trace($"eth_getBlockByNumber request {blockParameter}, result: {result.ErrorType}");
                 return ResultWrapper<Block>.Fail(result.Result.Error, result.ErrorType);
             }
 
