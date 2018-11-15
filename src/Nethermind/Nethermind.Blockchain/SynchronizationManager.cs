@@ -178,7 +178,7 @@ namespace Nethermind.Blockchain
 
             if (block.Number <= _blockTree.BestKnownNumber + 1)
             {
-                if (_logger.IsTrace) _logger.Trace($"Suggesting a block {block.Hash} ({block.Number}) from {receivedFrom} with {block.Transactions.Length} transactions");
+                if (_logger.IsInfo) _logger.Info($"Suggesting a new block {block.ToString(Block.Format.Short)} from {receivedFrom} with {block.Transactions.Length} transactions");
                 if (_logger.IsTrace) _logger.Trace($"{block}");
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);
