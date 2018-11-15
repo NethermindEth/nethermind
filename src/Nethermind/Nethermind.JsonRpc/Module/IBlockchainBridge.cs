@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -38,7 +39,7 @@ namespace Nethermind.JsonRpc.Module
         BlockHeader BestSuggested { get; }
         UInt256 BestKnown { get; }
         bool IsSyncing { get; }
-        
+
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
         Block FindBlock(UInt256 blockNumber);
         Block RetrieveHeadBlock();
@@ -57,6 +58,8 @@ namespace Nethermind.JsonRpc.Module
         Account GetAccount(Address address, Keccak stateRoot);
 
         int NewBlockFilter();
+        int NewPendingTransactionFilter();
+
         int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
 
@@ -64,10 +67,13 @@ namespace Nethermind.JsonRpc.Module
         bool FilterExists(int filterId);
         FilterLog[] GetLogFilterChanges(int filterId);
         Keccak[] GetBlockFilterChanges(int filterId);
+        Keccak[] GetPendingTransactionFilterChanges(int filterId);
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
 
         FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
+
+        TransactionPoolInfo GetTransactionPoolInfo();
     }
 }

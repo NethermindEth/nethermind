@@ -40,8 +40,18 @@ namespace Nethermind.Blockchain.Filters
         public FilterType GetFilterType(int filterId)
         {
             /* so far ok to use block filter if none */
-            _filters.TryGetValue(filterId, out FilterBase filter);
-            return filter?.GetType() == typeof(LogFilter) ? FilterType.LogFilter : FilterType.BlockFilter;
+            if (!_filters.TryGetValue(filterId, out var filter))
+            {
+                return FilterType.BlockFilter;
+            }
+
+            switch (filter)
+            {
+                case LogFilter _: return FilterType.LogFilter;
+                case BlockFilter _: return FilterType.BlockFilter;
+                case PendingTransactionFilter _: return FilterType.PendingTransactionFilter;
+                default: return FilterType.BlockFilter;
+            }
         }
 
         public T[] GetFilters<T>() where T : FilterBase
@@ -54,6 +64,13 @@ namespace Nethermind.Blockchain.Filters
             var filterId = setId ? GetFilterId() : 0;
             var blockFilter = new BlockFilter(filterId, startBlockNumber);
             return blockFilter;
+        }
+
+        public PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true)
+        {
+            var filterId = setId ? GetFilterId() : 0;
+            var pendingTransactionFilter = new PendingTransactionFilter(filterId);
+            return pendingTransactionFilter;
         }
 
         public LogFilter CreateLogFilter(FilterBlock fromBlock, FilterBlock toBlock,

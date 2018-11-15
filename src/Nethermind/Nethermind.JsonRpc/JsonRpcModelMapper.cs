@@ -17,8 +17,10 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -62,10 +64,10 @@ namespace Nethermind.JsonRpc
                     transactionHashes[i] = new Data(block.Transactions[i].Hash);
                 }
             }
-            
+
             var blockModel = new Block
             {
-                Hash = new Data(block.Hash.Bytes),               
+                Hash = new Data(block.Hash.Bytes),
                 Uncles = block.Ommers?.Select(x => new Data(x.Hash)).ToArray(),
                 Transactions = transactions,
                 TransactionHashes = transactionHashes
@@ -96,15 +98,20 @@ namespace Nethermind.JsonRpc
             return blockModel;
         }
 
-        public Transaction MapTransaction(Keccak blockHash, UInt256 blockNumber, int index, Core.Transaction transaction)
-        {   
+        public Transaction MapTransaction(Keccak blockHash, UInt256 blockNumber, int index,
+            Core.Transaction transaction)
+            => MapTransactionWithOptionalValues(blockHash, blockNumber, index, transaction);
+        
+        private static Transaction MapTransactionWithOptionalValues(Keccak blockHash, UInt256? blockNumber, int? index,
+            Core.Transaction transaction)
+        {
             return new Transaction
             {
                 Hash = new Data(transaction.Hash),
                 Nonce = new Quantity(transaction.Nonce),
                 BlockHash = new Data(blockHash),
-                BlockNumber = new Quantity(blockNumber),
-                TransactionIndex = new Quantity(index),
+                BlockNumber = blockNumber == null ? null : new Quantity(blockNumber.Value),
+                TransactionIndex = index == null ? null : new Quantity(index.Value),
                 From = new Data(transaction.SenderAddress),
                 To = new Data(transaction.To),
                 Value = new Quantity(transaction.Value),
@@ -113,9 +120,9 @@ namespace Nethermind.JsonRpc
                 Data = new Data(transaction.Data)
             };
         }
-        
+
         public Transaction MapTransaction(Core.TransactionReceipt receipt, Core.Transaction transaction)
-        {   
+        {
             return new Transaction
             {
                 Hash = new Data(transaction.Hash),
@@ -189,7 +196,7 @@ namespace Nethermind.JsonRpc
             {
                 return null;
             }
-            
+
             return new TransactionTrace
             {
                 Gas = transactionTrace.Gas,
@@ -217,17 +224,17 @@ namespace Nethermind.JsonRpc
             {
                 return null;
             }
-            
+
             return new StorageTrace
             {
                 Entries = storageTrace.Entries?.Select(x => new StorageTraceEntry
                 {
                     Cost = x.Cost,
                     Refund = x.Refund,
-                    OldValue= x.OldValue,
+                    OldValue = x.OldValue,
                     NewValue = x.NewValue,
                     Address = x.Address,
-                    Key = ((BigInteger)x.Index).ToByteArray().ToHexString(),
+                    Key = ((BigInteger) x.Index).ToByteArray().ToHexString(),
                 }).ToArray()
             };
         }
@@ -238,12 +245,69 @@ namespace Nethermind.JsonRpc
         }
 
         public Log MapLog(LogEntry logEntry)
+            => new Log
+            {
+                Data = new Data(logEntry.Data),
+                Address = new Data(logEntry.LoggersAddress),
+                Topics = logEntry.Topics.Select(t => new Data(t)).ToArray()
+            };
+
+        public TransactionPoolStatus MapTransactionPoolStatus(TransactionPoolInfo transactionPoolInfo)
         {
-            Log log = new Log();
-            log.Data = new Data(logEntry.Data);
-            log.Address = new Data(logEntry.LoggersAddress);
-            log.Topics = logEntry.Topics.Select(t => new Data(t)).ToArray();
-            return log;
+            if (transactionPoolInfo == null)
+            {
+                return null;
+            }
+
+            return new TransactionPoolStatus
+            {
+                Pending = transactionPoolInfo.Pending.Sum(t => t.Value.Count),
+                Queued = transactionPoolInfo.Queued.Sum(t => t.Value.Count)
+            };
         }
+
+        public TransactionPoolContent MapTransactionPoolContent(TransactionPoolInfo transactionPoolInfo)
+        {
+            if (transactionPoolInfo == null)
+            {
+                return null;
+            }
+            
+            var transactionPoolInfoData = MapTransactionPoolInfoData(transactionPoolInfo);
+
+            return new TransactionPoolContent
+            {
+                Pending = transactionPoolInfoData.Pending,
+                Queued = transactionPoolInfoData.Queued
+            };
+        }
+
+        public TransactionPoolInspection MapTransactionPoolInspection(TransactionPoolInfo transactionPoolInfo)
+        {
+            if (transactionPoolInfo == null)
+            {
+                return null;
+            }
+
+            var transactionPoolInfoData = MapTransactionPoolInfoData(transactionPoolInfo);
+
+            return new TransactionPoolInspection
+            {
+                Pending = transactionPoolInfoData.Pending,
+                Queued = transactionPoolInfoData.Queued
+            };
+        }
+
+        private static (IDictionary<Data, Dictionary<Quantity, Transaction[]>> Pending,
+            IDictionary<Data, Dictionary<Quantity, Transaction[]>> Queued)
+            MapTransactionPoolInfoData(TransactionPoolInfo transactionPoolInfo)
+            => (transactionPoolInfo.Pending
+                    .ToDictionary(k => new Data(k.Key), k => k.Value
+                        .ToDictionary(v => new Quantity(v.Key),
+                            v => v.Value.Select(t => MapTransactionWithOptionalValues(null, null, null, t)).ToArray())),
+                transactionPoolInfo.Queued
+                    .ToDictionary(k => new Data(k.Key), k => k.Value
+                        .ToDictionary(v => new Quantity(v.Key),
+                            v => v.Value.Select(t => MapTransactionWithOptionalValues(null, null, null, t)).ToArray())));
     }
 }

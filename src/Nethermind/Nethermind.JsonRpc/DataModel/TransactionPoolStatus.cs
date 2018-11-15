@@ -16,16 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.JsonRpc.DataModel
 {
-    public interface IFilterManager
+    public class TransactionPoolStatus : IJsonRpcResult
     {
-        FilterLog[] GetLogs(int filterId);
-        FilterLog[] PollLogs(int filterId);
-        Keccak[] GetBlocksHashes(int filterId);
-        Keccak[] PollBlockHashes(int filterId);
-        Keccak[] PollPendingTransactionHashes(int filterId);
+        public int Pending { get; set; }
+        public int Queued { get; set; }
+
+        public object ToJson()
+            => new
+            {
+                pending = Pending,
+                queued = Queued
+            };
     }
 }

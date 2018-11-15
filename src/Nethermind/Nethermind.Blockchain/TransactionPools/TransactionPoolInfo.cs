@@ -16,16 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
+using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Blockchain.TransactionPools
 {
-    public interface IFilterManager
+    public class TransactionPoolInfo
     {
-        FilterLog[] GetLogs(int filterId);
-        FilterLog[] PollLogs(int filterId);
-        Keccak[] GetBlocksHashes(int filterId);
-        Keccak[] PollBlockHashes(int filterId);
-        Keccak[] PollPendingTransactionHashes(int filterId);
+        public IDictionary<Address, IDictionary<UInt256, Transaction[]>> Pending { get; }
+        public IDictionary<Address, IDictionary<UInt256, Transaction[]>> Queued { get; }
+
+        public TransactionPoolInfo(IDictionary<Address, IDictionary<UInt256, Transaction[]>> pending,
+            IDictionary<Address, IDictionary<UInt256, Transaction[]>> queued)
+        {
+            Pending = pending;
+            Queued = queued;
+        }
     }
 }

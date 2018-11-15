@@ -30,10 +30,10 @@ namespace Nethermind.JsonRpc.Module
         private ModuleInfo[] _modules;
         private ModuleInfo[] _enabledModules;
 
-        public ModuleProvider(IConfigProvider configurationProvider, INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, IShhModule shhModule, INethmModule nethmModule, IDebugModule debugModule)
+        public ModuleProvider(IConfigProvider configurationProvider, INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, IShhModule shhModule, INethmModule nethmModule, IDebugModule debugModule, ITxPoolModule txPoolModule)
         {
             _configurationProvider = configurationProvider.GetConfig<IJsonRpcConfig>();
-            Initialize(netModule, ethModule, web3Module, shhModule, nethmModule, debugModule);
+            Initialize(netModule, ethModule, web3Module, shhModule, nethmModule, debugModule, txPoolModule);
         }
 
         public IReadOnlyCollection<ModuleInfo> GetEnabledModules()
@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Module
             return _modules;
         }
 
-        private void Initialize(INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, IShhModule shhModule, INethmModule nethmModule, IDebugModule debugModule)
+        private void Initialize(INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, IShhModule shhModule, INethmModule nethmModule, IDebugModule debugModule, ITxPoolModule txPoolModule)
         {
             _modules = new[]
             {
@@ -55,7 +55,8 @@ namespace Nethermind.JsonRpc.Module
                 new ModuleInfo(ModuleType.Web3, typeof(IWeb3Module), web3Module),
                 new ModuleInfo(ModuleType.Shh, typeof(IShhModule), shhModule),
                 new ModuleInfo(ModuleType.Nethm, typeof(INethmModule), nethmModule),
-                new ModuleInfo(ModuleType.Debug, typeof(IDebugModule), debugModule)
+                new ModuleInfo(ModuleType.Debug, typeof(IDebugModule), debugModule),
+                new ModuleInfo(ModuleType.TxPool, typeof(ITxPoolModule), txPoolModule),
             };
 
             _enabledModules = _modules.Where(x => _configurationProvider.EnabledModules.Contains(x.ModuleType)).ToArray();

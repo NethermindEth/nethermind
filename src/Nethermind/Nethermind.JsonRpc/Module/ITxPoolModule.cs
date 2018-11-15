@@ -16,16 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc.DataModel;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.JsonRpc.Module
 {
-    public interface IFilterManager
+    public interface ITxPoolModule : IModule
     {
-        FilterLog[] GetLogs(int filterId);
-        FilterLog[] PollLogs(int filterId);
-        Keccak[] GetBlocksHashes(int filterId);
-        Keccak[] PollBlockHashes(int filterId);
-        Keccak[] PollPendingTransactionHashes(int filterId);
+        ResultWrapper<TransactionPoolStatus> txpool_status();
+        ResultWrapper<TransactionPoolContent> txpool_content();
+        ResultWrapper<TransactionPoolInspection> txpool_inspect();
     }
 }

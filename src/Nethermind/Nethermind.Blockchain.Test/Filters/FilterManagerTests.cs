@@ -22,6 +22,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
@@ -35,8 +36,9 @@ namespace Nethermind.Blockchain.Test.Filters
     {
         private IFilterStore _filterStore;
         private IBlockProcessor _blockProcessor;
-        private FilterManager _filterManager;
+        private ITransactionPool _transactionPool;
         private ILogManager _logManager;
+        private FilterManager _filterManager;
         private int _currentFilterId;
 
         [SetUp]
@@ -45,6 +47,7 @@ namespace Nethermind.Blockchain.Test.Filters
             _currentFilterId = 0;
             _filterStore = Substitute.For<IFilterStore>();
             _blockProcessor = Substitute.For<IBlockProcessor>();
+            _transactionPool = Substitute.For<ITransactionPool>();
             _logManager = Substitute.For<ILogManager>();
         }
 
@@ -321,7 +324,7 @@ namespace Nethermind.Blockchain.Test.Filters
 
             _filterStore.GetFilters<LogFilter>().Returns(filters.OfType<LogFilter>().ToArray());
             _filterStore.GetFilters<BlockFilter>().Returns(filters.OfType<BlockFilter>().ToArray());
-            _filterManager = new FilterManager(_filterStore, _blockProcessor, _logManager);
+            _filterManager = new FilterManager(_filterStore, _blockProcessor, _transactionPool, _logManager);
 
             _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block));
 

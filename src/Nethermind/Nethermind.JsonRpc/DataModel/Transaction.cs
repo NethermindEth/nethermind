@@ -65,9 +65,9 @@ namespace Nethermind.JsonRpc.DataModel
             {
                 hash = Hash.ToJson(),
                 nonce = Nonce.ToJson(),
-                blockHash = BlockHash.ToJson(),
-                blockNumber = BlockNumber.ToJson(),
-                transactionIndex = TransactionIndex.ToJson(),
+                blockHash = BlockHash?.ToJson(),
+                blockNumber = BlockNumber?.ToJson(),
+                transactionIndex = TransactionIndex?.ToJson(),
                 from = From.ToJson(),
                 to = To.ToJson(),
                 value = Value.ToJson(),

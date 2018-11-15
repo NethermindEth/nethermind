@@ -20,7 +20,9 @@ namespace Nethermind.Blockchain.Filters
 {
     public enum FilterType
     {
+        None,
         LogFilter,
-        BlockFilter
+        BlockFilter,
+        PendingTransactionFilter
     }
 }

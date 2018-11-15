@@ -16,16 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
+using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Blockchain.TransactionPools
 {
-    public interface IFilterManager
+    public interface ITransactionPoolInfoProvider
     {
-        FilterLog[] GetLogs(int filterId);
-        FilterLog[] PollLogs(int filterId);
-        Keccak[] GetBlocksHashes(int filterId);
-        Keccak[] PollBlockHashes(int filterId);
-        Keccak[] PollPendingTransactionHashes(int filterId);
+        TransactionPoolInfo GetInfo(Transaction[] transactions);
     }
 }

@@ -516,9 +516,10 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<Quantity>.Success(new Quantity(filterId));
         }
 
-        public ResultWrapper<Quantity> eth_newPendingTransactionFilter(Filter filter)
+        public ResultWrapper<Quantity> eth_newPendingTransactionFilter()
         {
-            return ResultWrapper<Quantity>.Fail("eth_newPendingTransactionFilter not supported");
+            int filterId = _blockchainBridge.NewPendingTransactionFilter();
+            return ResultWrapper<Quantity>.Success(new Quantity(filterId));
         }
 
         public ResultWrapper<bool> eth_uninstallFilter(Quantity filterId)
@@ -535,11 +536,18 @@ namespace Nethermind.JsonRpc.Module
             {
                 case FilterType.BlockFilter:
                     return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id).Select(b => new Data(b.Bytes)).ToArray())
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id)
+                            .Select(b => new Data(b.Bytes)).ToArray())
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                case FilterType.PendingTransactionFilter:
+                    return _blockchainBridge.FilterExists(id)
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
+                            .GetPendingTransactionFilterChanges(id).Select(b => new Data(b.Bytes)).ToArray())
                         : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
                 case FilterType.LogFilter:
                     return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(MapLogs(_blockchainBridge.GetLogFilterChanges(id)).ToArray())
+                        ? ResultWrapper<IEnumerable<object>>.Success(
+                            MapLogs(_blockchainBridge.GetLogFilterChanges(id)).ToArray())
                         : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
                 default:
                     throw new NotSupportedException($"Filter type {filterType} is not supported");

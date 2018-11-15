@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -34,32 +35,36 @@ namespace Nethermind.Blockchain.Filters
         private readonly ConcurrentDictionary<int, List<Keccak>> _blockHashes =
             new ConcurrentDictionary<int, List<Keccak>>();
 
+        private readonly ConcurrentDictionary<int, List<Keccak>> _pendingTransactions =
+            new ConcurrentDictionary<int, List<Keccak>>();
+
+        private Keccak _lastBlockHash;
         private readonly IFilterStore _filterStore;
         private readonly ILogger _logger;
 
-        public FilterManager(IFilterStore filterStore, IBlockProcessor blockProcessor, ILogManager logManager)
+        public FilterManager(IFilterStore filterStore, IBlockProcessor blockProcessor, ITransactionPool transactionPool,
+            ILogManager logManager)
         {
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
+            blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             blockProcessor.BlockProcessed += OnBlockProcessed;
             blockProcessor.TransactionProcessed += OnTransactionProcessed;
-
-            _filterStore.FilterRemoved += FilterStoreOnFilterRemoved;
+            _filterStore.FilterRemoved += OnFilterRemoved;
+            transactionPool.NewPending += OnNewPendingTransaction;
+            transactionPool.RemovedPending += OnRemovedPendingTransaction;
         }
 
-        private void FilterStoreOnFilterRemoved(object sender, FilterEventArgs e)
+        private void OnFilterRemoved(object sender, FilterEventArgs e)
         {
-            if (_blockHashes.ContainsKey(e.FilterId))
+            if (_blockHashes.TryRemove(e.FilterId, out _))
             {
-                _blockHashes.TryRemove(e.FilterId, out _);
+                return;
             }
-            else
-            {
-                _logs.TryRemove(e.FilterId, out _);
-            }
-        }
 
-        private Keccak _lastBlockHash;
+            _logs.TryRemove(e.FilterId, out _);
+        }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
@@ -70,6 +75,40 @@ namespace Nethermind.Blockchain.Filters
         private void OnTransactionProcessed(object sender, TransactionProcessedEventArgs e)
         {
             AddTransactionReceipts(e.Receipt);
+        }
+
+        private void OnNewPendingTransaction(object sender, TransactionEventArgs e)
+        {
+            var filters = _filterStore.GetFilters<PendingTransactionFilter>();
+            if (filters == null || filters.Length == 0)
+            {
+                return;
+            }
+
+            for (var i = 0; i < filters.Length; i++)
+            {
+                var filterId = filters[i].Id;
+                var transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
+                transactions.Add(e.Transaction.Hash);
+                if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filterId}' contains {transactions.Count} transactions.");
+            }
+        }
+
+        private void OnRemovedPendingTransaction(object sender, TransactionEventArgs e)
+        {
+            var filters = _filterStore.GetFilters<PendingTransactionFilter>();
+            if (filters == null || filters.Length == 0)
+            {
+                return;
+            }
+
+            for (var i = 0; i < filters.Length; i++)
+            {
+                var filterId = filters[i].Id;
+                var transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
+                transactions.Remove(e.Transaction.Hash);
+                if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filterId}' contains {transactions.Count} transactions.");
+            }
         }
 
         public FilterLog[] GetLogs(int filterId)
@@ -87,11 +126,11 @@ namespace Nethermind.Blockchain.Filters
         [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
         public Keccak[] PollBlockHashes(int filterId)
         {
-            if (!_blockHashes.ContainsKey(filterId))
+            if (!_blockHashes.TryGetValue(filterId, out var blockHashes))
             {
                 if (_lastBlockHash != null)
                 {
-                    Keccak[] hackedResult = new[] {_lastBlockHash}; // truffle hack
+                    Keccak[] hackedResult = {_lastBlockHash}; // truffle hack
                     _lastBlockHash = null;
                     return hackedResult;
                 }
@@ -99,21 +138,36 @@ namespace Nethermind.Blockchain.Filters
                 return Array.Empty<Keccak>();
             }
 
-            var blockHashes = _blockHashes[filterId].ToArray();
+            var existingBlockHashes = blockHashes.ToArray();
             _blockHashes[filterId].Clear();
-            return blockHashes;
+
+            return existingBlockHashes;
         }
 
         public FilterLog[] PollLogs(int filterId)
         {
-            if (!_logs.ContainsKey(filterId))
+            if (!_logs.TryGetValue(filterId, out var logs))
             {
                 return Array.Empty<FilterLog>();
             }
 
-            var logs = _logs[filterId].ToArray();
+            var existingLogs = logs.ToArray();
             _logs[filterId].Clear();
-            return logs;
+
+            return existingLogs;
+        }
+
+        public Keccak[] PollPendingTransactionHashes(int filterId)
+        {
+            if (!_pendingTransactions.TryGetValue(filterId, out var pendingTransactions))
+            {
+                return Array.Empty<Keccak>();
+            }
+
+            var existingPendingTransactions = pendingTransactions.ToArray();
+            _pendingTransactions[filterId].Clear();
+
+            return existingPendingTransactions;
         }
 
         private void AddTransactionReceipts(params TransactionReceipt[] receipts)
@@ -173,7 +227,7 @@ namespace Nethermind.Blockchain.Filters
 
             var blocks = _blockHashes.GetOrAdd(filter.Id, i => new List<Keccak>());
             blocks.Add(block.Hash);
-            _logger.Debug($"Filter with id: '{filter.Id}' contains {blocks.Count} blocks.");
+            if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {blocks.Count} blocks.");
         }
 
         private void StoreLogs(LogFilter[] filters, TransactionReceipt receipt)
@@ -207,7 +261,7 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            _logger.Debug($"Filter with id: '{filter.Id}' contains {logs.Count} logs.");
+            if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {logs.Count} logs.");
         }
 
         private FilterLog CreateLog(LogFilter logFilter, TransactionReceipt receipt, LogEntry logEntry)

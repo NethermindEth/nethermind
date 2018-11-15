@@ -56,5 +56,6 @@ namespace Nethermind.Blockchain
         }
 
         public event EventHandler<TransactionEventArgs> NewPending;
+        public event EventHandler<TransactionEventArgs> RemovedPending;
     }
 }

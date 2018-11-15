@@ -49,21 +49,23 @@ namespace Nethermind.Runner
             {
                 throw new Exception("ConfigProvider is required");
             }
+
             if (LogManager == null)
             {
                 throw new Exception("LogManager is required");
             }
+
             if (BlockchainBridge == null)
             {
                 throw new Exception("BlockchainBridge is required");
             }
 
             //JsonRPC            
-            services.AddSingleton<IConfigProvider>(ConfigProvider);
-            services.AddSingleton<ILogManager>(LogManager);
-            services.AddSingleton<IBlockchainBridge>(BlockchainBridge);
-            services.AddSingleton<IDebugBridge>(DebugBridge);
-            services.AddSingleton<INetBridge>(NetBridge);
+            services.AddSingleton(ConfigProvider);
+            services.AddSingleton(LogManager);
+            services.AddSingleton(BlockchainBridge);
+            services.AddSingleton(DebugBridge);
+            services.AddSingleton(NetBridge);
             services.AddSingleton<IJsonSerializer, JsonSerializer>();
             services.AddSingleton<IJsonRpcModelMapper, JsonRpcModelMapper>();
             services.AddSingleton<IModuleProvider, ModuleProvider>();
@@ -73,6 +75,7 @@ namespace Nethermind.Runner
             services.AddSingleton<IShhModule, ShhModule>();
             services.AddSingleton<INethmModule, NethmModule>();
             services.AddSingleton<IDebugModule, DebugModule>();
+            services.AddSingleton<ITxPoolModule, TxPoolModule>();
             services.AddSingleton<IJsonRpcService, JsonRpcService>();
         }
     }

@@ -29,9 +29,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 using Nethermind.Wallet;
+using Block = Nethermind.Core.Block;
+using Transaction = Nethermind.Core.Transaction;
+using TransactionReceipt = Nethermind.Core.TransactionReceipt;
+using TransactionTrace = Nethermind.Evm.Tracing.TransactionTrace;
 
 namespace Nethermind.JsonRpc.Module
 {
@@ -40,6 +43,7 @@ namespace Nethermind.JsonRpc.Module
     {
         private readonly IBlockTree _blockTree;
         private readonly ITransactionPool _transactionPool;
+        private readonly ITransactionPoolInfoProvider _transactionPoolInfoProvider;
         private readonly IFilterManager _filterManager;
         private readonly IFilterStore _filterStore;
         private readonly IEthereumSigner _signer;
@@ -54,6 +58,7 @@ namespace Nethermind.JsonRpc.Module
             IStateProvider stateProvider,
             IBlockTree blockTree,
             ITransactionPool transactionPool,
+            ITransactionPoolInfoProvider transactionPoolInfoProvider,
             IReceiptStorage receiptStorage,
             IFilterStore filterStore,
             IFilterManager filterManager,
@@ -63,7 +68,8 @@ namespace Nethermind.JsonRpc.Module
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _transactionPool = transactionPool;
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(_transactionPool));
+            _transactionPoolInfoProvider = transactionPoolInfoProvider ?? throw new ArgumentNullException(nameof(transactionPoolInfoProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
@@ -85,26 +91,10 @@ namespace Nethermind.JsonRpc.Module
         public BlockHeader BestSuggested => _blockTree.BestSuggested;
         public UInt256 BestKnown => _blockTree.BestKnownNumber;
         public bool IsSyncing => _blockTree.CanAcceptNewBlocks;
-
-        public Block FindBlock(Keccak blockHash, bool mainChainOnly)
-        {
-            return _blockTree.FindBlock(blockHash, mainChainOnly);
-        }
-
-        public Block FindBlock(UInt256 blockNumber)
-        {
-            return _blockTree.FindBlock(blockNumber);
-        }
-
-        public Block RetrieveHeadBlock()
-        {
-            return _blockTree.FindBlock(_blockTree.Head.Hash, false);
-        }
-
-        public Block RetrieveGenesisBlock()
-        {
-            return _blockTree.FindBlock(_blockTree.Genesis.Hash, true);
-        }
+        public Block FindBlock(Keccak blockHash, bool mainChainOnly) => _blockTree.FindBlock(blockHash, mainChainOnly);
+        public Block FindBlock(UInt256 blockNumber) => _blockTree.FindBlock(blockNumber);
+        public Block RetrieveHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, false);
+        public Block RetrieveGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, true);
 
         public (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
@@ -115,10 +105,7 @@ namespace Nethermind.JsonRpc.Module
             return (receipt, block.Transactions[receipt.Index]);
         }
 
-        public Keccak GetBlockHash(Keccak transactionHash)
-        {
-            return _receiptStorage.Get(transactionHash).BlockHash;
-        }
+        public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Get(transactionHash).BlockHash;
 
         public Keccak SendTransaction(Transaction transaction)
         {
@@ -133,7 +120,8 @@ namespace Nethermind.JsonRpc.Module
                 _wallet.Sign(transaction, _blockTree.ChainId);
                 transaction.Hash = Transaction.CalculateHash(transaction);
 
-                if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce) throw new InvalidOperationException("Invalid nonce");
+                if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce)
+                    throw new InvalidOperationException("Invalid nonce");
 
                 _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
 
@@ -146,10 +134,7 @@ namespace Nethermind.JsonRpc.Module
             }
         }
 
-        public TransactionReceipt GetTransactionReceipt(Keccak txHash)
-        {
-            return _receiptStorage.Get(txHash);
-        }
+        public TransactionReceipt GetTransactionReceipt(Keccak txHash) => _receiptStorage.Get(txHash);
 
         public byte[] Call(Block block, Transaction transaction)
         {
@@ -157,10 +142,12 @@ namespace Nethermind.JsonRpc.Module
             {
                 _readerWriterLockSlim.EnterWriteLock();
                 _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-                BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary, block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
+                BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary,
+                    block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
                 transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                (TransactionReceipt receipt, TransactionTrace trace) = _transactionProcessor.CallAndRestore(0, transaction, header, true);
+                (TransactionReceipt receipt, TransactionTrace trace) =
+                    _transactionProcessor.CallAndRestore(0, transaction, header, true);
 
                 _stateProvider.Reset();
                 return Bytes.FromHexString(trace.ReturnValue);
@@ -241,25 +228,10 @@ namespace Nethermind.JsonRpc.Module
             }
         }
 
-        public int GetNetworkId()
-        {
-            return _blockTree.ChainId;
-        }
-
-        public bool FilterExists(int filterId)
-        {
-            return _filterStore.FilterExists(filterId);
-        }
-
-        public FilterType GetFilterType(int filterId)
-        {
-            return _filterStore.GetFilterType(filterId);
-        }
-
-        public FilterLog[] GetFilterLogs(int filterId)
-        {
-            return _filterManager.GetLogs(filterId);
-        }
+        public int GetNetworkId() => _blockTree.ChainId;
+        public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
+        public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
+        public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);
 
         public FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null)
@@ -267,6 +239,9 @@ namespace Nethermind.JsonRpc.Module
             LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
             return new FilterLog[0];
         }
+
+        public TransactionPoolInfo GetTransactionPoolInfo()
+            => _transactionPoolInfoProvider.GetInfo(_transactionPool.GetPendingTransactions());
 
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)
@@ -283,24 +258,20 @@ namespace Nethermind.JsonRpc.Module
             return filter.Id;
         }
 
-        public void UninstallFilter(int filterId)
+        public int NewPendingTransactionFilter()
         {
-            _filterStore.RemoveFilter(filterId);
+            PendingTransactionFilter filter = _filterStore.CreatePendingTransactionFilter();
+            _filterStore.SaveFilter(filter);
+            return filter.Id;
         }
 
-        public FilterLog[] GetLogFilterChanges(int filterId)
-        {
-            return _filterManager.PollLogs(filterId);
-        }
+        public void UninstallFilter(int filterId) => _filterStore.RemoveFilter(filterId);
+        public FilterLog[] GetLogFilterChanges(int filterId) => _filterManager.PollLogs(filterId);
+        public Keccak[] GetBlockFilterChanges(int filterId) => _filterManager.PollBlockHashes(filterId);
 
-        public Keccak[] GetBlockFilterChanges(int filterId)
-        {
-            return _filterManager.PollBlockHashes(filterId);
-        }
+        public Keccak[] GetPendingTransactionFilterChanges(int filterId) =>
+            _filterManager.PollPendingTransactionHashes(filterId);
 
-        public Signature Sign(PrivateKey privateKey, Keccak message)
-        {
-            return _signer.Sign(privateKey, message);
-        }
+        public Signature Sign(PrivateKey privateKey, Keccak message) => _signer.Sign(privateKey, message);
     }
 }
