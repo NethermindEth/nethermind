@@ -75,7 +75,7 @@ namespace Nethermind.Network.Rlpx
                 _buffer.WriteBytes(auth.Data);
                 context.WriteAndFlushAsync(_buffer);
             }
-            
+
             _p2PSession.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
             _p2PSession.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
 
@@ -150,6 +150,7 @@ namespace Nethermind.Network.Rlpx
                     byteBuffer.ReadBytes(authData);
                     Packet ack = _service.Ack(_handshake, new Packet(authData));
                     _remoteId = _handshake.RemoteNodeId;
+                    _p2PSession.RemoteNodeId = _remoteId;
 
                     if (_logger.IsTrace) _logger.Trace($"Sending ACK to {_remoteId} @ {context.Channel.RemoteAddress}");
                     _buffer.WriteBytes(ack.Data);

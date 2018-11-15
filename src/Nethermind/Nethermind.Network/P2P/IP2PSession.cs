@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P
 {
     public interface IP2PSession
     {
-        NodeId RemoteNodeId { get; }
+        NodeId RemoteNodeId { get; set; }
         string RemoteHost { get; set; }
         int? RemotePort { get; set; }
         ConnectionDirection ConnectionDirection { get; set; }
