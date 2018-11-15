@@ -13,10 +13,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-    <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj">
-      <Project>{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}</Project>
-      <Name>Nethermind.Runner</Name>
-    </ProjectReference>
   </ItemGroup>
   <!--<ItemGroup>-->
   <!--<Folder Include="TestRopstenBlocks">-->
