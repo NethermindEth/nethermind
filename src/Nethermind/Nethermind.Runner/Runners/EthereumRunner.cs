@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -193,6 +194,8 @@ namespace Nethermind.Runner.Runners
             _logger.Info($"Loading chain spec from {chainSpecFile}");
             ChainSpecLoader loader = new ChainSpecLoader(_jsonSerializer);
             ChainSpec chainSpec = loader.LoadFromFile(chainSpecFile);
+            chainSpec.NetworkNodes = chainSpec.NetworkNodes.Where(n => n.NodeId.PublicKey != _nodeKey.PublicKey).ToArray();
+            
             return chainSpec;
         }
 
