@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc
 
             blockModel.Number = new Quantity(block.Header.Number);
             blockModel.ParentHash = new Data(block.Header.ParentHash);
-            blockModel.Nonce = new Data(block.Header.Nonce.ToString())            
+            blockModel.Nonce = new Data(block.Header.Nonce.ToString());            
             blockModel.Sha3Uncles = new Data(block.Header.OmmersHash);
             blockModel.LogsBloom = new Data(block.Header.Bloom?.Bytes);
             blockModel.TransactionsRoot = new Data(block.Header.TransactionsRoot);
