@@ -60,7 +60,7 @@ namespace Nethermind.Clique.Test
                 byte[] newExtraData = new byte[Clique.ExtraVanityLength + Clique.ExtraSealLength + i * Address.ByteLength];
                 header.ExtraData = newExtraData;
                 Address[] signers = header.ExtractSigners();
-                Assert.AreEqual(i, signers);
+                Assert.AreEqual(i, signers.Length);
             }
         }
 

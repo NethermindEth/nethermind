@@ -483,6 +483,7 @@ namespace Nethermind.Blockchain
 
             if (!anyPeerWithHigherNumber)
             {
+                if (_logger.IsTrace) _logger.Trace("No peer with higher number - skipping sync call");
                 return;
             }
 
@@ -542,7 +543,7 @@ namespace Nethermind.Blockchain
 
                 if (_logger.IsDebug)
                     _logger.Debug(
-                        $"Starting sync processes with {peerInfo}, FullNodeId: {peerInfo.Peer.NodeId.PublicKey} " +
+                        $"Starting sync process with {peerInfo}, FullNodeId: {peerInfo.Peer.NodeId.PublicKey} " +
                         $"best known block #: {_blockTree.BestKnownNumber}, " +
                         $"best peer block #: {peerInfo.NumberAvailable}");
 
@@ -676,7 +677,7 @@ namespace Nethermind.Blockchain
 
                 UInt256 blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
                 int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _batchSize);
-                if (_logger.IsTrace) _logger.Trace($"Sync request to peer with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
+                if (_logger.IsTrace) _logger.Trace($"Sync request to peer {peerInfo.Peer.NodeId} with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
 
                 Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.NumberReceived, blocksToRequest, 0, _peerSyncCancellationTokenSource.Token);
                 BlockHeader[] headers = await headersTask;

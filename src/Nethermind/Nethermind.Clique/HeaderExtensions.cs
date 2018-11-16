@@ -45,7 +45,7 @@ namespace Nethermind.Clique
         
         public static Address[] ExtractSigners(this BlockHeader blockHeader)
         {
-            byte[] signersData = blockHeader.ExtraData.Slice(Clique.ExtraVanityLength, blockHeader.ExtraData.Length - Clique.ExtraSealLength);
+            byte[] signersData = blockHeader.ExtraData.Slice(Clique.ExtraVanityLength, blockHeader.ExtraData.Length - Clique.ExtraSealLength - Clique.ExtraVanityLength);
             Address[] signers = new Address[signersData.Length / Address.ByteLength];
             for (int i = 0; i < signers.Length; i++)
             {
