@@ -139,7 +139,7 @@ namespace Nethermind.Runner
             }
             else
             {
-                _ethereumRunner = new EthereumRunner(new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>()), configProvider, logManager);
+                _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager);
             }
 
             await _ethereumRunner.Start().ContinueWith(x =>
@@ -155,6 +155,8 @@ namespace Nethermind.Runner
                 rpcModuleProvider.Register<IWeb3Module>(new Web3Module(configProvider, logManager, serializer));
                 
                 Bootstrap.Instance.JsonRpcService = new JsonRpcService(rpcModuleProvider, configProvider, logManager);
+                Bootstrap.Instance.LogManager = logManager;
+                Bootstrap.Instance.JsonSerializer = serializer;
                 _jsonRpcRunner = new JsonRpcRunner(configProvider, rpcModuleProvider, logManager);
                 await _jsonRpcRunner.Start().ContinueWith(x =>
                 {

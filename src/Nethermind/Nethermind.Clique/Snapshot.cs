@@ -255,6 +255,8 @@ namespace Nethermind.Clique
         
         public bool HasSignedRecently(UInt256 number, Address signer)
         {
+            return false;
+            
             UInt256 signedAt = Signers[signer];
             if (signedAt.IsZero)
             {

@@ -41,6 +41,7 @@ namespace Nethermind.Clique
         private readonly IBlockTree _blockTree;
         private readonly ITimestamp _timestamp;
         private readonly ILogger _logger;
+        private readonly ICryptoRandom _cryptoRandom;
 
         private readonly IBlockchainProcessor _processor;
         private readonly ITransactionPool _transactionPool;
@@ -58,6 +59,7 @@ namespace Nethermind.Clique
             IBlockchainProcessor devProcessor,
             IBlockTree blockTree,
             ITimestamp timestamp,
+            ICryptoRandom cryptoRandom,
             CliqueSealEngine cliqueSealEngine,
             CliqueConfig config,
             Address address,
@@ -68,6 +70,7 @@ namespace Nethermind.Clique
             _processor = devProcessor ?? throw new ArgumentNullException(nameof(devProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _timestamp = timestamp ?? throw new ArgumentNullException(nameof(_timestamp));
+            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(_cryptoRandom));
             _sealEngine = cliqueSealEngine ?? throw new ArgumentNullException(nameof(_sealEngine));
             _config = config ?? throw new ArgumentNullException(nameof(_config));
             _address = address ?? throw new ArgumentNullException(nameof(_address));
@@ -90,7 +93,12 @@ namespace Nethermind.Clique
         }
         
         public void UncastVote(Address signer)
-        {   
+        {
+            if (!_proposals.ContainsKey(signer))
+            {
+                throw new InvalidOperationException("");
+            }
+            
             _proposals.Remove(signer);
             if(_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
         }
@@ -107,8 +115,7 @@ namespace Nethermind.Clique
             if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
             {
                 int wiggle = _scheduledBlock.Header.CalculateSignersCount() / 2 + 1 * Clique.WiggleTime;
-                Random rnd = new Random();
-                extraDelayMilliseconds += (ulong)rnd.Next(wiggle);
+                extraDelayMilliseconds += (ulong)_cryptoRandom.NextInt(wiggle);
             }
             
             if(_scheduledBlock.Timestamp + extraDelayMilliseconds / 1000 < _timestamp.EpochSeconds)
@@ -228,15 +235,14 @@ namespace Nethermind.Clique
                     bool authorize = proposal.Value;
                     if (snapshot.ValidVote(address, authorize))
                     {
-                        addresses.Append(address);
+                        addresses.Add(address);
                     }
                 }
 
                 // If there's pending proposals, cast a vote on them
                 if (addresses.Count > 0)
                 {
-                    Random rnd = new Random();
-                    header.Beneficiary = addresses[rnd.Next(addresses.Count)];
+                    header.Beneficiary = addresses[_cryptoRandom.NextInt(addresses.Count)];
                     header.Nonce = _proposals[header.Beneficiary] ? Clique.NonceAuthVote : Clique.NonceDropVote;
                 }
             }

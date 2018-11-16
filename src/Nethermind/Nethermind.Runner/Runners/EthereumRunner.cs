@@ -165,7 +165,7 @@ namespace Nethermind.Runner.Runners
 
         private void RegisterJsonRpcModules()
         {
-            if (_initConfig.JsonRpcEnabled)
+            if (!_initConfig.JsonRpcEnabled)
             {
                 return;
             }
@@ -519,7 +519,7 @@ namespace Nethermind.Runner.Runners
                 {
                     // TODO: need to introduce snapshot provider for clique and pass it here instead of CliqueSealEngine
                     if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
-                    _blockProducer = new CliqueBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, _sealEngine as CliqueSealEngine, cliqueConfig, _nodeKey.Address, _logManager);
+                    _blockProducer = new CliqueBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, _cryptoRandom, _sealEngine as CliqueSealEngine, cliqueConfig, _nodeKey.Address, _logManager);
                 }
                 else
                 {

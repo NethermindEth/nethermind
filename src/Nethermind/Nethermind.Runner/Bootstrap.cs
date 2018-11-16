@@ -17,6 +17,8 @@
  */
 
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Runner
@@ -32,11 +34,14 @@ namespace Nethermind.Runner
         public static Bootstrap Instance => _instance ?? (_instance = new Bootstrap());
 
         public IJsonRpcService JsonRpcService { private get; set; }
+        public ILogManager LogManager { private get; set; }
+        public IJsonSerializer JsonSerializer { private get; set; }
 
         public void RegisterJsonRpcServices(IServiceCollection services)
         {
-            //JsonRPC            
             services.AddSingleton(JsonRpcService);
+            services.AddSingleton(LogManager);
+            services.AddSingleton(JsonSerializer);
         }
     }
 }
