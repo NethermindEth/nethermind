@@ -82,6 +82,18 @@ namespace Nethermind.Clique
         }
 
         private Block _scheduledBlock;
+
+        public void CastVote(Address signer, bool vote)
+        {
+            _proposals.Add(signer, vote);
+            if(_logger.IsWarn) _logger.Warn($"Added Clique vote for {signer} - {vote}");
+        }
+        
+        public void UncastVote(Address signer)
+        {   
+            _proposals.Remove(signer);
+            if(_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
+        }
         
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
@@ -92,9 +104,9 @@ namespace Nethermind.Clique
             }
            
             ulong extraDelayMilliseconds = 0;
-            if (_scheduledBlock.Difficulty == CliqueSealEngine.DifficultyNoTurn)
+            if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
             {
-                int wiggle = _scheduledBlock.Header.CalculateSignersCount() / 2 + 1 * CliqueSealEngine.WiggleTime;
+                int wiggle = _scheduledBlock.Header.CalculateSignersCount() / 2 + 1 * Clique.WiggleTime;
                 Random rnd = new Random();
                 extraDelayMilliseconds += (ulong)rnd.Next(wiggle);
             }
@@ -225,14 +237,7 @@ namespace Nethermind.Clique
                 {
                     Random rnd = new Random();
                     header.Beneficiary = addresses[rnd.Next(addresses.Count)];
-                    if (_proposals[header.Beneficiary])
-                    {
-                        header.Nonce = CliqueSealEngine.NonceAuthVote;
-                    }
-                    else
-                    {
-                        header.Nonce = CliqueSealEngine.NonceDropVote;
-                    }
+                    header.Nonce = _proposals[header.Beneficiary] ? Clique.NonceAuthVote : Clique.NonceDropVote;
                 }
             }
 
@@ -242,7 +247,7 @@ namespace Nethermind.Clique
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
 
             // Set extra data
-            int mainBytesLength = CliqueSealEngine.ExtraVanityLength + CliqueSealEngine.ExtraSealLength;
+            int mainBytesLength = Clique.ExtraVanityLength + Clique.ExtraSealLength;
             int signerBytesLength = isEpochBlock ? 20 * snapshot.Signers.Count : 0;
             int extraDataLength = mainBytesLength + signerBytesLength;
             header.ExtraData = new byte[extraDataLength];
@@ -255,7 +260,7 @@ namespace Nethermind.Clique
                 for (int i = 0; i < snapshot.Signers.Keys.Count; i++)
                 {
                     Address signer = snapshot.Signers.Keys[i];
-                    int index = CliqueSealEngine.ExtraVanityLength + 20 * i;
+                    int index = Clique.ExtraVanityLength + 20 * i;
                     Array.Copy(signer.Bytes, 0, header.ExtraData, index, signer.Bytes.Length);
                 }
             }
@@ -312,11 +317,11 @@ namespace Nethermind.Clique
             if (snapshot.InTurn(snapshot.Number + 1, signer))
             {
                 if(_logger.IsInfo) _logger.Info("Producing in turn block");
-                return new UInt256(CliqueSealEngine.DifficultyInTurn);
+                return new UInt256(Clique.DifficultyInTurn);
             }
 
             if(_logger.IsInfo) _logger.Info("Producing out of turn block");
-            return new UInt256(CliqueSealEngine.DifficultyNoTurn);
+            return new UInt256(Clique.DifficultyNoTurn);
         }
 
         public void Dispose()

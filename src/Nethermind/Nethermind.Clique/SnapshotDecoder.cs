@@ -34,7 +34,7 @@ namespace Nethermind.Clique
             // Config
             CliqueConfig config = new CliqueConfig(15, 30000);
             // Signature cache
-            LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(CliqueSealEngine.InMemorySignatures);
+            LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(Clique.InMemorySignatures);
             // Block number
             UInt256 number = context.DecodeUInt256();
             // Hash

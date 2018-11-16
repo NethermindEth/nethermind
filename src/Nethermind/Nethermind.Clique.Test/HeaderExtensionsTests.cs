@@ -50,6 +50,19 @@ namespace Nethermind.Clique.Test
                 header.ExtraData = newExtraData;
             }
         }
+        
+        [Test]
+        public void Can_get_signers()
+        {
+            BlockHeader header = BuildCliqueBlock();
+            for (int i = 0; i < 5; i++)
+            {
+                byte[] newExtraData = new byte[Clique.ExtraVanityLength + Clique.ExtraSealLength + i * Address.ByteLength];
+                header.ExtraData = newExtraData;
+                Address[] signers = header.ExtractSigners();
+                Assert.AreEqual(i, signers);
+            }
+        }
 
         private static BlockHeader BuildCliqueBlock()
         {

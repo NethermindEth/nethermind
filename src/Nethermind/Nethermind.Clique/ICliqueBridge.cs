@@ -16,18 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.JsonRpc.DataModel;
-using Nethermind.JsonRpc.Module;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Clique
 {
-    public interface ICliqueModule : IModule
+    public interface ICliqueBridge
     {
-        ResultWrapper<bool> clique_getSnapshot();
-        ResultWrapper<bool> clique_getSnapshotAtHash(Data hash);
-        ResultWrapper<Data[]> clique_getSigners();
-        ResultWrapper<Data[]> clique_getSignersAtHash(Data hash);
-        ResultWrapper<bool> clique_propose(Data signer, bool vote);
-        ResultWrapper<bool> clique_discard(Data signer);
+        void CastVote(Address signer, bool vote);
+        void UncastVote(Address signer);
+        Address[] GetSigners();
+        Address[] GetSigners(Keccak hash);
     }
 }

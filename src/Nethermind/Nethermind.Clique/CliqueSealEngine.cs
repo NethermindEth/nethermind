@@ -50,7 +50,7 @@ namespace Nethermind.Clique
 
             if (config.Epoch == 0)
             {
-                config.Epoch = DefaultEpochLength;
+                config.Epoch = Clique.DefaultEpochLength;
             }
         }
 
@@ -70,19 +70,6 @@ namespace Nethermind.Clique
 
         public bool CanSeal { get; set; }
 
-        private const int CheckpointInterval = 1024;
-        private const int InMemorySnapshots = 128;
-        internal const int InMemorySignatures = 4096;
-        public const int WiggleTime = 500;
-
-        private const int DefaultEpochLength = 30000;
-        internal const int ExtraVanityLength = 32;
-        internal const int ExtraSealLength = 65;
-        public const ulong NonceAuthVote = UInt64.MaxValue;
-        public const ulong NonceDropVote = 0UL;
-        internal const int DifficultyInTurn = 2;
-        internal const int DifficultyNoTurn = 1;
-
         private const int AddressLength = 20;
 
         private readonly IBlockTree _blockTree;
@@ -91,8 +78,8 @@ namespace Nethermind.Clique
         private PrivateKey _key;
         private IDb _blocksDb;
 
-        private LruCache<Keccak, Snapshot> _recent = new LruCache<Keccak, Snapshot>(InMemorySnapshots);
-        private LruCache<Keccak, Address> _signatures = new LruCache<Keccak, Address>(InMemorySignatures);
+        private LruCache<Keccak, Snapshot> _recent = new LruCache<Keccak, Snapshot>(Clique.InMemorySnapshots);
+        private LruCache<Keccak, Address> _signatures = new LruCache<Keccak, Address>(Clique.InMemorySignatures);
 
         public Address GetBlockSealer(BlockHeader header)
         {
@@ -157,7 +144,7 @@ namespace Nethermind.Clique
             Signature signature = _signer.Sign(_key, headerHash);
             // Copy signature bytes (R and S)
             byte[] signatureBytes = signature.Bytes;
-            Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - ExtraSealLength, signatureBytes.Length);
+            Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - Clique.ExtraSealLength, signatureBytes.Length);
             // Copy signature's recovery id (V)
             byte recoveryId = signature.RecoveryId;
             header.ExtraData[header.ExtraData.Length - 1] = recoveryId;
@@ -175,14 +162,14 @@ namespace Nethermind.Clique
                 return false;
             }
 
-            if (isEpochTransition && header.Nonce != NonceDropVote)
+            if (isEpochTransition && header.Nonce != Clique.NonceDropVote)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.Nonce}) - should be zeroes on checkpoints");
                 return false;
             }
 
             // Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
-            int singersBytes = header.ExtraData.Length - ExtraVanityLength - ExtraSealLength;
+            int singersBytes = header.ExtraData.Length - Clique.ExtraVanityLength - Clique.ExtraSealLength;
             if (!isEpochTransition && singersBytes != 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block extra-data ({header.ExtraData}) - should be empty on non-checkpoints");
@@ -196,19 +183,19 @@ namespace Nethermind.Clique
             }
 
             // Nonce must be 0x00..0 or 0xff..f, zeroes enforced on checkpoints
-            if (header.Nonce != NonceAuthVote && header.Nonce != NonceDropVote)
+            if (header.Nonce != Clique.NonceAuthVote && header.Nonce != Clique.NonceDropVote)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.Nonce})");
                 return false;
             }
 
-            if (header.ExtraData.Length < ExtraVanityLength)
+            if (header.ExtraData.Length < Clique.ExtraVanityLength)
             {
                 if (_logger.IsWarn) _logger.Warn("Invalid block extra data length - missing vanity");
                 return false;
             }
 
-            if (header.ExtraData.Length < ExtraVanityLength + ExtraSealLength)
+            if (header.ExtraData.Length < Clique.ExtraVanityLength + Clique.ExtraSealLength)
             {
                 if (_logger.IsWarn) _logger.Warn("Invalid block extra data length - missing seal");
                 return false;
@@ -228,9 +215,9 @@ namespace Nethermind.Clique
                 return false;
             }
 
-            if (header.Difficulty != DifficultyInTurn && header.Difficulty != DifficultyNoTurn)
+            if (header.Difficulty != Clique.DifficultyInTurn && header.Difficulty != Clique.DifficultyNoTurn)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty ({header.Difficulty}) - should be {DifficultyInTurn} or {DifficultyNoTurn}");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty ({header.Difficulty}) - should be {Clique.DifficultyInTurn} or {Clique.DifficultyNoTurn}");
                 return false;
             }
 
@@ -259,15 +246,15 @@ namespace Nethermind.Clique
 
             // Ensure that the difficulty corresponds to the turn-ness of the signer
             bool inTurn = snapshot.InTurn(header.Number, signer);
-            if (inTurn && header.Difficulty != DifficultyInTurn)
+            if (inTurn && header.Difficulty != Clique.DifficultyInTurn)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {DifficultyInTurn}");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {Clique.DifficultyInTurn}");
                 return false;
             }
 
-            if (!inTurn && header.Difficulty != DifficultyNoTurn)
+            if (!inTurn && header.Difficulty != Clique.DifficultyNoTurn)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be no-turn {DifficultyNoTurn}");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be no-turn {Clique.DifficultyNoTurn}");
                 return false;
             }
 
@@ -306,7 +293,7 @@ namespace Nethermind.Clique
                     SortedList<Address, UInt256> signers = new SortedList<Address, UInt256>(signersCount, CliqueAddressComparer.Instance);
                     for (int i = 0; i < signersCount; i++)
                     {
-                        Address signer = new Address(header.ExtraData.Slice(ExtraVanityLength + i * AddressLength, AddressLength));
+                        Address signer = new Address(header.ExtraData.Slice(Clique.ExtraVanityLength + i * AddressLength, AddressLength));
                         signers.Add(signer, UInt256.Zero);
                     }
 
@@ -338,7 +325,7 @@ namespace Nethermind.Clique
 
             _recent.Set(snapshot.Hash, snapshot);
             // If we've generated a new checkpoint snapshot, save to disk
-            if ((ulong) snapshot.Number % CheckpointInterval == 0 && headers.Count > 0)
+            if ((ulong) snapshot.Number % Clique.CheckpointInterval == 0 && headers.Count > 0)
             {
                 snapshot.Store(_blocksDb);
             }
@@ -356,7 +343,7 @@ namespace Nethermind.Clique
             }
 
             // If an on-disk checkpoint snapshot can be found, use that
-            if ((ulong) number % CheckpointInterval == 0)
+            if ((ulong) number % Clique.CheckpointInterval == 0)
             {
                 Snapshot persistedSnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash);
                 if (persistedSnapshot != null)
@@ -395,10 +382,10 @@ namespace Nethermind.Clique
                     Array.Copy(signer.Bytes, 0, signersBytes, signerIndex++ * AddressLength, AddressLength);
                 }
 
-                int extraSuffix = header.ExtraData.Length - ExtraSealLength;
-                for (int i = 0; i < extraSuffix - ExtraVanityLength; i++)
+                int extraSuffix = header.ExtraData.Length - Clique.ExtraSealLength;
+                for (int i = 0; i < extraSuffix - Clique.ExtraVanityLength; i++)
                 {
-                    if (header.ExtraData[ExtraVanityLength + i] != signersBytes[i])
+                    if (header.ExtraData[Clique.ExtraVanityLength + i] != signersBytes[i])
                     {
                         return false;
                     }

@@ -146,7 +146,7 @@ namespace Nethermind.Clique
                 }
 
                 // Tally up the new vote from the signer
-                bool authorize = header.Nonce == CliqueSealEngine.NonceAuthVote;
+                bool authorize = header.Nonce == Clique.NonceAuthVote;
                 if (snapshot.Cast(header.Beneficiary, authorize))
                 {
                     Vote vote = new Vote(signer, number, header.Beneficiary, authorize);

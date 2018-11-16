@@ -107,6 +107,8 @@ namespace Nethermind.Runner.Runners
         private IBlockProcessor _blockProcessor;
         private IRewardCalculator _rewardCalculator;
         private ISpecProvider _specProvider;
+        private ISealEngine _sealEngine;
+        private IBlockProducer _blockProducer;
         private IRlpxPeer _rlpxPeer;
         private IDbProvider _dbProvider;
         private ITimestamp _timestamp = new Timestamp();
@@ -211,8 +213,11 @@ namespace Nethermind.Runner.Runners
             DebugModule debugModule = new DebugModule(_configProvider, _logManager, debugBridge, mapper, _jsonSerializer);
             _rpcModuleProvider.Register<IDebugModule>(debugModule);
 
-            CliqueModule cliqueModule = new CliqueModule(_configProvider, _logManager, _jsonSerializer);
-            _rpcModuleProvider.Register<ICliqueModule>(cliqueModule);
+            if (_sealEngine is CliqueSealEngine)
+            {
+                CliqueModule cliqueModule = new CliqueModule(_configProvider, _logManager, _jsonSerializer, new CliqueBridge(_blockProducer as CliqueBlockProducer, _blockTree));
+                _rpcModuleProvider.Register<ICliqueModule>(cliqueModule);
+            }
 
             AdminModule adminModule = new AdminModule(_configProvider, _logManager, _jsonSerializer);
             _rpcModuleProvider.Register<IAdminModule>(adminModule);
@@ -398,21 +403,21 @@ namespace Nethermind.Runner.Runners
             clique.CanSeal = _initConfig.IsMining;
 
             // TODO: read seal engine from ChainSpec
-            var sealEngine =
+            _sealEngine =
                 (_specProvider is MainNetSpecProvider) ? ConfigureSealEngine() :
                 (_specProvider is RopstenSpecProvider) ? ConfigureSealEngine() :
                 (_specProvider is RinkebySpecProvider) ? clique :
                 (_specProvider is GoerliSpecProvider) ? (ISealEngine) clique :
                 NullSealEngine.Instance;
 
-            _rewardCalculator = (sealEngine is CliqueSealEngine)
+            _rewardCalculator = (_sealEngine is CliqueSealEngine)
                 ? (IRewardCalculator) new NoBlockRewards()
                 : new RewardCalculator(_specProvider);
 
             /* validation */
             var headerValidator = new HeaderValidator(
                 _blockTree,
-                sealEngine,
+                _sealEngine,
                 _specProvider,
                 _logManager);
 
@@ -463,7 +468,7 @@ namespace Nethermind.Runner.Runners
                 _logManager);
 
             var txRecoveryStep = new TxSignaturesRecoveryStep(_ethereumSigner);
-            _recoveryStep = sealEngine is CliqueSealEngine
+            _recoveryStep = _sealEngine is CliqueSealEngine
                 ? new CompositeDataRecoveryStep(txRecoveryStep, new AuthorRecoveryStep(clique))
                 : (IBlockDataRecoveryStep) txRecoveryStep;
 
@@ -510,20 +515,19 @@ namespace Nethermind.Runner.Runners
                 IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 AlternativeChain devChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, minerDbProvider, _recoveryStep, _logManager, _transactionPool, _receiptStorage);
 
-                IBlockProducer producer;
-                if (sealEngine is CliqueSealEngine)
+                if (_sealEngine is CliqueSealEngine)
                 {
                     // TODO: need to introduce snapshot provider for clique and pass it here instead of CliqueSealEngine
                     if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
-                    producer = new CliqueBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, sealEngine as CliqueSealEngine, cliqueConfig, _nodeKey.Address, _logManager);
+                    _blockProducer = new CliqueBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, _sealEngine as CliqueSealEngine, cliqueConfig, _nodeKey.Address, _logManager);
                 }
                 else
                 {
                     if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
-                    producer = new DevBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, _logManager);
+                    _blockProducer = new DevBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, _logManager);
                 }
 
-                producer.Start();
+                _blockProducer.Start();
             }
 
             _blockchainProcessor.Start();
