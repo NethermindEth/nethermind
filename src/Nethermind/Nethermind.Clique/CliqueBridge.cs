@@ -25,22 +25,38 @@ namespace Nethermind.Clique
 {
     public class CliqueBridge : ICliqueBridge
     {
+        private const string CannotVoteOnNonValidatorMessage = "Cannot vote on non-validator node";
+        
         private readonly CliqueBlockProducer _cliqueBlockProducer;
         private readonly IBlockTree _blockTree;
 
         public CliqueBridge(CliqueBlockProducer cliqueBlockProducer, IBlockTree blockTree)
         {
-            _cliqueBlockProducer = cliqueBlockProducer ?? throw new ArgumentNullException(nameof(cliqueBlockProducer));
+            if (_cliqueBlockProducer != null)
+            {
+                _cliqueBlockProducer = cliqueBlockProducer;
+            }
+            
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
         public void CastVote(Address signer, bool vote)
         {
+            if (_cliqueBlockProducer == null)
+            {
+                throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
+            }
+            
             _cliqueBlockProducer.CastVote(signer, vote);
         }
 
         public void UncastVote(Address signer)
         {
+            if (_cliqueBlockProducer == null)
+            {
+                throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
+            }
+            
             _cliqueBlockProducer.UncastVote(signer);
         }
 
