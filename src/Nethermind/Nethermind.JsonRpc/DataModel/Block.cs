@@ -27,6 +27,7 @@ namespace Nethermind.JsonRpc.DataModel
         public Data Hash { get; set; }
         public Data ParentHash { get; set; }
         public Data Nonce { get; set; }
+        public Data MixHash { get; set; }
         public Data Sha3Uncles { get; set; }
         public Data LogsBloom { get; set; }
         public Data TransactionsRoot { get; set; }
@@ -52,6 +53,7 @@ namespace Nethermind.JsonRpc.DataModel
                 hash = Hash?.ToJson(),
                 parentHash = ParentHash?.ToJson(),
                 nonce = Nonce?.ToJson(),
+                MixHash = MixHash?.ToJson(),
                 sha3Uncles = Sha3Uncles?.ToJson(),
                 logsBloom = LogsBloom?.ToJson(),
                 transactionsRoot = TransactionsRoot?.ToJson(),
