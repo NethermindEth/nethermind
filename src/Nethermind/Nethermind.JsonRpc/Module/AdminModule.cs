@@ -26,11 +26,6 @@ namespace Nethermind.JsonRpc.Module
     public class AdminModule : ModuleBase, IAdminModule
     {
         public ModuleType ModuleType => ModuleType.Admin;
-        
-        public void Initialize()
-        {
-            throw new System.NotImplementedException();
-        }
 
         public ResultWrapper<PeerInfo[]> admin_addPeer()
         {

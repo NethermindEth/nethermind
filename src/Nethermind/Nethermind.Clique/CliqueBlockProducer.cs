@@ -18,7 +18,9 @@
 
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
@@ -48,7 +50,7 @@ namespace Nethermind.Clique
         private CliqueSealEngine _sealEngine;
         private CliqueConfig _config;
         private Address _address;
-        private Dictionary<Address, bool> _proposals = new Dictionary<Address, bool>();
+        private ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
 
         private object _syncToken = new object();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -85,21 +87,26 @@ namespace Nethermind.Clique
         }
 
         private Block _scheduledBlock;
-
+        
         public void CastVote(Address signer, bool vote)
         {
-            _proposals.Add(signer, vote);
+            bool success = _proposals.TryAdd(signer, vote);
+            if (!success)
+            {
+                throw new InvalidOperationException("Cannot cast vote");
+            }
+            
             if(_logger.IsWarn) _logger.Warn($"Added Clique vote for {signer} - {vote}");
         }
         
         public void UncastVote(Address signer)
         {
-            if (!_proposals.ContainsKey(signer))
+            bool success = _proposals.TryRemove(signer, out _);
+            if (!success)
             {
-                throw new InvalidOperationException("");
+                throw new InvalidOperationException("Cannot uncast vote");
             }
             
-            _proposals.Remove(signer);
             if(_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
         }
         
