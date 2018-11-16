@@ -73,5 +73,7 @@ namespace Nethermind.JsonRpc.Module
         {
             throw new NotImplementedException();
         }
+        
+        public ModuleType ModuleType => ModuleType.Nethm;
     }
 }

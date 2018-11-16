@@ -37,7 +37,7 @@ namespace Nethermind.Runner.Config
         public string TestNodeKey { get; set; }
         public string LogFileName { get; set; } = "log.txt";
         public string GenesisHash { get; set; }
-        public string[] JsonRpcEnabledModules { get; set; } = { "Eth", "Net", "Web3", "Db", "Shh", "Nethm", "Debug", "TxPool" };
+        public string[] JsonRpcEnabledModules { get; set; } = { "Clique", "Eth", "Net", "Web3", "Db", "Nethm", "Debug", "TxPool" };
         public bool RemovingLogFilesEnabled { get; set; }
         //in case of null, the path is set to ExecutingAssembly.Location\logs
         public string LogDirectory { get; set; } = null;

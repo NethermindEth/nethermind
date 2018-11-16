@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,13 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
+using Nethermind.JsonRpc.DataModel;
+using Nethermind.JsonRpc.Module;
 
-namespace Nethermind.JsonRpc.Module
+namespace Nethermind.Clique
 {
-    public interface IModuleProvider
+    public interface ICliqueModule : IModule
     {
-        IReadOnlyCollection<ModuleInfo> GetEnabledModules();
-        IReadOnlyCollection<ModuleInfo> GetAllModules();
+        ResultWrapper<bool> clique_getSnapshot();
+        ResultWrapper<bool> clique_getSnapshotAtHash(Data hash);
+        ResultWrapper<Data[]> clique_getSigners();
+        ResultWrapper<Data[]> clique_getSignersAtHash(Data hash);
+        ResultWrapper<bool> clique_propose(Data signer, bool vote);
+        ResultWrapper<bool> clique_discard(Data signer);
     }
 }

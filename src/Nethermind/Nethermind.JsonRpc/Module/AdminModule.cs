@@ -18,32 +18,42 @@
 
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
 {
-    public class Web3Module : ModuleBase, IWeb3Module
+    public class AdminModule : ModuleBase, IAdminModule
     {
-        public Web3Module(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
+        public ModuleType ModuleType => ModuleType.Admin;
+
+        public ResultWrapper<PeerInfo[]> admin_addPeer()
         {
+            throw new System.NotImplementedException();
         }
 
-        public ResultWrapper<string> web3_clientVersion()
+        public ResultWrapper<PeerInfo[]> admin_peers()
         {
-            var clientVersion = ClientVersion.Description;
-            if(Logger.IsDebug) Logger.Debug($"web3_clientVersion request, result: {clientVersion}");
-            return ResultWrapper<string>.Success(clientVersion);
+            throw new System.NotImplementedException();
         }
 
-        public ResultWrapper<Data> web3_sha3(Data data)
+        public ResultWrapper<PeerInfo[]> admin_nodeInfo()
         {
-            Keccak keccak = Keccak.Compute(data.Value);
-            if(Logger.IsDebug) Logger.Debug($"web3_sha3 request, result: {keccak}");
-            return ResultWrapper<Data>.Success(new Data(keccak));
+            throw new System.NotImplementedException();
         }
-        
-        public ModuleType ModuleType => ModuleType.Web3;
+
+        public ResultWrapper<PeerInfo[]> admin_dataDir()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public ResultWrapper<PeerInfo[]> admin_setSolc()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public AdminModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
+        {
+        }
     }
 }

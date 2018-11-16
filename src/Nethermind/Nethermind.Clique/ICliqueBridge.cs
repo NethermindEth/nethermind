@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.JsonRpc.Module;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Runner.Runners
+namespace Nethermind.Clique
 {
-    public interface IEthereumRunner : IRunner
+    public interface ICliqueBridge
     {
-        IDebugBridge DebugBridge { get; }
-        IBlockchainBridge BlockchainBridge { get; }
-        INetBridge NetBridge { get; }
+        void CastVote(Address signer, bool vote);
+        void UncastVote(Address signer);
+        Address[] GetSigners();
+        Address[] GetSigners(Keccak hash);
     }
 }

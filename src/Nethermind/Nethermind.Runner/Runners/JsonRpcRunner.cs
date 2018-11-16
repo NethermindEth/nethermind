@@ -28,31 +28,33 @@ using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.Runner.Config;
 using Microsoft.Extensions.Logging;
+using Nethermind.JsonRpc.Module;
 using Nethermind.Runner.LogBridge;
 
 namespace Nethermind.Runner.Runners
 {
-    public class JsonRpcRunner : IJsonRpcRunner
+    public class JsonRpcRunner : IRunner
     {
         private readonly Log.ILogger _logger;
+        private readonly IRpcModuleProvider _moduleProvider;
         private readonly Log.ILogManager _logManager;
-        private readonly IJsonRpcConfig _configurationProvider;
+        private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IInitConfig _initConfig;
         private IWebHost _webHost;
 
-        public JsonRpcRunner(IConfigProvider configurationProvider, Log.ILogManager logManager)
+        public JsonRpcRunner(IConfigProvider configurationProvider, IRpcModuleProvider moduleProvider, Log.ILogManager logManager)
         {
-            _configurationProvider = configurationProvider.GetConfig<IJsonRpcConfig>();
+            _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
+            _moduleProvider = moduleProvider ?? throw new ArgumentNullException(nameof(moduleProvider));
             _logManager = logManager;
             _logger = logManager.GetClassLogger();
         }
 
         public Task Start()
         {
-            _logger.Info("Initializing JsonRPC");
+            if(_logger.IsInfo) _logger.Info("Initializing JsonRPC");
             var host = $"http://{_initConfig.HttpHost}:{_initConfig.HttpPort}";
-            _logger.Info($"Running server, url: {host}");
 
             var webHost = WebHost.CreateDefaultBuilder()
                 .UseStartup<Startup>()
@@ -68,14 +70,13 @@ namespace Nethermind.Runner.Runners
             var modules = GetModules(_initConfig.JsonRpcEnabledModules)?.ToList();
             if (modules != null && modules.Any())
             {
-                _configurationProvider.EnabledModules = modules;
+                _jsonRpcConfig.EnabledModules = modules;
             }
 
-            _logger.Info($"Starting http service, modules: {string.Join(", ", _configurationProvider.EnabledModules.Select(x => x))}");
+            if(_logger.IsInfo) _logger.Info($"Starting JSON RPC service, modules: {string.Join(", ", _moduleProvider.GetEnabledModules().Select(m => m.ModuleType.ToString()).OrderBy(x => x))}");
             _webHost = webHost;
             _webHost.Start();
-            _logger.Info("JsonRPC initialization completed");
-
+            if(_logger.IsInfo) _logger.Info($"Running JSON RPC server at {host}");
             return Task.CompletedTask;
         }
 
@@ -84,11 +85,11 @@ namespace Nethermind.Runner.Runners
             try
             {
                 await _webHost.StopAsync();
-                _logger.Info("Service stopped");
+                if(_logger.IsInfo) _logger.Info("JSON RPC service stopped");
             }
             catch (Exception e)
             {
-                _logger.Info($"Error during stopping service: {e}");
+                if(_logger.IsInfo) _logger.Info($"Error when stopping JSON RPC service: {e}");
             }
         }
 
@@ -108,7 +109,7 @@ namespace Nethermind.Runner.Runners
                 }
                 else
                 {
-                    _logger.Warn($"Incorrect jsonRpc module type: {moduleName}");
+                    if(_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC module: {moduleName}");
                 }
             }
 

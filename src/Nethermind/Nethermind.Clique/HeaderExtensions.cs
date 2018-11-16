@@ -40,7 +40,19 @@ namespace Nethermind.Clique
 
         public static int CalculateSignersCount(this BlockHeader blockHeader)
         {
-            return (blockHeader.ExtraData.Length - CliqueSealEngine.ExtraVanityLength - CliqueSealEngine.ExtraSealLength) / Address.ByteLength;
+            return (blockHeader.ExtraData.Length - Clique.ExtraVanityLength - Clique.ExtraSealLength) / Address.ByteLength;
+        }
+        
+        public static Address[] ExtractSigners(this BlockHeader blockHeader)
+        {
+            byte[] signersData = blockHeader.ExtraData.Slice(Clique.ExtraVanityLength, blockHeader.ExtraData.Length - Clique.ExtraSealLength);
+            Address[] signers = new Address[signersData.Length / Address.ByteLength];
+            for (int i = 0; i < signers.Length; i++)
+            {
+                signers[i] = new Address(signersData.Slice(i * 20, 20));
+            }
+
+            return signers;
         }
     }
 }

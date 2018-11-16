@@ -19,15 +19,12 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Numerics;
-using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.DataModel;
 using TransactionTrace = Nethermind.JsonRpc.DataModel.TransactionTrace;
@@ -46,17 +43,17 @@ namespace Nethermind.JsonRpc.Module
             _modelMapper = modelMapper;
         }
 
-        public ResultWrapper<TransactionTrace> debug_traceTransaction(Data transationHash)
+        public ResultWrapper<TransactionTrace> debug_traceTransaction(Data transactionHash)
         {
-            var transactionTrace = _debugBridge.GetTransactionTrace(new Keccak(transationHash.Value));
+            var transactionTrace = _debugBridge.GetTransactionTrace(new Keccak(transactionHash.Value));
             if (transactionTrace == null)
             {
-                return ResultWrapper<TransactionTrace>.Fail($"Cannot find transactionTrace for hash: {transationHash.Value}", ErrorType.NotFound);
+                return ResultWrapper<TransactionTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash.Value}", ErrorType.NotFound);
             }
 
             var transactionModel = _modelMapper.MapTransactionTrace(transactionTrace);
 
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransaction)} request {transationHash.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransaction)} request {transactionHash.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<TransactionTrace>.Success(transactionModel);
         }
 
@@ -194,5 +191,7 @@ namespace Nethermind.JsonRpc.Module
             if (Logger.IsTrace) Logger.Trace($"{nameof(debug_getFromDb)} request [{dbName}, {key.Value.ToHexString()}], result: {dbValue.ToHexString()}");
             return ResultWrapper<byte[]>.Success(dbValue);
         }
+
+        public ModuleType ModuleType => ModuleType.Debug;
     }
 }

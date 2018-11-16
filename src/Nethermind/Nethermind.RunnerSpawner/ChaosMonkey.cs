@@ -80,6 +80,7 @@ namespace Nethermind.RunnerSpawner
         {
             for (int i = 0; i < _processes.Length; i++)
             {
+                Thread.Sleep(500);
                 _processes[i].Start();
             }
 

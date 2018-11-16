@@ -47,6 +47,8 @@ namespace Nethermind.Blockchain
 
         private UInt256 _currentDbLoadBatchEnd;
 
+        private ReaderWriterLockSlim _blockInfoLock = new ReaderWriterLockSlim();
+
         private readonly IDb _blockDb;
 
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
@@ -69,25 +71,33 @@ namespace Nethermind.Blockchain
             _specProvider = specProvider;
             _transactionPool = transactionPool;
 
-            ChainLevelInfo genesisLevel = LoadLevel(0);
-            if (genesisLevel != null)
+            try
             {
-                if (genesisLevel.BlockInfos.Length != 1)
+                _blockInfoLock.EnterWriteLock();
+                ChainLevelInfo genesisLevel = LoadLevel(0);
+                if (genesisLevel != null)
                 {
-                    // just for corrupted test bases
-                    genesisLevel.BlockInfos = new[] {genesisLevel.BlockInfos[0]};
-                    PersistLevel(0, genesisLevel);
-                    //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
-                }
+                    if (genesisLevel.BlockInfos.Length != 1)
+                    {
+                        // just for corrupted test bases
+                        genesisLevel.BlockInfos = new[] {genesisLevel.BlockInfos[0]};
+                        PersistLevel(0, genesisLevel);
+                        //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
+                    }
 
-                if (genesisLevel.BlockInfos[0].WasProcessed)
-                {
-                    Block genesisBlock = Load(genesisLevel.BlockInfos[0].BlockHash).Block;
-                    Genesis = genesisBlock.Header;
-                    LoadHeadBlock();
-                }
+                    if (genesisLevel.BlockInfos[0].WasProcessed)
+                    {
+                        Block genesisBlock = Load(genesisLevel.BlockInfos[0].BlockHash).Block;
+                        Genesis = genesisBlock.Header;
+                        LoadHeadBlock();
+                    }
 
-                LoadBestKnown();
+                    LoadBestKnown();
+                }
+            }
+            finally
+            {
+                _blockInfoLock.ExitWriteLock();
             }
 
             if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggested?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}");
@@ -410,15 +420,24 @@ namespace Nethermind.Blockchain
 
             UInt256 lastNumber = ascendingOrder ? processedBlocks[processedBlocks.Length - 1].Number : processedBlocks[0].Number;
             UInt256 previousHeadNumber = Head?.Number ?? UInt256.Zero;
-            if (previousHeadNumber > lastNumber)
+            try
             {
-                for (UInt256 i = 0; i < UInt256.Subtract(previousHeadNumber, lastNumber); i++)
+                _blockInfoLock.EnterWriteLock();
+                if (previousHeadNumber > lastNumber)
                 {
-                    UInt256 levelNumber = previousHeadNumber - i;
-                    ChainLevelInfo level = LoadLevel(levelNumber);
-                    level.HasBlockOnMainChain = false;
-                    PersistLevel(levelNumber, level);
+                    for (UInt256 i = 0; i < UInt256.Subtract(previousHeadNumber, lastNumber); i++)
+                    {
+                        UInt256 levelNumber = previousHeadNumber - i;
+
+                        ChainLevelInfo level = LoadLevel(levelNumber);
+                        level.HasBlockOnMainChain = false;
+                        PersistLevel(levelNumber, level);
+                    }
                 }
+            }
+            finally
+            {
+                _blockInfoLock.ExitWriteLock();
             }
 
             for (int i = 0; i < processedBlocks.Length; i++)
@@ -433,30 +452,38 @@ namespace Nethermind.Blockchain
         private void MoveToMain(Block block)
         {
             if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
-            ChainLevelInfo level = LoadLevel(block.Number);
 
-            int? index = FindIndex(block.Hash, level);
-            if (index == null)
+            try
             {
-                throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.HashAndNumber)} to main");
+                _blockInfoLock.EnterWriteLock();
+                ChainLevelInfo level = LoadLevel(block.Number);
+                int? index = FindIndex(block.Hash, level);
+                if (index == null)
+                {
+                    throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.HashAndNumber)} to main");
+                }
+
+
+                BlockInfo info = level.BlockInfos[index.Value];
+                info.WasProcessed = true;
+                if (index.Value != 0)
+                {
+                    (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
+                }
+
+                // tks: in testing chains we have a chain full of processed blocks that we process again
+                //if (level.HasBlockOnMainChain)
+                //{
+                //    throw new InvalidOperationException("When moving to main encountered a block in main on the same level");
+                //}
+
+                level.HasBlockOnMainChain = true;
+                PersistLevel(block.Number, level);
             }
-
-            BlockInfo info = level.BlockInfos[index.Value];
-            info.WasProcessed = true;
-
-            if (index.Value != 0)
+            finally
             {
-                (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
+                _blockInfoLock.ExitWriteLock();
             }
-
-            // tks: in testing chains we have a chain full of processed blocks that we process again
-            //if (level.HasBlockOnMainChain)
-            //{
-            //    throw new InvalidOperationException("When moving to main encountered a block in main on the same level");
-            //}
-
-            level.HasBlockOnMainChain = true;
-            PersistLevel(block.Number, level);
 
             BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
 
@@ -512,10 +539,10 @@ namespace Nethermind.Blockchain
                 {
                     throw new InvalidDataException("Head block data missing from chain info");
                 }
-                
+
                 headBlockHeader.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
                 headBlockHeader.TotalTransactions = level.BlockInfos[index.Value].TotalTransactions;
-                
+
                 Head = BestSuggested = headBlockHeader;
             }
         }
@@ -559,31 +586,40 @@ namespace Nethermind.Blockchain
 
         private void UpdateOrCreateLevel(UInt256 number, BlockInfo blockInfo)
         {
-            ChainLevelInfo level = LoadLevel(number);
-            if (level != null)
+            try
             {
-                BlockInfo[] blockInfos = new BlockInfo[level.BlockInfos.Length + 1];
-                for (int i = 0; i < level.BlockInfos.Length; i++)
+                _blockInfoLock.EnterWriteLock();
+                ChainLevelInfo level = LoadLevel(number);
+                if (level != null)
                 {
-                    blockInfos[i] = level.BlockInfos[i];
+                    BlockInfo[] blockInfos = new BlockInfo[level.BlockInfos.Length + 1];
+                    for (int i = 0; i < level.BlockInfos.Length; i++)
+                    {
+                        blockInfos[i] = level.BlockInfos[i];
+                    }
+
+                    blockInfos[blockInfos.Length - 1] = blockInfo;
+                    level.BlockInfos = blockInfos;
+                }
+                else
+                {
+                    if (number > BestKnownNumber)
+                    {
+                        BestKnownNumber = number;
+                    }
+
+                    level = new ChainLevelInfo(false, new[] {blockInfo});
                 }
 
-                blockInfos[blockInfos.Length - 1] = blockInfo;
-                level.BlockInfos = blockInfos;
+                PersistLevel(number, level);
             }
-            else
+            finally
             {
-                if (number > BestKnownNumber)
-                {
-                    BestKnownNumber = number;
-                }
-
-                level = new ChainLevelInfo(false, new[] {blockInfo});
+                _blockInfoLock.ExitWriteLock();
             }
-
-            PersistLevel(number, level);
         }
 
+        /* error-prone: all methods that load a level, change it and then persist need to execute everything under a lock */
         private void PersistLevel(BigInteger number, ChainLevelInfo level)
         {
             _blockInfoCache.Set(number, level);

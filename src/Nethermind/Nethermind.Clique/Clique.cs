@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,9 +16,28 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Runner.Runners
+using Nethermind.Core;
+
+namespace Nethermind.Clique
 {
-    public interface IJsonRpcRunner : IRunner
+    [Todo(Improve.Documentation, "Add description of each parameter")]
+    public static class Clique
     {
+        public const int CheckpointInterval = 1024;
+        public const int DefaultEpochLength = 30000;
+
+        public const int InMemorySnapshots = 128;
+        public const int InMemorySignatures = 4096;
+
+        public const int WiggleTime = 500;
+
+        public const int ExtraVanityLength = 32;
+        public const int ExtraSealLength = 65;
+
+        public const ulong NonceAuthVote = ulong.MaxValue;
+        public const ulong NonceDropVote = 0UL;
+
+        public const int DifficultyInTurn = 2;
+        public const int DifficultyNoTurn = 1;
     }
 }

@@ -17,208 +17,53 @@
  */
 
 using System.Collections.Generic;
-using System.Diagnostics.Contracts;
-using System.Linq;
-using System.Net.Http;
-using System.Numerics;
+using System.Reflection;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.JsonRpc.Module;
-using Nethermind.KeyStore;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
-using Block = Nethermind.JsonRpc.DataModel.Block;
 
 namespace Nethermind.JsonRpc.Test
 {
     [TestFixture]
     public class JsonRpcServiceTests
     {
-        private IJsonRpcService _jsonRpcService;
-        private IConfigProvider _configurationProvider;
-        private ILogManager _logManager;
-
         [SetUp]
         public void Initialize()
         {
-            var jConfig = typeof(JsonRpcConfig).Assembly;
+            Assembly jConfig = typeof(JsonRpcConfig).Assembly;
             _configurationProvider = new JsonConfigProvider();
             _logManager = NullLogManager.Instance;
         }
 
-        [Test]
-        public void NetPeerCountTest()
+        private IJsonRpcService _jsonRpcService;
+        private IConfigProvider _configurationProvider;
+        private ILogManager _logManager;
+
+        private JsonRpcResponse TestRequest<T>(IModule ethModule, string method, params string[] parameters) where T : IModule
         {
-            var netModule = Substitute.For<INetModule>();
-            netModule.net_peerCount().ReturnsForAnyArgs(x => ResultWrapper<Quantity>.Success(new Quantity(2)));
-
-            var ethModule = Substitute.For<IEthModule>();
-            var web3Module = Substitute.For<IWeb3Module>();
-            var shhModule = Substitute.For<IShhModule>();
-            var nethmModule = Substitute.For<INethmModule>();
-            var debugModule = Substitute.For<IDebugModule>();
-            var txPoolModule = Substitute.For<ITxPoolModule>();
-
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule,
-                nethmModule, debugModule, txPoolModule);
-
+            RpcModuleProvider moduleProvider = new RpcModuleProvider(_configurationProvider.GetConfig<IJsonRpcConfig>());
+            moduleProvider.Register<T>(ethModule);
             _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
-
-            var requestJson = RpcTest.GetJsonRequest("net_peerCount");
-            var response = _jsonRpcService.SendRequest(requestJson);
-            var quantity = new Quantity();
-            quantity.FromJson(response.Result.ToString());
-            Assert.AreEqual(quantity.AsNumber(), new UInt256(2));
-        }
-
-        [Test]
-        public void Web3ShaTest()
-        {
-            var netModule = Substitute.For<INetModule>();
-            var ethModule = Substitute.For<IEthModule>();
-            var web3Module = Substitute.For<IWeb3Module>();
-            web3Module.web3_sha3(Arg.Any<Data>()).ReturnsForAnyArgs(x => ResultWrapper<Data>.Success(new Data("abcdef")));
-            var shhModule = Substitute.For<IShhModule>();
-            var nethmModule = Substitute.For<INethmModule>();
-            var debugModule = Substitute.For<IDebugModule>();
-            var txPoolModule = Substitute.For<ITxPoolModule>();
-
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule,
-                nethmModule, debugModule, txPoolModule);
-
-            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
-
-            var requestJson = RpcTest.GetJsonRequest("web3_sha3", "0x68656c6c6f20776f726c64");
-            var response = _jsonRpcService.SendRequest(requestJson);
-            Assert.AreEqual("0xabcdef", response.Result);
-        }
-
-        [Test]
-        public void GetBlockByNumberTest()
-        {
-            var netModule = Substitute.For<INetModule>();
-            var ethModule = Substitute.For<IEthModule>();
-            var web3Module = Substitute.For<IWeb3Module>();
-            ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x =>
-                ResultWrapper<Block>.Success(new Block {Number = new Quantity(2)}));
-            var shhModule = Substitute.For<IShhModule>();
-            var nethmModule = Substitute.For<INethmModule>();
-            var debugModule = Substitute.For<IDebugModule>();
-            var txPoolModule = Substitute.For<ITxPoolModule>();
-
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule,
-                nethmModule, debugModule, txPoolModule);
-
-            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
-
-            var request = RpcTest.GetJsonRequest("eth_getBlockByNumber", "0x1b4", "true");
-            var response = _jsonRpcService.SendRequest(request);
-
-            Assert.IsTrue(response.Result.ToString().Contains("0x02"));
-        }
-
-        [Test]
-        public void GetWorkTest()
-        {
-            var netModule = Substitute.For<INetModule>();
-            var ethModule = Substitute.For<IEthModule>();
-            var web3Module = Substitute.For<IWeb3Module>();
-            ethModule.eth_getWork().ReturnsForAnyArgs(x => ResultWrapper<IEnumerable<Data>>.Success(new[] {new Data("aa"), new Data("01")}));
-            var shhModule = Substitute.For<IShhModule>();
-            var nethmModule = Substitute.For<INethmModule>();
-            var debugModule = Substitute.For<IDebugModule>();
-            var txPoolModule = Substitute.For<ITxPoolModule>();
-
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule,
-                nethmModule, debugModule, txPoolModule);
-
-            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
-
-            var request = RpcTest.GetJsonRequest("eth_getWork");
-            var response = _jsonRpcService.SendRequest(request);
-
-
-            Assert.Contains("0xaa", (List<object>) response.Result);
-            Assert.Contains("0x01", (List<object>) response.Result);
-        }
-
-        [Test]
-        public void NetVersionTest()
-        {
-            var netModule = Substitute.For<INetModule>();
-            var ethModule = Substitute.For<IEthModule>();
-            var web3Module = Substitute.For<IWeb3Module>();
-            netModule.net_version().ReturnsForAnyArgs(x => ResultWrapper<string>.Success("1"));
-            var shhModule = Substitute.For<IShhModule>();
-            var nethmModule = Substitute.For<INethmModule>();
-            var debugModule = Substitute.For<IDebugModule>();
-            var txPoolModule = Substitute.For<ITxPoolModule>();
-
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule,
-                nethmModule, debugModule, txPoolModule);
-
-            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
-
-            var request = RpcTest.GetJsonRequest("net_version");
-            var response = _jsonRpcService.SendRequest(request);
-
-            Assert.AreEqual(response.Id, request.Id);
-            Assert.AreEqual(response.Result, "1");
-            Assert.IsNull(response.Error);
-            Assert.AreEqual(_configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion, response.Jsonrpc);
-        }
-
-        [Test]
-        public void IncorrectMethodNameTest()
-        {
-            var netModule = Substitute.For<INetModule>();
-            var ethModule = Substitute.For<IEthModule>();
-            var web3Module = Substitute.For<IWeb3Module>();
-            var shhModule = Substitute.For<IShhModule>();
-            var nethmModule = Substitute.For<INethmModule>();
-            var debugModule = Substitute.For<IDebugModule>();
-            var txPoolModule = Substitute.For<ITxPoolModule>();
-
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule,
-                nethmModule, debugModule, txPoolModule);
-
-            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
-
-            var request = RpcTest.GetJsonRequest("incorrect_method");
-            var response = _jsonRpcService.SendRequest(request);
-
-            Assert.AreEqual(response.Id, request.Id);
-            Assert.AreEqual(response.Error.Code,
-                _configurationProvider.GetConfig<IJsonRpcConfig>().ErrorCodes[ErrorType.MethodNotFound]);
-            Assert.IsNull(response.Result);
-            Assert.AreEqual(response.Jsonrpc, _configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion);
+            JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
+            JsonRpcResponse response = _jsonRpcService.SendRequest(request);
+            Assert.AreEqual(request.Id, response.Id);
+            return response;
         }
 
         [Test]
         public void CompileSolidityTest()
         {
-            var netModule = Substitute.For<INetModule>();
-            var ethModule = Substitute.For<IEthModule>();
-            var web3Module = Substitute.For<IWeb3Module>();
-            var shhModule = Substitute.For<IShhModule>();
-            var nethmModule = Substitute.For<INethmModule>();
-            var debugModule = Substitute.For<IDebugModule>();
-            var txPoolModule = Substitute.For<ITxPoolModule>();
+            INethmModule nethmModule = Substitute.For<INethmModule>();
             nethmModule.nethm_compileSolidity(Arg.Any<string>()).ReturnsForAnyArgs(r => ResultWrapper<string>.Success(
-                    "608060405234801561001057600080fd5b5060bb8061001f6000396000f300608060405260043610603f576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063c6888fa1146044575b600080fd5b348015604f57600080fd5b50606c600480360381019080803590602001909291905050506082565b6040518082815260200191505060405180910390f35b60006007820290509190505600a165627a7a72305820cb09d883ac888f0961fd8d82f8dae501d09d54f4bda397e8ca0fb9c05e2ec72a0029"));
+                "608060405234801561001057600080fd5b5060bb8061001f6000396000f300608060405260043610603f576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063c6888fa1146044575b600080fd5b348015604f57600080fd5b50606c600480360381019080803590602001909291905050506082565b6040518082815260200191505060405180910390f35b60006007820290509190505600a165627a7a72305820cb09d883ac888f0961fd8d82f8dae501d09d54f4bda397e8ca0fb9c05e2ec72a0029"));
 
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule,
-                nethmModule, debugModule, txPoolModule);
-
-            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
-
-            var parameters = new CompilerParameters
+            CompilerParameters parameters = new CompilerParameters
             {
                 Contract =
                     "pragma solidity ^0.4.22; contract test { function multiply(uint a) public returns(uint d) {   return a * 7;   } }",
@@ -227,9 +72,7 @@ namespace Nethermind.JsonRpc.Test
                 Runs = 2
             };
 
-            var request = RpcTest.GetJsonRequest("nethm_compileSolidity", parameters.ToJson());
-
-            var response = _jsonRpcService.SendRequest(request);
+            JsonRpcResponse response = TestRequest<INethmModule>(nethmModule, "nethm_compileSolidity", parameters.ToJson());
 
             TestContext.Write(response.Result);
             Assert.IsNotNull(response);
@@ -237,21 +80,19 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [Test]
+        public void GetBlockByNumberTest()
+        {
+            IEthModule ethModule = Substitute.For<IEthModule>();
+            ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<Block>.Success(new Block {Number = new Quantity(2)}));
+            JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_getBlockByNumber", "0x1b4", "true");
+            Assert.IsTrue(response.Result.ToString().Contains("0x02"));
+        }
+
+        [Test]
         public void GetNewFilterTest()
         {
-            var netModule = Substitute.For<INetModule>();
-            var ethModule = Substitute.For<IEthModule>();
-            var web3Module = Substitute.For<IWeb3Module>();
+            IEthModule ethModule = Substitute.For<IEthModule>();
             ethModule.eth_newFilter(Arg.Any<Filter>()).ReturnsForAnyArgs(x => ResultWrapper<Quantity>.Success(new Quantity("0x01")));
-            var shhModule = Substitute.For<IShhModule>();
-            var nethmModule = Substitute.For<INethmModule>();
-            var debugModule = Substitute.For<IDebugModule>();
-            var txPoolModule = Substitute.For<ITxPoolModule>();
-
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule,
-                nethmModule, debugModule, txPoolModule);
-
-            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
             var parameters = new
             {
@@ -268,10 +109,59 @@ namespace Nethermind.JsonRpc.Test
                     }
                 }
             };
-            var request = RpcTest.GetJsonRequest("eth_newFilter", JsonConvert.SerializeObject(parameters));
-            var response = _jsonRpcService.SendRequest(request);
 
+            JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_newFilter", JsonConvert.SerializeObject(parameters));
             Assert.AreEqual("0x01", response.Result);
+        }
+
+        [Test]
+        public void GetWorkTest()
+        {
+            IEthModule ethModule = Substitute.For<IEthModule>();
+            ethModule.eth_getWork().ReturnsForAnyArgs(x => ResultWrapper<IEnumerable<Data>>.Success(new[] {new Data("aa"), new Data("01")}));
+            JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_getWork");
+            Assert.Contains("0xaa", (List<object>) response.Result);
+            Assert.Contains("0x01", (List<object>) response.Result);
+        }
+
+        [Test]
+        public void IncorrectMethodNameTest()
+        {
+            JsonRpcResponse response = TestRequest<IEthModule>(Substitute.For<IEthModule>(), "incorrect_method");
+            Assert.AreEqual(response.Error.Code, _configurationProvider.GetConfig<IJsonRpcConfig>().ErrorCodes[ErrorType.MethodNotFound]);
+            Assert.IsNull(response.Result);
+            Assert.AreEqual(response.Jsonrpc, _configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion);
+        }
+
+        [Test]
+        public void NetPeerCountTest()
+        {
+            INetModule netModule = Substitute.For<INetModule>();
+            netModule.net_peerCount().ReturnsForAnyArgs(x => ResultWrapper<Quantity>.Success(new Quantity(2)));
+            JsonRpcResponse response = TestRequest<INetModule>(netModule, "net_peerCount");
+            Quantity quantity = new Quantity();
+            quantity.FromJson(response.Result.ToString());
+            Assert.AreEqual(quantity.AsNumber(), new UInt256(2));
+        }
+
+        [Test]
+        public void NetVersionTest()
+        {
+            INetModule netModule = Substitute.For<INetModule>();
+            netModule.net_version().ReturnsForAnyArgs(x => ResultWrapper<string>.Success("1"));
+            JsonRpcResponse response = TestRequest<INetModule>(netModule, "net_version");
+            Assert.AreEqual(response.Result, "1");
+            Assert.IsNull(response.Error);
+            Assert.AreEqual(_configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion, response.Jsonrpc);
+        }
+
+        [Test]
+        public void Web3ShaTest()
+        {
+            IWeb3Module web3Module = Substitute.For<IWeb3Module>();
+            web3Module.web3_sha3(Arg.Any<Data>()).ReturnsForAnyArgs(x => ResultWrapper<Data>.Success(new Data("abcdef")));
+            JsonRpcResponse response = TestRequest<IWeb3Module>(web3Module, "web3_sha3", "0x68656c6c6f20776f726c64");
+            Assert.AreEqual("0xabcdef", response.Result);
         }
     }
 }

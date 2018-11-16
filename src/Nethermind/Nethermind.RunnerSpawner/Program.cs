@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Runner;

@@ -16,32 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Microsoft.Extensions.DependencyInjection;
-using Nethermind.Core;
-using Nethermind.Core.Logging;
-using Nethermind.JsonRpc;
+using System.Collections.Generic;
 
-namespace Nethermind.Runner
+namespace Nethermind.JsonRpc.Module
 {
-    public class Bootstrap
+    public interface IRpcModuleProvider
     {
-        private static Bootstrap _instance;
-
-        private Bootstrap()
-        {
-        }
-
-        public static Bootstrap Instance => _instance ?? (_instance = new Bootstrap());
-
-        public IJsonRpcService JsonRpcService { private get; set; }
-        public ILogManager LogManager { private get; set; }
-        public IJsonSerializer JsonSerializer { private get; set; }
-
-        public void RegisterJsonRpcServices(IServiceCollection services)
-        {
-            services.AddSingleton(JsonRpcService);
-            services.AddSingleton(LogManager);
-            services.AddSingleton(JsonSerializer);
-        }
+        void Register<T>(IModule module) where T : IModule;
+        IReadOnlyCollection<ModuleInfo> GetEnabledModules();
+        IReadOnlyCollection<ModuleInfo> GetAllModules();
     }
 }

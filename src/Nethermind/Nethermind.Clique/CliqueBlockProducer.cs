@@ -18,7 +18,9 @@
 
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
@@ -41,13 +43,14 @@ namespace Nethermind.Clique
         private readonly IBlockTree _blockTree;
         private readonly ITimestamp _timestamp;
         private readonly ILogger _logger;
+        private readonly ICryptoRandom _cryptoRandom;
 
         private readonly IBlockchainProcessor _processor;
         private readonly ITransactionPool _transactionPool;
         private CliqueSealEngine _sealEngine;
         private CliqueConfig _config;
         private Address _address;
-        private Dictionary<Address, bool> _proposals = new Dictionary<Address, bool>();
+        private ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
 
         private object _syncToken = new object();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -58,6 +61,7 @@ namespace Nethermind.Clique
             IBlockchainProcessor devProcessor,
             IBlockTree blockTree,
             ITimestamp timestamp,
+            ICryptoRandom cryptoRandom,
             CliqueSealEngine cliqueSealEngine,
             CliqueConfig config,
             Address address,
@@ -68,6 +72,7 @@ namespace Nethermind.Clique
             _processor = devProcessor ?? throw new ArgumentNullException(nameof(devProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _timestamp = timestamp ?? throw new ArgumentNullException(nameof(_timestamp));
+            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(_cryptoRandom));
             _sealEngine = cliqueSealEngine ?? throw new ArgumentNullException(nameof(_sealEngine));
             _config = config ?? throw new ArgumentNullException(nameof(_config));
             _address = address ?? throw new ArgumentNullException(nameof(_address));
@@ -83,6 +88,28 @@ namespace Nethermind.Clique
 
         private Block _scheduledBlock;
         
+        public void CastVote(Address signer, bool vote)
+        {
+            bool success = _proposals.TryAdd(signer, vote);
+            if (!success)
+            {
+                throw new InvalidOperationException("Cannot cast vote");
+            }
+            
+            if(_logger.IsWarn) _logger.Warn($"Added Clique vote for {signer} - {vote}");
+        }
+        
+        public void UncastVote(Address signer)
+        {
+            bool success = _proposals.TryRemove(signer, out _);
+            if (!success)
+            {
+                throw new InvalidOperationException("Cannot uncast vote");
+            }
+            
+            if(_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
+        }
+        
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
             if (_scheduledBlock == null)
@@ -92,11 +119,10 @@ namespace Nethermind.Clique
             }
            
             ulong extraDelayMilliseconds = 0;
-            if (_scheduledBlock.Difficulty == CliqueSealEngine.DifficultyNoTurn)
+            if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
             {
-                int wiggle = _scheduledBlock.Header.CalculateSignersCount() / 2 + 1 * CliqueSealEngine.WiggleTime;
-                Random rnd = new Random();
-                extraDelayMilliseconds += (ulong)rnd.Next(wiggle);
+                int wiggle = _scheduledBlock.Header.CalculateSignersCount() / 2 + 1 * Clique.WiggleTime;
+                extraDelayMilliseconds += (ulong)_cryptoRandom.NextInt(wiggle);
             }
             
             if(_scheduledBlock.Timestamp + extraDelayMilliseconds / 1000 < _timestamp.EpochSeconds)
@@ -216,23 +242,15 @@ namespace Nethermind.Clique
                     bool authorize = proposal.Value;
                     if (snapshot.ValidVote(address, authorize))
                     {
-                        addresses.Append(address);
+                        addresses.Add(address);
                     }
                 }
 
                 // If there's pending proposals, cast a vote on them
                 if (addresses.Count > 0)
                 {
-                    Random rnd = new Random();
-                    header.Beneficiary = addresses[rnd.Next(addresses.Count)];
-                    if (_proposals[header.Beneficiary])
-                    {
-                        header.Nonce = CliqueSealEngine.NonceAuthVote;
-                    }
-                    else
-                    {
-                        header.Nonce = CliqueSealEngine.NonceDropVote;
-                    }
+                    header.Beneficiary = addresses[_cryptoRandom.NextInt(addresses.Count)];
+                    header.Nonce = _proposals[header.Beneficiary] ? Clique.NonceAuthVote : Clique.NonceDropVote;
                 }
             }
 
@@ -242,7 +260,7 @@ namespace Nethermind.Clique
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
 
             // Set extra data
-            int mainBytesLength = CliqueSealEngine.ExtraVanityLength + CliqueSealEngine.ExtraSealLength;
+            int mainBytesLength = Clique.ExtraVanityLength + Clique.ExtraSealLength;
             int signerBytesLength = isEpochBlock ? 20 * snapshot.Signers.Count : 0;
             int extraDataLength = mainBytesLength + signerBytesLength;
             header.ExtraData = new byte[extraDataLength];
@@ -255,7 +273,7 @@ namespace Nethermind.Clique
                 for (int i = 0; i < snapshot.Signers.Keys.Count; i++)
                 {
                     Address signer = snapshot.Signers.Keys[i];
-                    int index = CliqueSealEngine.ExtraVanityLength + 20 * i;
+                    int index = Clique.ExtraVanityLength + 20 * i;
                     Array.Copy(signer.Bytes, 0, header.ExtraData, index, signer.Bytes.Length);
                 }
             }
@@ -312,11 +330,11 @@ namespace Nethermind.Clique
             if (snapshot.InTurn(snapshot.Number + 1, signer))
             {
                 if(_logger.IsInfo) _logger.Info("Producing in turn block");
-                return new UInt256(CliqueSealEngine.DifficultyInTurn);
+                return new UInt256(Clique.DifficultyInTurn);
             }
 
             if(_logger.IsInfo) _logger.Info("Producing out of turn block");
-            return new UInt256(CliqueSealEngine.DifficultyNoTurn);
+            return new UInt256(Clique.DifficultyNoTurn);
         }
 
         public void Dispose()

@@ -20,7 +20,7 @@ using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
 {
-    public interface IAdminmodule : IModule
+    public interface IAdminModule : IModule
     {
         ResultWrapper<PeerInfo[]> admin_addPeer();
         ResultWrapper<PeerInfo[]> admin_peers();

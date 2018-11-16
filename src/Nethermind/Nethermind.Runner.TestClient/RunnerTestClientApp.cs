@@ -48,6 +48,10 @@ namespace Nethermind.Runner.TestClient
                 new Option("debug_traceBlockByNumber", ("Block Number", ToBlockNumberHex)),
                 new Option("debug_addTxData", ("Block Number", ToBlockNumberHex)),
                 new Option("debug_getFromDb", ("DB Name", p => p), ("Bytes", p => p)),
+                new Option("clique_getSigners"),
+                new Option("clique_getSignersAtHash", ("Block Hash", p => p)),
+                new Option("clique_propose", ("Signer", p => p), ("Vote", ToBool)),
+                new Option("clique_discard", ("Signer", p => p)),
             };
 
             StringBuilder prompt = new StringBuilder("Options:");

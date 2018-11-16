@@ -17,14 +17,11 @@
  */
 
 using System.Threading.Tasks;
-using Nethermind.Config;
-using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc.Module;
 using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner
 {
-    public class NullRunner : IJsonRpcRunner, IEthereumRunner
+    public class NullRunner : IRunner
     {
         private NullRunner()
         {
@@ -41,9 +38,5 @@ namespace Nethermind.Runner
         {
             return Task.CompletedTask;
         }
-
-        public IBlockchainBridge BlockchainBridge => null;
-        public INetBridge NetBridge => null;
-        public IDebugBridge DebugBridge => null;
     }
 }

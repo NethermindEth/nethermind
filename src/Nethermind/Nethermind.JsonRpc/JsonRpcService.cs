@@ -38,13 +38,13 @@ namespace Nethermind.JsonRpc
     {
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly IModuleProvider _moduleProvider;
+        private readonly IRpcModuleProvider _rpcModuleProvider;
 
-        public JsonRpcService(IModuleProvider moduleProvider, IConfigProvider configurationProvider, ILogManager logManager)
+        public JsonRpcService(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
-            _moduleProvider = moduleProvider;
+            _rpcModuleProvider = rpcModuleProvider;
         }
 
         public JsonRpcResponse SendRequest(JsonRpcRequest rpcRequest)
@@ -81,7 +81,7 @@ namespace Nethermind.JsonRpc
         {
             var methodName = rpcRequest.Method.Trim().ToLower();
             
-            var module = _moduleProvider.GetEnabledModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
+            var module = _rpcModuleProvider.GetEnabledModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
             if (module != null)
             {
                 return Execute(rpcRequest, methodName, module.MethodDictionary[methodName], module.ModuleObject);
@@ -229,17 +229,18 @@ namespace Nethermind.JsonRpc
             {
                 return (ErrorType.InvalidRequest, "Method is required");
             }
+            
             methodName = methodName.Trim().ToLower();
 
-            var module = _moduleProvider.GetAllModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
+            var module = _rpcModuleProvider.GetAllModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
             if (module == null)
             {
                 return (ErrorType.MethodNotFound, $"Method {methodName} is not supported");
             }
 
-            if (_moduleProvider.GetEnabledModules().All(x => x.ModuleType != module.ModuleType))
+            if (_rpcModuleProvider.GetEnabledModules().All(x => x.ModuleType != module.ModuleType))
             {
-                return (ErrorType.InvalidRequest, $"{module.ModuleType} Module is disabled");
+                return (ErrorType.InvalidRequest, $"{module.ModuleType} module is disabled");
             }
 
             return (null, null);

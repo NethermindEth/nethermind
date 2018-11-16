@@ -46,6 +46,8 @@ namespace Nethermind.JsonRpc.Module
             _blockchainBridge = blockchainBridge;
             _modelMapper = modelMapper;
         }
+        
+        public ModuleType ModuleType => ModuleType.Eth;
 
         public ResultWrapper<string> eth_protocolVersion()
         {

@@ -53,6 +53,7 @@ namespace Nethermind.Core
         TestCoverage = 16,
         Refactor = 32,
         MissingFunctionality = 64,
-        All = 127
+        Documentation = 128,
+        All = 255
     }
 }
