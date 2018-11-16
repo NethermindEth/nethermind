@@ -494,6 +494,7 @@ namespace Nethermind.Blockchain
                     return;
                 }
 
+                if (_logger.IsTrace) _logger.Trace("Starting sync");
                 _isSyncing = true;
             }
 
