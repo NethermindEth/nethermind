@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
@@ -24,47 +23,42 @@ using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
 {
-    public class ShhModule : ModuleBase, IShhModule
+    public class AdminModule : ModuleBase, IAdminModule
     {
-        public ShhModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
-        {
-        }
-
-        public ResultWrapper<bool> shh_post(WhisperPostMessage message)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public ResultWrapper<Data> shh_newIdentity()
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public ResultWrapper<bool> shh_hasIdentity(Data address)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public ResultWrapper<Quantity> shh_newFilter(WhisperFilter filter)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public ResultWrapper<bool> shh_uninstallFilter(Quantity filterId)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public ResultWrapper<IEnumerable<WhisperMessage>> shh_getFilterChanges(Quantity filterId)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public ResultWrapper<IEnumerable<WhisperMessage>> shh_getMessages(Quantity filterId)
-        {
-            throw new System.NotImplementedException();
-        }
+        public ModuleType ModuleType => ModuleType.Admin;
         
-        public ModuleType ModuleType => ModuleType.Shh;
+        public void Initialize()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public ResultWrapper<PeerInfo[]> admin_addPeer()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public ResultWrapper<PeerInfo[]> admin_peers()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public ResultWrapper<PeerInfo[]> admin_nodeInfo()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public ResultWrapper<PeerInfo[]> admin_dataDir()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public ResultWrapper<PeerInfo[]> admin_setSolc()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public AdminModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
+        {
+        }
     }
 }

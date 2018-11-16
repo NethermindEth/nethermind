@@ -16,9 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Runner.Runners
+using System.Collections.Generic;
+
+namespace Nethermind.JsonRpc.Module
 {
-    public interface IJsonRpcRunner : IRunner
+    public interface IRpcModuleProvider
     {
+        void Register<T>(IModule module) where T : IModule;
+        IReadOnlyCollection<ModuleInfo> GetEnabledModules();
+        IReadOnlyCollection<ModuleInfo> GetAllModules();
     }
 }

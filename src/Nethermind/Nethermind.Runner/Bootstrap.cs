@@ -16,14 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Module;
 
 namespace Nethermind.Runner
 {
@@ -37,46 +31,12 @@ namespace Nethermind.Runner
 
         public static Bootstrap Instance => _instance ?? (_instance = new Bootstrap());
 
-        public IConfigProvider ConfigProvider { private get; set; }
-        public ILogManager LogManager { private get; set; }
-        public IBlockchainBridge BlockchainBridge { private get; set; }
-        public IDebugBridge DebugBridge { private get; set; }
-        public INetBridge NetBridge { private get; set; }
+        public IJsonRpcService JsonRpcService { private get; set; }
 
         public void RegisterJsonRpcServices(IServiceCollection services)
         {
-            if (ConfigProvider == null)
-            {
-                throw new Exception("ConfigProvider is required");
-            }
-
-            if (LogManager == null)
-            {
-                throw new Exception("LogManager is required");
-            }
-
-            if (BlockchainBridge == null)
-            {
-                throw new Exception("BlockchainBridge is required");
-            }
-
             //JsonRPC            
-            services.AddSingleton(ConfigProvider);
-            services.AddSingleton(LogManager);
-            services.AddSingleton(BlockchainBridge);
-            services.AddSingleton(DebugBridge);
-            services.AddSingleton(NetBridge);
-            services.AddSingleton<IJsonSerializer, JsonSerializer>();
-            services.AddSingleton<IJsonRpcModelMapper, JsonRpcModelMapper>();
-            services.AddSingleton<IModuleProvider, ModuleProvider>();
-            services.AddSingleton<INetModule, NetModule>();
-            services.AddSingleton<IWeb3Module, Web3Module>();
-            services.AddSingleton<IEthModule, EthModule>();
-            services.AddSingleton<IShhModule, ShhModule>();
-            services.AddSingleton<INethmModule, NethmModule>();
-            services.AddSingleton<IDebugModule, DebugModule>();
-            services.AddSingleton<ITxPoolModule, TxPoolModule>();
-            services.AddSingleton<IJsonRpcService, JsonRpcService>();
+            services.AddSingleton(JsonRpcService);
         }
     }
 }

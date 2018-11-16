@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Test
         
         public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IModule
         {
-            var moduleProvider = new TestModuleProvider<T>(module);
+            var moduleProvider = new TestRpcModuleProvider<T>(module);
             IJsonRpcService service = new JsonRpcService(moduleProvider, Substitute.For<IConfigProvider>(), NullLogManager.Instance);
             return service;
         }

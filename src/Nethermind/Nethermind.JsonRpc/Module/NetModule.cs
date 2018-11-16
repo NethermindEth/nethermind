@@ -47,5 +47,7 @@ namespace Nethermind.JsonRpc.Module
         {
             return ResultWrapper<Quantity>.Success(new Quantity(_netBridge.PeerCount));
         }
+
+        public ModuleType ModuleType => ModuleType.Net;
     }
 }

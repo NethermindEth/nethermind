@@ -16,14 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.JsonRpc.Module;
+using System;
+using System.Collections.Generic;
 
-namespace Nethermind.Runner.Runners
+namespace Nethermind.JsonRpc.Module
 {
-    public interface IEthereumRunner : IRunner
+    public class NullModuleProvider : IRpcModuleProvider
     {
-        IDebugBridge DebugBridge { get; }
-        IBlockchainBridge BlockchainBridge { get; }
-        INetBridge NetBridge { get; }
+        public static NullModuleProvider Instance = new NullModuleProvider();
+
+        private NullModuleProvider()
+        {
+        }
+
+        public void Register<T>(IModule module) where T : IModule
+        {
+        }
+
+        public IReadOnlyCollection<ModuleInfo> GetEnabledModules()
+        {
+            return ArraySegment<ModuleInfo>.Empty;
+        }
+
+        public IReadOnlyCollection<ModuleInfo> GetAllModules()
+        {
+            return ArraySegment<ModuleInfo>.Empty;
+        }
     }
 }

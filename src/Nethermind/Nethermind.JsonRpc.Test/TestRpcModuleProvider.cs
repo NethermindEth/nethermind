@@ -23,21 +23,26 @@ using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test
 {
-    internal class TestModuleProvider<T> : IModuleProvider where T : class, IModule
+    internal class TestRpcModuleProvider<T> : IRpcModuleProvider where T : class, IModule
     {
-        private ModuleInfo[] _modules;
+        private List<ModuleInfo> _modules = new List<ModuleInfo>();
 
-        public TestModuleProvider(T module)
+        public TestRpcModuleProvider(T module)
         {
-            _modules = new[]
+            _modules.AddRange(new[]
             {
                 new ModuleInfo(ModuleType.Net, typeof(INetModule), typeof(INetModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Eth, typeof(IEthModule), typeof(IEthModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Web3, typeof(IWeb3Module), typeof(IWeb3Module).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Shh, typeof(IShhModule), typeof(ShhModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Nethm, typeof(INethmModule), typeof(INethmModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
-                new ModuleInfo(ModuleType.Debug, typeof(IDebugModule), typeof(IDebugModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
-            };
+                new ModuleInfo(ModuleType.Debug, typeof(IDebugModule), typeof(IDebugModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>())
+            });
+        }
+
+        public void Register<TOther>(IModule module) where TOther : IModule
+        {
+            _modules.Add(new ModuleInfo(module.ModuleType, typeof(TOther), module));
         }
 
         public IReadOnlyCollection<ModuleInfo> GetEnabledModules()

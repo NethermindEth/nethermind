@@ -16,10 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.JsonRpc.DataModel;
+
 namespace Nethermind.JsonRpc.Module
 {
     public interface IModule
     {
+        ModuleType ModuleType { get; }
+        
         void Initialize();
     }
 }

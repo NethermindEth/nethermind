@@ -19,7 +19,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -40,7 +39,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Runner.Runners
 {
-    public class HiveEthereumRunner : IEthereumRunner
+    public class HiveEthereumRunner : IRunner
     {
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockTree _blockTree;
@@ -225,9 +224,5 @@ namespace Nethermind.Runner.Runners
 
             return directory;
         }
-
-        public IBlockchainBridge BlockchainBridge => null;
-        public INetBridge NetBridge => null;
-        public IDebugBridge DebugBridge => null;
     }
 }

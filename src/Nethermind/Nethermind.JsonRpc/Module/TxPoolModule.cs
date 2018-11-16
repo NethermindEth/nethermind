@@ -46,5 +46,7 @@ namespace Nethermind.JsonRpc.Module
         public ResultWrapper<TransactionPoolInspection> txpool_inspect()
             => ResultWrapper<TransactionPoolInspection>.Success(
                 _modelMapper.MapTransactionPoolInspection(_blockchainBridge.GetTransactionPoolInfo()));
+        
+        public ModuleType ModuleType => ModuleType.TxPool;
     }
 }

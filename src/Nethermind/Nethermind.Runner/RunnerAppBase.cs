@@ -27,6 +27,9 @@ using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Core.Utils;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Config;
+using Nethermind.JsonRpc.Module;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Config;
@@ -37,8 +40,8 @@ namespace Nethermind.Runner
     public abstract class RunnerAppBase
     {
         protected ILogger Logger;
-        private IJsonRpcRunner _jsonRpcRunner = NullRunner.Instance;
-        private IEthereumRunner _ethereumRunner = NullRunner.Instance;
+        private IRunner _jsonRpcRunner = NullRunner.Instance;
+        private IRunner _ethereumRunner = NullRunner.Instance;
         private TaskCompletionSource<object> _cancelKeySource;
 
         protected RunnerAppBase(ILogger logger)
@@ -51,6 +54,13 @@ namespace Nethermind.Runner
         {
         }
 
+        private void LogMemoryConfiguration()
+        {
+            if (Logger.IsDebug) Logger.Debug($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
+            if (Logger.IsDebug) Logger.Debug($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
+            if (Logger.IsDebug) Logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
+        }
+        
         public void Run(string[] args)
         {
             var (app, buildConfigProvider, getDbBasePath) = BuildCommandLineApp();
@@ -59,20 +69,20 @@ namespace Nethermind.Runner
             {
                 var configProvider = buildConfigProvider();
                 var initConfig = configProvider.GetConfig<IInitConfig>();
-
                 if (initConfig.RemovingLogFilesEnabled)
                 {
                     RemoveLogFiles(initConfig.LogDirectory);
                 }
 
                 Logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
+                LogMemoryConfiguration();
 
                 var pathDbPath = getDbBasePath();
                 if (!string.IsNullOrWhiteSpace(pathDbPath))
                 {
                     var newDbPath = Path.Combine(pathDbPath, initConfig.BaseDbPath);
                     if(Logger.IsInfo) Logger.Info($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
-                    initConfig.BaseDbPath = newDbPath;
+                    initConfig.BaseDbPath = newDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db"); 
                 }
 
                 Console.Title = initConfig.LogFileName;
@@ -116,32 +126,20 @@ namespace Nethermind.Runner
             e.Cancel = false;
         }
 
+        [Todo(Improve.Refactor, "network config can be handled internally in EthereumRunner")]
         protected async Task StartRunners(IConfigProvider configProvider)
         {
             var initParams = configProvider.GetConfig<IInitConfig>();
             var logManager = new NLogManager(initParams.LogFileName, initParams.LogDirectory);
-
+            IRpcModuleProvider rpcModuleProvider = initParams.JsonRpcEnabled ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>()) : (IRpcModuleProvider)NullModuleProvider.Instance;
+            
             if (initParams.RunAsReceiptsFiller)
             {
                 _ethereumRunner = new ReceiptsFiller(configProvider, logManager);
             }
             else
             {
-                //discovering and setting local, remote ips for client machine
-                var networkHelper = new NetworkHelper(Logger);
-                var localHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
-                var networkConfig = configProvider.GetConfig<INetworkConfig>();
-                networkConfig.MasterExternalIp = localHost;
-                networkConfig.MasterHost = localHost;
-
-                string path = initParams.ChainSpecPath;
-                ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
-                ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
-
-                var nodes = chainSpec.NetworkNodes.Select(nn => GetNode(nn, localHost)).ToArray();
-                networkConfig.BootNodes = nodes;
-                networkConfig.DbBasePath = initParams.BaseDbPath;
-                _ethereumRunner = new EthereumRunner(configProvider, networkHelper, logManager);
+                _ethereumRunner = new EthereumRunner(new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>()), configProvider, logManager);
             }
 
             await _ethereumRunner.Start().ContinueWith(x =>
@@ -151,13 +149,13 @@ namespace Nethermind.Runner
 
             if (initParams.JsonRpcEnabled && !initParams.RunAsReceiptsFiller)
             {
-                Bootstrap.Instance.ConfigProvider = configProvider;
-                Bootstrap.Instance.LogManager = logManager;
-                Bootstrap.Instance.BlockchainBridge = _ethereumRunner.BlockchainBridge;
-                Bootstrap.Instance.DebugBridge = _ethereumRunner.DebugBridge;
-                Bootstrap.Instance.NetBridge = _ethereumRunner.NetBridge;
-
-                _jsonRpcRunner = new JsonRpcRunner(configProvider, logManager);
+                var serializer = new UnforgivingJsonSerializer();
+                rpcModuleProvider.Register<INethmModule>(new NethmModule(configProvider, logManager, serializer));
+                rpcModuleProvider.Register<IShhModule>(new ShhModule(configProvider, logManager, serializer));
+                rpcModuleProvider.Register<IWeb3Module>(new Web3Module(configProvider, logManager, serializer));
+                
+                Bootstrap.Instance.JsonRpcService = new JsonRpcService(rpcModuleProvider, configProvider, logManager);
+                _jsonRpcRunner = new JsonRpcRunner(configProvider, rpcModuleProvider, logManager);
                 await _jsonRpcRunner.Start().ContinueWith(x =>
                 {
                     if (x.IsFaulted && Logger.IsError) Logger.Error("Error during jsonRpc runner start", x.Exception);
@@ -176,18 +174,6 @@ namespace Nethermind.Runner
             _jsonRpcRunner?.StopAsync(); // do not await
             var ethereumTask = _ethereumRunner?.StopAsync() ?? Task.CompletedTask;
             await ethereumTask;
-        }
-
-        private ConfigNode GetNode(NetworkNode networkNode, string localHost)
-        {
-            var node = new ConfigNode
-            {
-                NodeId = networkNode.NodeId.PublicKey.ToString(false),
-                Host = networkNode.Host == "127.0.0.1" ? localHost : networkNode.Host,
-                Port = networkNode.Port,
-                Description = networkNode.Description
-            };
-            return node;
         }
 
         private void RemoveLogFiles(string logDirectory)

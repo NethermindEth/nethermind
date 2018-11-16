@@ -39,7 +39,7 @@ namespace Nethermind.Clique
     {
         private readonly ILogger _logger;
 
-        public CliqueSealEngine(CliqueConfig config, IEthereumSigner signer, PrivateKey key, IDb blocksDb, BlockTree blockTree, ILogManager logManager)
+        public CliqueSealEngine(CliqueConfig config, IEthereumSigner signer, PrivateKey key, IDb blocksDb, IBlockTree blockTree, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -85,7 +85,7 @@ namespace Nethermind.Clique
 
         private const int AddressLength = 20;
 
-        private readonly BlockTree _blockTree;
+        private readonly IBlockTree _blockTree;
         private CliqueConfig _config;
         private IEthereumSigner _signer;
         private PrivateKey _key;

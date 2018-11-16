@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,13 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Logging;
+using Nethermind.JsonRpc.DataModel;
+using Nethermind.JsonRpc.Module;
 
-namespace Nethermind.JsonRpc.Module
+namespace Nethermind.Clique
 {
-    public interface IModuleProvider
+    public class CliqueModule : ModuleBase, ICliqueModule
     {
-        IReadOnlyCollection<ModuleInfo> GetEnabledModules();
-        IReadOnlyCollection<ModuleInfo> GetAllModules();
+        public CliqueModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
+        {
+        }
+
+        public ModuleType ModuleType => ModuleType.Clique;
     }
 }

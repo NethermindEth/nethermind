@@ -44,7 +44,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Runner.Runners
 {
-    public class ReceiptsFiller : IEthereumRunner
+    public class ReceiptsFiller : IRunner
     {
         private static ILogManager _logManager;
         private static ILogger _logger;
@@ -62,10 +62,6 @@ namespace Nethermind.Runner.Runners
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _logManager = logManager;
         }
-
-        public IBlockchainBridge BlockchainBridge => null;
-        public INetBridge NetBridge => null;
-        public IDebugBridge DebugBridge => null;
 
         public async Task Start()
         {

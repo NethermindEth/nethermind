@@ -16,16 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Nethermind.Core;
 
 namespace Nethermind.JsonRpc.DataModel
 {
+    [Todo(Improve.Refactor, "Can we use string instead to avoid coupling and introduce conventions?")]
     public enum ModuleType
     {
+        Admin,
+        Clique,
         Eth,
         Net,
         Web3,

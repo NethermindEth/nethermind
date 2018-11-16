@@ -25,7 +25,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.JsonRpc.DataModel.Block;
@@ -38,6 +37,7 @@ using StorageTraceEntry = Nethermind.JsonRpc.DataModel.StorageTraceEntry;
 
 namespace Nethermind.JsonRpc
 {
+    [Todo(Improve.Refactor, "Allow separate mappers to be registered the same way as modules")]
     public class JsonRpcModelMapper : IJsonRpcModelMapper
     {
         public Block MapBlock(Core.Block block, bool returnFullTransactionObjects)

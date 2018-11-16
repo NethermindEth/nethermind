@@ -23,6 +23,7 @@ namespace Nethermind.Runner.Config
     public interface IInitConfig : IConfig
     {
         bool JsonRpcEnabled { get; set; }
+        string[] JsonRpcEnabledModules { get; set; }
         bool DiscoveryEnabled { get; set; }
         bool SynchronizationEnabled { get; set; }
         bool NetworkEnabled { get; set; }
@@ -38,7 +39,6 @@ namespace Nethermind.Runner.Config
         string BaseDbPath { get; set; }
         string TestNodeKey { get; set; }
         string GenesisHash { get; set; }
-        string[] JsonRpcEnabledModules { get; set; }
         bool RemovingLogFilesEnabled { get; set; }
         string LogFileName { get; set; }
         string LogDirectory { get; set; }
