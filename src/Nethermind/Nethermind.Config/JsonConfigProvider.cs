@@ -112,7 +112,7 @@ namespace Nethermind.Config
             {
                 if (!itemsDict.ContainsKey(configItem.Key))
                 {
-                    itemsDict[configItem.Key] = configItem.Value.ToString();
+                    itemsDict[configItem.Key] = GetItemValue(configItem.Key, configItem.Value.ToString());
                 }
                 else
                 {
@@ -197,6 +197,18 @@ namespace Nethermind.Config
             }
 
             property.SetValue(configInstance, value);
+        }
+
+        private string GetItemValue(string key, string value)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return value;
+            }
+            
+            var variable = Environment.GetEnvironmentVariable($"NETHERMIND_{key.ToUpperInvariant()}");
+
+            return string.IsNullOrWhiteSpace(variable) ? value : variable;
         }
 
         private object GetValue(Type valueType, string itemValue, string key)
