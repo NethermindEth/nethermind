@@ -71,33 +71,25 @@ namespace Nethermind.Blockchain
             _specProvider = specProvider;
             _transactionPool = transactionPool;
 
-            try
+            ChainLevelInfo genesisLevel = LoadLevel(0);
+            if (genesisLevel != null)
             {
-                _blockInfoLock.EnterWriteLock();
-                ChainLevelInfo genesisLevel = LoadLevel(0);
-                if (genesisLevel != null)
+                if (genesisLevel.BlockInfos.Length != 1)
                 {
-                    if (genesisLevel.BlockInfos.Length != 1)
-                    {
-                        // just for corrupted test bases
-                        genesisLevel.BlockInfos = new[] {genesisLevel.BlockInfos[0]};
-                        PersistLevel(0, genesisLevel);
-                        //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
-                    }
-
-                    if (genesisLevel.BlockInfos[0].WasProcessed)
-                    {
-                        Block genesisBlock = Load(genesisLevel.BlockInfos[0].BlockHash).Block;
-                        Genesis = genesisBlock.Header;
-                        LoadHeadBlock();
-                    }
-
-                    LoadBestKnown();
+                    // just for corrupted test bases
+                    genesisLevel.BlockInfos = new[] {genesisLevel.BlockInfos[0]};
+                    PersistLevel(0, genesisLevel);
+                    //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
-            }
-            finally
-            {
-                _blockInfoLock.ExitWriteLock();
+
+                if (genesisLevel.BlockInfos[0].WasProcessed)
+                {
+                    Block genesisBlock = Load(genesisLevel.BlockInfos[0].BlockHash).Block;
+                    Genesis = genesisBlock.Header;
+                    LoadHeadBlock();
+                }
+
+                LoadBestKnown();
             }
 
             if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggested?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}");
@@ -281,7 +273,17 @@ namespace Nethermind.Blockchain
             SetTotalDifficulty(block);
             SetTotalTransactions(block);
             BlockInfo blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
-            UpdateOrCreateLevel(block.Number, blockInfo);
+
+            try
+            {
+                _blockInfoLock.EnterWriteLock();
+                UpdateOrCreateLevel(block.Number, blockInfo);
+            }
+            finally
+            {
+                _blockInfoLock.ExitWriteLock();
+            }
+
 
             if (block.IsGenesis || block.TotalDifficulty > (BestSuggested?.TotalDifficulty ?? 0))
             {
@@ -434,16 +436,16 @@ namespace Nethermind.Blockchain
                         PersistLevel(levelNumber, level);
                     }
                 }
+
+                for (int i = 0; i < processedBlocks.Length; i++)
+                {
+                    _blockCache.Set(processedBlocks[i].Hash, processedBlocks[i]);
+                    MoveToMain(processedBlocks[i]);
+                }
             }
             finally
             {
                 _blockInfoLock.ExitWriteLock();
-            }
-
-            for (int i = 0; i < processedBlocks.Length; i++)
-            {
-                _blockCache.Set(processedBlocks[i].Hash, processedBlocks[i]);
-                MoveToMain(processedBlocks[i]);
             }
         }
 
@@ -453,37 +455,29 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
 
-            try
+            ChainLevelInfo level = LoadLevel(block.Number);
+            int? index = FindIndex(block.Hash, level);
+            if (index == null)
             {
-                _blockInfoLock.EnterWriteLock();
-                ChainLevelInfo level = LoadLevel(block.Number);
-                int? index = FindIndex(block.Hash, level);
-                if (index == null)
-                {
-                    throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.HashAndNumber)} to main");
-                }
-
-
-                BlockInfo info = level.BlockInfos[index.Value];
-                info.WasProcessed = true;
-                if (index.Value != 0)
-                {
-                    (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
-                }
-
-                // tks: in testing chains we have a chain full of processed blocks that we process again
-                //if (level.HasBlockOnMainChain)
-                //{
-                //    throw new InvalidOperationException("When moving to main encountered a block in main on the same level");
-                //}
-
-                level.HasBlockOnMainChain = true;
-                PersistLevel(block.Number, level);
+                throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.HashAndNumber)} to main");
             }
-            finally
+
+
+            BlockInfo info = level.BlockInfos[index.Value];
+            info.WasProcessed = true;
+            if (index.Value != 0)
             {
-                _blockInfoLock.ExitWriteLock();
+                (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
             }
+
+            // tks: in testing chains we have a chain full of processed blocks that we process again
+            //if (level.HasBlockOnMainChain)
+            //{
+            //    throw new InvalidOperationException("When moving to main encountered a block in main on the same level");
+            //}
+
+            level.HasBlockOnMainChain = true;
+            PersistLevel(block.Number, level);
 
             BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
 
@@ -586,37 +580,29 @@ namespace Nethermind.Blockchain
 
         private void UpdateOrCreateLevel(UInt256 number, BlockInfo blockInfo)
         {
-            try
+            ChainLevelInfo level = LoadLevel(number);
+            if (level != null)
             {
-                _blockInfoLock.EnterWriteLock();
-                ChainLevelInfo level = LoadLevel(number);
-                if (level != null)
+                BlockInfo[] blockInfos = new BlockInfo[level.BlockInfos.Length + 1];
+                for (int i = 0; i < level.BlockInfos.Length; i++)
                 {
-                    BlockInfo[] blockInfos = new BlockInfo[level.BlockInfos.Length + 1];
-                    for (int i = 0; i < level.BlockInfos.Length; i++)
-                    {
-                        blockInfos[i] = level.BlockInfos[i];
-                    }
-
-                    blockInfos[blockInfos.Length - 1] = blockInfo;
-                    level.BlockInfos = blockInfos;
-                }
-                else
-                {
-                    if (number > BestKnownNumber)
-                    {
-                        BestKnownNumber = number;
-                    }
-
-                    level = new ChainLevelInfo(false, new[] {blockInfo});
+                    blockInfos[i] = level.BlockInfos[i];
                 }
 
-                PersistLevel(number, level);
+                blockInfos[blockInfos.Length - 1] = blockInfo;
+                level.BlockInfos = blockInfos;
             }
-            finally
+            else
             {
-                _blockInfoLock.ExitWriteLock();
+                if (number > BestKnownNumber)
+                {
+                    BestKnownNumber = number;
+                }
+
+                level = new ChainLevelInfo(false, new[] {blockInfo});
             }
+
+            PersistLevel(number, level);
         }
 
         /* error-prone: all methods that load a level, change it and then persist need to execute everything under a lock */
