@@ -103,7 +103,8 @@ namespace Nethermind.Config
 
         private void LoadModule(JToken moduleEntry)
         {
-            var configModule = string.Concat("I", (string) moduleEntry["ConfigModule"]);
+            var entryName = (string) moduleEntry["ConfigModule"];
+            var configModule = string.Concat("I", entryName);
 
             var configItems = (JObject) moduleEntry["ConfigItems"];
             var itemsDict = new Dictionary<string, string>();
@@ -112,7 +113,7 @@ namespace Nethermind.Config
             {
                 if (!itemsDict.ContainsKey(configItem.Key))
                 {
-                    itemsDict[configItem.Key] = GetItemValue(configItem.Key, configItem.Value.ToString());
+                    itemsDict[configItem.Key] = GetItemValue(entryName, configItem.Key, configItem.Value.ToString());
                 }
                 else
                 {
@@ -144,7 +145,7 @@ namespace Nethermind.Config
             }
         }
 
-        private void SetConfigValue(object configInstance, Type moduleType, KeyValuePair<string, string> item)
+        private void SetConfigValue( object configInstance, Type moduleType, KeyValuePair<string, string> item)
         {
             var configProperties = _properties[moduleType];
             var property = configProperties.FirstOrDefault(x => CompareIgnoreCaseTrim(x.Name, item.Key));
@@ -199,16 +200,17 @@ namespace Nethermind.Config
             property.SetValue(configInstance, value);
         }
 
-        private string GetItemValue(string key, string value)
+        private string GetItemValue(string configModule, string key, string value)
         {
             if (string.IsNullOrWhiteSpace(key))
             {
                 return value;
             }
-            
-            var variable = Environment.GetEnvironmentVariable($"NETHERMIND_{key.ToUpperInvariant()}");
 
-            return string.IsNullOrWhiteSpace(variable) ? value : variable;
+            var variableName = $"NETHERMIND_{configModule.ToUpperInvariant()}_{key.ToUpperInvariant()}";
+            var variableValue = Environment.GetEnvironmentVariable(variableName);
+
+            return string.IsNullOrWhiteSpace(variableValue) ? value : variableValue;
         }
 
         private object GetValue(Type valueType, string itemValue, string key)
