@@ -242,7 +242,7 @@ namespace Nethermind.Blockchain
                     {
                         if (_logger.IsTrace) _logger.Trace($"AddPeer failed due to timeout: {t.Exception.Message}");
                     }
-                    else if (_logger.IsDebug) _logger.Debug("AddPeer failed {t.Exception}");
+                    else if (_logger.IsDebug) _logger.Debug($"AddPeer failed {t.Exception}");
                 }
                 else if (t.IsCanceled)
                 {
