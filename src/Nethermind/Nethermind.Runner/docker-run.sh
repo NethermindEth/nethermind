@@ -1,2 +1,2 @@
 #!/bin/bash
-docker run -p 8545:8545 -it nethermind.runner
+docker run -p 8345:8345 -it nethermind.runner
