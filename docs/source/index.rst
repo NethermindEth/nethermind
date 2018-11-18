@@ -6,28 +6,15 @@
 Welcome to nethermind's documentation!
 ======================================
 
-
-Another simple header
-*********************
-
-Here is some txt explaining some very complicates stuff.
-
-    print 'hello'
-    >> hello
-
-Guide
-*****
+ToC
+***
 
 .. toctree::
    :maxdepth: 2
    
+   download
+   releases
+   build
    networks
+   configuration
    docker
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
