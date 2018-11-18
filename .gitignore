@@ -332,7 +332,7 @@ ASALocalRun/
 .localhistory/
 
 .vscode/
-dosc/build/
+docs/build/
 out/
 db/
 src/Nethermind/Nethermind.Runner/git-hash
