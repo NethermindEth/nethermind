@@ -17,4 +17,6 @@ ToC
    build
    networks
    configuration
+   platforms
    docker
+   contact

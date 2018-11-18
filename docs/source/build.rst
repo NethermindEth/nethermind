@@ -10,7 +10,8 @@ IDE
 SDKs
 ^^^^
 
-* Windows https://www.microsoft.com/net/download?initial-os=window* Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)
+* Windows https://www.microsoft.com/net/download?initial-os=windows
+* Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)
 * Mac https://www.microsoft.com/net/download?initial-os=macos
 
 Linux
