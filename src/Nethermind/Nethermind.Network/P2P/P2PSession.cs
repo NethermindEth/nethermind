@@ -96,7 +96,7 @@ namespace Nethermind.Network.P2P
         public NodeId RemoteNodeId { get; set; }
         public string RemoteHost { get; set; }
         public int? RemotePort { get; set; }
-        public ConnectionDirection ConnectionDirection { get; set; }
+        public ConnectionDirection ConnectionDirection { get; }
         public string SessionId { get; }
 
         public INodeStats NodeStats

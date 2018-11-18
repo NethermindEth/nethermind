@@ -37,8 +37,8 @@ namespace Nethermind.Stats
         private ConcurrentDictionary<NodeLatencyStatType, ConcurrentBag<NodeLatencyStatsEvent>> _latencyStatsLog;
         private ConcurrentDictionary<NodeLatencyStatType, (long EventCount, decimal? Latency)> _latencyStats;
         private ConcurrentDictionary<NodeLatencyStatType, object> _latencyStatsLocks;
-        private Dictionary<NodeStatsEventType, AtomicLong> _statCounters;
-        private Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;        
+        private ConcurrentDictionary<NodeStatsEventType, AtomicLong> _statCounters;
+        private ConcurrentDictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;        
         private readonly ConcurrentBag<NodeStatsEvent> _eventHistory;
 
         public NodeStats(Node node, IStatsConfig statsConfig, ILogManager logManager)
@@ -73,6 +73,15 @@ namespace Nethermind.Stats
         {
             _lastDisconnects[disconnectType] = (disconnectReason, DateTime.Now);
             LastDisconnectTime = DateTime.Now;
+            if (disconnectType == DisconnectType.Local)
+            {
+                LastLocalDisconnectReason = disconnectReason;
+            }
+            else if (disconnectType == DisconnectType.Remote)
+            {
+                LastRemoteDisconnectReason = disconnectReason;
+            }
+            
             _statCounters[NodeStatsEventType.Disconnect].Increment();
             CaptureEvent(NodeStatsEventType.Disconnect, null, null, new DisconnectDetails
             {
@@ -171,6 +180,10 @@ namespace Nethermind.Stats
         public bool IsTrustedPeer { get; set; }
 
         public DateTime? LastDisconnectTime { get; set; }
+       
+        public DisconnectReason? LastLocalDisconnectReason { get; set; }
+        
+        public DisconnectReason? LastRemoteDisconnectReason { get; set; }
 
         public DateTime? LastFailedConnectionTime { get; set; }
 
@@ -314,7 +327,7 @@ namespace Nethermind.Stats
         private void Initialize()
         {
             IsTrustedPeer = false;
-            _statCounters = new Dictionary<NodeStatsEventType, AtomicLong>();
+            _statCounters = new ConcurrentDictionary<NodeStatsEventType, AtomicLong>();
             foreach (NodeStatsEventType statType in Enum.GetValues(typeof(NodeStatsEventType)))
             {
                 _statCounters[statType] = new AtomicLong();
@@ -330,7 +343,7 @@ namespace Nethermind.Stats
                 _latencyStatsLocks[statType] = new object();
             }
 
-            _lastDisconnects = new Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)>();
+            _lastDisconnects = new ConcurrentDictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)>();
         }
     }
 }

@@ -134,6 +134,10 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_logger.IsTrace) _logger.Trace($"Frame decoding failed (SocketException): {exception}");
             }
+            else if (exception.Message?.Contains("MAC mismatch") ?? false)
+            {
+                if (_logger.IsTrace) _logger.Trace($"{GetType().Name} MAC mismatch error: {exception}");
+            }
             else
             {
                 if (_logger.IsDebug) _logger.Debug($"{GetType().Name} error: {exception}");

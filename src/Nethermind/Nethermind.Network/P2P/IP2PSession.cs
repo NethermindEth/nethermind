@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P
         NodeId RemoteNodeId { get; set; }
         string RemoteHost { get; set; }
         int? RemotePort { get; set; }
-        ConnectionDirection ConnectionDirection { get; set; }
+        ConnectionDirection ConnectionDirection { get; }
         string SessionId { get; }
         INodeStats NodeStats { get; }
 

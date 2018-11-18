@@ -41,6 +41,8 @@ namespace Nethermind.Stats
         long NewPersistedNodeReputation { get; }
         bool IsTrustedPeer { get; set; }
         DateTime? LastDisconnectTime { get; set; }
+        DisconnectReason? LastLocalDisconnectReason { get; set; }
+        DisconnectReason? LastRemoteDisconnectReason { get; set; }
         DateTime? LastFailedConnectionTime { get; set; }
         P2PNodeDetails P2PNodeDetails { get; }
         EthNodeDetails EthNodeDetails { get; }

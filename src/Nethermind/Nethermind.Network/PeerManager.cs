@@ -206,6 +206,8 @@ namespace Nethermind.Network
                     _isPeerUpdateInProgress = true;
                 }
                 
+                //_logger.Info($"TESTTEST All active peers: {_activePeers.Count}, can: {_candidatePeers.Count}, peers: IN: {_activePeers.Values.Count(x => x.ConnectionDirection == ConnectionDirection.In)}, OUT: {_activePeers.Values.Count(x => x.ConnectionDirection == ConnectionDirection.Out)}");
+                
                 int availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
                 if (availableActiveCount == 0)
                 {
@@ -293,7 +295,10 @@ namespace Nethermind.Network
                     {
                         string countersLog = string.Join(", ", candidateSelection.Counters.Select(x => $"{x.Key.ToString()}: {x.Value}"));
                         _logger.Debug($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(candidateSelection.IncompatiblePeers)}, EligibleCandidates: {candidateSelection.Candidates.Count()}, " +
-                                      $"Tried: {tryCount}, Rounds: {connectionRounds}, Failed initial connect: {failedInitialConnect}, Established initial connect: {newActiveNodes}, Current candidate peers: {_candidatePeers.Count}, Current active peers: {_activePeers.Count}");
+                                      $"Tried: {tryCount}, Rounds: {connectionRounds}, Failed initial connect: {failedInitialConnect}, Established initial connect: {newActiveNodes}, " +
+                                      $"Current candidate peers: {_candidatePeers.Count}, Current active peers: {_activePeers.Count} " +
+                                      $"[Out: {_activePeers.Count(x => x.Value.ConnectionDirection == ConnectionDirection.Out)} | " +
+                                      $"In: {_activePeers.Count(x => x.Value.ConnectionDirection == ConnectionDirection.In)}]");
                     }
 
                     _prevActivePeersCount = activePeersCount;
@@ -454,13 +459,29 @@ namespace Nethermind.Network
             }
 
             var timePassed = DateTime.Now.Subtract(time.Value).TotalMilliseconds;
-            var result = timePassed > _networkConfig.DisconnectDelay;
+            var result = timePassed > GetDelayTime(peer);
             if (!result && _logger.IsTrace)
             {
                 _logger.Trace($"Skipping connection to peer, due to disconnect delay, time from last disconnect: {timePassed}, delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}");
             }
 
             return result;
+        }
+
+        private int GetDelayTime(Peer peer)
+        {
+            //In case of last disconnect reason is AlreadyConnected we randomize small delay time 
+            var lastDisconnectReason = peer.NodeStats.LastLocalDisconnectReason;
+            if (lastDisconnectReason.HasValue && lastDisconnectReason.Value == DisconnectReason.AlreadyConnected)
+            {
+                var random = new Random();
+                var randomizedDelay = random.Next(500);
+                if (_logger.IsWarn) _logger.Warn($"Randomized delay: {randomizedDelay}, peer: {peer.Node.Id}");
+                return randomizedDelay;
+            }
+            if (_logger.IsWarn) _logger.Warn($"Regular delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}, lastDisconnectReason: {lastDisconnectReason?.ToString() ?? "none"}");
+
+            return _networkConfig.DisconnectDelay;
         }
 
         private bool CheckLastFailedConnectionTime(Peer peer)
@@ -525,7 +546,7 @@ namespace Nethermind.Network
                 var nodeStats = _nodeStatsProvider.GetOrAddNodeStats(node);
                 nodeStats.CurrentPersistedNodeReputation = persistedPeer.Reputation;
 
-                var peer = new Peer(node, nodeStats);
+                var peer = new Peer(node, nodeStats, ConnectionDirection.Out);
                 if (!_candidatePeers.TryAdd(node.Id, peer))
                 {
                     continue;
@@ -559,7 +580,7 @@ namespace Nethermind.Network
                 var nodeStats = _nodeStatsProvider.GetOrAddNodeStats(node);
                 nodeStats.IsTrustedPeer = true;
 
-                var peer = new Peer(node, nodeStats);
+                var peer = new Peer(node, nodeStats, ConnectionDirection.Out);
                 if (!_candidatePeers.TryAdd(node.Id, peer))
                 {
                     continue;
@@ -687,7 +708,7 @@ namespace Nethermind.Network
 
                 if (peer.AddedToDiscovery)
                 {
-                    if (_logger.IsError) _logger.Error($"Discovery note already initiialized with wrong port, nodeId: {peer.Node.Id}, port: {peer.Node.Port}, listen port: {eventArgs.ListenPort}");
+                    if (_logger.IsError) _logger.Error($"Discovery note already initialized with wrong port, nodeId: {peer.Node.Id}, port: {peer.Node.Port}, listen port: {eventArgs.ListenPort}");
                 }
 
                 peer.Node.Port = eventArgs.ListenPort;
@@ -761,9 +782,8 @@ namespace Nethermind.Network
             else
             {
                 var node = _nodeFactory.CreateNode(session.RemoteNodeId, session.RemoteHost, session.RemotePort ?? 0);
-                peer = new Peer(node, _nodeStatsProvider.GetOrAddNodeStats(node))
+                peer = new Peer(node, _nodeStatsProvider.GetOrAddNodeStats(node), session.ConnectionDirection)
                 {
-                    ConnectionDirection = session.ConnectionDirection,
                     Session = session
                 };
             }
@@ -874,19 +894,19 @@ namespace Nethermind.Network
 
             if (_activePeers.TryGetValue(session.RemoteNodeId, out var activePeer))
             {
+                //we want to update reputation always
+                activePeer.NodeStats.AddNodeStatsDisconnectEvent(e.DisconnectType, e.DisconnectReason);
+                
                 if (activePeer.Session?.SessionId != session.SessionId)
                 {
                     if (_logger.IsTrace)
                     {
                         _logger.Trace($"Received disconnect on a different session than the active peer runs. Ignoring. Id: {activePeer.Node.Id}");
                     }
-
-                    //TODO verify we do not want to change reputation here
                     return;
                 }
 
                 RemoveActivePeer(session.RemoteNodeId, "peer disconnected");
-                activePeer.NodeStats.AddNodeStatsDisconnectEvent(e.DisconnectType, e.DisconnectReason);
                 if (activePeer.SynchronizationPeer != null)
                 {
                     _synchronizationManager.RemovePeer(activePeer.SynchronizationPeer);
@@ -963,7 +983,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            var peer = new Peer(nodeEventArgs.Node, nodeEventArgs.NodeStats)
+            var peer = new Peer(nodeEventArgs.Node, nodeEventArgs.NodeStats, ConnectionDirection.Out)
             {
                 AddedToDiscovery = true
             };
@@ -1310,11 +1330,12 @@ namespace Nethermind.Network
 
         internal class Peer
         {
-            public Peer(Node node, INodeStats nodeStats)
+            public Peer(Node node, INodeStats nodeStats, ConnectionDirection connectionDirection)
             {
                 Node = node;
                 //NodeLifecycleManager = manager;
                 NodeStats = nodeStats;
+                ConnectionDirection = connectionDirection;
             }
 
             public Node Node { get; }

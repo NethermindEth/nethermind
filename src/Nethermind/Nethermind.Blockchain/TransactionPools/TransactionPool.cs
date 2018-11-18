@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.TransactionPools
                 return;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Added a peer: {peer.ClientId}");
+            if (_logger.IsTrace) _logger.Trace($"Added a peer: {peer.ClientId}");
         }
 
         public void RemovePeer(NodeId nodeId)
@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.TransactionPools
                 return;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Removed a peer: {nodeId}");
+            if (_logger.IsTrace) _logger.Trace($"Removed a peer: {nodeId}");
         }
 
         public void AddTransaction(Transaction transaction, UInt256 blockNumber)
@@ -113,6 +113,7 @@ namespace Nethermind.Blockchain.TransactionPools
             var recoveredAddress = _signer.RecoverAddress(transaction, blockNumber);
             if (recoveredAddress != transaction.SenderAddress)
             {
+                //return;
                 throw new InvalidOperationException("Invalid signature");
             }
 
@@ -130,7 +131,7 @@ namespace Nethermind.Blockchain.TransactionPools
             }
 
             _transactionStorage.Add(transaction, blockNumber);
-            if (_logger.IsDebug) _logger.Debug($"Added a transaction: {transaction.Hash}");
+            if (_logger.IsTrace) _logger.Trace($"Added a transaction: {transaction.Hash}");
         }
 
         private void OnTimerElapsed(object sender, ElapsedEventArgs eventArgs)
@@ -167,7 +168,7 @@ namespace Nethermind.Blockchain.TransactionPools
             }
 
             _transactionStorage.Delete(hash);
-            if (_logger.IsDebug) _logger.Debug($"Deleted a transaction: {hash}");
+            if (_logger.IsTrace) _logger.Trace($"Deleted a transaction: {hash}");
         }
 
         public event EventHandler<TransactionEventArgs> NewPending;
@@ -192,7 +193,7 @@ namespace Nethermind.Blockchain.TransactionPools
                 peer.SendNewTransaction(transaction);
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Notified {peers.Count} peers about a transaction: {transaction.Hash}");
+            if (_logger.IsTrace) _logger.Trace($"Notified {peers.Count} peers about a transaction: {transaction.Hash}");
         }
 
         private List<ISynchronizationPeer> SelectPeers(Transaction transaction)
