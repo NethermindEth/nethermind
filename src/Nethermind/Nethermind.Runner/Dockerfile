@@ -4,7 +4,6 @@ RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 unzip
 
 WORKDIR /app
 COPY ./bin/docker .
-
 ENV NETHERMIND_CONFIG mainnet
 ENV NETHERMIND_INITCONFIG_JSONRPCENABLED false
 
