@@ -14,13 +14,7 @@ ToC
    
    download
    releases
+   build
    networks
+   configuration
    docker
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
