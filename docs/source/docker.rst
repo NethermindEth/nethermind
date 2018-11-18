@@ -1,4 +1,50 @@
 Docker
-*******
+******
 
-Docker
+https://hub.docker.com/r/nethermind/nethermind.runner/
+
+Docker pull command::
+
+    docker pull nethermind/nethermind.runner
+
+In order to start Nethermind.Runner, simply run::
+
+    docker run -it nethermind/nethermind.runner
+
+To enable JSON RPC, publish port 8345 and set NETHERMIND_INITCONFIG_JSONRPCENABLED=true::
+    
+    docker run -it -p 8345:8345 -e NETHERMIND_INITCONFIG_JSONRPCENABLED=true nethermind/nethermind.runner
+
+To enable P2P communication, additionally, publish port 30312.
+
+To switch the network, set NETHERMIND_CONFIG variable (default value is mainnet).
+
+Available configurations
+
+- mainnet
+- goerli
+- rinkeby
+- ropsten
+- mainnet
+
+For example::
+
+    docker run -it -e NETHERMIND_CONFIG=goerli nethermind/nethermind.runner
+
+It's possible to modify each configuration property via environment variable, using a simple convention::
+    
+    NETHERMIND_{MODULE}_{PROPERTY}
+
+For example::
+
+    NETHERMIND_INITCONFIG_NETWORKENABLED=true
+
+You can find all of the possible settings `here <https://github.com/NethermindEth/nethermind/tree/master/src/Nethermind/Nethermind.Runner/configs/>`_.
+
+To fully override a configuration file, you need to use a volume::
+
+    -v $/home/mainnet.cfg:/app/configs/mainnet.cfg
+
+In order to map an internal database to a local volume, you need to map /app/nethermind_db/::
+
+    -v /tmp/nethermind_db:/app/nethermind_db
