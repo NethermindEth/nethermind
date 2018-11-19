@@ -1,6 +1,6 @@
 {
-  "ReleasePath": "f:\\IT\\projects\\Crypto\\code\\nethermind\\src\\Nethermind\\Nethermind.Runner\\bin\\Debug\\netcoreapp2.1",
-  "DbBasePath": "f:\\IT\\projects\\Crypto\\db\\spawner_goerli_private",
+  "ReleasePath": "D:/GoerliRunner",
+  "DbBasePath": "D:/GoerliPrivateDb",
   "Runners": {
     "Sealer1": [
       {

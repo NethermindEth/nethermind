@@ -76,7 +76,8 @@ namespace Nethermind.Clique
             _sealEngine = cliqueSealEngine ?? throw new ArgumentNullException(nameof(_sealEngine));
             _config = config ?? throw new ArgumentNullException(nameof(_config));
             _address = address ?? throw new ArgumentNullException(nameof(_address));
-
+            _lastBlock = _blockTree.Head;
+            
             if (_sealEngine.CanSeal)
             {
                 _timer.AutoReset = false;
@@ -114,6 +115,11 @@ namespace Nethermind.Clique
         {
             if (_scheduledBlock == null)
             {
+                if (_timestamp.EpochSeconds - _lastBlock.Timestamp > 15)
+                {
+                    ScheduleNewBlock();
+                }
+                
                 _timer.Enabled = true;
                 return;
             }
@@ -131,6 +137,10 @@ namespace Nethermind.Clique
                 {
                     _blockTree.SuggestBlock(_scheduledBlock);
                 }
+                else
+                {
+                    if(_logger.IsInfo) _logger.Info($"Dropping a losing block {_scheduledBlock.ToString(Block.Format.Short)}");
+                }
                 
                 _scheduledBlock = null;
             }
@@ -143,7 +153,15 @@ namespace Nethermind.Clique
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
+        private BlockHeader _lastBlock;
+        
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        {
+            _lastBlock = e.Block.Header;
+            ScheduleNewBlock();
+        }
+
+        private void ScheduleNewBlock()
         {
             CancellationToken token;
             lock (_syncToken)
@@ -164,21 +182,21 @@ namespace Nethermind.Clique
                 return;
             }
 
-            if(_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
+            if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
             Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
-            if(_logger.IsInfo) _logger.Info($"Sealing prepared block {processedBlock.Number}");
+            if (_logger.IsInfo) _logger.Info($"Sealing prepared block {processedBlock.Number}");
             _sealEngine.SealBlock(processedBlock, token).ContinueWith(t =>
             {
                 if (t.IsCompletedSuccessfully)
                 {
                     if (t.Result != null)
                     {
-                        if(_logger.IsInfo) _logger.Info($"Sealed block {t.Result.Header.ToString(BlockHeader.Format.Short)}");
+                        if (_logger.IsInfo) _logger.Info($"Sealed block {t.Result.Header.ToString(BlockHeader.Format.Short)}");
                         _scheduledBlock = t.Result;
                     }
                     else
                     {
-                        if(_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.Number} (null seal)");    
+                        if (_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.Number} (null seal)");
                     }
                 }
                 else if (t.IsFaulted)
