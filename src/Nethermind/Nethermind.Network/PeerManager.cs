@@ -888,7 +888,7 @@ namespace Nethermind.Network
 
             if (session.RemoteNodeId == null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Disconnect on session with no RemoteNodeId, sessionId: {session.SessionId}");
+                if (_logger.IsTrace) _logger.Trace($"Disconnect on session with no RemoteNodeId, sessionId: {session.SessionId}");
                 return;
             }
 
