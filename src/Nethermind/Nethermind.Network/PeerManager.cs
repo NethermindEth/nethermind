@@ -479,7 +479,7 @@ namespace Nethermind.Network
                 if (_logger.IsDebug) _logger.Debug($"Randomized delay: {randomizedDelay}, peer: {peer.Node.Id}");
                 return randomizedDelay;
             }
-            if (_logger.IsWarn) _logger.Warn($"Regular delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}, lastDisconnectReason: {lastDisconnectReason?.ToString() ?? "none"}");
+            if (_logger.IsDebug) _logger.Debug($"Regular delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}, lastDisconnectReason: {lastDisconnectReason?.ToString() ?? "none"}");
 
             return _networkConfig.DisconnectDelay;
         }
