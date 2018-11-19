@@ -7,6 +7,11 @@
 [![GitHub release](https://img.shields.io/github/release/NethermindEth/nethermind.svg)](https://github.com/NethermindEth/nethermind/releases)
 [![ReadheDocs](https://readthedocs.org/projects/nethermind/badge/?version=latest)](https://nethermind.readthedocs.io)
 
+Travis CI:     https://travis-ci.org/NethermindEth/nethermind
+Documentation: https://nethermind.readthedocs.io
+Releases:      https://github.com/NethermindEth/nethermind/releases
+Gitter:        https://gitter.im/nethermindeth/nethermind
+
 ## Download and run:
 [Windows](http://downloads.nethermind.io)<br/>
 [Linux](http://downloads.nethermind.io)<br/>
