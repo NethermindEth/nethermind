@@ -125,17 +125,9 @@ namespace Nethermind.Clique
             }
 
             // Bail out if we're unauthorized to sign a block
-            Snapshot snapshot = GetOrCreateSnapshot(number - 1, header.ParentHash);
-            if (!snapshot.Signers.ContainsKey(_key.Address))
+            if (!CanSignBlock(block.Number, block.ParentHash))
             {
-                if(_logger.IsInfo) _logger.Info($"Not authorized to seal the block {block.Number}");
-                return null;
-            }
-
-            // If we're amongst the recent signers, wait for the next block
-            if (snapshot.HasSignedRecently(number, _key.Address))
-            {
-                if(_logger.IsInfo) _logger.Info($"Signed recently so skipping this block ({block.Number})");
+                if (_logger.IsInfo) _logger.Info($"Not authorized to seal the block {block.Number}");
                 return null;
             }
 
@@ -150,6 +142,25 @@ namespace Nethermind.Clique
             header.ExtraData[header.ExtraData.Length - 1] = recoveryId;
 
             return block;
+        }
+
+        public bool CanSignBlock(UInt256 blockNumber, Keccak parentHash)
+        {
+            Snapshot snapshot = GetOrCreateSnapshot(blockNumber - 1, parentHash);
+            if (!snapshot.Signers.ContainsKey(_key.Address))
+            {
+                if (_logger.IsTrace) _logger.Trace("Not on the signers list");
+                return false;
+            }
+
+            // If we're amongst the recent signers, wait for the next block
+            if (snapshot.HasSignedRecently(blockNumber, _key.Address))
+            {
+                if (_logger.IsTrace) _logger.Trace("Signed recently");
+                return false;
+            }
+
+            return true;
         }
 
         public bool ValidateParams(Block parent, BlockHeader header)
