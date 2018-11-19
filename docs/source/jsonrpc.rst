@@ -157,3 +157,17 @@ txpool    content                              true
 txpool    inspect                              true
 txpool    status                               true
 ========= ==================================== ===========
+
+clique
+^^^^^^
+
+========= ==================================== ===========
+Module    Method                               Supported
+========= ==================================== ===========
+clique    getSigners                           true
+clique    getSignersByHash                     true
+clique    getSnapshot                          false
+clique    getSnapshotByHash                    false
+clique    propose                              true
+clique    discard                              true
+========= ==================================== ===========
