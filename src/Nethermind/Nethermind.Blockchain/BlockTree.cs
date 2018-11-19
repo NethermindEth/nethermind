@@ -234,7 +234,15 @@ namespace Nethermind.Blockchain
         public int ChainId => _specProvider.ChainId;
 
         public AddBlockResult SuggestBlock(Block block)
-        {
+        {   
+            #if DEBUG
+            /* this is just to make sure that we do not fall into this trap when creating tests */
+            if (block.StateRoot == null)
+            {
+                throw new InvalidDataException($"State root is null in {block.ToString(Block.Format.Short)}");
+            }
+            #endif
+            
             if (!CanAcceptNewBlocks)
             {
                 throw new InvalidOperationException($"{nameof(BlockTree)} not ready to accept new blocks.");
