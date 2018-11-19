@@ -7,10 +7,24 @@
 [![GitHub release](https://img.shields.io/github/release/NethermindEth/nethermind.svg)](https://github.com/NethermindEth/nethermind/releases)
 [![ReadheDocs](https://readthedocs.org/projects/nethermind/badge/?version=latest)](https://nethermind.readthedocs.io)
 
-Travis CI:     https://travis-ci.org/NethermindEth/nethermind
-Documentation: https://nethermind.readthedocs.io
-Releases:      https://github.com/NethermindEth/nethermind/releases
-Gitter:        https://gitter.im/nethermindeth/nethermind
+<table>
+  <tr>
+    <td>Documentation</td>
+    <td>https://nethermind.readthedocs.io</td>
+  </tr>
+  <tr>
+    <td>Travis CI</td>
+    <td>https://travis-ci.org/NethermindEth/nethermind</td>
+  </tr>
+  <tr>
+    <td>Releases</td>
+    <td>https://github.com/NethermindEth/nethermind/releases</td>
+  </tr>
+  <tr>
+    <td>Gitter</td>
+    <td>https://gitter.im/nethermindeth/nethermind</td>
+  </tr>
+</table>
 
 ## Download and run:
 [Windows](http://downloads.nethermind.io)<br/>
