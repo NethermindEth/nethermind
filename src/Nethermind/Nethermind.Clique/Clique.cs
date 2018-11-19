@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Clique
 {
@@ -37,7 +38,7 @@ namespace Nethermind.Clique
         public const ulong NonceAuthVote = ulong.MaxValue;
         public const ulong NonceDropVote = 0UL;
 
-        public const int DifficultyInTurn = 2;
-        public const int DifficultyNoTurn = 1;
+        public static UInt256 DifficultyInTurn = 2;
+        public static UInt256 DifficultyNoTurn = UInt256.One;
     }
 }

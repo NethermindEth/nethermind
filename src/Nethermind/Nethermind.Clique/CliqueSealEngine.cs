@@ -376,7 +376,7 @@ namespace Nethermind.Clique
             UInt256 number = header.Number;
             if (parent.Timestamp + _config.BlockPeriod > header.Timestamp)
             {
-                if (_logger.IsWarn) _logger.Warn($"Incorrect block timestamp ({header.Timestamp}) - should have big enough different with parent");
+                if (_logger.IsWarn) _logger.Warn($"Incorrect block timestamp ({header.Timestamp}) - should have big enough difference with parent");
                 return false;
             }
 

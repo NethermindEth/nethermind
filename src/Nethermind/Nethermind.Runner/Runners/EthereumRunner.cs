@@ -512,14 +512,14 @@ namespace Nethermind.Runner.Runners
 
             if (_initConfig.IsMining)
             {
-                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, true);
+                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 AlternativeChain producerChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, minerDbProvider, _recoveryStep, _logManager, _transactionPool, _receiptStorage);
 
-                if (_sealEngine is CliqueSealEngine)
+                if (_sealEngine is CliqueSealEngine engine)
                 {
                     // TODO: need to introduce snapshot provider for clique and pass it here instead of CliqueSealEngine
                     if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
-                    _blockProducer = new CliqueBlockProducer(_transactionPool, producerChain.Processor, _blockTree, producerChain.StateProvider, _timestamp, _cryptoRandom, _sealEngine as CliqueSealEngine, cliqueConfig, _nodeKey.Address, _logManager);
+                    _blockProducer = new CliqueBlockProducer(_transactionPool, producerChain.Processor, _blockTree, producerChain.StateProvider, _timestamp, _cryptoRandom, engine, cliqueConfig, _nodeKey.Address, _logManager);
                 }
                 else
                 {

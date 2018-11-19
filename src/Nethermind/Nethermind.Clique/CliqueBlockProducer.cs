@@ -116,35 +116,47 @@ namespace Nethermind.Clique
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
-            ulong extraDelayMilliseconds = 0;
-            if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
+            try
             {
-                int wiggle = _scheduledBlock.Header.CalculateSignersCount() / 2 + 1 * Clique.WiggleTime;
-                extraDelayMilliseconds += (ulong) _cryptoRandom.NextInt(wiggle);
-            }
-
-            if (_scheduledBlock.Timestamp + extraDelayMilliseconds / 1000 < _timestamp.EpochSeconds)
-            {
-                if (_scheduledBlock.Number > _blockTree.Head.Number)
+                if (_scheduledBlock == null)
                 {
-                    _blockTree.SuggestBlock(_scheduledBlock);
+                    _timer.Enabled = true;
+                    return;
                 }
-                else
+                
+                ulong extraDelayMilliseconds = 0;
+                if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Dropping a losing block {_scheduledBlock.ToString(Block.Format.Short)}");
+                    int wiggle = _scheduledBlock.Header.CalculateSignersCount() / 2 + 1 * Clique.WiggleTime;
+                    extraDelayMilliseconds += (ulong) _cryptoRandom.NextInt(wiggle);
                 }
 
-                _scheduledBlock = null;
-            }
+                if (_scheduledBlock.Timestamp + extraDelayMilliseconds / 1000 < _timestamp.EpochSeconds)
+                {
+                    if (_scheduledBlock.Number > _blockTree.Head.Number)
+                    {
+                        _blockTree.SuggestBlock(_scheduledBlock);
+                    }
+                    else
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Dropping a losing block {_scheduledBlock.ToString(Block.Format.Short)}");
+                    }
 
-            _timer.Enabled = true;
+                    _scheduledBlock = null;
+                }
+
+                _timer.Enabled = true;
+            }
+            catch (Exception exception)
+            {
+                if(_logger.IsError) _logger.Error("Clique block producer failure", exception);
+            }
         }
 
         public void Start()
         {
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
-
 
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
@@ -214,8 +226,6 @@ namespace Nethermind.Clique
 
         private Block PrepareBlock()
         {
-            Console.WriteLine($"{_address} preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
-
             BlockHeader parentHeader = _blockTree.Head;
             if (parentHeader == null)
             {
