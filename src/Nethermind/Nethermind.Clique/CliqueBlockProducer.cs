@@ -34,6 +34,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Store;
 
 namespace Nethermind.Clique
 {
@@ -41,6 +42,7 @@ namespace Nethermind.Clique
     {
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockTree _blockTree;
+        private readonly IStateProvider _stateProvider;
         private readonly ITimestamp _timestamp;
         private readonly ILogger _logger;
         private readonly ICryptoRandom _cryptoRandom;
@@ -60,6 +62,7 @@ namespace Nethermind.Clique
             ITransactionPool transactionPool,
             IBlockchainProcessor devProcessor,
             IBlockTree blockTree,
+            IStateProvider stateProvider,
             ITimestamp timestamp,
             ICryptoRandom cryptoRandom,
             CliqueSealEngine cliqueSealEngine,
@@ -71,6 +74,7 @@ namespace Nethermind.Clique
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _processor = devProcessor ?? throw new ArgumentNullException(nameof(devProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _timestamp = timestamp ?? throw new ArgumentNullException(nameof(_timestamp));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(_cryptoRandom));
             _sealEngine = cliqueSealEngine ?? throw new ArgumentNullException(nameof(_sealEngine));
@@ -319,14 +323,31 @@ namespace Nethermind.Clique
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
 
             int total = 0;
+            _stateProvider.StateRoot = parentHeader.StateRoot;
             foreach (Transaction transaction in transactions)
-            {
+            {   
                 total++;
-                if (transaction == null) throw new InvalidOperationException("Block transaction is null");
+                if (transaction == null)
+                {
+                    if (_logger.IsError) _logger.Error("Rejecting null pending transaction.");
+                    continue;
+                }
 
+                if (transaction.SenderAddress == null)
+                {
+                    if (_logger.IsError) _logger.Error($"Rejecting null sender pending transaction.");
+                    continue;
+                }
+                
                 if (transaction.GasPrice < MinGasPriceForMining)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
+                    continue;
+                }
+                
+                if (transaction.Nonce != _stateProvider.GetNonce(transaction.SenderAddress))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction based on nonce.");
                     continue;
                 }
 

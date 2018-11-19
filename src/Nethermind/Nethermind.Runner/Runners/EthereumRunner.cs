@@ -27,7 +27,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Blockchain.TransactionPools.Filters;
 using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Clique;
@@ -292,6 +291,7 @@ namespace Nethermind.Runner.Runners
         private class AlternativeChain
         {
             public IBlockchainProcessor Processor { get; }
+            public IStateProvider StateProvider { get; }
 
             public AlternativeChain(
                 IBlockTree blockTree,
@@ -304,14 +304,14 @@ namespace Nethermind.Runner.Runners
                 ITransactionPool customTransactionPool,
                 IReceiptStorage receiptStorage)
             {
-                IStateProvider stateProvider = new StateProvider(new StateTree(dbProvider.StateDb), dbProvider.CodeDb, logManager);
-                StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, stateProvider, logManager);
+                StateProvider = new StateProvider(new StateTree(dbProvider.StateDb), dbProvider.CodeDb, logManager);
+                StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, StateProvider, logManager);
                 IBlockTree readOnlyTree = new ReadOnlyBlockTree(blockTree);
                 BlockhashProvider blockhashProvider = new BlockhashProvider(readOnlyTree);
-                VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
-                ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
+                VirtualMachine virtualMachine = new VirtualMachine(StateProvider, storageProvider, blockhashProvider, logManager);
+                ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, StateProvider, storageProvider, virtualMachine, logManager);
                 ITransactionPool transactionPool = customTransactionPool;
-                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, stateProvider, storageProvider, transactionPool, receiptStorage, logManager);
+                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, StateProvider, storageProvider, transactionPool, receiptStorage, logManager);
                 Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, true);
             }
         }
@@ -512,19 +512,19 @@ namespace Nethermind.Runner.Runners
 
             if (_initConfig.IsMining)
             {
-                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-                AlternativeChain devChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, minerDbProvider, _recoveryStep, _logManager, _transactionPool, _receiptStorage);
+                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, true);
+                AlternativeChain producerChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, minerDbProvider, _recoveryStep, _logManager, _transactionPool, _receiptStorage);
 
                 if (_sealEngine is CliqueSealEngine)
                 {
                     // TODO: need to introduce snapshot provider for clique and pass it here instead of CliqueSealEngine
                     if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
-                    _blockProducer = new CliqueBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, _cryptoRandom, _sealEngine as CliqueSealEngine, cliqueConfig, _nodeKey.Address, _logManager);
+                    _blockProducer = new CliqueBlockProducer(_transactionPool, producerChain.Processor, _blockTree, producerChain.StateProvider, _timestamp, _cryptoRandom, _sealEngine as CliqueSealEngine, cliqueConfig, _nodeKey.Address, _logManager);
                 }
                 else
                 {
                     if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
-                    _blockProducer = new DevBlockProducer(_transactionPool, devChain.Processor, _blockTree, _timestamp, _logManager);
+                    _blockProducer = new DevBlockProducer(_transactionPool, producerChain.Processor, _blockTree, _timestamp, _logManager);
                 }
 
                 _blockProducer.Start();
