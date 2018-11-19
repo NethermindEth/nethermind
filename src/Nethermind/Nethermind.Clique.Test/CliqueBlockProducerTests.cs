@@ -293,7 +293,7 @@ namespace Nethermind.Clique.Test
             }
         }
 
-        private static int _timeout = 1000;
+        private static int _timeout = 5000;
 
         [Test]
         public void Produces_block_on_top_of_genesis()
