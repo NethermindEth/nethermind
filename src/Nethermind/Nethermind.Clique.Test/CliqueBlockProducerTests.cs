@@ -41,9 +41,11 @@ namespace Nethermind.Clique.Test
             private On(ulong blockPeriod)
             {
                 _cliqueConfig = new CliqueConfig(blockPeriod, 30000);
+                _genesis = GetGenesis();
+                _genesis3Validators = GetGenesis(3);
             }
 
-            public On CreateNode(PrivateKey privateKey)
+            public On CreateNode(PrivateKey privateKey, bool withGenesisAlreadyProcessed = false)
             {
                 AutoResetEvent newHeadBlockEvent = new AutoResetEvent(false);
                 _blockEvents.Add(privateKey, newHeadBlockEvent);
@@ -80,6 +82,11 @@ namespace Nethermind.Clique.Test
                 BlockProcessor minerBlockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, TestBlockValidator.AlwaysValid, new NoBlockRewards(), minerTransactionProcessor, stateDb, codeDb, minerStateProvider, minerStorageProvider, transactionPool, NullReceiptStorage.Instance, NullLogManager.Instance);
                 BlockchainProcessor minerProcessor = new BlockchainProcessor(blockTree, minerBlockProcessor, new AuthorRecoveryStep(cliqueSealEngine), NullLogManager.Instance, false);
 
+                if (withGenesisAlreadyProcessed)
+                {
+                    ProcessGenesis(privateKey);
+                }
+                
                 CliqueBlockProducer blockProducer = new CliqueBlockProducer(transactionPool, minerProcessor, blockTree, minerStateProvider, _timestamp, new CryptoRandom(), cliqueSealEngine, _cliqueConfig, privateKey.Address, NullLogManager.Instance);
                 blockProducer.Start();
 
@@ -92,11 +99,11 @@ namespace Nethermind.Clique.Test
 
             public static On FastGoerli => new On(1);
 
-            private static Block _genesis3Validators = GetGenesis(3);
+            private Block _genesis3Validators;
             
-            private static Block _genesis = GetGenesis();
+            private Block _genesis;
 
-            private static Block GetGenesis(int validatorsCount = 2)
+            private Block GetGenesis(int validatorsCount = 2)
             {
                 Keccak parentHash = Keccak.Zero;
                 Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
@@ -104,7 +111,7 @@ namespace Nethermind.Clique.Test
                 UInt256 difficulty = new UInt256(1);
                 UInt256 number = new UInt256(0);
                 int gasLimit = 4700000;
-                UInt256 timestamp = _timestamp.EpochSeconds - 15;
+                UInt256 timestamp = _timestamp.EpochSeconds - _cliqueConfig.BlockPeriod;
                 string extraDataHex = "0x2249276d20646f6e652077616974696e672e2e2e20666f7220626c6f636b2066";
                 extraDataHex += TestObject.PrivateKeyA.Address.ToString(false).Replace("0x", string.Empty);
                 extraDataHex += TestObject.PrivateKeyB.Address.ToString(false).Replace("0x", string.Empty);
@@ -279,7 +286,7 @@ namespace Nethermind.Clique.Test
             }
         }
 
-        private static int _timeout = 2000;
+        private static int _timeout = 100000;
 
         [Test]
         public void Produces_block_on_top_of_genesis()
@@ -366,60 +373,62 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Can_reorganize_when_receiving_in_turn_blocks()
         {
-            var nodeB = On.FastGoerli
+            var goerli = On.FastGoerli;
+            goerli
                 .CreateNode(TestObject.PrivateKeyB)
-                .ProcessGenesis()
-                .AssertHeadBlockIs(TestObject.PrivateKeyB, 1);
-
-            var nodeA = On.FastGoerli
                 .CreateNode(TestObject.PrivateKeyA)
                 .ProcessGenesis()
-                .AssertHeadBlockIs(TestObject.PrivateKeyA, 1);
-
-            Assert.AreEqual(nodeA.GetBlock(TestObject.PrivateKeyA, 0).Hash, nodeB.GetBlock(TestObject.PrivateKeyB, 0).Hash, "same genesis");
-
-            nodeB
-                .Process(TestObject.PrivateKeyB, nodeA.GetBlock(TestObject.PrivateKeyA, 1))
+                .AssertHeadBlockIs(TestObject.PrivateKeyB, 1)
+                .AssertHeadBlockIs(TestObject.PrivateKeyA, 1)
+                .Process(TestObject.PrivateKeyB, goerli.GetBlock(TestObject.PrivateKeyA, 1))
                 .AssertHeadBlockIs(TestObject.PrivateKeyB, 2);
         }
         
         [Test]
         public void Ignores_blocks_from_bad_network()
         {
-            var nodeB = On.FastGoerli
+            var goerli = On.FastGoerli;
+            goerli
                 .CreateNode(TestObject.PrivateKeyB)
-                .ProcessGenesis()
-                .AssertHeadBlockIs(TestObject.PrivateKeyB, 1);
-
-            var nodeA = On.FastGoerli
+                .ProcessGenesis(TestObject.PrivateKeyB)
+                .AssertHeadBlockIs(TestObject.PrivateKeyB, 1)
                 .CreateNode(TestObject.PrivateKeyA)
-                .ProcessBadGenesis()
+                .ProcessBadGenesis(TestObject.PrivateKeyA)
                 .AssertHeadBlockIs(TestObject.PrivateKeyA, 1);
 
-            Assert.AreNotEqual(nodeA.GetBlock(TestObject.PrivateKeyA, 0).Hash, nodeB.GetBlock(TestObject.PrivateKeyB, 0).Hash, "same genesis");
+            Assert.AreNotEqual(goerli.GetBlock(TestObject.PrivateKeyA, 0).Hash, goerli.GetBlock(TestObject.PrivateKeyB, 0).Hash, "same genesis");
 
-            nodeB
-                .Process(TestObject.PrivateKeyB, nodeA.GetBlock(TestObject.PrivateKeyA, 1))
+            goerli
+                .Process(TestObject.PrivateKeyB, goerli.GetBlock(TestObject.PrivateKeyA, 1))
                 .AssertHeadBlockIs(TestObject.PrivateKeyB, 1);
         }
         
         [Test]
         public void Waits_for_block_timestamp_before_broadcasting()
         {
-            var nodeB = On.Goerli
+            var goerli = On.Goerli;
+            goerli
                 .CreateNode(TestObject.PrivateKeyB)
-                .ProcessGenesis()
-                .AssertHeadBlockIs(TestObject.PrivateKeyB, 1);
-
-            var nodeA = On.Goerli
                 .CreateNode(TestObject.PrivateKeyA)
                 .ProcessGenesis()
+                .AssertHeadBlockIs(TestObject.PrivateKeyB, 1)
                 .AssertHeadBlockIs(TestObject.PrivateKeyA, 1);
 
-            Assert.AreEqual(nodeA.GetBlock(TestObject.PrivateKeyA, 0).Hash, nodeB.GetBlock(TestObject.PrivateKeyB, 0).Hash, "same genesis");
-
-            nodeB
-                .Process(TestObject.PrivateKeyB, nodeA.GetBlock(TestObject.PrivateKeyA, 1))
+            Assert.AreEqual(goerli.GetBlock(TestObject.PrivateKeyA, 0).Hash, goerli.GetBlock(TestObject.PrivateKeyB, 0).Hash, "same genesis");
+            goerli
+                .Process(TestObject.PrivateKeyB, goerli.GetBlock(TestObject.PrivateKeyA, 1))
+                .AssertHeadBlockIs(TestObject.PrivateKeyB, 1);
+        }
+        
+        [Test]
+        public void Creates_blocks_without_signals_from_block_tree()
+        {
+            On.Goerli
+                .CreateNode(TestObject.PrivateKeyA, true)
+                .AssertHeadBlockIs(TestObject.PrivateKeyA, 1);
+            
+            On.Goerli
+                .CreateNode(TestObject.PrivateKeyB, true)
                 .AssertHeadBlockIs(TestObject.PrivateKeyB, 1);
         }
         

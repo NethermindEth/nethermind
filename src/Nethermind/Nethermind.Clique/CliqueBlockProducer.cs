@@ -54,7 +54,6 @@ namespace Nethermind.Clique
         private Address _address;
         private ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
 
-        private object _syncToken = new object();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private System.Timers.Timer _timer = new System.Timers.Timer();
 
@@ -90,6 +89,8 @@ namespace Nethermind.Clique
             }
         }
 
+        private readonly BlockingCollection<Block> _signalsQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
+
         private Block _scheduledBlock;
 
         public void CastVote(Address signer, bool vote)
@@ -120,10 +121,15 @@ namespace Nethermind.Clique
             {
                 if (_scheduledBlock == null)
                 {
+                    if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamp.EpochSeconds)
+                    {
+                        _signalsQueue.Add(_blockTree.FindBlock(_blockTree.Head.Hash, false));
+                    }
+                    
                     _timer.Enabled = true;
                     return;
                 }
-                
+
                 ulong extraDelayMilliseconds = 0;
                 if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
                 {
@@ -149,110 +155,128 @@ namespace Nethermind.Clique
             }
             catch (Exception exception)
             {
-                if(_logger.IsError) _logger.Error("Clique block producer failure", exception);
+                if (_logger.IsError) _logger.Error("Clique block producer failure", exception);
             }
         }
+
+        private Task _producerTask;
 
         public void Start()
         {
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+            _producerTask = Task.Factory.StartNew(
+                ConsumeSignal,
+                _cancellationTokenSource.Token,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error("Clique block producer encountered an exception.", t.Exception);
+                }
+                else if (t.IsCanceled)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Clique block producer stopped.");
+                }
+                else if (t.IsCompleted)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Clique block producer complete.");
+                }
+            });
         }
 
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            ScheduleNewBlock();
+            _signalsQueue.Add(e.Block);
         }
 
-        private void ScheduleNewBlock()
+        private void ConsumeSignal()
         {
-            CancellationToken token;
-            lock (_syncToken)
+            foreach (Block signal in _signalsQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
             {
-                _cancellationTokenSource = new CancellationTokenSource();
-                token = _cancellationTokenSource.Token;
-            }
-
-            if (!_sealEngine.CanSeal)
-            {
-                return;
-            }
-
-            Block block = PrepareBlock();
-            if (block == null)
-            {
-                if (_logger.IsTrace) _logger.Trace("Skipping block production or block production failed");
-                return;
-            }
-
-            if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
-            Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
-            if (_logger.IsInfo) _logger.Info($"Sealing prepared block {processedBlock.Number}");
-
-            _sealEngine.SealBlock(processedBlock, token).ContinueWith(t =>
-            {
-                if (t.IsCompletedSuccessfully)
+                try
                 {
-                    if (t.Result != null)
+                    if (!_sealEngine.CanSeal)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Sealed block {t.Result.Header.ToString(BlockHeader.Format.Short)}");
-                        _scheduledBlock = t.Result;
+                        continue;
                     }
-                    else
+
+                    Block block = PrepareBlock(signal);
+                    if (block == null)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.Number} (null seal)");
+                        if (_logger.IsTrace) _logger.Trace("Skipping block production or block production failed");
+                        continue;
                     }
+
+                    if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
+                    Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
+                    if (_logger.IsInfo) _logger.Info($"Sealing prepared block {processedBlock.Number}");
+
+                    _sealEngine.SealBlock(processedBlock, _cancellationTokenSource.Token).ContinueWith(t =>
+                    {
+                        if (t.IsCompletedSuccessfully)
+                        {
+                            if (t.Result != null)
+                            {
+                                if (_logger.IsInfo) _logger.Info($"Sealed block {t.Result.Header.ToString(BlockHeader.Format.Short)}");
+                                _scheduledBlock = t.Result;
+                            }
+                            else
+                            {
+                                if (_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.Number} (null seal)");
+                            }
+                        }
+                        else if (t.IsFaulted)
+                        {
+                            _logger.Error("Mining failed", t.Exception);
+                        }
+                        else if (t.IsCanceled)
+                        {
+                            if (_logger.IsInfo) _logger.Info($"Sealing block {processedBlock.Number} cancelled");
+                        }
+                    }, _cancellationTokenSource.Token);
                 }
-                else if (t.IsFaulted)
+                catch (Exception e)
                 {
-                    _logger.Error("Mining failed", t.Exception);
+                    if(_logger.IsError) _logger.Error($"Block producer could not process produce block on top of {signal.ToString(Block.Format.Short)}", e);
                 }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Sealing block {processedBlock.Number} cancelled");
-                }
-            }, token);
+            }
         }
 
         public async Task StopAsync()
         {
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
-            lock (_syncToken)
-            {
-                _cancellationTokenSource?.Cancel();
-            }
-
-            await Task.CompletedTask;
+            _cancellationTokenSource?.Cancel();
+            await (_producerTask ?? Task.CompletedTask);
         }
 
-        private Block PrepareBlock()
+        private Block PrepareBlock(Block parentBlock)
         {
-            BlockHeader parentHeader = _blockTree.Head;
+            BlockHeader parentHeader = parentBlock.Header;
             if (parentHeader == null)
             {
-                if (_logger.IsError) _logger.Error($"Preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)} - parent header is null");
+                if (_logger.IsError) _logger.Error($"Preparing new block on top of {parentBlock.Header.ToString(BlockHeader.Format.Short)} - parent header is null");
                 return null;
             }
 
             if (!_sealEngine.CanSignBlock(parentHeader.Number + 1, parentHeader.Hash))
             {
-                Console.WriteLine($"Cannot sign");
-                if (_logger.IsInfo) _logger.Info($"Not allowed to sign block ({parentHeader.Number + 1})");
+                if (_logger.IsInfo) _logger.Info($"Not allowed to sign block ({parentBlock.Number + 1})");
                 return null;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
+            if (_logger.IsInfo) _logger.Info($"Preparing new block on top of {parentBlock.Header.ToString(BlockHeader.Format.Short)}");
 
-            Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
             UInt256 timestamp = _timestamp.EpochSeconds;
 
             BlockHeader header = new BlockHeader(
-                parent.Hash,
+                parentBlock.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
                 1,
-                parent.Number + 1,
-                parent.GasLimit,
-                timestamp > parent.Timestamp ? timestamp : parent.Timestamp + 1,
+                parentBlock.Number + 1,
+                parentBlock.GasLimit,
+                timestamp > parentBlock.Timestamp ? timestamp : parentBlock.Timestamp + 1,
                 new byte[0]);
 
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
@@ -284,8 +308,8 @@ namespace Nethermind.Clique
 
             // Set the correct difficulty
             header.Difficulty = CalculateDifficulty(snapshot, _address);
-            header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
-            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
+            header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
+            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parentBlock.TotalDifficulty} + {header.Difficulty}.");
 
             // Set extra data
             int mainBytesLength = Clique.ExtraVanityLength + Clique.ExtraSealLength;
@@ -309,7 +333,7 @@ namespace Nethermind.Clique
             // Mix digest is reserved for now, set to empty
             header.MixHash = Keccak.Zero;
             // Ensure the timestamp has the correct delay
-            header.Timestamp = parent.Timestamp + _config.BlockPeriod;
+            header.Timestamp = parentBlock.Timestamp + _config.BlockPeriod;
             if (header.Timestamp < _timestamp.EpochSeconds)
             {
                 header.Timestamp = new UInt256(_timestamp.EpochSeconds);

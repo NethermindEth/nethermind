@@ -258,21 +258,24 @@ namespace Nethermind.Runner.Runners
             _runnerCancellation.Cancel();
 
             if (_logger.IsInfo) _logger.Info("Stopping rlpx peer...");
-            var rlpxPeerTask = (_rlpxPeer?.Shutdown() ?? Task.CompletedTask);
+            var rlpxPeerTask = _rlpxPeer?.Shutdown() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping peer manager...");
-            var peerManagerTask = (_peerManager?.StopAsync() ?? Task.CompletedTask);
+            var peerManagerTask = _peerManager?.StopAsync() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping sync manager...");
-            var syncManagerTask = (_syncManager?.StopAsync() ?? Task.CompletedTask);
+            var syncManagerTask = _syncManager?.StopAsync() ?? Task.CompletedTask;
 
+            if (_logger.IsInfo) _logger.Info("Stopping block producer...");
+            var blockProducerTask = _blockProducer?.StopAsync() ?? Task.CompletedTask;
+            
             if (_logger.IsInfo) _logger.Info("Stopping blockchain processor...");
             var blockchainProcessorTask = (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
 
             if (_logger.IsInfo) _logger.Info("Stopping discovery app...");
             var discoveryStopTask = _discoveryApp?.StopAsync() ?? Task.CompletedTask;
 
-            await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, syncManagerTask, blockchainProcessorTask);
+            await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, syncManagerTask, blockchainProcessorTask, blockProducerTask);
 
             if (_logger.IsInfo) _logger.Info("Closing DBs...");
             _dbProvider.Dispose();
