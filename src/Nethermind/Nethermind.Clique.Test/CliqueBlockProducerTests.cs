@@ -380,7 +380,7 @@ namespace Nethermind.Clique.Test
             }
         }
 
-        private static int _timeout = 5000;
+        private static int _timeout = 100000;
 
         [Test]
         public void Can_produce_block_with_transactions()
@@ -593,6 +593,7 @@ namespace Nethermind.Clique.Test
             for (int i = 1; i <= 10; i++)
             {
                 var inTurnKey = keys[i % 3];
+                goerli.AddPendingTransaction(keys[(i + 1) % 3]);
                 for (int j = 0; j < keys.Length; j++)
                 {
                     var nodeKey = keys[j]; 
@@ -609,6 +610,8 @@ namespace Nethermind.Clique.Test
                     }
                 }
             }
+            
+            goerli.AssertTotalTxCount(keys[0], 9);
         }
     }
 }
