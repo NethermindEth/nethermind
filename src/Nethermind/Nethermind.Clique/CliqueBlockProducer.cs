@@ -80,8 +80,7 @@ namespace Nethermind.Clique
             _sealEngine = cliqueSealEngine ?? throw new ArgumentNullException(nameof(_sealEngine));
             _config = config ?? throw new ArgumentNullException(nameof(_config));
             _address = address ?? throw new ArgumentNullException(nameof(_address));
-            _lastBlock = _blockTree.Head;
-            
+
             if (_sealEngine.CanSeal)
             {
                 _timer.AutoReset = false;
@@ -92,7 +91,7 @@ namespace Nethermind.Clique
         }
 
         private Block _scheduledBlock;
-        
+
         public void CastVote(Address signer, bool vote)
         {
             bool success = _proposals.TryAdd(signer, vote);
@@ -100,10 +99,10 @@ namespace Nethermind.Clique
             {
                 throw new InvalidOperationException("Cannot cast vote");
             }
-            
-            if(_logger.IsWarn) _logger.Warn($"Added Clique vote for {signer} - {vote}");
+
+            if (_logger.IsWarn) _logger.Warn($"Added Clique vote for {signer} - {vote}");
         }
-        
+
         public void UncastVote(Address signer)
         {
             bool success = _proposals.TryRemove(signer, out _);
@@ -111,31 +110,20 @@ namespace Nethermind.Clique
             {
                 throw new InvalidOperationException("Cannot uncast vote");
             }
-            
-            if(_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
+
+            if (_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
         }
-        
+
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
-            if (_scheduledBlock == null)
-            {
-                if (_timestamp.EpochSeconds - _lastBlock.Timestamp > 15)
-                {
-                    ScheduleNewBlock();
-                }
-                
-                _timer.Enabled = true;
-                return;
-            }
-           
             ulong extraDelayMilliseconds = 0;
             if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
             {
                 int wiggle = _scheduledBlock.Header.CalculateSignersCount() / 2 + 1 * Clique.WiggleTime;
-                extraDelayMilliseconds += (ulong)_cryptoRandom.NextInt(wiggle);
+                extraDelayMilliseconds += (ulong) _cryptoRandom.NextInt(wiggle);
             }
-            
-            if(_scheduledBlock.Timestamp + extraDelayMilliseconds / 1000 < _timestamp.EpochSeconds)
+
+            if (_scheduledBlock.Timestamp + extraDelayMilliseconds / 1000 < _timestamp.EpochSeconds)
             {
                 if (_scheduledBlock.Number > _blockTree.Head.Number)
                 {
@@ -143,12 +131,12 @@ namespace Nethermind.Clique
                 }
                 else
                 {
-                    if(_logger.IsInfo) _logger.Info($"Dropping a losing block {_scheduledBlock.ToString(Block.Format.Short)}");
+                    if (_logger.IsInfo) _logger.Info($"Dropping a losing block {_scheduledBlock.ToString(Block.Format.Short)}");
                 }
-                
+
                 _scheduledBlock = null;
             }
-            
+
             _timer.Enabled = true;
         }
 
@@ -157,11 +145,9 @@ namespace Nethermind.Clique
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
-        private BlockHeader _lastBlock;
-        
+
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            _lastBlock = e.Block.Header;
             ScheduleNewBlock();
         }
 
@@ -189,6 +175,7 @@ namespace Nethermind.Clique
             if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
             Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
             if (_logger.IsInfo) _logger.Info($"Sealing prepared block {processedBlock.Number}");
+
             _sealEngine.SealBlock(processedBlock, token).ContinueWith(t =>
             {
                 if (t.IsCompletedSuccessfully)
@@ -227,20 +214,23 @@ namespace Nethermind.Clique
 
         private Block PrepareBlock()
         {
+            Console.WriteLine($"{_address} preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
+
             BlockHeader parentHeader = _blockTree.Head;
             if (parentHeader == null)
             {
-                if(_logger.IsError) _logger.Error($"Preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)} - parent header is null");
+                if (_logger.IsError) _logger.Error($"Preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)} - parent header is null");
                 return null;
             }
 
             if (!_sealEngine.CanSignBlock(parentHeader.Number + 1, parentHeader.Hash))
             {
+                Console.WriteLine($"Cannot sign");
                 if (_logger.IsInfo) _logger.Info($"Not allowed to sign block ({parentHeader.Number + 1})");
                 return null;
             }
-            
-            if(_logger.IsInfo) _logger.Info($"Preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
+
+            if (_logger.IsInfo) _logger.Info($"Preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
 
             Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
             UInt256 timestamp = _timestamp.EpochSeconds;
@@ -325,7 +315,7 @@ namespace Nethermind.Clique
             int total = 0;
             _stateProvider.StateRoot = parentHeader.StateRoot;
             foreach (Transaction transaction in transactions)
-            {   
+            {
                 total++;
                 if (transaction == null)
                 {
@@ -338,13 +328,13 @@ namespace Nethermind.Clique
                     if (_logger.IsError) _logger.Error($"Rejecting null sender pending transaction.");
                     continue;
                 }
-                
+
                 if (transaction.GasPrice < MinGasPriceForMining)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
                     continue;
                 }
-                
+
                 if (transaction.Nonce != _stateProvider.GetNonce(transaction.SenderAddress))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Rejecting transaction based on nonce.");
@@ -374,11 +364,11 @@ namespace Nethermind.Clique
         {
             if (snapshot.InTurn(snapshot.Number + 1, signer))
             {
-                if(_logger.IsInfo) _logger.Info("Producing in turn block");
+                if (_logger.IsInfo) _logger.Info("Producing in turn block");
                 return new UInt256(Clique.DifficultyInTurn);
             }
 
-            if(_logger.IsInfo) _logger.Info("Producing out of turn block");
+            if (_logger.IsInfo) _logger.Info("Producing out of turn block");
             return new UInt256(Clique.DifficultyNoTurn);
         }
 
