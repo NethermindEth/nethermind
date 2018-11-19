@@ -625,9 +625,9 @@ namespace Nethermind.Network
                 }
                 else
                 {
-                    if (_logger.IsError)
+                    if (_logger.IsDebug)
                     {
-                        _logger.Error($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, peer not in candidate collection.");
+                        _logger.Debug($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, peer not in candidate collection.");
                     }
                 }
 
