@@ -18,5 +18,6 @@ ToC
    networks
    configuration
    platforms
+   jsonrpc
    docker
    contact
