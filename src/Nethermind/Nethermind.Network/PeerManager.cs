@@ -692,7 +692,7 @@ namespace Nethermind.Network
         }
 
         /// <summary>
-        /// In case of IN connection we dont know what is the port node is listening on until we receive the Hello message
+        /// In case of IN connection we don't know what is the port node is listening on until we receive the Hello message
         /// </summary>
         private void AddNodeToDiscovery(Peer peer, P2PProtocolInitializedEventArgs eventArgs)
         {
@@ -708,7 +708,7 @@ namespace Nethermind.Network
 
                 if (peer.AddedToDiscovery)
                 {
-                    if (_logger.IsError) _logger.Error($"Discovery note already initialized with wrong port, nodeId: {peer.Node.Id}, port: {peer.Node.Port}, listen port: {eventArgs.ListenPort}");
+                    if (_logger.IsDebug) _logger.Debug($"Discovery node already initialized with wrong port, nodeId: {peer.Node.Id}, port: {peer.Node.Port}, listen port: {eventArgs.ListenPort}");
                 }
 
                 peer.Node.Port = eventArgs.ListenPort;
