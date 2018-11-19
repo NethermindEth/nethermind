@@ -121,11 +121,13 @@ namespace Nethermind.Network.P2P
         }
 
         public void HandleHello(HelloMessage hello)
-        {   
+        {
+            bool isInbound = !_sentHello;
+            
             if(Logger.IsTrace) Logger.Trace($"{P2PSession.RemoteNodeId} P2P received hello.");
             if (!hello.NodeId.Equals(P2PSession.RemoteNodeId))
             {
-                Logger.Error("MISMATCH");
+                if(Logger.IsError) Logger.Error($"Inconsistent Node ID details - expected {P2PSession.RemoteNodeId}, received hello with {hello.NodeId} on " + (isInbound ? "IN connection" : "OUT connection"));
                 throw new NodeDetailsMismatchException();
             }
 
