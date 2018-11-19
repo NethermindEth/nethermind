@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test;
@@ -284,6 +285,12 @@ namespace Nethermind.Clique.Test
 
                 return block;
             }
+
+            public async Task<On> StopNode(PrivateKey privateKeyA)
+            {
+                await _producers[privateKeyA].StopAsync();
+                return this;
+            }
         }
 
         private static int _timeout = 100000;
@@ -338,6 +345,17 @@ namespace Nethermind.Clique.Test
                 .VoteToInclude(TestObject.PrivateKeyA, TestObject.AddressC)
                 .ProcessGenesis()
                 .AssertVote(TestObject.PrivateKeyA, 1, TestObject.AddressC, true);
+        }
+        
+        [Test]
+        public void Can_uncast_vote_to()
+        {
+            On.Goerli
+                .CreateNode(TestObject.PrivateKeyA)
+                .VoteToInclude(TestObject.PrivateKeyA, TestObject.AddressC)
+                .UncastVote(TestObject.PrivateKeyA, TestObject.AddressC)
+                .ProcessGenesis()
+                .AssertVote(TestObject.PrivateKeyA, 1, Address.Zero, false);
         }
 
         [Test]
@@ -430,6 +448,19 @@ namespace Nethermind.Clique.Test
             On.Goerli
                 .CreateNode(TestObject.PrivateKeyB, true)
                 .AssertHeadBlockIs(TestObject.PrivateKeyB, 1);
+        }
+        
+        [Test]
+        public async Task Can_stop()
+        {
+            var goerli = On.Goerli
+                .CreateNode(TestObject.PrivateKeyA);
+
+            await goerli.StopNode(TestObject.PrivateKeyA);
+
+            goerli.ProcessGenesis();
+            await Task.Delay(1000);
+            goerli.AssertHeadBlockIs(TestObject.PrivateKeyA, 0);
         }
         
         [Test]

@@ -188,20 +188,30 @@ namespace Nethermind.Clique
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
             _signalsQueue.Add(e.Block);
+            
         }
 
         private void ConsumeSignal()
         {
             foreach (Block signal in _signalsQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
             {
-                try
+                Block parentBlock = signal;
+                while (_signalsQueue.TryTake(out Block nextSignal))
                 {
+                    if (parentBlock.Number <= nextSignal.Number)
+                    {
+                        parentBlock = nextSignal;
+                    }
+                }
+                
+                try
+                {   
                     if (!_sealEngine.CanSeal)
                     {
                         continue;
                     }
 
-                    Block block = PrepareBlock(signal);
+                    Block block = PrepareBlock(parentBlock);
                     if (block == null)
                     {
                         if (_logger.IsTrace) _logger.Trace("Skipping block production or block production failed");
@@ -238,7 +248,7 @@ namespace Nethermind.Clique
                 }
                 catch (Exception e)
                 {
-                    if(_logger.IsError) _logger.Error($"Block producer could not process produce block on top of {signal.ToString(Block.Format.Short)}", e);
+                    if(_logger.IsError) _logger.Error($"Block producer could not process produce block on top of {parentBlock.ToString(Block.Format.Short)}", e);
                 }
             }
         }

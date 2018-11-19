@@ -237,7 +237,7 @@ namespace Nethermind.Blockchain
         {   
             #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
-            if (block.StateRoot == null)
+            if (block.StateRoot == null && !block.IsGenesis)
             {
                 throw new InvalidDataException($"State root is null in {block.ToString(Block.Format.Short)}");
             }
