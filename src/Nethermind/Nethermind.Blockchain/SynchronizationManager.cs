@@ -223,7 +223,7 @@ namespace Nethermind.Blockchain
 
             if (_peers.ContainsKey(synchronizationPeer.NodeId))
             {
-                if (_logger.IsError) _logger.Error($"Sync peer already in peers collection: {synchronizationPeer.NodeId}");
+                if (_logger.IsDebug) _logger.Debug($"Sync peer already in peers collection: {synchronizationPeer.NodeId}");
                 return;
             }
 
