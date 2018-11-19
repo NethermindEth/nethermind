@@ -53,7 +53,7 @@ namespace Nethermind.Core.Crypto
             transaction.Signature = Sign(privateKey, hash);
             if (isEip155Enabled)
             {
-                transaction.Signature.V = (byte)(transaction.Signature.V + 8 + 2 * _chainIdValue);
+                transaction.Signature.V = transaction.Signature.V + 8 + 2 * _chainIdValue;
             }
             
             _logger?.Debug("Transaction signed");

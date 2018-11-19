@@ -33,6 +33,7 @@ namespace Nethermind.Clique.Test
             private Dictionary<PrivateKey, BlockTree> _blockTrees = new Dictionary<PrivateKey, BlockTree>();
             private Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new Dictionary<PrivateKey, AutoResetEvent>();
             private Dictionary<PrivateKey, CliqueBlockProducer> _producers = new Dictionary<PrivateKey, CliqueBlockProducer>();
+            private Dictionary<PrivateKey, TransactionPool> _pools = new Dictionary<PrivateKey, TransactionPool>();
 
             private On()
                 : this(15)
@@ -55,6 +56,7 @@ namespace Nethermind.Clique.Test
                 MemDb blockInfoDb = new MemDb();
 
                 TransactionPool transactionPool = new TransactionPool(new InMemoryTransactionStorage(), new PendingTransactionThresholdValidator(), _timestamp, _ethereumSigner, NullLogManager.Instance);
+                _pools[privateKey] = transactionPool; 
 
                 BlockTree blockTree = new BlockTree(blocksDb, blockInfoDb, GoerliSpecProvider.Instance, transactionPool, NullLogManager.Instance);
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
@@ -70,6 +72,13 @@ namespace Nethermind.Clique.Test
                 ISnapshotableDb codeDb = new StateDb();
 
                 StateProvider stateProvider = new StateProvider(new StateTree(stateDb), codeDb, NullLogManager.Instance);
+                stateProvider.CreateAccount(TestObject.PrivateKeyD.Address, 100.Ether());
+                stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
+
+                _genesis.StateRoot = _genesis3Validators.StateRoot = stateProvider.StateRoot;
+                _genesis.Hash = BlockHeader.CalculateHash(_genesis.Header);
+                _genesis3Validators.Hash = BlockHeader.CalculateHash(_genesis3Validators.Header);
+                
                 StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, NullLogManager.Instance);
                 TransactionProcessor transactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, NullLogManager.Instance), NullLogManager.Instance);
                 BlockProcessor blockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, TestBlockValidator.AlwaysValid, new NoBlockRewards(), transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, NullReceiptStorage.Instance, NullLogManager.Instance);
@@ -232,6 +241,12 @@ namespace Nethermind.Clique.Test
                 return this;
             }
             
+            public On AssertTotalTxCount(PrivateKey nodeKey, int count)
+            {
+                Assert.AreEqual((UInt256)count, _blockTrees[nodeKey].Head.TotalTransactions, nodeKey.Address + " total tx count");
+                return this;
+            }
+            
             public On AssertHeadBlockTimestamp(PrivateKey nodeKey)
             {
                 Assert.LessOrEqual(_blockTrees[nodeKey].FindBlock(_blockTrees[nodeKey].Head.Number - 1).Timestamp + _cliqueConfig.BlockPeriod, _blockTrees[nodeKey].Head.Timestamp + 1);
@@ -291,10 +306,108 @@ namespace Nethermind.Clique.Test
                 await _producers[privateKeyA].StopAsync();
                 return this;
             }
+
+            private UInt256 _currentNonce = 0;
+            
+            public On AddPendingTransaction(PrivateKey nodeKey)
+            {
+                Transaction transaction = new Transaction();
+                transaction.Value = 1;
+                transaction.To = TestObject.AddressC;
+                transaction.GasLimit = 30000;
+                transaction.GasPrice = 20.GWei();
+                transaction.Nonce = _currentNonce++;
+                transaction.SenderAddress = TestObject.PrivateKeyD.Address;
+                transaction.Hash = Transaction.CalculateHash(transaction);
+                _ethereumSigner.Sign(TestObject.PrivateKeyD, transaction, 1);
+                _pools[nodeKey].AddTransaction(transaction, 1);
+                
+                return this;
+            }
+            
+            public On AddAllBadTransactions(PrivateKey nodeKey)
+            {
+                Transaction transaction = new Transaction();
+                transaction.Value = 1;
+                transaction.To = TestObject.AddressC;
+                transaction.GasLimit = 30000;
+                transaction.GasPrice = 0.GWei();
+                transaction.Nonce = _currentNonce;
+                transaction.SenderAddress = TestObject.PrivateKeyD.Address;
+                transaction.Hash = Transaction.CalculateHash(transaction);
+                _ethereumSigner.Sign(TestObject.PrivateKeyD, transaction, 1);
+                _pools[nodeKey].AddTransaction(transaction, 1);
+                
+                transaction = new Transaction();
+                transaction.Value = 1;
+                transaction.To = TestObject.AddressC;
+                transaction.GasLimit = 30000;
+                transaction.GasPrice = 20.GWei();
+                transaction.Nonce = 0;
+                transaction.SenderAddress = TestObject.PrivateKeyD.Address;
+                transaction.Hash = Transaction.CalculateHash(transaction);
+                _ethereumSigner.Sign(TestObject.PrivateKeyD, transaction, 1);
+                _pools[nodeKey].AddTransaction(transaction, 1);
+                
+                transaction = new Transaction();
+                transaction.Value = 1;
+                transaction.To = TestObject.AddressC;
+                transaction.GasLimit = 100000000;
+                transaction.GasPrice = 20.GWei();
+                transaction.Nonce = _currentNonce;
+                transaction.SenderAddress = TestObject.PrivateKeyD.Address;
+                transaction.Hash = Transaction.CalculateHash(transaction);
+                _ethereumSigner.Sign(TestObject.PrivateKeyD, transaction, 1);
+                _pools[nodeKey].AddTransaction(transaction, 1);
+                
+                return this;
+            }
+            
+            public On AddQueuedTransaction(PrivateKey nodeKey)
+            {
+                Transaction transaction = new Transaction();
+                transaction.Value = 1;
+                transaction.To = TestObject.AddressC;
+                transaction.GasLimit = 30000;
+                transaction.GasPrice = 20.GWei();
+                transaction.Nonce = _currentNonce + 1000;
+                transaction.SenderAddress = TestObject.PrivateKeyD.Address;
+                transaction.Hash = Transaction.CalculateHash(transaction);
+                _ethereumSigner.Sign(TestObject.PrivateKeyD, transaction, 1);
+                _pools[nodeKey].AddTransaction(transaction, 1);
+                
+                return this;
+            }
         }
 
         private static int _timeout = 5000;
 
+        [Test]
+        public void Can_produce_block_with_transactions()
+        {
+            On.Goerli
+                .CreateNode(TestObject.PrivateKeyA)
+                .AddPendingTransaction(TestObject.PrivateKeyA)
+                .ProcessGenesis()
+                .AssertHeadBlockIs(TestObject.PrivateKeyA, 1)
+                .AssertTotalTxCount(TestObject.PrivateKeyA, 1);
+        }
+        
+        [Test]
+        public void When_producing_blocks_skips_queued_and_bad_transactions()
+        {
+            On.Goerli
+                .CreateNode(TestObject.PrivateKeyA)
+                .AddPendingTransaction(TestObject.PrivateKeyA)
+                .AddPendingTransaction(TestObject.PrivateKeyA)
+                .AddPendingTransaction(TestObject.PrivateKeyA)
+                .AddAllBadTransactions(TestObject.PrivateKeyA)
+                .AddQueuedTransaction(TestObject.PrivateKeyA)
+                .ProcessGenesis()
+                .AssertHeadBlockIs(TestObject.PrivateKeyA, 1)
+                .AssertTotalTxCount(TestObject.PrivateKeyA, 3);
+        }
+        
         [Test]
         public void Produces_block_on_top_of_genesis()
         {

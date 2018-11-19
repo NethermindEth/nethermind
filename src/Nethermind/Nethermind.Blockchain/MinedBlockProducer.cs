@@ -139,6 +139,7 @@ namespace Nethermind.Blockchain
                 Encoding.UTF8.GetBytes("Nethermind"));
 
             header.TotalDifficulty = parent.TotalDifficulty + difficulty;
+            
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
             var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
@@ -173,6 +174,8 @@ namespace Nethermind.Blockchain
                 gasRemaining -= transaction.GasLimit;
             }
 
+            header.TotalTransactions = parent.TotalTransactions + (UInt256)selected.Count;
+            
             if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {total} pending transactions.");
             Block block = new Block(header, selected, new BlockHeader[0]);
             header.TransactionsRoot = block.CalculateTransactionsRoot();

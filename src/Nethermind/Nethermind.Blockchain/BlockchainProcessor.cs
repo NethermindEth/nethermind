@@ -329,6 +329,7 @@ namespace Nethermind.Blockchain
                 lastProcessed = processedBlocks[processedBlocks.Length - 1];
                 if (_logger.IsTrace) _logger.Trace($"Setting total on last processed to {lastProcessed.ToString(Block.Format.Short)}");
                 lastProcessed.TotalDifficulty = suggestedBlock.TotalDifficulty;
+                lastProcessed.TotalTransactions = suggestedBlock.TotalTransactions;
             }
 
             return lastProcessed;

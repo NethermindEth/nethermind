@@ -35,7 +35,7 @@ namespace Nethermind.Core.Extensions
         
         public static UInt256 GWei(this int @this)
         {
-            return (uint)@this * Unit.Wei;
+            return (uint)@this * Unit.GWei;
         }
 
         public static byte[] ToByteArray(this int value, Bytes.Endianness endianness)

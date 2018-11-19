@@ -70,5 +70,16 @@ namespace Nethermind.Core.Test.Crypto
             Address address = signer.RecoverAddress(tx, blockNumber);
             Assert.AreEqual(key.Address, address);
         }
+        
+        [Test]
+        public void Sign_goerli()
+        {
+            EthereumSigner signer = new EthereumSigner(GoerliSpecProvider.Instance, NullLogManager.Instance);
+            PrivateKey key = Build.A.PrivateKey.TestObject;
+            Transaction tx = Build.A.Transaction.TestObject;
+            signer.Sign(key, tx, 1);
+            Address address = signer.RecoverAddress(tx, 1);
+            Assert.AreEqual(key.Address, address);
+        }
     }
 }

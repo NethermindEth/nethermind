@@ -349,7 +349,7 @@ namespace Nethermind.Clique
                 header.Timestamp = new UInt256(_timestamp.EpochSeconds);
             }
 
-            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
+            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t.Nonce).ThenByDescending(t => t.GasPrice).ThenBy(t => t.GasLimit); // by nonce in case there are two transactions for the same account
 
             var selectedTxs = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;
@@ -358,15 +358,11 @@ namespace Nethermind.Clique
 
             int total = 0;
             _stateProvider.StateRoot = parentHeader.StateRoot;
+            
+            Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
             foreach (Transaction transaction in transactions)
             {
                 total++;
-                if (transaction == null)
-                {
-                    if (_logger.IsError) _logger.Error("Rejecting null pending transaction.");
-                    continue;
-                }
-
                 if (transaction.SenderAddress == null)
                 {
                     if (_logger.IsError) _logger.Error($"Rejecting null sender pending transaction.");
@@ -379,7 +375,7 @@ namespace Nethermind.Clique
                     continue;
                 }
 
-                if (transaction.Nonce != _stateProvider.GetNonce(transaction.SenderAddress))
+                if (transaction.Nonce != _stateProvider.GetNonce(transaction.SenderAddress) && (!nonces.ContainsKey(transaction.SenderAddress) || nonces[transaction.SenderAddress] + 1 != transaction.Nonce))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Rejecting transaction based on nonce.");
                     continue;
@@ -388,17 +384,18 @@ namespace Nethermind.Clique
                 if (transaction.GasLimit > gasRemaining)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
-                    break;
+                    continue;
                 }
 
                 selectedTxs.Add(transaction);
+                nonces[transaction.SenderAddress] = transaction.Nonce;
                 gasRemaining -= transaction.GasLimit;
             }
 
             if (_logger.IsDebug) _logger.Debug($"Collected {selectedTxs.Count} out of {total} pending transactions.");
 
-
             Block block = new Block(header, selectedTxs, new BlockHeader[0]);
+            block.TotalTransactions = parentBlock.TotalTransactions + (UInt256) selectedTxs.Count;
             header.TransactionsRoot = block.CalculateTransactionsRoot();
             block.Author = _address;
             return block;
