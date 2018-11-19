@@ -1,30 +1,12 @@
 <img src="Nethermind.png" width="200">
 
 # .NET Core Ethereum client
-
-[![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind)
-[![Build Status](https://travis-ci.org/NethermindEth/nethermind.svg?branch=master)](https://travis-ci.org/NethermindEth/nethermind)
-[![GitHub release](https://img.shields.io/github/release/NethermindEth/nethermind.svg)](https://github.com/NethermindEth/nethermind/releases)
-[![ReadheDocs](https://readthedocs.org/projects/nethermind/badge/?version=latest)](https://nethermind.readthedocs.io)
-
-<table>
-  <tr>
-    <td>Documentation</td>
-    <td>https://nethermind.readthedocs.io</td>
-  </tr>
-  <tr>
-    <td>Travis CI</td>
-    <td>https://travis-ci.org/NethermindEth/nethermind</td>
-  </tr>
-  <tr>
-    <td>Releases</td>
-    <td>https://github.com/NethermindEth/nethermind/releases</td>
-  </tr>
-  <tr>
-    <td>Gitter</td>
-    <td>https://gitter.im/nethermindeth/nethermind</td>
-  </tr>
-</table>
+|           |         |               |
+| :-------- | :------ | :------------ |
+| Documentation | [![ReadtheDocs](https://readthedocs.org/projects/nethermind/badge/?version=latest)](https://nethermind.readthedocs.io) | https://nethermind.readthedocs.io |
+| Travis CI | [![Build Status](https://travis-ci.org/NethermindEth/nethermind.svg?branch=master)](https://travis-ci.org/NethermindEth/nethermind) | https://travis-ci.org/NethermindEth/nethermind |
+| Releases | [![GitHub release](https://img.shields.io/github/release/NethermindEth/nethermind.svg)](https://github.com/NethermindEth/nethermind/releases) | https://github.com/NethermindEth/nethermind/releases |
+| Gitter | [![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind) | https://gitter.im/nethermindeth/nethermind |
 
 ## Download and run:
 [Windows](http://downloads.nethermind.io)<br/>
