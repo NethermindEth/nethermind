@@ -108,7 +108,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<NettyP2PHandler>());
-            _pipeline.Received(1).AddLast(Arg.Any<Multiplexor>());
+            _pipeline.Received(1).AddLast(Arg.Any<PacketSender>());
         }
 
         [Test]
@@ -166,7 +166,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<NettyP2PHandler>());
-            _pipeline.Received(1).AddLast(Arg.Any<Multiplexor>());
+            _pipeline.Received(1).AddLast(Arg.Any<PacketSender>());
         }
 
         [Test]

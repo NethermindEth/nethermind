@@ -179,15 +179,15 @@ namespace Nethermind.Network.Rlpx
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyPacketSplitter)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
 
-                Multiplexor multiplexor = new Multiplexor(_logManager);
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(Multiplexor)} for {_p2PSession.RemoteNodeId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(multiplexor);
+                PacketSender packetSender = new PacketSender(_logManager);
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_p2PSession.RemoteNodeId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(packetSender);
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyP2PHandler)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 NettyP2PHandler handler = new NettyP2PHandler(_p2PSession, _logger);
                 context.Channel.Pipeline.AddLast(handler);
 
-                handler.Init(multiplexor, context);
+                handler.Init(packetSender, context);
 
                 if (_logger.IsTrace) _logger.Trace($"Removing {nameof(NettyHandshakeHandler)}");
                 context.Channel.Pipeline.Remove(this);

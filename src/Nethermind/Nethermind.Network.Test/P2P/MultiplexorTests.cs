@@ -19,9 +19,9 @@ namespace Nethermind.Network.Test.P2P
             channel.Active.Returns(true);
             context.Channel.Returns(channel);
             
-            Multiplexor multiplexor = new Multiplexor(NullLogManager.Instance);
-            multiplexor.HandlerAdded(context);
-            multiplexor.Enqueue(packet);
+            PacketSender packetSender = new PacketSender(NullLogManager.Instance);
+            packetSender.HandlerAdded(context);
+            packetSender.Enqueue(packet);
 
             context.Received(1).WriteAndFlushAsync(packet);
         }
@@ -35,9 +35,9 @@ namespace Nethermind.Network.Test.P2P
             channel.Active.Returns(false);
             context.Channel.Returns(channel);
             
-            Multiplexor multiplexor = new Multiplexor(NullLogManager.Instance);
-            multiplexor.HandlerAdded(context);
-            multiplexor.Enqueue(packet);
+            PacketSender packetSender = new PacketSender(NullLogManager.Instance);
+            packetSender.HandlerAdded(context);
+            packetSender.Enqueue(packet);
 
             context.Received(0).WriteAndFlushAsync(packet);
         }
