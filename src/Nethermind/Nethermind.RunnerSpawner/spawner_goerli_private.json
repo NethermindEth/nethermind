@@ -56,7 +56,7 @@
           "P2PPort": 30312,
           "HttpHost": "127.0.0.1",
           "HttpPort": 8345,
-          "IsMining": false,
+          "IsMining": true,
           "ChainSpecPath": "chainspec/goerli_private.json",
           "GenesisHash": "",
           "BaseDbPath": "nethermind_db/goerli_private_2",

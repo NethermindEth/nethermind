@@ -178,7 +178,7 @@ namespace Nethermind.Clique
             Block block = PrepareBlock();
             if (block == null)
             {
-                if (_logger.IsDebug) _logger.Debug("Skipping block production or block production failed");
+                if (_logger.IsTrace) _logger.Trace("Skipping block production or block production failed");
                 return;
             }
 
@@ -223,14 +223,20 @@ namespace Nethermind.Clique
 
         private Block PrepareBlock()
         {
-            if(_logger.IsInfo) _logger.Info($"Preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
-            
             BlockHeader parentHeader = _blockTree.Head;
             if (parentHeader == null)
             {
                 if(_logger.IsError) _logger.Error($"Preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)} - parent header is null");
                 return null;
             }
+
+            if (!_sealEngine.CanSignBlock(parentHeader.Number + 1, parentHeader.Hash))
+            {
+                if (_logger.IsInfo) _logger.Info($"Not allowed to sign block ({parentHeader.Number + 1})");
+                return null;
+            }
+            
+            if(_logger.IsInfo) _logger.Info($"Preparing new block on top of {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
 
             Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
             UInt256 timestamp = _timestamp.EpochSeconds;
