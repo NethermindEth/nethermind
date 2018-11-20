@@ -18,12 +18,10 @@
 
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Db.Config;
 using Nethermind.JsonRpc.Config;

@@ -18,20 +18,16 @@
 
 using System;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.Module;
-using Nethermind.Network;
-using Nethermind.Network.Config;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
 

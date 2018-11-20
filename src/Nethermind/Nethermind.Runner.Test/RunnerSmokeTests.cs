@@ -16,15 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Microsoft.AspNetCore;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc;
-using Nethermind.Network;
-using Nethermind.Network.Discovery;
+using Nethermind.Core.Logging;
+using Nethermind.JsonRpc.Config;
+using Nethermind.JsonRpc.Module;
 using Nethermind.Runner.Runners;
 using NUnit.Framework;
 
@@ -36,20 +31,7 @@ namespace Nethermind.Runner.Test
         [Test]
         public void SmokeTest()
         {
-            //var host = "http://localhost:100012";
-
-            //Bootstrap.ConfigureContainer(new JsonConfigProvider(), new NetworkConfigurationProvider(new NetworkHelper(NullLogger.Instance)), new PrivateKeyProvider(new CryptoRandom()), new SimpleConsoleLogger(), new InitParams() );
-
-            //var webHost = WebHost.CreateDefaultBuilder()
-            //    .UseStartup<Startup>()
-            //    .UseUrls(host)
-            //    .Build();
-
-            //var ethereumRunner = webHost.Services.GetService<IEthereumRunner>();
-            //var discoveryRunner = webHost.Services.GetService<IDiscoveryRunner>();
-
-            //Assert.IsNotNull(ethereumRunner);
-            //Assert.IsNotNull(discoveryRunner);
+            EthereumRunner runner = new EthereumRunner(new RpcModuleProvider(new JsonRpcConfig()), new JsonConfigProvider(), NullLogManager.Instance);
         }
     }
 }
