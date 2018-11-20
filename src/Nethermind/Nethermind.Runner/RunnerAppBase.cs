@@ -117,13 +117,27 @@ namespace Nethermind.Runner
                 _cancelKeySource = new TaskCompletionSource<object>();
                 Task userCancelTask = Task.Factory.StartNew(() =>
                 {
+                    var detached = Environment.GetEnvironmentVariable("NETHERMIND_DETACHED_MODE")?.ToLowerInvariant() ==
+                                   "true";
+
                     Console.WriteLine("Enter 'e' to exit");
                     while (true)
                     {
-                        var line = Console.ReadLine();
-                        if (line == "e")
+                        if (detached)
                         {
-                            break;
+                            var line = Console.ReadLine();
+                            if (line == "e")
+                            {
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            var keyInfo = Console.ReadKey();
+                            if (keyInfo.Key == ConsoleKey.E)
+                            {
+                                break;
+                            }
                         }
                     }
                 });
