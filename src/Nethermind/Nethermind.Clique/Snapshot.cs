@@ -122,9 +122,8 @@ namespace Nethermind.Clique
                 {
                     throw new InvalidOperationException("Unauthorized signer");
                 }
-
                 
-                if (HasSignedRecently(number, signer))
+                if (HasSignedRecently(snapshot, number, signer))
                 {
                     throw new InvalidOperationException("Recently signed");
                 }
@@ -253,15 +252,20 @@ namespace Nethermind.Clique
 
         public ulong SignerLimit => (ulong) Signers.Count / 2 + 1;
         
-        public bool HasSignedRecently(UInt256 number, Address signer)
+        private bool HasSignedRecently(Snapshot snapshot, UInt256 number, Address signer)
         {
-            UInt256 signedAt = Signers[signer];
+            UInt256 signedAt = snapshot.Signers[signer];
             if (signedAt.IsZero)
             {
                 return false;
             }
             
             return number - signedAt < SignerLimit;
+        }
+        
+        public bool HasSignedRecently(UInt256 number, Address signer)
+        {
+            return HasSignedRecently(this, number, signer);
         }
         
         public bool InTurn(UInt256 number, Address signer)
