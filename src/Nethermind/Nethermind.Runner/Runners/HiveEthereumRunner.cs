@@ -31,12 +31,12 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Module;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Data;
 using Nethermind.Store;
+using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Runners
 {
@@ -48,10 +48,13 @@ namespace Nethermind.Runner.Runners
         private readonly IStateProvider _stateProvider;
         private readonly ISnapshotableDb _stateDb;
         private readonly ISpecProvider _specProvider;
+        private readonly HiveWallet _wallet;
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
 
-        public HiveEthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IBlockTree blockTree, IStateProvider stateProvider, ISnapshotableDb stateDb , ILogger logger, IConfigProvider configurationProvider, ISpecProvider specProvider)
+        public HiveEthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor,
+            IBlockTree blockTree, IStateProvider stateProvider, ISnapshotableDb stateDb, ILogger logger,
+            IConfigProvider configurationProvider, ISpecProvider specProvider, HiveWallet wallet)
         {
             _jsonSerializer = jsonSerializer;
             _blockchainProcessor = blockchainProcessor;
@@ -61,6 +64,7 @@ namespace Nethermind.Runner.Runners
             _logger = logger;
             _configurationProvider = configurationProvider;
             _specProvider = specProvider;
+            _wallet = wallet;
         }
 
         public Task Start()
@@ -157,8 +161,7 @@ namespace Nethermind.Runner.Runners
                 _logger.Info($"Processing key file: {file}");
                 var fileContent = File.ReadAllText(file);
                 var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(fileContent);
-                var filePath = Path.Combine(keyStoreDir, keyStoreItem.Address);
-                File.WriteAllText(filePath, fileContent, Encoding.GetEncoding(_configurationProvider.GetConfig<IKeystoreConfig>().KeyStoreEncoding));
+                _wallet.Add(new Address(keyStoreItem.Address));
             }
         }
 

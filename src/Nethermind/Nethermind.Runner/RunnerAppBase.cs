@@ -341,7 +341,7 @@ namespace Nethermind.Runner
 
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, transactionPool, logManager);
-            IWallet wallet = new DevWallet(logManager);
+            var wallet = new HiveWallet();
 
             var blockchainBridge = new BlockchainBridge(
                 ethereumSigner,
@@ -360,7 +360,7 @@ namespace Nethermind.Runner
 
             return new HiveEthereumRunner(jsonSerializer, blockchainProcessor, blockTree,
                 stateProvider, new StateDb(),
-                logger, configProvider, specProvider);
+                logger, configProvider, specProvider, wallet);
         }
     }
 }
