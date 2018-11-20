@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -57,7 +58,6 @@ namespace Nethermind.Runner.Runners
             _blockTree = blockTree;
             _stateProvider = stateProvider;
             _stateDb = stateDb;
-
             _logger = logger;
             _configurationProvider = configurationProvider;
             _specProvider = specProvider;
@@ -91,9 +91,15 @@ namespace Nethermind.Runner.Runners
             }
 
             var chainFileContent = File.ReadAllBytes(chainFile);
-
-            var blocks = new Rlp.DecoderContext(chainFileContent).DecodeArray(ctx => Rlp.Decode<Block>(ctx, RlpBehaviors.AllowExtraData));
-            for (int i = 0; i < blocks.Length; i++)
+            var context = new Rlp.DecoderContext(chainFileContent);
+            var blocks = new List<Block>();
+            while (context.ReadNumberOfItemsRemaining() > 0)
+            {
+                context.PeekNextItem();
+                blocks.Add(Rlp.Decode<Block>(context));
+            }
+            
+            for (int i = 0; i < blocks.Count; i++)
             {
                 ProcessBlock(blocks[i]);
             }

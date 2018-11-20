@@ -111,6 +111,7 @@ namespace Nethermind.Runner.Runners
         private IRlpxPeer _rlpxPeer;
         private IDbProvider _dbProvider;
         private ITimestamp _timestamp = new Timestamp();
+        private IStateProvider _stateProvider;
 
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
@@ -136,9 +137,19 @@ namespace Nethermind.Runner.Runners
             UpdateNetworkConfig();
             await InitBlockchain();
             RegisterJsonRpcModules();
+//            if (Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true")
+//            {
+//                await InitHiveAsync();
+//            }
 
             if (_logger.IsDebug) _logger.Debug("Ethereum initialization completed");
         }
+
+//        private async Task InitHiveAsync()
+//        {
+//            await new HiveEthereumRunner(_jsonSerializer, _blockchainProcessor, _blockTree as BlockTree,
+//                _stateProvider, _dbProvider.StateDb, _logger, _configProvider, _specProvider).Start();
+//        }
 
         private void GenerateNodeKey()
         {
@@ -451,6 +462,8 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.CodeDb,
                 _logManager);
 
+            _stateProvider = stateProvider;
+            
             var storageProvider = new StorageProvider(
                 _dbProvider.StateDb,
                 stateProvider,
