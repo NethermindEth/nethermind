@@ -32,7 +32,7 @@ namespace Nethermind.Clique
 
         public CliqueBridge(CliqueBlockProducer cliqueBlockProducer, IBlockTree blockTree)
         {
-            if (_cliqueBlockProducer != null)
+            if (cliqueBlockProducer != null)
             {
                 _cliqueBlockProducer = cliqueBlockProducer;
             }
