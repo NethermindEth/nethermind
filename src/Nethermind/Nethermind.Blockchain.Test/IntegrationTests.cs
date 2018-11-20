@@ -135,7 +135,7 @@ namespace Nethermind.Blockchain.Test
                 blockchainProcessor.SuggestBlock(block.Hash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
                 blockProcessedEvent.WaitOne(1000);
 
-                TxTracer tracer = new TxTracer(blockchainProcessor, receiptStorage, blockTree);
+                Tracer tracer = new Tracer(blockchainProcessor, receiptStorage, blockTree);
 
                 int currentCount = receiptsDb.Keys.Count;
                 logger.Info($"Current count of receipts {currentCount}");
@@ -143,8 +143,8 @@ namespace Nethermind.Blockchain.Test
 
                 if (block.Transactions.Length > 0)
                 {
-                    TransactionTrace trace = tracer.Trace(block.Transactions[0].Hash);
-                    Assert.AreSame(TransactionTrace.QuickFail, trace);
+                    GethLikeTxTrace trace = tracer.Trace(block.Transactions[0].Hash);
+                    Assert.AreSame(GethLikeTxTrace.QuickFail, trace);
                     Assert.AreNotEqual(previousCount, currentCount, $"receipts at block {i}");
                     totalTx += block.Transactions.Length;
                 }

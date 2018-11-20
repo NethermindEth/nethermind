@@ -190,7 +190,7 @@ namespace Nethermind.Runner.Runners
             IReadOnlyDbProvider rpcDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             AlternativeChain rpcChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, _transactionPool, _receiptStorage);
 
-            ITxTracer txTracer = new TxTracer(rpcChain.Processor, _receiptStorage, _blockTree);
+            ITracer tracer = new Tracer(rpcChain.Processor, _receiptStorage, _blockTree);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, _blockProcessor, _transactionPool, _logManager);
             _wallet = HiveEnabled ? (IWallet)new HiveWallet() : new DevWallet(_logManager);
@@ -220,7 +220,7 @@ namespace Nethermind.Runner.Runners
             var debugReceiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
             AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, debugTransactionPool, debugReceiptStorage);
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            var debugBridge = new DebugBridge(debugDbProvider, txTracer, debugChain.Processor);
+            var debugBridge = new DebugBridge(debugDbProvider, tracer, debugChain.Processor);
 
             JsonRpcModelMapper mapper = new JsonRpcModelMapper();
 

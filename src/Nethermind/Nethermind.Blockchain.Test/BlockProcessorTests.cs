@@ -23,6 +23,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
@@ -54,7 +55,7 @@ namespace Nethermind.Blockchain.Test
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestObject.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
-            Block[] processedBlocks = processor.Process(Keccak.EmptyTreeHash, new [] {block}, ProcessingOptions.None, NullTraceListener.Instance);
+            Block[] processedBlocks = processor.Process(Keccak.EmptyTreeHash, new [] {block}, ProcessingOptions.None, NullBlockTracer.Instance);
             Assert.AreEqual(1, processedBlocks.Length, "length");
             Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
         }

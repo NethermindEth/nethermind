@@ -84,12 +84,12 @@ namespace Nethermind.Evm.Test
             _stateDb.Restore(_stateDbSnapshot);
         }
 
-        protected (TransactionReceipt Receipt, TransactionTrace Trace) ExecuteAndTrace(params byte[] code)
+        protected (TransactionReceipt Receipt, GethLikeTxTrace Trace) ExecuteAndTrace(params byte[] code)
         {
             return Execute(BlockNumber, 100000, code, true);
         }
         
-        protected (TransactionReceipt Receipt, TransactionTrace Trace) ExecuteAndTrace(UInt256 blockNumber, long gasLimit, params byte[] code)
+        protected (TransactionReceipt Receipt, GethLikeTxTrace Trace) ExecuteAndTrace(UInt256 blockNumber, long gasLimit, params byte[] code)
         {
             return Execute(blockNumber, gasLimit, code, true);
         }
@@ -104,7 +104,7 @@ namespace Nethermind.Evm.Test
             return Execute(blockNumber, gasLimit, code, false).Receipt;
         }
         
-        private (TransactionReceipt Receipt, TransactionTrace Trace) Execute(UInt256 blockNumber, long gasLimit, byte[] code, bool shouldTrace)
+        private (TransactionReceipt Receipt, GethLikeTxTrace Trace) Execute(UInt256 blockNumber, long gasLimit, byte[] code, bool shouldTrace)
         {
             TestState.CreateAccount(Sender, 100.Ether());
             TestState.CreateAccount(Recipient, 100.Ether());

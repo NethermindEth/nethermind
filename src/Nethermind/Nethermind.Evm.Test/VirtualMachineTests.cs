@@ -41,7 +41,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Trace()
         {
-            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(
+            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,
@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Trace_vm_errors()
         {
-            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, 
+            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, 
                 (byte)Instruction.PUSH1,
                 1,
                 (byte)Instruction.PUSH1,
@@ -87,7 +87,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.MLOAD)
                 .Done;
             
-            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
+            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
             
             Assert.True(trace.Entries.Any(e => e.Error != null));
         }
@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.JUMP)
                 .Done;
             
-            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
+            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
             
             Assert.True(trace.Entries.Any(e => e.Error != null));
         }
@@ -116,7 +116,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.JUMPI)
                 .Done;
             
-            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
+            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
             
             Assert.True(trace.Entries.Any(e => e.Error != null));
         }
@@ -124,7 +124,7 @@ namespace Nethermind.Evm.Test
         [Test(Description = "Test a case where the trace is created for one transaction and subsequent untraced transactions keep adding entries to the first trace created.")]
         public void Trace_each_tx_separate()
         {            
-            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(
+            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,

@@ -60,27 +60,27 @@ namespace Nethermind.JsonRpc.Module
             return _dbMappings[dbName][key];
         }
         
-        public TransactionTrace GetTransactionTrace(Keccak transactionHash)
+        public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash)
         {
             return _txTracer.Trace(transactionHash);
         }
 
-        public TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index)
+        public GethLikeTxTrace GetTransactionTrace(UInt256 blockNumber, int index)
         {
             return _txTracer.Trace(blockNumber, index);
         }
 
-        public TransactionTrace GetTransactionTrace(Keccak blockHash, int index)
+        public GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index)
         {
             return _txTracer.Trace(blockHash, index);
         }
 
-        public BlockTrace GetBlockTrace(Keccak blockHash)
+        public GethLikeBlockTrace GetBlockTrace(Keccak blockHash)
         {
             return _txTracer.TraceBlock(blockHash);
         }
 
-        public BlockTrace GetBlockTrace(UInt256 blockNumber)
+        public GethLikeBlockTrace GetBlockTrace(UInt256 blockNumber)
         {
             return _txTracer.TraceBlock(blockNumber);
         }

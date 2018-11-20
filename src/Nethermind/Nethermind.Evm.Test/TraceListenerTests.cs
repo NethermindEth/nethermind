@@ -31,35 +31,35 @@ namespace Nethermind.Evm.Test
         public void Starts_with_trace_set_to_null()
         {
             Keccak txHash = TestObject.KeccakA;
-            TraceListener traceListener = new TraceListener(txHash);
-            Assert.IsNull(traceListener.Trace, $"starts with {nameof(traceListener.Trace)} set to null");
+            GethLikeBlockTracer gethLikeBlockTracer = new GethLikeBlockTracer(txHash);
+            Assert.IsNull(gethLikeBlockTracer.Trace, $"starts with {nameof(gethLikeBlockTracer.Trace)} set to null");
         }
         
         [Test]
         public void Throws_when_recording_unexpected_trace()
         {
             Keccak txHash = TestObject.KeccakA;
-            TraceListener traceListener = new TraceListener(txHash);
-            Assert.Throws<InvalidOperationException>(() => traceListener.RecordTrace(TestObject.KeccakB, new TransactionTrace()));
+            GethLikeBlockTracer gethLikeBlockTracer = new GethLikeBlockTracer(txHash);
+            Assert.Throws<InvalidOperationException>(() => gethLikeBlockTracer.RecordTrace(TestObject.KeccakB, new GethLikeTxTrace()));
         }
         
         [Test]
         public void Should_trace_responds_properly()
         {
             Keccak txHash = TestObject.KeccakA;
-            TraceListener traceListener = new TraceListener(txHash);
-            Assert.IsTrue(traceListener.ShouldTrace(new Keccak(txHash.Bytes)));
-            Assert.IsFalse(traceListener.ShouldTrace(TestObject.KeccakB));
+            GethLikeBlockTracer gethLikeBlockTracer = new GethLikeBlockTracer(txHash);
+            Assert.IsTrue(gethLikeBlockTracer.ShouldTrace(new Keccak(txHash.Bytes)));
+            Assert.IsFalse(gethLikeBlockTracer.ShouldTrace(TestObject.KeccakB));
         }
         
         [Test]
         public void Records_trace_properly()
         {
             Keccak txHash = TestObject.KeccakA;
-            TraceListener traceListener = new TraceListener(txHash);
-            var trace = new TransactionTrace();
-            traceListener.RecordTrace(new Keccak(txHash.Bytes), trace);
-            Assert.AreSame(trace, traceListener.Trace);
+            GethLikeBlockTracer gethLikeBlockTracer = new GethLikeBlockTracer(txHash);
+            var trace = new GethLikeTxTrace();
+            gethLikeBlockTracer.RecordTrace(new Keccak(txHash.Bytes), trace);
+            Assert.AreSame(trace, gethLikeBlockTracer.Trace);
         }
     }
 }

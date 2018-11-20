@@ -27,14 +27,13 @@ namespace Nethermind.Evm
         private static List<Address> _emptyDestroyList = new List<Address>(0);
         private static List<LogEntry> _emptyLogs = new List<LogEntry>(0);
         
-        public TransactionSubstate(string error, TransactionTrace trace)
+        public TransactionSubstate(string error)
         {
             Error = error;
             Refund = 0;
             DestroyList = _emptyDestroyList;
             Logs = _emptyLogs;
             ShouldRevert = false;
-            Trace = trace;
         }
         
         public TransactionSubstate(
@@ -42,15 +41,13 @@ namespace Nethermind.Evm
             long refund,
             IReadOnlyCollection<Address> destroyList,
             IReadOnlyCollection<LogEntry> logs,
-            bool shouldRevert,
-            TransactionTrace trace)
+            bool shouldRevert)
         {
             Output = output;
             Refund = refund;
             DestroyList = destroyList;
             Logs = logs;
             ShouldRevert = shouldRevert;
-            Trace = trace;
         }
 
         public bool IsError => Error != null;
@@ -66,7 +63,5 @@ namespace Nethermind.Evm
         public IReadOnlyCollection<LogEntry> Logs { get; }
 
         public IReadOnlyCollection<Address> DestroyList { get; }
-        
-        public TransactionTrace Trace { get; }
     }
 }

@@ -32,7 +32,7 @@ namespace Nethermind.Evm
         {
             private readonly int _capacity;
 
-            public StackPool(int capacity = VirtualMachine.MaxCallDepth * 2) // TODO: we have wrong call depth calculation somehwere
+            public StackPool(int capacity = VirtualMachine.MaxCallDepth * 2) // TODO: we have wrong call depth calculation somewhere
             {
                 _capacity = capacity;
             }

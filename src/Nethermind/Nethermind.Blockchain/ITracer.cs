@@ -16,34 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Evm.Tracing
+namespace Nethermind.Blockchain
 {
-    public class BlockTraceListener : ITraceListener
+    public interface ITracer
     {
-        private Keccak _blockHash;
-        private int _currentIndex;
-
-        public BlockTraceListener(Block block)
-        {
-            _blockHash = block.Hash;
-            BlockTrace = new BlockTrace(new TransactionTrace[block.Transactions.Length]);
-        }
-
-        public BlockTrace BlockTrace { get; set; }
-
-        public bool ShouldTrace(Keccak txHash)
-        {
-            return true;
-        }
-
-        public void RecordTrace(Keccak txHash, TransactionTrace trace)
-        {
-            if (_currentIndex > BlockTrace.TxTraces.Length - 1) throw new InvalidOperationException($"Unexpected trace for tx {txHash} beyond the number of transactions in block {_blockHash}");
-            BlockTrace.TxTraces[_currentIndex++] = trace;
-        }
+        GethLikeTxTrace Trace(Keccak txHash);
+        GethLikeTxTrace Trace(UInt256 blockNumber, Transaction transaction);
+        GethLikeTxTrace Trace(UInt256 blockNumber, int txIndex);
+        GethLikeTxTrace Trace(Keccak blockHash, int txIndex);
+        GethLikeBlockTrace TraceBlock(Keccak blockHash);
+        GethLikeBlockTrace TraceBlock(UInt256 blockNumber);
     }
 }

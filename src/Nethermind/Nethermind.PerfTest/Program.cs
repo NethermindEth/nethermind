@@ -39,6 +39,7 @@ using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
 using Nethermind.Store;
@@ -421,7 +422,7 @@ namespace Nethermind.PerfTest
             {
                 if (!isStarted)
                 {
-                    blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true), ProcessingOptions.None, NullTraceListener.Instance);
+                    blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true), ProcessingOptions.None, NullBlockTracer.Instance);
                     stopwatch.Start();
                     blockchainProcessor.Start();
                     isStarted = true;

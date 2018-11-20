@@ -16,16 +16,49 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Numerics;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class TransactionTrace
+    public class GethLikeTxTracer : ITxTracer
+    {
+        private GethLikeTxTrace _trace = new GethLikeTxTrace();
+        
+        public bool IsTracing => true;
+        bool ITxTracer.IsTracingCalls => true;
+        bool ITxTracer.IsTracingStorage => true;
+        bool ITxTracer.IsTracingMemory => true;
+        bool ITxTracer.IsTracingOpcodes => true;
+        bool ITxTracer.IsTracingStack => true;
+        public void MarkAsFailed()
+        {
+            _trace.Failed = true;
+        }
+
+        public void SetReturnValue(byte[] returnValue)
+        {
+            _trace.ReturnValue = returnValue?.ToHexString();
+        }
+
+        public void SetGasSpent(ulong gasSpent)
+        {
+            _trace.Gas = gasSpent;
+        }
+
+        public GethLikeTxTrace BuildResult()
+        {
+            return _trace;
+        }
+    }
+    
+    public class GethLikeTxTrace
     {
         public List<Dictionary<string, string>> StoragesByDepth { get; } = new List<Dictionary<string, string>>();
 
-        public TransactionTrace()
+        public GethLikeTxTrace()
         {
             Entries = new List<TransactionTraceEntry>();
             StorageTrace = new StorageTrace();
@@ -41,6 +74,6 @@ namespace Nethermind.Evm.Tracing
         
         public List<TransactionTraceEntry> Entries { get; set; }
 
-        public static TransactionTrace QuickFail { get; } = new TransactionTrace {Failed = true, ReturnValue = string.Empty};
+        public static GethLikeTxTrace QuickFail { get; } = new GethLikeTxTrace {Failed = true, ReturnValue = string.Empty};
     }
 }

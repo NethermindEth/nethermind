@@ -191,20 +191,20 @@ namespace Nethermind.JsonRpc
             return mapped;
         }
 
-        public TransactionTrace MapTransactionTrace(Evm.Tracing.TransactionTrace transactionTrace)
+        public TransactionTrace MapTransactionTrace(Evm.Tracing.GethLikeTxTrace gethLikeTxTrace)
         {
-            if (transactionTrace == null)
+            if (gethLikeTxTrace == null)
             {
                 return null;
             }
 
             return new TransactionTrace
             {
-                Gas = transactionTrace.Gas,
-                Failed = transactionTrace.Failed,
-                ReturnValue = transactionTrace.ReturnValue,
-                StorageTrace = MapStorageTrace(transactionTrace.StorageTrace),
-                StructLogs = transactionTrace.Entries?.Select(x => new TransactionTraceEntry
+                Gas = gethLikeTxTrace.Gas,
+                Failed = gethLikeTxTrace.Failed,
+                ReturnValue = gethLikeTxTrace.ReturnValue,
+                StorageTrace = MapStorageTrace(gethLikeTxTrace.StorageTrace),
+                StructLogs = gethLikeTxTrace.Entries?.Select(x => new TransactionTraceEntry
                 {
                     Pc = x.Pc,
                     Op = x.Operation,
@@ -240,9 +240,9 @@ namespace Nethermind.JsonRpc
             };
         }
 
-        public BlockTraceItem[] MapBlockTrace(BlockTrace blockTrace)
+        public BlockTraceItem[] MapBlockTrace(GethLikeBlockTrace gethLikeBlockTrace)
         {
-            return blockTrace.TxTraces.Select(t => new BlockTraceItem(MapTransactionTrace(t))).ToArray();
+            return gethLikeBlockTrace.TxTraces.Select(t => new BlockTraceItem(MapTransactionTrace(t))).ToArray();
         }
 
         public Log MapLog(LogEntry logEntry)

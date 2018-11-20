@@ -27,6 +27,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain
 {
@@ -225,7 +226,7 @@ namespace Nethermind.Blockchain
                 Block block = blockRef.Block;
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
-                Process(block, blockRef.ProcessingOptions, NullTraceListener.Instance);
+                Process(block, blockRef.ProcessingOptions, NullBlockTracer.Instance);
                 if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
 
                 _stats.UpdateStats(block, _recoveryQueue.Count, _blockQueue.Count);
@@ -241,7 +242,7 @@ namespace Nethermind.Blockchain
         public event EventHandler ProcessingQueueEmpty;
 
         [Todo("Introduce priority queue and create a SuggestWithPriority that waits for block execution to return a block, then make this private")]
-        public Block Process(Block suggestedBlock, ProcessingOptions options, ITraceListener traceListener)
+        public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
             RunSimpleChecksAheadOfProcessing(suggestedBlock, options);
 
@@ -316,7 +317,7 @@ namespace Nethermind.Blockchain
                     _recoveryStep.RecoverData(blocks[i]);
                 }
 
-                processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, traceListener);
+                processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, blockTracer);
                 if ((options & ProcessingOptions.ReadOnlyChain) == 0)
                 {
                     _blockTree.UpdateMainChain(blocksToBeAddedToMain.ToArray());

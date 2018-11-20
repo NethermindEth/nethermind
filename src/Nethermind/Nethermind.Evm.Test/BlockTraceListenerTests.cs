@@ -33,8 +33,8 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.TestObject;
             block.Transactions = new Transaction[3];
 
-            BlockTraceListener traceListener = new BlockTraceListener(block);
-            Assert.AreEqual(3, traceListener.BlockTrace.TxTraces.Length);
+            BlockBlockTracer blockTracer = new BlockBlockTracer(block);
+            Assert.AreEqual(3, blockTracer.GethLikeBlockTrace.TxTraces.Length);
         }
 
         [Test]
@@ -43,18 +43,18 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.TestObject;
             block.Transactions = new Transaction[3];
 
-            BlockTraceListener traceListener = new BlockTraceListener(block);
-            TransactionTrace a = new TransactionTrace();
-            TransactionTrace b = new TransactionTrace();
-            TransactionTrace c = new TransactionTrace();
+            BlockBlockTracer blockTracer = new BlockBlockTracer(block);
+            GethLikeTxTrace a = new GethLikeTxTrace();
+            GethLikeTxTrace b = new GethLikeTxTrace();
+            GethLikeTxTrace c = new GethLikeTxTrace();
 
-            traceListener.RecordTrace(TestObject.KeccakA, a);
-            traceListener.RecordTrace(TestObject.KeccakB, b);
-            traceListener.RecordTrace(TestObject.KeccakC, c);
+            blockTracer.RecordTrace(TestObject.KeccakA, a);
+            blockTracer.RecordTrace(TestObject.KeccakB, b);
+            blockTracer.RecordTrace(TestObject.KeccakC, c);
 
-            Assert.AreSame(a, traceListener.BlockTrace.TxTraces[0], "0");
-            Assert.AreSame(b, traceListener.BlockTrace.TxTraces[1], "1");
-            Assert.AreSame(c, traceListener.BlockTrace.TxTraces[2], "2");
+            Assert.AreSame(a, blockTracer.GethLikeBlockTrace.TxTraces[0], "0");
+            Assert.AreSame(b, blockTracer.GethLikeBlockTrace.TxTraces[1], "1");
+            Assert.AreSame(c, blockTracer.GethLikeBlockTrace.TxTraces[2], "2");
         }
 
         [Test]
@@ -63,8 +63,8 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.TestObject;
             block.Transactions = new Transaction[3];
 
-            BlockTraceListener traceListener = new BlockTraceListener(block);
-            Assert.True(traceListener.ShouldTrace(TestObject.KeccakH));
+            BlockBlockTracer blockTracer = new BlockBlockTracer(block);
+            Assert.True(blockTracer.ShouldTrace(TestObject.KeccakH));
         }
 
         [Test]
@@ -73,14 +73,14 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.TestObject;
             block.Transactions = new Transaction[3];
 
-            BlockTraceListener traceListener = new BlockTraceListener(block);
-            TransactionTrace a = new TransactionTrace();
+            BlockBlockTracer blockTracer = new BlockBlockTracer(block);
+            GethLikeTxTrace a = new GethLikeTxTrace();
 
-            traceListener.RecordTrace(TestObject.KeccakA, a);
-            traceListener.RecordTrace(TestObject.KeccakA, a);
-            traceListener.RecordTrace(TestObject.KeccakA, a);
+            blockTracer.RecordTrace(TestObject.KeccakA, a);
+            blockTracer.RecordTrace(TestObject.KeccakA, a);
+            blockTracer.RecordTrace(TestObject.KeccakA, a);
 
-            Assert.Throws<InvalidOperationException>(() => traceListener.RecordTrace(TestObject.KeccakA, a));
+            Assert.Throws<InvalidOperationException>(() => blockTracer.RecordTrace(TestObject.KeccakA, a));
         }
     }
 }

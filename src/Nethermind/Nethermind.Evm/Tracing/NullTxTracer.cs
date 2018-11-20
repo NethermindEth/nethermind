@@ -17,34 +17,37 @@
  */
 
 using System;
-using Nethermind.Core.Crypto;
+using System.Threading;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class TraceListener : ITraceListener
+    public class NullTxTracer : ITxTracer
     {
-        public TransactionTrace Trace { get; private set; }
-
-        private readonly Keccak _txHash;
-
-        public TraceListener(Keccak txHash)
+        private static NullTxTracer _instance;
+        
+        private NullTxTracer()
         {
-            _txHash = txHash;
         }
 
-        public bool ShouldTrace(Keccak txHash)
+        public static NullTxTracer Instance
         {
-            return txHash == _txHash;
+            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullTxTracer()); }
         }
 
-        public void RecordTrace(Keccak txHash, TransactionTrace trace)
+        public bool IsTracing => false;
+        public bool IsTracingCalls => false;
+        public bool IsTracingStorage => false;
+        public bool IsTracingMemory => false;
+        public bool IsTracingOpcodes => false;
+        public bool IsTracingStack => false;
+        public void MarkAsFailed()
         {
-            if (_txHash != txHash)
-            {
-                throw new InvalidOperationException($"Received a trace for {txHash} while only interested in {_txHash}");
-            }
+            throw new InvalidOperationException("Null tracer should never receive any calls.");
+        }
 
-            Trace = trace;
+        public void SetReturnValue(byte[] returnValue)
+        {
+            throw new InvalidOperationException("Null tracer should never receive any calls.");
         }
     }
 }

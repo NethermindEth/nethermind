@@ -18,13 +18,17 @@
 
 namespace Nethermind.Evm.Tracing
 {
-    public class BlockTrace
+    public interface ITxTracer
     {
-        public TransactionTrace[] TxTraces { get; }
+        bool IsTracing { get; }
+        bool IsTracingCalls { get; }
+        bool IsTracingStorage { get; }
+        bool IsTracingMemory { get; }
+        bool IsTracingOpcodes { get; }
+        bool IsTracingStack { get; }
 
-        public BlockTrace(TransactionTrace[] txTraces)
-        {
-            TxTraces = txTraces;
-        }
+        void MarkAsFailed();
+        void SetReturnValue(byte[] returnValue);
+        void SetGasSpent(long gasSpent);
     }
 }

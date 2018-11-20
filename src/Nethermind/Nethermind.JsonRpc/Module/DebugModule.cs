@@ -138,13 +138,13 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Data blockHash)
         {
-            BlockTrace blockTrace = _debugBridge.GetBlockTrace(new Keccak(blockHash.Value));
-            if (blockTrace == null)
+            GethLikeBlockTrace gethLikeBlockTrace = _debugBridge.GetBlockTrace(new Keccak(blockHash.Value));
+            if (gethLikeBlockTrace == null)
             {
                 return ResultWrapper<BlockTraceItem[]>.Fail($"Trace is null for block {blockHash}", ErrorType.NotFound);
             }
 
-            var blockTraceModel = _modelMapper.MapBlockTrace(blockTrace);
+            var blockTraceModel = _modelMapper.MapBlockTrace(gethLikeBlockTrace);
 
             if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash.ToJson()}, result: {GetJsonLog(blockTraceModel.Select(btm => btm.ToJson()))}");
             return ResultWrapper<BlockTraceItem[]>.Success(blockTraceModel);

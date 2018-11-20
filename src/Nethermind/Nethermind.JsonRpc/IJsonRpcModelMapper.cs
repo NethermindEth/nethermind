@@ -36,8 +36,8 @@ namespace Nethermind.JsonRpc
         Transaction MapTransaction(Core.TransactionReceipt receipt, Core.Transaction transaction);
         Core.Transaction MapTransaction(Transaction transaction);
         TransactionReceipt MapTransactionReceipt(Keccak txHash, Core.TransactionReceipt receipt);
-        TransactionTrace MapTransactionTrace(Evm.Tracing.TransactionTrace transactionTrace);
-        BlockTraceItem[] MapBlockTrace(BlockTrace blockTrace);
+        TransactionTrace MapTransactionTrace(Evm.Tracing.GethLikeTxTrace gethLikeTxTrace);
+        BlockTraceItem[] MapBlockTrace(GethLikeBlockTrace gethLikeBlockTrace);
         Log MapLog(LogEntry logEntry);
         TransactionPoolStatus MapTransactionPoolStatus(TransactionPoolInfo transactionPoolInfo);
         TransactionPoolContent MapTransactionPoolContent(TransactionPoolInfo transactionPoolInfo);

@@ -77,8 +77,7 @@ namespace Nethermind.Evm
         private Address _parityTouchBugAccount;
         private Dictionary<Address, IPrecompiledContract> _precompiles;
         private byte[] _returnDataBuffer = EmptyBytes;
-        private TransactionTrace _trace;
-        private TransactionTraceEntry _traceEntry;
+        private ITxTracer _txTracer;
 
         public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogManager logManager)
         {
@@ -91,10 +90,9 @@ namespace Nethermind.Evm
         }
 
         // can refactor and integrate the other call
-        public TransactionSubstate Run(EvmState state, IReleaseSpec releaseSpec, bool enableTracing)
+        public TransactionSubstate Run(EvmState state, IReleaseSpec releaseSpec, ITxTracer txTracer)
         {
-            _traceEntry = null;
-            _trace = enableTracing ? new TransactionTrace() : null;
+            _txTracer = txTracer;
 
             IReleaseSpec spec = releaseSpec;
             EvmState currentState = state;
@@ -175,10 +173,14 @@ namespace Nethermind.Evm
 
                     if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectCreate || currentState.ExecutionType == ExecutionType.DirectPrecompile)
                     {
-                        if(_trace != null) _trace.Failed = _trace.Failed = callResult.ShouldRevert || callResult.IsException;
-                        // TODO: review refund logic as there was a quick change for Refunds for Ropsten 2005537
-                        TransactionSubstate substate = new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert, _trace);
-                        _traceEntry = null; _trace = null; // do not keep in memory between blocks
+                        if (_txTracer.IsTracing && callResult.ShouldRevert || callResult.IsException)
+                        {
+                            _txTracer.MarkAsFailed();
+                        }
+
+                        
+                        TransactionSubstate substate = new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert);
+
                         return substate;
                     }
 
