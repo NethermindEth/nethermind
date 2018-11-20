@@ -34,6 +34,8 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class SynchronizationManagerTests
     {
+        private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(5000);
+        
         [SetUp]
         public void Setup()
         {
@@ -73,10 +75,10 @@ namespace Nethermind.Blockchain.Test
             };
             _manager.Start();
             Task addPeerTask = _manager.AddPeer(peer);
-            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
+            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(_standardTimeoutUnit));
             Assert.AreSame(addPeerTask, firstToComplete);
             
-            resetEvent.WaitOne(2000);
+            resetEvent.WaitOne(_standardTimeoutUnit);
             Assert.AreEqual(SynchronizationManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
 
@@ -88,7 +90,7 @@ namespace Nethermind.Blockchain.Test
             
             _manager.Start();
             Task addPeerTask = _manager.AddPeer(peer);
-            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
+            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(_standardTimeoutUnit));
             Assert.AreSame(addPeerTask, firstToComplete);
             
             Assert.AreEqual(0, (int) _blockTree.BestSuggested.Number);
@@ -105,10 +107,10 @@ namespace Nethermind.Blockchain.Test
             _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
             _manager.Start();
             Task addPeerTask = _manager.AddPeer(peer);
-            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
+            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(_standardTimeoutUnit));
             Assert.AreSame(addPeerTask, firstToComplete);
             
-            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
+            resetEvent.WaitOne(_standardTimeoutUnit);
             Assert.AreEqual(SynchronizationManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
 
@@ -125,14 +127,14 @@ namespace Nethermind.Blockchain.Test
             };
             _manager.Start();
             Task addPeerTask = _manager.AddPeer(peer);
-            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
+            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(_standardTimeoutUnit));
             Assert.AreSame(addPeerTask, firstToComplete);
 
             BlockTreeBuilder.ExtendTree(_remoteBlockTree, SynchronizationManager.MaxBatchSize * 2);
             _manager.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.NodeId);
             
-            semaphore.Wait(TimeSpan.FromMilliseconds(5000));
-            semaphore.Wait(TimeSpan.FromMilliseconds(5000));
+            semaphore.Wait(_standardTimeoutUnit);
+            semaphore.Wait(_standardTimeoutUnit);
 
             Assert.AreEqual(SynchronizationManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
@@ -151,13 +153,13 @@ namespace Nethermind.Blockchain.Test
             
             _manager.Start();
             Task addPeerTask = _manager.AddPeer(peer);
-            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
+            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(_standardTimeoutUnit));
             Assert.AreSame(addPeerTask, firstToComplete);
 
             Block block = Build.A.Block.WithParent(_remoteBlockTree.Head).TestObject;
             _manager.AddNewBlock(block, peer.NodeId);
 
-            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
+            resetEvent.WaitOne(_standardTimeoutUnit);
 
             Assert.AreEqual(SynchronizationManager.MaxBatchSize - 1, (int) _blockTree.BestSuggested.Number);
         }
@@ -180,7 +182,7 @@ namespace Nethermind.Blockchain.Test
 
             await Task.WhenAll(addMiner1Task);
 
-            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+            resetEvent.WaitOne(_standardTimeoutUnit);
 
             Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
 
@@ -198,7 +200,7 @@ namespace Nethermind.Blockchain.Test
 
             _manager.AddNewBlock(splitBlockChild, miner1.NodeId);
 
-            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+            resetEvent.WaitOne(_standardTimeoutUnit);
 
             Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner after split");
         }
@@ -221,7 +223,7 @@ namespace Nethermind.Blockchain.Test
 
             await Task.WhenAll(addMiner1Task);
 
-            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+            resetEvent.WaitOne(_standardTimeoutUnit);
 
             Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
 
@@ -233,7 +235,7 @@ namespace Nethermind.Blockchain.Test
 
             _manager.AddNewBlock(miner1Tree.RetrieveHeadBlock(), miner1.NodeId);
 
-            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+            resetEvent.WaitOne(_standardTimeoutUnit);
 
             Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner after split");
         }
@@ -253,7 +255,7 @@ namespace Nethermind.Blockchain.Test
             
             _manager.Start();
             await _manager.AddPeer(miner1);
-            resetEvent.WaitOne(2000);
+            resetEvent.WaitOne(_standardTimeoutUnit);
 
             Assert.AreEqual(minerTree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
 
@@ -270,7 +272,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(default(CancellationToken)), "hash as expected");
 
             await _manager.AddPeer(miner2);
-            resetEvent.WaitOne(2000);
+            resetEvent.WaitOne(_standardTimeoutUnit);
 
             await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
         }
@@ -292,7 +294,7 @@ namespace Nethermind.Blockchain.Test
 
             Task addMiner1Task = _manager.AddPeer(miner1);
             await Task.WhenAll(addMiner1Task);
-            resetEvent.WaitOne(2000);
+            resetEvent.WaitOne(_standardTimeoutUnit);
 
             Assert.AreEqual(minerTree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
 
@@ -309,7 +311,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(default(CancellationToken)), "hash as expected");
 
             await _manager.AddPeer(miner2);
-            resetEvent.WaitOne(2000);
+            resetEvent.WaitOne(_standardTimeoutUnit);
 
             await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
         }
