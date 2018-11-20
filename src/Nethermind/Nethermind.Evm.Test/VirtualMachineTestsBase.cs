@@ -86,25 +86,27 @@ namespace Nethermind.Evm.Test
 
         protected (TransactionReceipt Receipt, GethLikeTxTrace Trace) ExecuteAndTrace(params byte[] code)
         {
-            return Execute(BlockNumber, 100000, code, true);
+            ITxTracer tracer = new GethLikeTxTracer();
+            return Execute(BlockNumber, 100000, code, tracer);
         }
         
         protected (TransactionReceipt Receipt, GethLikeTxTrace Trace) ExecuteAndTrace(UInt256 blockNumber, long gasLimit, params byte[] code)
         {
-            return Execute(blockNumber, gasLimit, code, true);
+            ITxTracer tracer = new GethLikeTxTracer();
+            return Execute(blockNumber, gasLimit, code, tracer);
         }
         
         protected TransactionReceipt Execute(params byte[] code)
         {
-            return Execute(BlockNumber, 100000, code, false).Receipt;
+            return Execute(BlockNumber, 100000, code, NullTxTracer.Instance).Receipt;
         }
 
         protected TransactionReceipt Execute(UInt256 blockNumber, long gasLimit, byte[] code)
         {
-            return Execute(blockNumber, gasLimit, code, false).Receipt;
+            return Execute(blockNumber, gasLimit, code, NullTxTracer.Instance).Receipt;
         }
         
-        private (TransactionReceipt Receipt, GethLikeTxTrace Trace) Execute(UInt256 blockNumber, long gasLimit, byte[] code, bool shouldTrace)
+        private (TransactionReceipt Receipt, GethLikeTxTrace Trace) Execute(UInt256 blockNumber, long gasLimit, byte[] code, ITxTracer txTracer)
         {
             TestState.CreateAccount(Sender, 100.Ether());
             TestState.CreateAccount(Recipient, 100.Ether());
@@ -121,7 +123,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
 
             Block block = BuildBlock(blockNumber);
-            return _processor.Execute(0, transaction, block.Header, shouldTrace);
+            return (_processor.Execute(0, transaction, block.Header, txTracer), txTracer.IsTracingReceipt ? ((GethLikeTxTracer)txTracer).BuildResult() : null);
         }
 
         protected virtual Block BuildBlock(UInt256 blockNumber)
@@ -264,9 +266,9 @@ namespace Nethermind.Evm.Test
                 return this;
             }
             
-            public Prepare StoreDataInMemory(int poisition, byte[] data)
+            public Prepare StoreDataInMemory(int position, byte[] data)
             {
-                if (poisition % 32 != 0)
+                if (position % 32 != 0)
                 {
                     throw new NotSupportedException();
                 }

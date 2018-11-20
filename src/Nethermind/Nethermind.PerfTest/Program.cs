@@ -465,7 +465,7 @@ namespace Nethermind.PerfTest
             stopwatch.Start();
             for (int i = 0; i < iterations; i++)
             {
-                _machine.Run(new EvmState(1_000_000_000L, env, ExecutionType.Transaction, false), Olympic.Instance, false);
+                _machine.Run(new EvmState(1_000_000_000L, env, ExecutionType.Transaction, false), Olympic.Instance, NullTxTracer.Instance);
             }
 
             stopwatch.Stop();

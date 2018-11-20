@@ -16,19 +16,32 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
+
 namespace Nethermind.Evm.Tracing
 {
     public interface ITxTracer
     {
-        bool IsTracing { get; }
+        bool IsTracingReceipt { get; }
         bool IsTracingCalls { get; }
         bool IsTracingStorage { get; }
         bool IsTracingMemory { get; }
-        bool IsTracingOpcodes { get; }
+        bool IsTracingInstructions { get; }
         bool IsTracingStack { get; }
 
         void MarkAsFailed();
         void SetReturnValue(byte[] returnValue);
         void SetGasSpent(long gasSpent);
+
+        void StartOperation(int callDepth, long gas, Instruction opcode, int programCounter);
+        void SetOperationError(string error);
+        void SetOperationRemainingGas(long gas);
+        
+        void UpdateMemorySize(ulong memorySize);
+        void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund);
+        void SetOperationStack(List<string> getStackTrace);
+        void SetOperationMemory(List<string> getTrace);
     }
 }

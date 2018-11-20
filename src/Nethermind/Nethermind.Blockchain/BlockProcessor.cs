@@ -129,8 +129,9 @@ namespace Nethermind.Blockchain
                 if (_logger.IsTrace) _logger.Trace($"Processing transaction {i}");
                 Transaction currentTx = block.Transactions[i];
                 GethLikeTxTrace trace;
-                ITracer tracer = blockTracer.StartNewTxTrace(currentTx.Hash);
-                (receipts[i], trace) = _transactionProcessor.Execute(i, currentTx, block.Header, tracer);
+                ITxTracer tracer = blockTracer.StartNewTxTrace(currentTx.Hash);
+                receipts[i] = _transactionProcessor.Execute(i, currentTx, block.Header, tracer);
+                blockTracer.EndTxTrace();
                 TransactionProcessed?.Invoke(this, new TransactionProcessedEventArgs(receipts[i]));
             }
 

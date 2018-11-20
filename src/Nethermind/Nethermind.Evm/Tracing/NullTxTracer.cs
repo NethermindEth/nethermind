@@ -17,7 +17,10 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -34,11 +37,11 @@ namespace Nethermind.Evm.Tracing
             get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullTxTracer()); }
         }
 
-        public bool IsTracing => false;
+        public bool IsTracingReceipt => false;
         public bool IsTracingCalls => false;
         public bool IsTracingStorage => false;
         public bool IsTracingMemory => false;
-        public bool IsTracingOpcodes => false;
+        public bool IsTracingInstructions => false;
         public bool IsTracingStack => false;
         public void MarkAsFailed()
         {
@@ -46,6 +49,51 @@ namespace Nethermind.Evm.Tracing
         }
 
         public void SetReturnValue(byte[] returnValue)
+        {
+            throw new InvalidOperationException("Null tracer should never receive any calls.");
+        }
+
+        public void SetGasSpent(long gasSpent)
+        {
+            throw new InvalidOperationException("Null tracer should never receive any calls.");
+        }
+
+        public void StartOperation(int callDepth, long gas, Instruction opcode, int programCounter)
+        {
+            throw new InvalidOperationException("Null tracer should never receive any calls.");
+        }
+
+        public void StartOperation(byte opcode)
+        {
+            throw new InvalidOperationException("Null tracer should never receive any calls.");
+        }
+
+        public void SetOperationError(string error)
+        {
+            throw new InvalidOperationException("Null tracer should never receive any calls.");
+        }
+
+        public void SetOperationRemainingGas(long gas)
+        {
+            throw new InvalidOperationException("Null tracer should never receive any calls.");
+        }
+
+        public void UpdateMemorySize(ulong memorySize)
+        {
+            throw new InvalidOperationException("Null tracer should never receive any calls.");
+        }
+
+        public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        {
+            throw new InvalidOperationException("Null tracer should never receive any calls.");
+        }
+
+        public void SetOperationStack(List<string> getStackTrace)
+        {
+            throw new InvalidOperationException("Null tracer should never receive any calls.");
+        }
+
+        public void SetOperationMemory(List<string> getTrace)
         {
             throw new InvalidOperationException("Null tracer should never receive any calls.");
         }

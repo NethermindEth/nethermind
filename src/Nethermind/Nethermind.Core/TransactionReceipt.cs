@@ -38,6 +38,9 @@ namespace Nethermind.Core
         public Address ContractAddress { get; set; }
         public Address Recipient { get; set; }
         
+        [Todo(Improve.Refactor, "Receipt tracer?")]
+        public byte[] ReturnValue { get; set; }
+        
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>

@@ -146,11 +146,10 @@ namespace Nethermind.JsonRpc.Module
                     block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
                 transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                (TransactionReceipt receipt, GethLikeTxTrace trace) =
-                    _transactionProcessor.CallAndRestore(0, transaction, header, true);
+                TransactionReceipt receipt = _transactionProcessor.CallAndRestore(0, transaction, header, NullTxTracer.Instance);
 
                 _stateProvider.Reset();
-                return Bytes.FromHexString(trace.ReturnValue);
+                return receipt.ReturnValue;
             }
             finally
             {

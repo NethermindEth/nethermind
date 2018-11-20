@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain
             block.Transactions = new[] {tx};
             GethLikeBlockTracer listener = new GethLikeBlockTracer(tx.Hash);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
-            return listener.Trace;
+            return listener.BuildResult().TxTraces[0];
         }
 
         public GethLikeBlockTrace TraceBlock(Keccak blockHash)
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain
         {
             GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
-            return listener.Trace;
+            return listener.BuildResult().TxTraces[0];
         }
 
         private GethLikeBlockTrace TraceBlock(Block block)
@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain
 
             GethLikeBlockTracer listener = new GethLikeBlockTracer(block);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
-            return listener.GethLikeBlockTrace;
+            return listener.BuildResult();
         }
     }
 }
