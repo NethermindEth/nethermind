@@ -26,11 +26,11 @@ namespace Nethermind.Blockchain
     public class BlockhashProvider : IBlockhashProvider
     {
         private static int _maxDepth = 256;
-        private readonly IBlockTree _chain;
+        private readonly IBlockTree _blockTree;
 
-        public BlockhashProvider(IBlockTree chain)
+        public BlockhashProvider(IBlockTree blockTree)
         {
-            _chain = chain;
+            _blockTree = blockTree;
         }
 
         public Keccak GetBlockhash(BlockHeader currentBlock, UInt256 number)
@@ -41,13 +41,13 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader header = _chain.FindHeader(currentBlock.ParentHash);
+            BlockHeader header = _blockTree.FindHeader(currentBlock.ParentHash);
             for (var i = 0; i < _maxDepth; i++)
             {
                 if (number == header.Number) return header.Hash;
 
-                header = _chain.FindHeader(header.ParentHash);
-                if (_chain.IsMainChain(header.Hash)) header = _chain.FindHeader(number);
+                header = _blockTree.FindHeader(header.ParentHash);
+                if (_blockTree.IsMainChain(header.Hash)) header = _blockTree.FindHeader(number);
             }
 
             return null;
