@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Tracing
 {
     public class GethLikeTxTrace
     {
-        public List<Dictionary<string, string>> StoragesByDepth { get; } = new List<Dictionary<string, string>>();
+        public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new Stack<Dictionary<string, string>>();
 
         public GethLikeTxTrace()
         {

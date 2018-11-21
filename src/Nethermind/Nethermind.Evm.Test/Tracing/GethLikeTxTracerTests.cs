@@ -255,6 +255,52 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(2, trace.Entries[30].Memory.Count, "END 2");
             Assert.AreEqual(3, trace.Entries[31].Memory.Count, "END 1");
         }
+        
+        [Test]
+        public void Storage_is_cleared_and_restored_when_moving_between_call_levels()
+        {
+            byte[] deployedCode = new byte[3];
+
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode)
+                .Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .PersistData("0x1", HexZero) // just to test if storage is restored
+                .Create(initCode, 0)
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .PersistData("0x2", HexZero) // just to test if storage is restored
+                .PersistData("0x3", HexZero) // just to test if storage is restored
+                .Call(TestObject.AddressC, 70000)
+                .Op(Instruction.STOP)
+                .Done;
+            
+            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            /* depths 
+            {
+                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 // 2x SSTORE + STACK FOR CALL [0..13]
+                2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 // SSTORE + CALL [14..26]
+                3, 3, 3, 3, 3, 3, // CREATE [27..32]
+                2, // STOP [33]
+                1, // STOP [34]
+            }; */
+            
+            Assert.AreEqual(0, trace.Entries[0].SortedStorage.Count, "BEGIN 1");
+            Assert.AreEqual(2, trace.Entries[13].SortedStorage.Count, "CALL FROM 1");
+            Assert.AreEqual(0, trace.Entries[14].SortedStorage.Count, "BEGIN 2");
+            Assert.AreEqual(1, trace.Entries[26].SortedStorage.Count, "CREATE FROM 2");
+            Assert.AreEqual(0, trace.Entries[27].SortedStorage.Count, "BEGIN 3");
+            Assert.AreEqual(0, trace.Entries[32].SortedStorage.Count, "END 3");
+            Assert.AreEqual(1, trace.Entries[33].SortedStorage.Count, "END 2");
+            Assert.AreEqual(2, trace.Entries[34].SortedStorage.Count, "END 1");
+        }
 
         [Test]
         public void Can_trace_pc()

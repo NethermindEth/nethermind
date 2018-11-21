@@ -28,6 +28,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Store;
+using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -266,6 +267,14 @@ namespace Nethermind.Evm.Test
                 return this;
             }
 
+            public Prepare PersistData(string key, string value)
+            {
+                PushData(value);
+                PushData(key);
+                Op(Instruction.SSTORE);
+                return this;    
+            }
+            
             public Prepare StoreDataInMemory(int position, string hexString)
             {
                 return StoreDataInMemory(position, Bytes.FromHexString(hexString));

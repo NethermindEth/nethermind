@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Tracing
             if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
             {
                 _traceEntry.Storage = new Dictionary<string, string>();
-                _trace.StoragesByDepth.Add(_traceEntry.Storage);
+                _trace.StoragesByDepth.Push(previousTraceEntry != null ? previousTraceEntry.Storage : new Dictionary<string, string>());
             }
             else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
             {
@@ -73,8 +73,7 @@ namespace Nethermind.Evm.Tracing
                     throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
                 }
                     
-                _trace.StoragesByDepth.Remove(previousTraceEntry.Storage);
-                _trace.StoragesByDepth[_trace.StoragesByDepth.Count - 1] = _traceEntry.Storage = new Dictionary<string, string>(_trace.StoragesByDepth[_trace.StoragesByDepth.Count - 1]);
+                _traceEntry.Storage = new Dictionary<string, string>(_trace.StoragesByDepth.Pop());
             }
             else
             {
