@@ -147,7 +147,7 @@ namespace Nethermind.JsonRpc.Module
                 transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
                 transaction.Hash = Transaction.CalculateHash(transaction);
                 CallTracer callTracer = new CallTracer();
-                _transactionProcessor.CallAndRestore(0, transaction, header, callTracer);
+                _transactionProcessor.CallAndRestore(transaction, header, callTracer);
                 _stateProvider.Reset();
                 return callTracer.ReturnValue;
             }

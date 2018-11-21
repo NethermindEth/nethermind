@@ -89,7 +89,7 @@ namespace Nethermind.Evm.Test
         {
             GethLikeTxTracer tracer = new GethLikeTxTracer();
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            _processor.Execute(0, transaction, block.Header, tracer);
+            _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
         }
         
@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Test
         {
             GethLikeTxTracer tracer = new GethLikeTxTracer();
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
-            _processor.Execute(0, transaction, block.Header, tracer);
+            _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
         }
         
@@ -105,7 +105,7 @@ namespace Nethermind.Evm.Test
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
             VmTestResultTracer tracer = new VmTestResultTracer();
-            _processor.Execute(0, transaction, block.Header, tracer);
+            _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
 
@@ -113,7 +113,7 @@ namespace Nethermind.Evm.Test
         {
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
             VmTestResultTracer tracer = new VmTestResultTracer();
-            _processor.Execute(0, transaction, block.Header, tracer);
+            _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
 
