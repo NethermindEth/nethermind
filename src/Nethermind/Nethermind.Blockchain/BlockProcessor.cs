@@ -129,9 +129,9 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsTrace) _logger.Trace($"Processing transaction {i}");
                 Transaction currentTx = block.Transactions[i];
-                ITxTracer tracer = blockTracer.StartNewTxTrace(currentTx.Hash);
+                receiptsTracer.StartNewTxTrace(currentTx.Hash);
                 _transactionProcessor.Execute(i, currentTx, block.Header, receiptsTracer);
-                blockTracer.EndTxTrace();
+                receiptsTracer.EndTxTrace();
 
                 if ((processingOptions & ProcessingOptions.ReadOnlyChain) == 0)
                 {

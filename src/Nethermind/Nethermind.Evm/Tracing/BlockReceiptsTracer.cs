@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] returnValue, LogEntry[] logs)
         {
-            Receipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent);
+            Receipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs);
             if (_currentTxTracer.IsTracingReceipt)
             {
                 MarkAsSuccess(recipient, gasSpent, returnValue, logs);
