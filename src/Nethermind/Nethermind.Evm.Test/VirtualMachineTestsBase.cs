@@ -265,6 +265,11 @@ namespace Nethermind.Evm.Test
                 _byteCode.Add(data);
                 return this;
             }
+
+            public Prepare StoreDataInMemory(int position, string hexString)
+            {
+                return StoreDataInMemory(position, Bytes.FromHexString(hexString));
+            }
             
             public Prepare StoreDataInMemory(int position, byte[] data)
             {
@@ -276,7 +281,7 @@ namespace Nethermind.Evm.Test
                 for (int i = 0; i < data.Length; i += 32)
                 {
                     PushData(data.Slice(i, data.Length - i).PadRight(32));
-                    PushData(i);
+                    PushData(position + i);
                     Op(Instruction.MSTORE);    
                 }
                 
