@@ -94,7 +94,6 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationRemainingGas(long gas)
         {
             _traceEntry.GasCost = _traceEntry.Gas - gas;
-            _traceEntry.Gas = gas;
         }
 
         public void UpdateMemorySize(ulong memorySize)

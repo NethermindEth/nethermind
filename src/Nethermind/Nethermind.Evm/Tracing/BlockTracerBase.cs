@@ -28,13 +28,13 @@ namespace Nethermind.Evm.Tracing
 
         private bool _isTracingEntireBlock;
 
-        public BlockTracerBase(Block block)
+        protected BlockTracerBase(Block block)
         {
             _isTracingEntireBlock = true;
             _txTraces = new TTrace[block.Transactions.Length];
         }
 
-        public BlockTracerBase(Keccak txHash)
+        protected BlockTracerBase(Keccak txHash)
         {
             _txHash = txHash;
             _txTraces = new TTrace[1];

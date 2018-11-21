@@ -23,7 +23,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test
+namespace Nethermind.Evm.Test.Tracing
 {
     [TestFixture]
     public class GethLikeBlockTracerTests

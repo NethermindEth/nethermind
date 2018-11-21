@@ -46,9 +46,9 @@ namespace Nethermind.Evm.Test.Tracing
             int gasTotal = 0;
             for (int i = 0; i < gasCosts.Length; i++)
             {
-                gasTotal += gasCosts[i];
                 Assert.AreEqual(79000 - gasTotal, trace.Entries[i].Gas, $"gas[{i}]");
                 Assert.AreEqual(gasCosts[i], trace.Entries[i].GasCost, $"gasCost[{i}]");
+                gasTotal += gasCosts[i];
             }
         }
 
