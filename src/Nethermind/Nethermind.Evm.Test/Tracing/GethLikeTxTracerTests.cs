@@ -41,7 +41,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             int[] gasCosts = new int[] {3, 3, 3, 0};
 
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
 
             int gasTotal = 0;
             for (int i = 0; i < gasCosts.Length; i++)
@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.ADD)
                 .Done;
 
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
             Assert.AreEqual(trace.Failed, true);
             Assert.AreEqual("StackUnderflowException", trace.Entries[0].Error);
         }
@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.JUMP)
                 .Done;
 
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
             Assert.AreEqual(trace.Failed, true);
             Assert.AreEqual("EvmStackOverflowException", trace.Entries.Last().Error);
         }
@@ -90,7 +90,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.JUMP)
                 .Done;
 
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
             Assert.AreEqual(trace.Failed, true);
             Assert.AreEqual("InvalidJumpDestinationException", trace.Entries.Last().Error);
         }
@@ -103,7 +103,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.INVALID)
                 .Done;
 
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
             Assert.AreEqual(trace.Failed, true);
             Assert.AreEqual("BadInstruction", trace.Entries.Last().Error);
         }
@@ -119,7 +119,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             string[] opCodes = new[] {"PUSH3", "PUSH1", "STOP"};
 
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
             for (int i = 0; i < opCodes.Length; i++)
             {
                 Assert.AreEqual(opCodes[i], trace.Entries[i].Operation);
@@ -149,7 +149,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
             
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
             int[] depths = new int[]
             {
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
@@ -191,7 +191,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
             
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
             /* depths 
             {
                 1, 1, 1, 1, 1, 1, 1, 1, 1, // SAMPLE STACK + STACK FOR CALL [0..8]
@@ -236,7 +236,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
             
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
             /* depths 
             {
                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 // MEMORY + STACK FOR CALL [0..10]
@@ -282,7 +282,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
             
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
             /* depths 
             {
                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 // 2x SSTORE + STACK FOR CALL [0..13]
@@ -320,7 +320,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             int[] pcs = new[] {0, 2, 3, 5, 6, 7, 9, 10, 12, 2, 3, 5, 6, 7, 9, 10, 12, 2, 3, 5, 6, 7, 9, 10, 12, 13};
 
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
             Assert.AreEqual(pcs.Length, trace.Entries.Count);
             for (int i = 0; i < pcs.Length; i++)
             {
@@ -342,7 +342,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
 
             Assert.AreEqual(0, trace.Entries[0].Stack.Count, "entry[0] length");
 
@@ -370,7 +370,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            (_, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
 
             /* note the curious Geth trace behaviour where memory grows now but is populated from the next trace entry */
 

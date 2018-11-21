@@ -29,17 +29,17 @@ namespace Nethermind.Evm.Test
     {
         protected override UInt256 BlockNumber => MainNetSpecProvider.ConstantinopleBlockNumber;
 
-        private void AssertEip145(TransactionReceipt receipt, byte result)
+        private void AssertEip145(VmTestResultTracer receipt, byte result)
         {
             AssertEip145(receipt, new[] {result});
         }
 
-        private void AssertEip145(TransactionReceipt receipt, string result)
+        private void AssertEip145(VmTestResultTracer receipt, string result)
         {
             AssertEip145(receipt, Bytes.FromHexString(result));
         }
         
-        private void AssertEip145(TransactionReceipt receipt, byte[] result)
+        private void AssertEip145(VmTestResultTracer receipt, byte[] result)
         {
             AssertStorage(0, result);
             AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);
@@ -69,7 +69,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TransactionReceipt receipt = Execute(code);
+            var receipt = Execute(code);
             AssertEip145(receipt, result);
         }
         
@@ -94,7 +94,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TransactionReceipt receipt = Execute(code);
+            VmTestResultTracer receipt = Execute(code);
             AssertEip145(receipt, result);
         }
         
@@ -124,7 +124,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TransactionReceipt receipt = Execute(code);
+            VmTestResultTracer receipt = Execute(code);
             AssertEip145(receipt, result);
         }
     }

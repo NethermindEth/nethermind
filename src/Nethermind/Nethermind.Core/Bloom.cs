@@ -34,6 +34,12 @@ namespace Nethermind.Core
         {
             _bits = new BitArray(2048);
         }
+        
+        public Bloom(LogEntry[] logEntries)
+        {
+            _bits = new BitArray(2048);
+            Add(logEntries);
+        }
 
         public Bloom(BitArray bitArray)
         {
@@ -117,6 +123,21 @@ namespace Nethermind.Core
         public override int GetHashCode()
         {
             return _bits != null ? _bits.GetHashCode() : 0;
+        }
+        
+        public void Add(LogEntry[] logEntries)
+        {
+            for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
+            {
+                LogEntry logEntry = logEntries[entryIndex];
+                byte[] addressBytes = logEntry.LoggersAddress.Bytes;
+                Set(addressBytes);
+                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+                {
+                    Keccak topic = logEntry.Topics[topicIndex];
+                    Set(topic.Bytes);
+                }
+            }
         }
     }
 }

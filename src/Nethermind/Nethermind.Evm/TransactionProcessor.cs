@@ -48,23 +48,18 @@ namespace Nethermind.Evm
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
         }
 
-        private TransactionReceipt GetNullReceipt(int index, BlockHeader block, Transaction transaction, Address recipient)
-        {
-            return BuildTransactionReceipt(index, block, transaction, (long)transaction.GasLimit, StatusCode.Failure, LogEntry.EmptyLogs, recipient);
-        }
-
         [Todo("Wider work needed to split calls and execution properly")]
-        public TransactionReceipt CallAndRestore(int index, Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void CallAndRestore(int index, Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            return Execute(index, transaction, block, txTracer, true);
+            Execute(index, transaction, block, txTracer, true);
         }
 
-        public TransactionReceipt Execute(int index, Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void Execute(int index, Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            return Execute(index, transaction, block, txTracer, false);
+            Execute(index, transaction, block, txTracer, false);
         }
         
-        public TransactionReceipt Execute(int index, Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
+        public void Execute(int index, Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             Address recipient = transaction.To;
@@ -80,8 +75,8 @@ namespace Nethermind.Evm
             if (sender == null)
             {
                 TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
-                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed();
-                return GetNullReceipt(index, block, transaction, recipient);
+                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)transaction.GasLimit);
+                return;
             }
 
             long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction, spec);
@@ -90,15 +85,15 @@ namespace Nethermind.Evm
             if (gasLimit < intrinsicGas)
             {
                 TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed();
-                return GetNullReceipt(index, block, transaction, recipient);
+                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)transaction.GasLimit);
+                return;
             }
 
             if (gasLimit > block.GasLimit - block.GasUsed)
             {
                 TraceLogInvalidTx(transaction, $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed();
-                return GetNullReceipt(index, block, transaction, recipient);
+                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)transaction.GasLimit);
+                return;
             }
 
             if (!_stateProvider.AccountExists(sender))
@@ -114,15 +109,15 @@ namespace Nethermind.Evm
             if ((ulong) intrinsicGas * gasPrice + value > senderBalance)
             {
                 TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderBalance}");
-                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed();
-                return GetNullReceipt(index, block, transaction, recipient);
+                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)transaction.GasLimit);
+                return;
             }
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
             {
                 TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
-                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed();
-                return GetNullReceipt(index, block, transaction, recipient);
+                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)transaction.GasLimit);
+                return;
             }
 
             _stateProvider.IncrementNonce(sender);
@@ -226,7 +221,7 @@ namespace Nethermind.Evm
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(txTracer, gasLimit, unspentGas, substate, sender, gasPrice, spec);
+                spentGas = Refund(gasLimit, unspentGas, substate, sender, gasPrice, spec);
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
             {
@@ -268,11 +263,15 @@ namespace Nethermind.Evm
 
             if (txTracer.IsTracingReceipt)
             {
-                txTracer.SetReturnValue(substate.Output);
+                if (statusCode == StatusCode.Failure)
+                {
+                    txTracer.MarkAsFailed(recipient, (long)transaction.GasLimit);
+                }
+                else
+                {
+                    txTracer.MarkAsSuccess(recipient, spentGas, substate.Output, substate.Logs.Any() ? substate.Logs.ToArray() : LogEntry.EmptyLogs);
+                }
             }
-
-            if (statusCode == StatusCode.Failure && txTracer.IsTracingReceipt) { txTracer.MarkAsFailed(); }
-            return (BuildTransactionReceipt(index, block, transaction, spentGas, statusCode, (statusCode == StatusCode.Success && substate.Logs.Any()) ? substate.Logs.ToArray() : LogEntry.EmptyLogs, recipient));
         }
 
         private void TraceLogInvalidTx(Transaction transaction, string reason)
@@ -280,7 +279,7 @@ namespace Nethermind.Evm
             if (_logger.IsTrace) _logger.Trace($"Invalid tx {transaction.Hash} ({reason})");
         }
 
-        private long Refund(ITxTracer txTracer, long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, UInt256 gasPrice, IReleaseSpec spec)
+        private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, UInt256 gasPrice, IReleaseSpec spec)
         {
             long spentGas = gasLimit;
             if (!substate.IsError)
@@ -293,70 +292,7 @@ namespace Nethermind.Evm
                 spentGas -= refund;
             }
 
-            if (txTracer.IsTracingReceipt)
-            {
-                txTracer.SetGasSpent(spentGas);
-            }
-
             return spentGas;
-        }
-
-        private TransactionReceipt BuildTransactionReceipt(int index, BlockHeader block, Transaction transaction, long spentGas, byte statusCode, LogEntry[] logEntries, Address recipient)
-        {
-            TransactionReceipt transactionReceipt = new TransactionReceipt();
-            transactionReceipt.Logs = logEntries;
-            transactionReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : BuildBloom(logEntries);
-            transactionReceipt.GasUsedTotal = block.GasUsed;
-            if (!_specProvider.GetSpec(block.Number).IsEip658Enabled)
-            {
-                transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
-            }
-
-            transactionReceipt.StatusCode = statusCode;
-            transactionReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
-            
-            transactionReceipt.BlockHash = block.Hash;
-            transactionReceipt.BlockNumber = block.Number;
-            transactionReceipt.Index = index;
-            transactionReceipt.GasUsed = spentGas;
-            transactionReceipt.Sender = transaction.SenderAddress;
-            transactionReceipt.ContractAddress = transaction.IsContractCreation ? recipient : null;
-            transactionReceipt.TransactionHash = transaction.Hash;
-            
-            return transactionReceipt;
-        }
-
-        public static Bloom BuildBloom(TransactionReceipt[] receipts)
-        {
-            Bloom bloom = new Bloom();
-            for (int i = 0; i < receipts.Length; i++)
-            {
-                AddToBloom(bloom, receipts[i].Logs);
-            }
-            
-            return bloom;
-        }
-        
-        public static Bloom BuildBloom(LogEntry[] logEntries)
-        {
-            Bloom bloom = new Bloom();
-            AddToBloom(bloom, logEntries);
-            return bloom;
-        }
-
-        public static void AddToBloom(Bloom bloom, LogEntry[] logEntries)
-        {
-            for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
-            {
-                LogEntry logEntry = logEntries[entryIndex];
-                byte[] addressBytes = logEntry.LoggersAddress.Bytes;
-                bloom.Set(addressBytes);
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
-                {
-                    Keccak topic = logEntry.Topics[topicIndex];
-                    bloom.Set(topic.Bytes);
-                }
-            }
         }
     }
 }

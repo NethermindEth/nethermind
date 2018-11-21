@@ -34,14 +34,14 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Stop()
         {
-            TransactionReceipt receipt = Execute((byte)Instruction.STOP);
+            var receipt = Execute((byte)Instruction.STOP);
             Assert.AreEqual(GasCostOf.Transaction, receipt.GasUsed);
         }
         
         [Test]
         public void Trace()
         {
-            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(
+            var trace = ExecuteAndTrace(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,
@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Trace_vm_errors()
         {
-            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, 
+            var trace = ExecuteAndTrace(UInt256.One, 21000L + 19000L, 
                 (byte)Instruction.PUSH1,
                 1,
                 (byte)Instruction.PUSH1,
@@ -87,7 +87,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.MLOAD)
                 .Done;
             
-            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
+            var trace = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
             
             Assert.True(trace.Entries.Any(e => e.Error != null));
         }
@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.JUMP)
                 .Done;
             
-            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
+            var trace = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
             
             Assert.True(trace.Entries.Any(e => e.Error != null));
         }
@@ -116,7 +116,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.JUMPI)
                 .Done;
             
-            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
+            var trace = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
             
             Assert.True(trace.Entries.Any(e => e.Error != null));
         }
@@ -124,7 +124,7 @@ namespace Nethermind.Evm.Test
         [Test(Description = "Test a case where the trace is created for one transaction and subsequent untraced transactions keep adding entries to the first trace created.")]
         public void Trace_each_tx_separate()
         {            
-            (TransactionReceipt _, GethLikeTxTrace trace) = ExecuteAndTrace(
+            var trace = ExecuteAndTrace(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,
@@ -159,7 +159,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Add_0_0()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,
@@ -175,7 +175,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Add_0_1()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,
@@ -191,7 +191,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Add_1_0()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 1,
                 (byte)Instruction.PUSH1,
@@ -207,7 +207,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Mstore()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 96, // data
                 (byte)Instruction.PUSH1,
@@ -219,7 +219,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Mstore_twice_same_location()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 96,
                 (byte)Instruction.PUSH1,
@@ -236,7 +236,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Mload()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 64, // position
                 (byte)Instruction.MLOAD);
@@ -246,7 +246,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Mload_after_mstore()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 96,
                 (byte)Instruction.PUSH1,
@@ -261,7 +261,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Dup1()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.DUP1);
@@ -271,7 +271,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Codecopy()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 32, // length
                 (byte)Instruction.PUSH1,
@@ -285,7 +285,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Swap()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 32, // length
                 (byte)Instruction.PUSH1,
@@ -297,7 +297,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Sload()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 0, // index
                 (byte)Instruction.SLOAD);
@@ -307,7 +307,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Exp_2_160()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 160,
                 (byte)Instruction.PUSH1,
@@ -323,7 +323,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Exp_0_0()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,
@@ -339,7 +339,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Exp_0_160()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 160,
                 (byte)Instruction.PUSH1,
@@ -355,7 +355,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Exp_1_160()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 160,
                 (byte)Instruction.PUSH1,
@@ -371,7 +371,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Sub_0_0()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,
@@ -387,7 +387,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Not_0()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.NOT,
@@ -401,7 +401,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Or_0_0()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,
@@ -417,7 +417,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Sstore_twice_0_same_storage_should_refund_only_once()
         {
-            TransactionReceipt receipt = Execute(
+            var receipt = Execute(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,

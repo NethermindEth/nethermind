@@ -31,17 +31,15 @@ namespace Nethermind.Evm.Tracing
         bool IsTracingInstructions { get; }
         bool IsTracingStack { get; }
 
-        void MarkAsFailed();
-        void SetReturnValue(byte[] returnValue);
-        void SetGasSpent(long gasSpent);
+        void MarkAsSuccess(Address recipient, long gasSpent, byte[] returnValue, LogEntry[] logs);
+        void MarkAsFailed(Address recipient, long gasSpent);
 
         void StartOperation(int callDepth, long gas, Instruction opcode, int programCounter);
         void SetOperationError(string error);
         void SetOperationRemainingGas(long gas);
-        
-        void UpdateMemorySize(ulong memorySize);
-        void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund);
         void SetOperationStack(List<string> getStackTrace);
         void SetOperationMemory(List<string> getTrace);
+        void UpdateMemorySize(ulong memorySize);
+        void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund);
     }
 }

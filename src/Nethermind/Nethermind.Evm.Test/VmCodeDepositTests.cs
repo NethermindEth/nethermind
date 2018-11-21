@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Test
                 .Call(TestObject.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
 
-            (TransactionReceipt receipt, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            var receipt = Execute(code);
             byte[] result = Storage.Get(storageAddress);
             Assert.AreEqual(new byte[] {0}, result, "storage reverted");
             Assert.AreEqual(98777, receipt.GasUsed, "no refund");
@@ -114,7 +114,7 @@ namespace Nethermind.Evm.Test
                 .Call(TestObject.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
 
-            (TransactionReceipt receipt, GethLikeTxTrace trace) = ExecuteAndTrace(code);
+            var receipt = Execute(code);
             byte[] result = Storage.Get(storageAddress);
             Assert.AreEqual(new byte[] {0}, result, "storage reverted");
             Assert.AreEqual(83136, receipt.GasUsed, "with refund");

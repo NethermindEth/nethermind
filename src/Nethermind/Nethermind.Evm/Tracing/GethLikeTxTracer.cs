@@ -35,7 +35,14 @@ namespace Nethermind.Evm.Tracing
         bool ITxTracer.IsTracingMemory => true;
         bool ITxTracer.IsTracingInstructions => true;
         bool ITxTracer.IsTracingStack => true;
-        public void MarkAsFailed()
+        
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] returnValue, LogEntry[] logs)
+        {
+            _trace.ReturnValue = returnValue?.ToHexString();
+            _trace.Gas = gasSpent;
+        }
+
+        public void MarkAsFailed(Address recipient, long gasSpent)
         {
             _trace.Failed = true;
             _trace.ReturnValue = string.Empty;

@@ -157,7 +157,6 @@ namespace Nethermind.Evm
 
                             if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
                             {
-                                if (txTracer.IsTracingReceipt) { txTracer.MarkAsFailed(); }
                                 return new TransactionSubstate("Error");
                             }
 
@@ -174,15 +173,7 @@ namespace Nethermind.Evm
 
                     if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectCreate || currentState.ExecutionType == ExecutionType.DirectPrecompile)
                     {
-                        if (_txTracer.IsTracingReceipt && callResult.ShouldRevert || callResult.IsException)
-                        {
-                            _txTracer.MarkAsFailed();
-                        }
-
-                        
-                        TransactionSubstate substate = new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert);
-
-                        return substate;
+                        return new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert);
                     }
 
                     Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -291,7 +282,6 @@ namespace Nethermind.Evm
                     
                     if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
                     {
-                        if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed();
                         return new TransactionSubstate("Error");
                     }
 

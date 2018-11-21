@@ -85,29 +85,39 @@ namespace Nethermind.Evm.Test
             _stateDb.Restore(_stateDbSnapshot);
         }
 
-        protected (TransactionReceipt Receipt, GethLikeTxTrace Trace) ExecuteAndTrace(params byte[] code)
+        protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
         {
-            ITxTracer tracer = new GethLikeTxTracer();
-            return Execute(BlockNumber, 100000, code, tracer);
+            GethLikeTxTracer tracer = new GethLikeTxTracer();
+            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            _processor.Execute(0, transaction, block.Header, tracer);
+            return tracer.BuildResult();
         }
         
-        protected (TransactionReceipt Receipt, GethLikeTxTrace Trace) ExecuteAndTrace(UInt256 blockNumber, long gasLimit, params byte[] code)
+        protected GethLikeTxTrace ExecuteAndTrace(UInt256 blockNumber, long gasLimit, params byte[] code)
         {
-            ITxTracer tracer = new GethLikeTxTracer();
-            return Execute(blockNumber, gasLimit, code, tracer);
+            GethLikeTxTracer tracer = new GethLikeTxTracer();
+            (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
+            _processor.Execute(0, transaction, block.Header, tracer);
+            return tracer.BuildResult();
         }
         
-        protected TransactionReceipt Execute(params byte[] code)
+        protected VmTestResultTracer Execute(params byte[] code)
         {
-            return Execute(BlockNumber, 100000, code, NullTxTracer.Instance).Receipt;
+            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            VmTestResultTracer tracer = new VmTestResultTracer();
+            _processor.Execute(0, transaction, block.Header, tracer);
+            return tracer;
         }
 
-        protected TransactionReceipt Execute(UInt256 blockNumber, long gasLimit, byte[] code)
+        protected VmTestResultTracer Execute(UInt256 blockNumber, long gasLimit, byte[] code)
         {
-            return Execute(blockNumber, gasLimit, code, NullTxTracer.Instance).Receipt;
+            (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
+            VmTestResultTracer tracer = new VmTestResultTracer();
+            _processor.Execute(0, transaction, block.Header, tracer);
+            return tracer;
         }
-        
-        private (TransactionReceipt Receipt, GethLikeTxTrace Trace) Execute(UInt256 blockNumber, long gasLimit, byte[] code, ITxTracer txTracer)
+
+        private (Block block, Transaction transaction) PrepareTx(UInt256 blockNumber, long gasLimit, byte[] code)
         {
             TestState.CreateAccount(Sender, 100.Ether());
             TestState.CreateAccount(Recipient, 100.Ether());
@@ -124,7 +134,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
 
             Block block = BuildBlock(blockNumber);
-            return (_processor.Execute(0, transaction, block.Header, txTracer), txTracer.IsTracingReceipt ? ((GethLikeTxTracer)txTracer).BuildResult() : null);
+            return (block, transaction);
         }
 
         protected virtual Block BuildBlock(UInt256 blockNumber)
@@ -132,7 +142,7 @@ namespace Nethermind.Evm.Test
             return Build.A.Block.WithNumber(blockNumber).TestObject;
         }
 
-        protected void AssertGas(TransactionReceipt receipt, long gas)
+        protected void AssertGas(VmTestResultTracer receipt, long gas)
         {
             Assert.AreEqual(gas, receipt.GasUsed, "gas");
         }

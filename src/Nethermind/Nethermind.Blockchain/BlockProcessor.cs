@@ -121,21 +121,25 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private TransactionReceipt[] ProcessTransactions(Block block, IBlockTracer blockTracer)
+        private TransactionReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
-            var receipts = new TransactionReceipt[block.Transactions.Length];
+            BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer(block, blockTracer, _specProvider, _stateProvider);
+            
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 if (_logger.IsTrace) _logger.Trace($"Processing transaction {i}");
                 Transaction currentTx = block.Transactions[i];
-                GethLikeTxTrace trace;
                 ITxTracer tracer = blockTracer.StartNewTxTrace(currentTx.Hash);
-                receipts[i] = _transactionProcessor.Execute(i, currentTx, block.Header, tracer);
+                _transactionProcessor.Execute(i, currentTx, block.Header, receiptsTracer);
                 blockTracer.EndTxTrace();
-                TransactionProcessed?.Invoke(this, new TransactionProcessedEventArgs(receipts[i]));
+
+                if ((processingOptions & ProcessingOptions.ReadOnlyChain) == 0)
+                {
+                    TransactionProcessed?.Invoke(this, new TransactionProcessedEventArgs(receiptsTracer.Receipts[i]));
+                }
             }
 
-            return receipts;
+            return receiptsTracer.Receipts;
         }
 
         private void SetReceiptsRootAndBloom(Block block, TransactionReceipt[] receipts)
@@ -150,7 +154,18 @@ namespace Nethermind.Blockchain
             receiptTree?.UpdateRootHash();
 
             block.Header.ReceiptsRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
-            block.Header.Bloom = receipts.Length > 0 ? TransactionProcessor.BuildBloom(receipts) : Bloom.Empty;
+            block.Header.Bloom = receipts.Length > 0 ? BuildBloom(receipts) : Bloom.Empty;
+        }
+
+        public Bloom BuildBloom(TransactionReceipt[] receipts)
+        {
+            Bloom bloom = new Bloom();
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                bloom.Add(receipts[i].Logs);
+            }
+
+            return bloom;
         }
 
         private void Restore(int stateSnapshot, int codeSnapshot, Keccak snapshotStateRoot)
@@ -175,7 +190,7 @@ namespace Nethermind.Blockchain
             }
 
             Block block = PrepareBlockForProcessing(suggestedBlock);
-            var receipts = ProcessTransactions(block, blockTracer);
+            var receipts = ProcessTransactions(block, options, blockTracer);
             SetReceiptsRootAndBloom(block, receipts);
             ApplyMinerRewards(block);
             _stateProvider.Commit(_specProvider.GetSpec(block.Number));
@@ -245,7 +260,7 @@ namespace Nethermind.Blockchain
                 _stateProvider.AddToBalance(reward.Address, (UInt256) reward.Value, _specProvider.GetSpec(block.Number));
             }
         }
-        
+
         private void ApplyDaoTransition()
         {
             Address withdrawAccount = DaoData.DaoWithdrawalAccount;
