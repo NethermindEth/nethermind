@@ -189,7 +189,6 @@ namespace Nethermind.Runner
             if (initParams.JsonRpcEnabled && !initParams.RunAsReceiptsFiller)
             {
                 var serializer = new UnforgivingJsonSerializer();
-                rpcModuleProvider.Register<INethmModule>(new NethmModule(configProvider, logManager, serializer));
                 rpcModuleProvider.Register<IShhModule>(new ShhModule(configProvider, logManager, serializer));
                 rpcModuleProvider.Register<IWeb3Module>(new Web3Module(configProvider, logManager, serializer));
 

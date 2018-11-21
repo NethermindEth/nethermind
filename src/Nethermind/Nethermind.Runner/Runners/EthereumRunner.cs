@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -115,6 +116,7 @@ namespace Nethermind.Runner.Runners
         private readonly ITimestamp _timestamp = new Timestamp();
         private IStateProvider _stateProvider;
         private IWallet _wallet;
+        private IEnode _enode;
         private HiveRunner _hiveRunner;
 
         public const string DiscoveryNodesDbPath = "discoveryNodes";
@@ -124,11 +126,11 @@ namespace Nethermind.Runner.Runners
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager.GetClassLogger();
-
             _configProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _rpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _perfService = new PerfService(_logManager) {LogOnDebug = _initConfig.LogPerfStatsOnDebug};
+            _networkHelper = new NetworkHelper(_logger);
         }
 
         public async Task Start()
@@ -155,7 +157,8 @@ namespace Nethermind.Runner.Runners
             {
                 if (!File.Exists(UnsecuredNodeKeyFilePath))
                 {
-                    if (_logger.IsInfo) _logger.Info("Generating private key for the node (no node key in configuration)");
+                    if (_logger.IsInfo)
+                        _logger.Info("Generating private key for the node (no node key in configuration)");
                     _nodeKey = new PrivateKeyGenerator(_cryptoRandom).Generate();
                     File.WriteAllBytes(UnsecuredNodeKeyFilePath, _nodeKey.KeyBytes);
                 }
@@ -168,6 +171,13 @@ namespace Nethermind.Runner.Runners
             {
                 _nodeKey = new PrivateKey(_initConfig.TestNodeKey);
             }
+
+            var ipVariable = Environment.GetEnvironmentVariable("NETHERMIND_ENODE_IPADDRESS");
+            var localIp = string.IsNullOrWhiteSpace(ipVariable)
+                ? _networkHelper.GetLocalIp()
+                : IPAddress.Parse(ipVariable);
+
+            _enode = new Enode(_nodeKey, localIp, _initConfig.P2PPort);
         }
 
         private void RegisterJsonRpcModules()
@@ -234,11 +244,12 @@ namespace Nethermind.Runner.Runners
 
             NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_syncManager));
             _rpcModuleProvider.Register<INetModule>(netModule);
+            
+            _rpcModuleProvider.Register<INethmModule>(new NethmModule(_configProvider, _logManager, _jsonSerializer, _enode));
         }
 
         private void UpdateNetworkConfig()
         {
-            _networkHelper = new NetworkHelper(_logger);
             var localHost = _networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             networkConfig.MasterExternalIp = localHost;
@@ -654,11 +665,10 @@ namespace Nethermind.Runner.Runners
                 }
             });
 
-            var localIp = _networkHelper.GetLocalIp();
-            if (_logger.IsInfo) _logger.Info($"Node is up and listening on {localIp}:{_initConfig.P2PPort}");
+            if (_logger.IsInfo) _logger.Info($"Node is up and listening on {_enode.IpAddress}:{_enode.P2PPort}");
             if (_logger.IsInfo) _logger.Info($"{ClientVersion.Description}");
-            if (_logger.IsInfo) _logger.Info($"enode://{_nodeKey.PublicKey.ToString(false)}@{localIp}:{_initConfig.P2PPort}");
-            if (_logger.IsInfo) _logger.Info($"enode address for test purposes: {_nodeKey.Address}");
+            if (_logger.IsInfo) _logger.Info(_enode.Info);
+            if (_logger.IsInfo) _logger.Info($"enode address for test purposes: {_enode.Address}");
         }
 
         private ISealEngine ConfigureSealEngine()
