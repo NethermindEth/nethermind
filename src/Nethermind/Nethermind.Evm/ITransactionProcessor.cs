@@ -23,7 +23,7 @@ namespace Nethermind.Evm
 {
     public interface ITransactionProcessor
     {
-        void Execute(int index, Transaction transaction, BlockHeader block, ITxTracer txTracer);
-        void CallAndRestore(int index, Transaction transaction, BlockHeader block, ITxTracer txTracer);
+        void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer);
+        void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer);
     }
 }

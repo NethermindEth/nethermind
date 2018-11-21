@@ -49,17 +49,17 @@ namespace Nethermind.Evm
         }
 
         [Todo("Wider work needed to split calls and execution properly")]
-        public void CallAndRestore(int index, Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(index, transaction, block, txTracer, true);
+            Execute(transaction, block, txTracer, true);
         }
 
-        public void Execute(int index, Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(index, transaction, block, txTracer, false);
+            Execute(transaction, block, txTracer, false);
         }
         
-        public void Execute(int index, Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
+        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             Address recipient = transaction.To;
