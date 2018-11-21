@@ -240,9 +240,9 @@ namespace Nethermind.JsonRpc
             };
         }
 
-        public BlockTraceItem[] MapBlockTrace(GethLikeBlockTrace gethLikeBlockTrace)
+        public BlockTraceItem[] MapBlockTrace(GethLikeTxTrace[] gethLikeBlockTrace)
         {
-            return gethLikeBlockTrace.TxTraces.Select(t => new BlockTraceItem(MapTransactionTrace(t))).ToArray();
+            return gethLikeBlockTrace.Select(t => new BlockTraceItem(MapTransactionTrace(t))).ToArray();
         }
 
         public Log MapLog(LogEntry logEntry)

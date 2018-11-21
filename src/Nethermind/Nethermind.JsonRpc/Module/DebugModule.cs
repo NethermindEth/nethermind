@@ -138,7 +138,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Data blockHash)
         {
-            GethLikeBlockTrace gethLikeBlockTrace = _debugBridge.GetBlockTrace(new Keccak(blockHash.Value));
+            GethLikeTxTrace[] gethLikeBlockTrace = _debugBridge.GetBlockTrace(new Keccak(blockHash.Value));
             if (gethLikeBlockTrace == null)
             {
                 return ResultWrapper<BlockTraceItem[]>.Fail($"Trace is null for block {blockHash}", ErrorType.NotFound);

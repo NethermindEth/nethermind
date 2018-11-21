@@ -75,12 +75,12 @@ namespace Nethermind.JsonRpc.Module
             return _tracer.Trace(blockHash, index);
         }
 
-        public GethLikeBlockTrace GetBlockTrace(Keccak blockHash)
+        public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash)
         {
             return _tracer.TraceBlock(blockHash);
         }
 
-        public GethLikeBlockTrace GetBlockTrace(UInt256 blockNumber)
+        public GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber)
         {
             return _tracer.TraceBlock(blockNumber);
         }

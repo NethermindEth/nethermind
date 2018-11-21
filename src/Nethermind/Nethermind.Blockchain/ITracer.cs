@@ -19,7 +19,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain
@@ -30,7 +29,7 @@ namespace Nethermind.Blockchain
         GethLikeTxTrace Trace(UInt256 blockNumber, Transaction transaction);
         GethLikeTxTrace Trace(UInt256 blockNumber, int txIndex);
         GethLikeTxTrace Trace(Keccak blockHash, int txIndex);
-        GethLikeBlockTrace TraceBlock(Keccak blockHash);
-        GethLikeBlockTrace TraceBlock(UInt256 blockNumber);
+        GethLikeTxTrace[] TraceBlock(Keccak blockHash);
+        GethLikeTxTrace[] TraceBlock(UInt256 blockNumber);
     }
 }

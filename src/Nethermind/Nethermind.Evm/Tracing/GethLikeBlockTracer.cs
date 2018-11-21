@@ -16,66 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class GethLikeBlockTracer : IBlockTracer
+    public class GethLikeBlockTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxTracer>
     {
-        private readonly Keccak _txHash;
-
-        private bool _isTracingEntireBlock;
-
         public GethLikeBlockTracer(Block block)
+        :base(block)
         {
-            _isTracingEntireBlock = true;
-            _txTraces = new GethLikeTxTrace[block.Transactions.Length];
         }
 
         public GethLikeBlockTracer(Keccak txHash)
+        :base(txHash)
         {
-            _txHash = txHash;
-            _txTraces = new GethLikeTxTrace[1];
         }
 
-        private int _currentTxIndex;
-        
-        private GethLikeTxTracer _currentTxTracer;
-        
-        ITxTracer IBlockTracer.StartNewTxTrace(Keccak txHash)
+        protected override GethLikeTxTracer OnStart(Keccak txHash)
         {
-            if (_isTracingEntireBlock || _txHash == txHash)
-            {
-                _currentTxTracer = new GethLikeTxTracer();
-                return _currentTxTracer;
-            }
-            
-            if(!_isTracingEntireBlock && _txHash != txHash)
-            {
-                throw new InvalidOperationException($"Unexpected tx trace started - awaiting {_txHash}, received {txHash}");
-            }
-            
-            return NullTxTracer.Instance;
+            return new GethLikeTxTracer();
         }
 
-        void IBlockTracer.EndTxTrace()
+        protected override GethLikeTxTrace OnEnd(GethLikeTxTracer txTracer)
         {
-            if (_currentTxTracer == null)
-            {
-                throw new InvalidOperationException("Cannot end tx trace that has not been started");
-            }
-                
-            _txTraces[_currentTxIndex++] = _currentTxTracer.BuildResult();
-            _currentTxTracer = null;
-        }
-        
-        private GethLikeTxTrace[] _txTraces;
-
-        public GethLikeBlockTrace BuildResult()
-        {
-            return new GethLikeBlockTrace(_txTraces);
+            return txTracer.BuildResult();
         }
     }
 }

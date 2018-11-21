@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
         {
             Keccak txHash = TestObject.KeccakA;
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(txHash);
-            Assert.IsNull(blockTracer.BuildResult().TxTraces[0], $"starts with trace set to null");
+            Assert.IsNull(blockTracer.BuildResult()[0], $"starts with trace set to null");
         }
 
         [Test]
@@ -51,7 +51,7 @@ namespace Nethermind.Evm.Test
             block.Transactions = new Transaction[3];
 
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(block);
-            Assert.AreEqual(3, blockTracer.BuildResult().TxTraces.Length);
+            Assert.AreEqual(3, blockTracer.BuildResult().Length);
         }
 
         [Test]
@@ -70,9 +70,9 @@ namespace Nethermind.Evm.Test
             ((IBlockTracer) blockTracer).StartNewTxTrace(TestObject.KeccakC);
             ((IBlockTracer) blockTracer).EndTxTrace();
 
-            Assert.NotNull(blockTracer.BuildResult().TxTraces[0], "0");
-            Assert.NotNull(blockTracer.BuildResult().TxTraces[0], "1");
-            Assert.NotNull(blockTracer.BuildResult().TxTraces[0], "2");
+            Assert.NotNull(blockTracer.BuildResult()[0], "0");
+            Assert.NotNull(blockTracer.BuildResult()[1], "1");
+            Assert.NotNull(blockTracer.BuildResult()[2], "2");
         }
         
         [Test]

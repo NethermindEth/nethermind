@@ -75,18 +75,18 @@ namespace Nethermind.Blockchain
             Block block = _blockTree.FindBlock(blockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
             block.Transactions = new[] {tx};
-            GethLikeBlockTracer listener = new GethLikeBlockTracer(tx.Hash);
-            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
-            return listener.BuildResult().TxTraces[0];
+            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, blockTracer);
+            return blockTracer.BuildResult()[0];
         }
 
-        public GethLikeBlockTrace TraceBlock(Keccak blockHash)
+        public GethLikeTxTrace[] TraceBlock(Keccak blockHash)
         {
             Block block = _blockTree.FindBlock(blockHash, false);
             return TraceBlock(block);
         }
 
-        public GethLikeBlockTrace TraceBlock(UInt256 blockNumber)
+        public GethLikeTxTrace[] TraceBlock(UInt256 blockNumber)
         {
             Block block = _blockTree.FindBlock(blockNumber);
             return TraceBlock(block);
@@ -96,10 +96,10 @@ namespace Nethermind.Blockchain
         {
             GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
-            return listener.BuildResult().TxTraces[0];
+            return listener.BuildResult()[0];
         }
 
-        private GethLikeBlockTrace TraceBlock(Block block)
+        private GethLikeTxTrace[] TraceBlock(Block block)
         {
             if (block == null) throw new InvalidOperationException("Only canonical, historical blocks supported");
 

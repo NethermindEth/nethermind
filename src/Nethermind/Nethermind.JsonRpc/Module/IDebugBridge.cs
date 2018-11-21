@@ -27,8 +27,8 @@ namespace Nethermind.JsonRpc.Module
         GethLikeTxTrace GetTransactionTrace(Keccak transactionHash);
         GethLikeTxTrace GetTransactionTrace(UInt256 blockNumber, int index);
         GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index);
-        GethLikeBlockTrace GetBlockTrace(Keccak blockHash);
-        GethLikeBlockTrace GetBlockTrace(UInt256 blockNumber);
+        GethLikeTxTrace[] GetBlockTrace(Keccak blockHash);
+        GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber);
         byte[] GetDbValue(string dbName, byte[] key);
         void AddTxData(Keccak blockHash);
         void AddTxData(UInt256 blockNumber);
