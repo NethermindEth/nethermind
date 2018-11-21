@@ -72,11 +72,6 @@
     <_ContentIncludedByDefault Remove="out\linux-x64\Nethermind.Runner.deps.json" />
     <_ContentIncludedByDefault Remove="out\linux-x64\Nethermind.Runner.runtimeconfig.json" />
   </ItemGroup>
-  <ItemGroup>
-    <None Update="Data\chain.rlp">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
   <Target Name="StoreGitHash" BeforeTargets="Build">
     <Exec Command="git describe --all --long &gt; git-hash" />
   </Target>

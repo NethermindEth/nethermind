@@ -16,11 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -40,7 +38,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Runners
 {
-    public class HiveEthereumRunner : IRunner
+    public class HiveRunner : IRunner
     {
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockTree _blockTree;
@@ -52,7 +50,7 @@ namespace Nethermind.Runner.Runners
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
 
-        public HiveEthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor,
+        public HiveRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor,
             IBlockTree blockTree, IStateProvider stateProvider, ISnapshotableDb stateDb, ILogger logger,
             IConfigProvider configurationProvider, ISpecProvider specProvider, HiveWallet wallet)
         {
@@ -70,7 +68,6 @@ namespace Nethermind.Runner.Runners
         public Task Start()
         {
             _logger.Info("Initializing Ethereum");
-
             var initConfig = _configurationProvider.GetConfig<IHiveInitConfig>();
             _blockchainProcessor.Start();
             InitializeKeys(initConfig.KeysDir);
@@ -83,7 +80,7 @@ namespace Nethermind.Runner.Runners
 
         public async Task StopAsync()
         {
-            await _blockchainProcessor.StopAsync();
+            await Task.CompletedTask;
         }
 
         private void InitializeChain(string chainFile)
@@ -130,8 +127,8 @@ namespace Nethermind.Runner.Runners
         {
             var fileContent = File.ReadAllBytes(file);
             var blockRlp = new Rlp(fileContent);
-            Block block = Rlp.Decode<Block>(blockRlp);
-            return block;
+            
+            return Rlp.Decode<Block>(blockRlp);
         }
 
         private void ProcessBlock(Block block)
@@ -203,9 +200,7 @@ namespace Nethermind.Runner.Runners
             header.StateRoot = stateRoot;
             header.Hash = BlockHeader.CalculateHash(header);
 
-            var block = new Block(header);
-            return block;
-            //0xbd008bffd224489523896ed37442e90b4a7a3218127dafdfed9d503d95e3e1f3
+            return new Block(header);
         }
 
         private Keccak InitializeAccounts(IDictionary<string, TestAccount> alloc)

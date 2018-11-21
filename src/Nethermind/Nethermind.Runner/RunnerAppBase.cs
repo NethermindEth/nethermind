@@ -172,11 +172,7 @@ namespace Nethermind.Runner
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>())
                 : (IRpcModuleProvider) NullModuleProvider.Instance;
 
-            if (Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true")
-            {
-                _ethereumRunner = GetHiveRunner(rpcModuleProvider, configProvider, logManager);
-            }
-            else if (initParams.RunAsReceiptsFiller)
+            if (initParams.RunAsReceiptsFiller)
             {
                 _ethereumRunner = new ReceiptsFiller(configProvider, logManager);
             }
@@ -245,136 +241,6 @@ namespace Nethermind.Runner
                     Console.WriteLine($"Error removing log file: {file}, exp: {e}");
                 }
             }
-        }
-
-        private static HiveEthereumRunner GetHiveRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configProvider, ILogManager logManager)
-        {
-            var specProvider = RopstenSpecProvider.Instance;
-            var difficultyCalculator = new DifficultyCalculator(specProvider);
-            var sealEngine = new EthashSealEngine(new Ethash(logManager), difficultyCalculator, logManager);
-            var logger = logManager.GetClassLogger();
-            var initConfig = configProvider.GetConfig<IInitConfig>();
-            var dbProvider = new MemDbProvider();
-
-            var ethereumSigner = new EthereumSigner(specProvider, logManager);
-
-            var transactionPool = new TransactionPool(
-                new PersistentTransactionStorage(dbProvider.PendingTxsDb, specProvider),
-                new PendingTransactionThresholdValidator(initConfig.ObsoletePendingTransactionInterval,
-                    initConfig.RemovePendingTransactionInterval), new Timestamp(),
-                ethereumSigner, logManager, initConfig.RemovePendingTransactionInterval,
-                initConfig.PeerNotificationThreshold);
-
-            var receiptStorage = new PersistentReceiptStorage(dbProvider.ReceiptsDb, specProvider);
-
-            var blockTree = new BlockTree(
-                dbProvider.BlocksDb,
-                dbProvider.BlockInfosDb,
-                specProvider,
-                transactionPool,
-                logManager);
-            
-            var rewardCalculator = new RewardCalculator(specProvider);
-
-            var headerValidator = new HeaderValidator(
-                blockTree,
-                sealEngine,
-                specProvider,
-                logManager);
-
-            var ommersValidator = new OmmersValidator(
-                blockTree,
-                headerValidator,
-                logManager);
-
-            var txValidator = new TransactionValidator(
-                new SignatureValidator(specProvider.ChainId));
-
-            var blockValidator = new BlockValidator(
-                txValidator,
-                headerValidator,
-                ommersValidator,
-                specProvider,
-                logManager);
-
-            var stateTree = new StateTree(dbProvider.StateDb);
-
-            var stateProvider = new StateProvider(
-                stateTree,
-                dbProvider.CodeDb,
-                logManager);
-
-            var storageProvider = new StorageProvider(
-                dbProvider.StateDb,
-                stateProvider,
-                logManager);
-
-            var blockhashProvider = new BlockhashProvider(
-                blockTree);
-
-            var virtualMachine = new VirtualMachine(
-                stateProvider,
-                storageProvider,
-                blockhashProvider,
-                logManager);
-
-            var transactionProcessor = new TransactionProcessor(
-                specProvider,
-                stateProvider,
-                storageProvider,
-                virtualMachine,
-                logManager);
-
-            var txRecoveryStep = new TxSignaturesRecoveryStep(ethereumSigner);
-            var recoveryStep = (IBlockDataRecoveryStep) txRecoveryStep;
-
-            var blockProcessor = new BlockProcessor(
-                specProvider,
-                blockValidator,
-                rewardCalculator,
-                transactionProcessor,
-                dbProvider.StateDb,
-                dbProvider.CodeDb,
-                stateProvider,
-                storageProvider,
-                transactionPool,
-                receiptStorage,
-                logManager);
-
-            var blockchainProcessor = new BlockchainProcessor(
-                blockTree,
-                blockProcessor,
-                recoveryStep,
-                logManager,
-                true);
-
-            var jsonSerializer = new JsonSerializer(logManager);
-            var mapper = new JsonRpcModelMapper();
-            
-            var transactionPoolInfoProvider = new TransactionPoolInfoProvider(stateProvider);
-
-            IFilterStore filterStore = new FilterStore();
-            IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, transactionPool, logManager);
-            var wallet = new HiveWallet();
-
-            var blockchainBridge = new BlockchainBridge(
-                ethereumSigner,
-                stateProvider,
-                blockTree,
-                transactionPool,
-                transactionPoolInfoProvider,
-                receiptStorage,
-                filterStore,
-                filterManager,
-                wallet,
-                transactionProcessor);
-            
-            var module = new EthModule(jsonSerializer, configProvider, mapper, logManager, blockchainBridge);
-            rpcModuleProvider.Register<IEthModule>(module);
-
-            return new HiveEthereumRunner(jsonSerializer, blockchainProcessor, blockTree,
-                stateProvider, new StateDb(),
-                logger, configProvider, specProvider, wallet);
         }
     }
 }

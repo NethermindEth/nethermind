@@ -60,6 +60,11 @@ namespace Nethermind.Core.Specs.ChainSpec
 
         private static void LoadGenesis(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
+            if (chainSpecJson.Genesis == null)
+            {
+                return;
+            }
+            
             var nonce = ToULong(chainSpecJson.Genesis.Seal.Ethereum.Nonce);
             var mixHash = HexToKeccak(chainSpecJson.Genesis.Seal.Ethereum.MixHash);
             var parentHash = HexToKeccak(chainSpecJson.Genesis.ParentHash);

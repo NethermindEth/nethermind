@@ -39,16 +39,7 @@ namespace Nethermind.Runner
 
             try
             {
-                IRunnerApp runner = null;
-                if (Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true")
-                {
-                    runner = new HiveRunnerApp(logger);
-                }
-                else
-                {
-                    runner = new RunnerApp(logger);
-                }
-
+                IRunnerApp runner = new RunnerApp(logger);
                 runner.Run(args);
                 return;
             }
