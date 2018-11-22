@@ -21,7 +21,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Runner.Config
 {
-    public interface IHiveInitConfig : IConfig
+    public interface IHiveConfig : IConfig
     {
         string ChainFile { get; set; }
         string BlocksDir { get; set; }

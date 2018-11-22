@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,17 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.JsonRpc.Module
-{
-    using System.Collections.Generic;
-    using Nethermind.JsonRpc.DataModel;
+using System.Net;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-    public interface INethmModule : IModule
+namespace Nethermind.Network
+{
+    public class Enode : IEnode
     {
-        ResultWrapper<IEnumerable<string>> nethm_getCompilers();
-        ResultWrapper<Data> nethm_compileLLL(string code);
-        ResultWrapper<string> nethm_compileSolidity(string parameters);
-        ResultWrapper<Data> nethm_compileSerpent(string code);
-        ResultWrapper<string> enode_info();
+        private readonly PrivateKey _nodeKey;
+
+        public Enode(PrivateKey nodeKey, IPAddress localIp, int p2PPort)
+        {
+            _nodeKey = nodeKey;
+            IpAddress = localIp;
+            P2PPort = p2PPort;
+        }
+
+        public Address Address => _nodeKey.Address;
+        public IPAddress IpAddress { get; }
+        public int P2PPort { get; }
+        public string Info => $"enode://{_nodeKey.PublicKey.ToString(false)}@{IpAddress}:{P2PPort}";
     }
 }

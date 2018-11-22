@@ -8,15 +8,19 @@ using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.LibSolc;
+using Nethermind.Network;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Module
 {
     public class NethmModule : ModuleBase, INethmModule
     {
-        public NethmModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
+        private readonly IEnode _enode;
+
+        public NethmModule(IConfigProvider configurationProvider, ILogManager logManager,
+            IJsonSerializer jsonSerializer, IEnode enode) : base(configurationProvider, logManager, jsonSerializer)
         {
-            
+            _enode = enode;
         }
             
         public ResultWrapper<IEnumerable<string>> nethm_getCompilers()
@@ -73,7 +77,10 @@ namespace Nethermind.JsonRpc.Module
         {
             throw new NotImplementedException();
         }
-        
+
+        public ResultWrapper<string> enode_info()
+            => ResultWrapper<string>.Success(_enode.Info);
+
         public ModuleType ModuleType => ModuleType.Nethm;
     }
 }

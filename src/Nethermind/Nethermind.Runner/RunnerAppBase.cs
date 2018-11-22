@@ -18,18 +18,41 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TransactionPools.Storages;
+using Nethermind.Blockchain.Validators;
+using Nethermind.Clique;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Core.Utils;
+using Nethermind.Db;
+using Nethermind.Db.Config;
+using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.Module;
+using Nethermind.KeyStore;
+using Nethermind.Mining;
+using Nethermind.Mining.Difficulty;
+using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
+using Nethermind.Stats;
+using Nethermind.Store;
+using Nethermind.Wallet;
 
 namespace Nethermind.Runner
 {
@@ -54,9 +77,10 @@ namespace Nethermind.Runner
         {
             if (Logger.IsDebug) Logger.Debug($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
             if (Logger.IsDebug) Logger.Debug($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
-            if (Logger.IsDebug) Logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
+            if (Logger.IsDebug)
+                Logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
         }
-        
+
         public void Run(string[] args)
         {
             var (app, buildConfigProvider, getDbBasePath) = BuildCommandLineApp();
@@ -77,33 +101,50 @@ namespace Nethermind.Runner
                 if (!string.IsNullOrWhiteSpace(pathDbPath))
                 {
                     var newDbPath = Path.Combine(pathDbPath, initConfig.BaseDbPath);
-                    if(Logger.IsInfo) Logger.Info($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
-                    initConfig.BaseDbPath = newDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db"); 
+                    if (Logger.IsInfo)
+                        Logger.Info(
+                            $"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
+                    initConfig.BaseDbPath = newDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
                 }
 
                 Console.Title = initConfig.LogFileName;
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
                 var serializer = new UnforgivingJsonSerializer();
-                if(Logger.IsInfo) Logger.Info($"Running Nethermind Runner, parameters:\n{serializer.Serialize(initConfig, true)}\n");
+                if (Logger.IsInfo)
+                    Logger.Info($"Running Nethermind Runner, parameters:\n{serializer.Serialize(initConfig, true)}\n");
 
                 _cancelKeySource = new TaskCompletionSource<object>();
                 Task userCancelTask = Task.Factory.StartNew(() =>
                 {
+                    var detached = Environment.GetEnvironmentVariable("NETHERMIND_DETACHED_MODE")?.ToLowerInvariant() ==
+                                   "true";
+
                     Console.WriteLine("Enter 'e' to exit");
                     while (true)
                     {
-                        ConsoleKeyInfo keyInfo = Console.ReadKey();
-                        if (keyInfo.KeyChar == 'e')
+                        if (detached)
                         {
-                            break;
+                            var line = Console.ReadLine();
+                            if (line == "e")
+                            {
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            var keyInfo = Console.ReadKey();
+                            if (keyInfo.Key == ConsoleKey.E)
+                            {
+                                break;
+                            }
                         }
                     }
                 });
 
                 await StartRunners(configProvider);
                 await Task.WhenAny(userCancelTask, _cancelKeySource.Task);
-                                                                                                                                                                                                                                                                                                        
+
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
                 StopAsync().Wait();
                 Console.WriteLine("All done, goodbye!");
@@ -127,8 +168,10 @@ namespace Nethermind.Runner
         {
             var initParams = configProvider.GetConfig<IInitConfig>();
             var logManager = new NLogManager(initParams.LogFileName, initParams.LogDirectory);
-            IRpcModuleProvider rpcModuleProvider = initParams.JsonRpcEnabled ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>()) : (IRpcModuleProvider)NullModuleProvider.Instance;
-            
+            IRpcModuleProvider rpcModuleProvider = initParams.JsonRpcEnabled
+                ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>())
+                : (IRpcModuleProvider) NullModuleProvider.Instance;
+
             if (initParams.RunAsReceiptsFiller)
             {
                 _ethereumRunner = new ReceiptsFiller(configProvider, logManager);
@@ -146,10 +189,9 @@ namespace Nethermind.Runner
             if (initParams.JsonRpcEnabled && !initParams.RunAsReceiptsFiller)
             {
                 var serializer = new UnforgivingJsonSerializer();
-                rpcModuleProvider.Register<INethmModule>(new NethmModule(configProvider, logManager, serializer));
                 rpcModuleProvider.Register<IShhModule>(new ShhModule(configProvider, logManager, serializer));
                 rpcModuleProvider.Register<IWeb3Module>(new Web3Module(configProvider, logManager, serializer));
-                
+
                 Bootstrap.Instance.JsonRpcService = new JsonRpcService(rpcModuleProvider, configProvider, logManager);
                 Bootstrap.Instance.LogManager = logManager;
                 Bootstrap.Instance.JsonSerializer = serializer;
@@ -178,7 +220,9 @@ namespace Nethermind.Runner
         {
             Console.WriteLine("Removing log files.");
 
-            var logsDir = string.IsNullOrEmpty(logDirectory) ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs") : logDirectory;
+            var logsDir = string.IsNullOrEmpty(logDirectory)
+                ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs")
+                : logDirectory;
             if (!Directory.Exists(logsDir))
             {
                 return;

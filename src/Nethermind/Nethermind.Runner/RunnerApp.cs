@@ -60,14 +60,21 @@ namespace Nethermind.Runner
                 config = typeof(BlockchainConfig).Assembly;
 
                 var configProvider = new JsonConfigProvider();
+
                 string configFilePath = configFile.HasValue() ? configFile.Value() : _defaultConfigFile;
+                var configPathVariable = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
+                if (!string.IsNullOrWhiteSpace(configPathVariable))
+                {
+                    configFilePath = configPathVariable;
+                }
+
                 if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
                 {
-                    string redirectedConfigPath = Path.Combine("configs", string.Concat(configFilePath, ".cfg")); 
+                    string redirectedConfigPath = Path.Combine("configs", string.Concat(configFilePath, ".cfg"));
                     Console.WriteLine($"Redirecting config {configFilePath} to {redirectedConfigPath}");
                     configFilePath = redirectedConfigPath;
                 }
-                
+
                 Console.WriteLine($"Reading config file from {configFilePath}");
                 configProvider.LoadJsonConfig(configFilePath);
                 return configProvider;

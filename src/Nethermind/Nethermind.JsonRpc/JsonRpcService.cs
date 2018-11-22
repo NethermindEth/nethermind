@@ -149,7 +149,7 @@ namespace Nethermind.JsonRpc
 
         private object GetDataObject(object data)
         {
-            return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data?.ToString();
+            return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data is bool ? data : data?.ToString();
         }
 
         private object[] GetParameters(ParameterInfo[] expectedParameters, string[] providedParameters)

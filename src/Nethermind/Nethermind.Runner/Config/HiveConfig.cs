@@ -16,17 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.JsonRpc.Module
-{
-    using System.Collections.Generic;
-    using Nethermind.JsonRpc.DataModel;
+using System.Numerics;
 
-    public interface INethmModule : IModule
+namespace Nethermind.Runner.Config
+{
+    public class HiveConfig : IHiveConfig
     {
-        ResultWrapper<IEnumerable<string>> nethm_getCompilers();
-        ResultWrapper<Data> nethm_compileLLL(string code);
-        ResultWrapper<string> nethm_compileSolidity(string parameters);
-        ResultWrapper<Data> nethm_compileSerpent(string code);
-        ResultWrapper<string> enode_info();
+        public string ChainFile { get; set; }
+        public string BlocksDir { get; set; }
+        public string KeysDir { get; set; }
+        public BigInteger? HomesteadBlockNr { get; set; }
+        public string Bootnode { get; set; }
+        public string GenesisFilePath { get; set; }
     }
 }

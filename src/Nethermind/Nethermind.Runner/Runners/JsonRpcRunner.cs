@@ -53,9 +53,12 @@ namespace Nethermind.Runner.Runners
 
         public Task Start()
         {
-            if(_logger.IsInfo) _logger.Info("Initializing JsonRPC");
-            var host = $"http://{_initConfig.HttpHost}:{_initConfig.HttpPort}";
-
+            if (_logger.IsInfo) _logger.Info("Initializing JsonRPC");
+            var hostVariable = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+            var host = string.IsNullOrWhiteSpace(hostVariable)
+                ? $"http://{_initConfig.HttpHost}:{_initConfig.HttpPort}"
+                : hostVariable;
+            if (_logger.IsInfo) _logger.Info($"Running server, url: {host}");
             var webHost = WebHost.CreateDefaultBuilder()
                 .UseStartup<Startup>()
                 .UseUrls(host)
@@ -73,10 +76,10 @@ namespace Nethermind.Runner.Runners
                 _jsonRpcConfig.EnabledModules = modules;
             }
 
-            if(_logger.IsInfo) _logger.Info($"Starting JSON RPC service, modules: {string.Join(", ", _moduleProvider.GetEnabledModules().Select(m => m.ModuleType.ToString()).OrderBy(x => x))}");
+            if (_logger.IsInfo) _logger.Info($"Starting JSON RPC service, modules: {string.Join(", ", _moduleProvider.GetEnabledModules().Select(m => m.ModuleType.ToString()).OrderBy(x => x))}");
             _webHost = webHost;
             _webHost.Start();
-            if(_logger.IsInfo) _logger.Info($"Running JSON RPC server at {host}");
+            if (_logger.IsInfo) _logger.Info($"Running JSON RPC server at {host}");
             return Task.CompletedTask;
         }
 

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,17 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using System.Net;
+using Nethermind.Core;
 
-namespace Nethermind.Runner.Config
+namespace Nethermind.Network
 {
-    public class HiveInitConfig : IHiveInitConfig
+    public interface IEnode
     {
-        public string ChainFile { get; set; }
-        public string BlocksDir { get; set; }
-        public string KeysDir { get; set; }
-        public BigInteger? HomesteadBlockNr { get; set; }
-        public string Bootnode { get; set; }
-        public string GenesisFilePath { get; set; }
+        Address Address { get; }
+        IPAddress IpAddress { get; }
+        int P2PPort { get; }
+        string Info { get; }
     }
 }
