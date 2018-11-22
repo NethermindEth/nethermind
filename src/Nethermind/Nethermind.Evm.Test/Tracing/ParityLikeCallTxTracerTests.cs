@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
@@ -103,6 +104,49 @@ namespace Nethermind.Evm.Test.Tracing
         private const string HexZero = "00";
         
         [Test]
+        public void On_failure_gas_used_is_gas_limit()
+        {
+            byte[] code = Prepare.EvmCode
+                .Op(Instruction.ADD)
+                .Done;
+
+            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            Assert.AreEqual(100000, trace.Action.Result.GasUsed);
+        }
+        
+        [Test]
+        public void On_failure_output_is_empty()
+        {
+            byte[] code = Prepare.EvmCode
+                .Op(Instruction.ADD)
+                .Done;
+
+            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            Assert.AreEqual(Bytes.Empty, trace.Action.Result.Output);
+        }
+        
+        [Test]
+        public void On_failure_block_and_tx_fields_are_set()
+        {
+            byte[] code = Prepare.EvmCode
+                .Op(Instruction.ADD)
+                .Done;
+
+            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            Assert.AreEqual(tx.SenderAddress, trace.Action.From, "from");
+            Assert.AreEqual(tx.To, trace.Action.To, "to");
+            Assert.AreEqual(block.Hash, trace.BlockHash, "hash");
+            Assert.AreEqual(block.Number, trace.BlockNumber, "number");
+            Assert.AreEqual(0, trace.TransactionPosition, "tx index");
+            Assert.AreEqual(tx.Hash, trace.TransactionHash, "tx hash");
+            Assert.AreEqual("call", trace.Type, "type");
+            Assert.AreEqual((long)tx.GasLimit, trace.Action.Gas, "gas");
+            Assert.AreEqual(tx.Value, trace.Action.Value, "value");
+            Assert.AreEqual(tx.Data, trace.Action.Input, "input");
+            Assert.AreEqual(Array.Empty<int>(), trace.Action.TraceAddress, "trace address");
+        }
+        
+        [Test]
         public void Blockhash_is_set()
         {
             byte[] code = Prepare.EvmCode
@@ -133,7 +177,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-            Assert.AreEqual("[]", trace.TraceAddress);
+            Assert.AreEqual(Array.Empty<int>(), trace.Action.TraceAddress);
         }
         
         [Test]
@@ -180,6 +224,17 @@ namespace Nethermind.Evm.Test.Tracing
 
             (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(100000, trace.Action.Gas);
+        }
+        
+        [Test]
+        public void Action_call_type_is_set()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(SampleHexData1)
+                .Done;
+
+            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            Assert.AreEqual("call", trace.Action.CallType);
         }
         
         [Test]
@@ -240,7 +295,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-            Assert.AreEqual(21003, trace.Result.GasUsed);
+            Assert.AreEqual(21003, trace.Action.Result.GasUsed);
         }
         
         [Test]
@@ -254,7 +309,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-            Assert.AreEqual(Bytes.FromHexString(SampleHexData1.PadLeft(64, '0')), trace.Result.Output);
+            Assert.AreEqual(Bytes.FromHexString(SampleHexData1.PadLeft(64, '0')), trace.Action.Result.Output);
         }
     }
 }

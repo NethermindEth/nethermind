@@ -16,19 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Tracing
 {
     public class ParityLikeCallTxTracer : ITxTracer
     {
-        private readonly Block _block;
-        private readonly Transaction _tx;
-        private ParityLikeCallTxTrace _trace = new ParityLikeCallTxTrace();
+        private ParityLikeCallTxTrace _trace;
+        private Stack<ParityTraceAction> _callStack = new Stack<ParityTraceAction>();
+        private ParityTraceAction _currentCall = new ParityTraceAction();
 
         public ParityLikeCallTxTrace BuildResult()
         {
@@ -37,24 +38,36 @@ namespace Nethermind.Evm.Tracing
 
         public ParityLikeCallTxTracer(Block block, Transaction tx)
         {
-            _block = block;
-            _tx = tx;
             _trace = new ParityLikeCallTxTrace();
-            _trace.TransactionHash = _tx.Hash;
-            _trace.TransactionPosition = _block.Transactions.Select((t, ix) => (t, ix)).Where(p => p.t.Hash == _tx.Hash).Select((t, ix) => ix).SingleOrDefault();
-            _trace.BlockNumber = _block.Number;
-            _trace.BlockHash = _block.Hash;
-            _trace.TraceAddress = "[]";
+            _trace.TransactionHash = tx.Hash;
+            _trace.TransactionPosition = block.Transactions.Select((t, ix) => (t, ix)).Where(p => p.t.Hash == tx.Hash).Select((t, ix) => ix).SingleOrDefault();
+            _trace.BlockNumber = block.Number;
+            _trace.BlockHash = block.Hash;
             
             _trace.Action = new ParityTraceAction();
-            _trace.Action.Gas = (long)_tx.GasLimit;
-            _trace.Action.Value = _tx.Value;
-            _trace.Action.Input = _tx.Data;
-            _trace.Action.From = _tx.SenderAddress;
+            _trace.Action.TraceAddress = Array.Empty<int>();
+            _trace.Action.Gas = (long)tx.GasLimit;
+            _trace.Action.Value = tx.Value;
+            _trace.Action.Input = tx.Data;
+            _trace.Action.From = tx.SenderAddress;
+            _trace.Action.CallType = tx.IsMessageCall ? "call" : "init";
             
-            _trace.Type = _tx.IsMessageCall ? "call" : "init";
+            PushCall(_trace.Action);
+
+            _trace.Type = _trace.Action.CallType;
+        }
+
+        private void PushCall(ParityTraceAction parityTraceAction)
+        {
+            _callStack.Push(parityTraceAction);
+            _currentCall = parityTraceAction;
         }
         
+        private void PopCall()
+        {
+            _currentCall = _callStack.Pop();
+        }
+
         public bool IsTracingReceipt => true;
         public bool IsTracingCalls => true;
         public bool IsTracingStorage => false;
@@ -65,13 +78,24 @@ namespace Nethermind.Evm.Tracing
         [Todo(Improve.MissingFunctionality, "Need to remove intrinsic gas value from gas spent")]
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] returnValue, LogEntry[] logs)
         {
+            if (_currentCall.TraceAddress.Length != 0)
+            {
+                throw new InvalidOperationException($"Closing trace at level {_currentCall.TraceAddress.Length}");
+            }
+            
             _trace.Action.To = recipient;
-            _trace.Result = new ParityTraceResult{Output = returnValue, GasUsed = (long)gasSpent};
+            _trace.Action.Result = new ParityTraceResult{Output = returnValue, GasUsed = (long)gasSpent};
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent)
         {
-            throw new System.NotImplementedException();
+            if (_currentCall.TraceAddress.Length != 0)
+            {
+                throw new InvalidOperationException($"Closing trace at level {_currentCall.TraceAddress.Length}");
+            }
+            
+            _trace.Action.To = recipient;
+            _trace.Action.Result = new ParityTraceResult{Output = Bytes.Empty, GasUsed = (long)gasSpent};
         }
 
         public void StartOperation(int callDepth, long gas, Instruction opcode, int programCounter)

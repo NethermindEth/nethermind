@@ -16,23 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
+using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class ParityLikeCallTxTrace
+    public class ParityTraceAction
     {
-        public ParityTraceAction Action { get; set; }
-        
-        public Keccak BlockHash { get; set; }
-        
-        public UInt256 BlockNumber { get; set; }
-        
-        public int TransactionPosition { get; set; }
-        
-        public Keccak TransactionHash { get; set; }
-        
-        public string Type { get; set; }
+        public int[] TraceAddress { get; set; }
+        public string CallType { get; set; }
+        public Address From { get; set; }
+        public Address To { get; set; }
+        public long Gas { get; set; }
+        public UInt256 Value { get; set; }
+        public byte[] Input { get; set; }
+        public ParityTraceResult Result { get; set; }
+        public ParityTraceAction[] Subtraces { get; set; }
     }
 }
