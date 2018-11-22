@@ -146,10 +146,10 @@ namespace Nethermind.JsonRpc.Module
                     block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
                 transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                CallTracer callTracer = new CallTracer();
-                _transactionProcessor.CallAndRestore(transaction, header, callTracer);
+                CallOutputTracer callOutputTracer = new CallOutputTracer();
+                _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
                 _stateProvider.Reset();
-                return callTracer.ReturnValue;
+                return callOutputTracer.ReturnValue;
             }
             finally
             {

@@ -19,15 +19,12 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class CallTracer : ITxTracer
+    public class CallOutputTracer : ITxTracer
     {
         public bool IsTracingReceipt => true;
         public bool IsTracingCalls => false;
@@ -38,9 +35,9 @@ namespace Nethermind.Evm.Tracing
 
         public byte[] ReturnValue { get; set; }
         
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] returnValue, LogEntry[] logs)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
-            ReturnValue = returnValue;
+            ReturnValue = output;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent)
@@ -48,7 +45,7 @@ namespace Nethermind.Evm.Tracing
             ReturnValue = Bytes.Empty;
         }
 
-        public void StartOperation(int callDepth, long gas, Instruction opcode, int programCounter)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
             throw new NotSupportedException();
         }
@@ -63,22 +60,32 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void SetOperationStack(List<string> getStackTrace)
+        public void SetOperationStack(List<string> stackTrace)
         {
             throw new NotSupportedException();
         }
 
-        public void SetOperationMemory(List<string> getTrace)
+        public void SetOperationMemory(List<string> memoryTrace)
         {
             throw new NotSupportedException();
         }
 
-        public void UpdateMemorySize(ulong memorySize)
+        public void SetOperationMemorySize(ulong newSize)
         {
             throw new NotSupportedException();
         }
 
         public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportCallEnd(long gas, byte[] output)
         {
             throw new NotSupportedException();
         }

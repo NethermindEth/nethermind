@@ -30,7 +30,8 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingMemory  => false;
         public bool IsTracingInstructions  => false;
         public bool IsTracingStack  => false;
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] returnValue, LogEntry[] logs)
+        
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
             throw new System.NotImplementedException();
         }
@@ -40,7 +41,7 @@ namespace Nethermind.Evm.Tracing
             throw new System.NotImplementedException();
         }
 
-        public void StartOperation(int callDepth, long gas, Instruction opcode, int programCounter)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
             throw new System.NotImplementedException();
         }
@@ -55,22 +56,32 @@ namespace Nethermind.Evm.Tracing
             throw new System.NotImplementedException();
         }
 
-        public void SetOperationStack(List<string> getStackTrace)
+        public void SetOperationStack(List<string> stackTrace)
         {
             throw new System.NotImplementedException();
         }
 
-        public void SetOperationMemory(List<string> getTrace)
+        public void SetOperationMemory(List<string> memoryTrace)
         {
             throw new System.NotImplementedException();
         }
 
-        public void UpdateMemorySize(ulong memorySize)
+        public void SetOperationMemorySize(ulong newSize)
         {
             throw new System.NotImplementedException();
         }
 
         public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public void ReportCallEnd(long gas, byte[] output)
         {
             throw new System.NotImplementedException();
         }

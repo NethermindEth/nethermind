@@ -36,9 +36,9 @@ namespace Nethermind.Evm.Tracing
         bool ITxTracer.IsTracingInstructions => true;
         bool ITxTracer.IsTracingStack => true;
         
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] returnValue, LogEntry[] logs)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
-            _trace.ReturnValue = returnValue?.ToHexString();
+            _trace.ReturnValue = output?.ToHexString();
             _trace.Gas = gasSpent;
         }
 
@@ -58,14 +58,14 @@ namespace Nethermind.Evm.Tracing
             _trace.Gas = gasSpent;
         }
 
-        public void StartOperation(int callDepth, long gas, Instruction opcode, int programCounter)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
             var previousTraceEntry = _traceEntry;
             _traceEntry = new TransactionTraceEntry();
-            _traceEntry.Pc = programCounter;
+            _traceEntry.Pc = pc;
             _traceEntry.Operation = Enum.GetName(typeof(Instruction), opcode);
             _traceEntry.Gas = gas;
-            _traceEntry.Depth = callDepth;
+            _traceEntry.Depth = depth;
             _trace.Entries.Add(_traceEntry);
             
             if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
@@ -103,9 +103,9 @@ namespace Nethermind.Evm.Tracing
             _traceEntry.GasCost = _traceEntry.Gas - gas;
         }
 
-        public void UpdateMemorySize(ulong memorySize)
+        public void SetOperationMemorySize(ulong newSize)
         {
-            _traceEntry.UpdateMemorySize(memorySize);
+            _traceEntry.UpdateMemorySize(newSize);
         }
 
         public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
@@ -124,14 +124,24 @@ namespace Nethermind.Evm.Tracing
             _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);
         }
 
-        public void SetOperationStack(List<string> getStackTrace)
+        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
         {
-            _traceEntry.Stack = getStackTrace;
+            throw new NotSupportedException();
         }
 
-        public void SetOperationMemory(List<string> getTrace)
+        public void ReportCallEnd(long gas, byte[] output)
         {
-            _traceEntry.Memory = getTrace;
+            throw new NotSupportedException();
+        }
+
+        public void SetOperationStack(List<string> stackTrace)
+        {
+            _traceEntry.Stack = stackTrace;
+        }
+
+        public void SetOperationMemory(List<string> memoryTrace)
+        {
+            _traceEntry.Memory = memoryTrace;
         }
 
         public GethLikeTxTrace BuildResult()

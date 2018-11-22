@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Tracing
     {
         private ParityLikeCallTxTrace _trace;
         private Stack<ParityTraceAction> _callStack = new Stack<ParityTraceAction>();
-        private ParityTraceAction _currentCall = new ParityTraceAction();
+        private ParityTraceAction _currentCall;
 
         public ParityLikeCallTxTrace BuildResult()
         {
@@ -43,29 +43,36 @@ namespace Nethermind.Evm.Tracing
             _trace.TransactionPosition = block.Transactions.Select((t, ix) => (t, ix)).Where(p => p.t.Hash == tx.Hash).Select((t, ix) => ix).SingleOrDefault();
             _trace.BlockNumber = block.Number;
             _trace.BlockHash = block.Hash;
-            
-            _trace.Action = new ParityTraceAction();
-            _trace.Action.TraceAddress = Array.Empty<int>();
-            _trace.Action.Gas = (long)tx.GasLimit;
-            _trace.Action.Value = tx.Value;
-            _trace.Action.Input = tx.Data;
-            _trace.Action.From = tx.SenderAddress;
-            _trace.Action.CallType = tx.IsMessageCall ? "call" : "init";
-            
-            PushCall(_trace.Action);
-
-            _trace.Type = _trace.Action.CallType;
         }
 
-        private void PushCall(ParityTraceAction parityTraceAction)
+        private void PushCall(ParityTraceAction call)
         {
-            _callStack.Push(parityTraceAction);
-            _currentCall = parityTraceAction;
+            if (_currentCall != null)
+            {
+                call.TraceAddress = new int[_currentCall.TraceAddress.Length + 1];
+                for (int i = 0; i < _currentCall.TraceAddress.Length; i++)
+                {
+                    call.TraceAddress[i] = _currentCall.TraceAddress[i];
+                }
+
+                call.TraceAddress[_currentCall.TraceAddress.Length] = _currentCall.Subtraces.Count;
+                _currentCall.Subtraces.Add(call);
+            }
+            else
+            {
+                _trace.Action = call;
+                _trace.Type = _trace.Action.CallType;
+                call.TraceAddress = Array.Empty<int>();
+            }
+
+            _callStack.Push(call);
+            _currentCall = call;
         }
-        
+
         private void PopCall()
         {
-            _currentCall = _callStack.Pop();
+            _callStack.Pop();
+            _currentCall = _callStack.Count == 0 ? null : _callStack.Peek();
         }
 
         public bool IsTracingReceipt => true;
@@ -74,17 +81,16 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
         public bool IsTracingStack => false;
-        
-        [Todo(Improve.MissingFunctionality, "Need to remove intrinsic gas value from gas spent")]
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] returnValue, LogEntry[] logs)
+
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
-            if (_currentCall.TraceAddress.Length != 0)
+            if (_currentCall != null)
             {
                 throw new InvalidOperationException($"Closing trace at level {_currentCall.TraceAddress.Length}");
             }
-            
+
             _trace.Action.To = recipient;
-            _trace.Action.Result = new ParityTraceResult{Output = returnValue, GasUsed = (long)gasSpent};
+            _trace.Action.Result = new ParityTraceResult {Output = output, GasUsed = (long) gasSpent};
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent)
@@ -93,44 +99,43 @@ namespace Nethermind.Evm.Tracing
             {
                 throw new InvalidOperationException($"Closing trace at level {_currentCall.TraceAddress.Length}");
             }
-            
+
             _trace.Action.To = recipient;
-            _trace.Action.Result = new ParityTraceResult{Output = Bytes.Empty, GasUsed = (long)gasSpent};
+            _trace.Action.Result = new ParityTraceResult {Output = Bytes.Empty, GasUsed = (long) gasSpent};
         }
 
-        public void StartOperation(int callDepth, long gas, Instruction opcode, int programCounter)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new NotSupportedException();
+
+        public void SetOperationError(string error) => throw new NotSupportedException();
+
+        public void SetOperationRemainingGas(long gas) => throw new NotSupportedException();
+
+        public void SetOperationStack(List<string> stackTrace) => throw new NotSupportedException();
+
+        public void SetOperationMemory(List<string> memoryTrace) => throw new NotSupportedException();
+
+        public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
+
+        public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund) => throw new NotSupportedException();
+
+        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
         {
-            throw new System.NotImplementedException();
+            ParityTraceAction action = new ParityTraceAction();
+            action.From = @from;
+            action.To = to;
+            action.Value = value;
+            action.Input = input;
+            action.Gas = gas;
+            action.CallType = (callType == ExecutionType.Create || callType == ExecutionType.DirectCreate) ? "init" : "call";
+
+            PushCall(action);
         }
 
-        public void SetOperationError(string error)
+        public void ReportCallEnd(long gas, byte[] output)
         {
-            throw new System.NotImplementedException();
-        }
-
-        public void SetOperationRemainingGas(long gas)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public void SetOperationStack(List<string> getStackTrace)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public void SetOperationMemory(List<string> getTrace)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public void UpdateMemorySize(ulong memorySize)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
-        {
-            throw new System.NotImplementedException();
+            _currentCall.Result.Output = output;
+            _currentCall.Result.GasUsed = _currentCall.Gas - gas;
+            PopCall();
         }
     }
 }

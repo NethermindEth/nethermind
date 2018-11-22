@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 
@@ -30,7 +31,7 @@ namespace Nethermind.Evm.Tracing
         public long Gas { get; set; }
         public UInt256 Value { get; set; }
         public byte[] Input { get; set; }
-        public ParityTraceResult Result { get; set; }
-        public ParityTraceAction[] Subtraces { get; set; }
+        public ParityTraceResult Result { get; set; } = new ParityTraceResult();
+        public List<ParityTraceAction> Subtraces { get; set; } = new List<ParityTraceAction>();
     }
 }

@@ -40,12 +40,12 @@ namespace Nethermind.Evm.Tracing
         
         private IBlockTracer _otherTracer;
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] returnValue, LogEntry[] logs)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
             Receipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs);
             if (_currentTxTracer.IsTracingReceipt)
             {
-                MarkAsSuccess(recipient, gasSpent, returnValue, logs);
+                MarkAsSuccess(recipient, gasSpent, output, logs);
             }
         }
 
@@ -89,9 +89,9 @@ namespace Nethermind.Evm.Tracing
             return transactionReceipt;
         }
 
-        public void StartOperation(int callDepth, long gas, Instruction opcode, int programCounter)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            _currentTxTracer.StartOperation(callDepth, gas, opcode, programCounter);
+            _currentTxTracer.StartOperation(depth, gas, opcode, pc);
         }
 
         public void SetOperationError(string error)
@@ -104,9 +104,9 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.SetOperationRemainingGas(gas);
         }
 
-        public void UpdateMemorySize(ulong memorySize)
+        public void SetOperationMemorySize(ulong newSize)
         {
-            _currentTxTracer.UpdateMemorySize(memorySize);
+            _currentTxTracer.SetOperationMemorySize(newSize);
         }
 
         public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
@@ -114,14 +114,24 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportStorageChange(address, storageIndex, newValue, currentValue, cost, refund);
         }
 
-        public void SetOperationStack(List<string> getStackTrace)
+        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
         {
-            _currentTxTracer.SetOperationStack(getStackTrace);
+            _currentTxTracer.ReportCall(gas, value, @from, to, input, callType);
         }
 
-        public void SetOperationMemory(List<string> getTrace)
+        public void ReportCallEnd(long gas, byte[] output)
         {
-            _currentTxTracer.SetOperationMemory(getTrace);
+            _currentTxTracer.ReportCallEnd(gas, output);
+        }
+
+        public void SetOperationStack(List<string> stackTrace)
+        {
+            _currentTxTracer.SetOperationStack(stackTrace);
+        }
+
+        public void SetOperationMemory(List<string> memoryTrace)
+        {
+            _currentTxTracer.SetOperationMemory(memoryTrace);
         }
 
         private ITxTracer _currentTxTracer;

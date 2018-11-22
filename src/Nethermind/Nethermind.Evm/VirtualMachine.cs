@@ -143,6 +143,12 @@ namespace Nethermind.Evm
                             _returnDataBuffer = previousCallOutput = Bytes.Empty; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests
                             continue;
                         }
+                        
+                        if (_txTracer.IsTracingCalls)
+                        {
+                            // check if value or transfer value
+                            _txTracer.ReportCallEnd(currentState.GasAvailable, _returnDataBuffer);
+                        }
 
                         if (callResult.IsException)
                         {
@@ -418,27 +424,11 @@ namespace Nethermind.Evm
 
         private CallResult ExecuteCall(EvmState evmState, byte[] previousCallResult, byte[] previousCallOutput, UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
-//            {
-//                "action": {
-//                    "callType": "call",
-//                    "from": "0x8c5643148fa92a0c8d5da9dc0862ac11ef1da47c",
-//                    "gas": "0x35eb8",
-//                    "input": "0x278b8c0e0000000000000000000000008f3470a7388c05ee4e7af3d01d8c722b0ff523740000000000000000000000000000000000000000000000000de0b6b3a7640000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002308a0d5f892a000000000000000000000000000000000000000000000000000000000000671b3200000000000000000000000000000000000000000000000000000000eda62861000000000000000000000000000000000000000000000000000000000000001c5c261d1e1319a9a1a43cf41586d250f419799c34a8457b1b6a66f14db3bc4e5161145e4acc6fbcd4eb8df2467c2cebaea218b1aee0facfb128c455604cdd7166",
-//                    "to": "0x8d12a197cb00d4747a1fe03395095ce2a5cc6819",
-//                    "value": "0x0"
-//                },
-//                "blockHash": "0x96b5d72b8ecae3f882a3dee6dc85d5c7e0106b752ccc8f875047fad3368d515a",
-//                "blockNumber": 6749171,
-//                "result": {
-//                    "gasUsed": "0x3b2a",
-//                    "output": "0x"
-//                },
-//                "subtraces": 0,
-//                "traceAddress": [],
-//                "transactionHash": "0xd392fbff39eb795eea46843c690a5d49854d4703364a87fe828c6cf46ff6f760",
-//                "transactionPosition": 11,
-//                "type": "call"
-//            }
+            if (_txTracer.IsTracingCalls && !evmState.IsContinuation)
+            {
+                // check if value or transfer value
+                _txTracer.ReportCall(evmState.GasAvailable, evmState.Env.Value, evmState.Env.Sender, evmState.Env.ExecutingAccount, evmState.Env.InputData, evmState.ExecutionType);
+            }
             
             ExecutionEnvironment env = evmState.Env;
             if (!evmState.IsContinuation)
@@ -495,7 +485,7 @@ namespace Nethermind.Evm
                 {
                     if (_txTracer.IsTracingMemory)
                     {
-                        _txTracer.UpdateMemorySize(evmState.Memory.Size);
+                        _txTracer.SetOperationMemorySize(evmState.Memory.Size);
                     }
 
                     _txTracer.SetOperationRemainingGas(gasAvailable);

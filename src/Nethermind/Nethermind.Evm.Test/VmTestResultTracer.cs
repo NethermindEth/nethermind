@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Test
         public long GasUsed { get; set; }
         public byte StatusCode { get; set; }
         
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] returnValue, LogEntry[] logs)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
             GasUsed = gasSpent;
             StatusCode = Evm.StatusCode.Success;
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
             StatusCode = Evm.StatusCode.Failure;
         }
 
-        public void StartOperation(int callDepth, long gas, Instruction opcode, int programCounter)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
             throw new NotImplementedException();
         }
@@ -63,22 +63,32 @@ namespace Nethermind.Evm.Test
             throw new NotImplementedException();
         }
 
-        public void SetOperationStack(List<string> getStackTrace)
+        public void SetOperationStack(List<string> stackTrace)
         {
             throw new NotImplementedException();
         }
 
-        public void SetOperationMemory(List<string> getTrace)
+        public void SetOperationMemory(List<string> memoryTrace)
         {
             throw new NotImplementedException();
         }
 
-        public void UpdateMemorySize(ulong memorySize)
+        public void SetOperationMemorySize(ulong newSize)
         {
             throw new NotImplementedException();
         }
 
         public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportCallEnd(long gas, byte[] output)
         {
             throw new NotImplementedException();
         }

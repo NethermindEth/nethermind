@@ -26,6 +26,8 @@ namespace Nethermind.Evm.Tracing
 {
     public class NullTxTracer : ITxTracer
     {
+        private const string ErrorMessage = "Null tracer should never receive any calls.";
+        
         private static NullTxTracer _instance;
         
         private NullTxTracer()
@@ -44,49 +46,26 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingInstructions => false;
         public bool IsTracingStack => false;
         
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] returnValue, LogEntry[] logs)
-        {
-            throw new InvalidOperationException("Null tracer should never receive any calls.");
-        }
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs) => throw new InvalidOperationException(ErrorMessage);
 
-        public void MarkAsFailed(Address recipient, long gasSpent)
-        {
-            throw new InvalidOperationException("Null tracer should never receive any calls.");
-        }
+        public void MarkAsFailed(Address recipient, long gasSpent) => throw new InvalidOperationException(ErrorMessage);
 
-        public void StartOperation(int callDepth, long gas, Instruction opcode, int programCounter)
-        {
-            throw new InvalidOperationException("Null tracer should never receive any calls.");
-        }
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new InvalidOperationException(ErrorMessage);
         
-        public void SetOperationError(string error)
-        {
-            throw new InvalidOperationException("Null tracer should never receive any calls.");
-        }
+        public void SetOperationError(string error) => throw new InvalidOperationException(ErrorMessage);
 
-        public void SetOperationRemainingGas(long gas)
-        {
-            throw new InvalidOperationException("Null tracer should never receive any calls.");
-        }
+        public void SetOperationRemainingGas(long gas) => throw new InvalidOperationException(ErrorMessage);
 
-        public void UpdateMemorySize(ulong memorySize)
-        {
-            throw new InvalidOperationException("Null tracer should never receive any calls.");
-        }
+        public void SetOperationMemorySize(ulong newSize) => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
-        {
-            throw new InvalidOperationException("Null tracer should never receive any calls.");
-        }
+        public void SetOperationStack(List<string> stackTrace) => throw new InvalidOperationException(ErrorMessage);
 
-        public void SetOperationStack(List<string> getStackTrace)
-        {
-            throw new InvalidOperationException("Null tracer should never receive any calls.");
-        }
+        public void SetOperationMemory(List<string> memoryTrace) => throw new InvalidOperationException(ErrorMessage);
+        
+        public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund) => throw new InvalidOperationException(ErrorMessage);
 
-        public void SetOperationMemory(List<string> getTrace)
-        {
-            throw new InvalidOperationException("Null tracer should never receive any calls.");
-        }
+        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType) => throw new InvalidOperationException(ErrorMessage);
+        
+        public void ReportCallEnd(long gas, byte[] output) => throw new InvalidOperationException(ErrorMessage);
     }
 }
