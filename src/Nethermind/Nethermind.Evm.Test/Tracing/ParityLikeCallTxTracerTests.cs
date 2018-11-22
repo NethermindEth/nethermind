@@ -22,6 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using NUnit.Framework;
 
@@ -460,6 +461,27 @@ namespace Nethermind.Evm.Test.Tracing
             };
 
             Assert.AreEqual("staticCall", trace.Action.Subtraces[0].CallType, "[0] type");
+        }
+        
+        [Test]
+        public void Can_trace_precompile_calls()
+        {
+            byte[] code = Prepare.EvmCode
+                .Call(IdentityPrecompiledContract.Instance.Address, 50000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            int[] depths = new int[]
+            {
+                1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
+                2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
+                2, // STOP 
+                1, // STOP
+            };
+
+            Assert.AreEqual("call", trace.Action.Subtraces[0].CallType, "[0] type");
+            Assert.AreEqual(IdentityPrecompiledContract.Instance.Address, trace.Action.Subtraces[0].To, "[0] to");
         }
         
         [Test]

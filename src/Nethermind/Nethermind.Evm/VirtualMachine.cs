@@ -118,7 +118,18 @@ namespace Nethermind.Evm
                     CallResult callResult;
                     if (currentState.IsPrecompile)
                     {
+                        if (_txTracer.IsTracingCalls)
+                        {
+                            _txTracer.ReportCall(currentState.GasAvailable, currentState.Env.TransferValue, currentState.Env.Sender, currentState.Env.ExecutingAccount, currentState.Env.InputData, currentState.ExecutionType);
+                        }
+                        
                         callResult = ExecutePrecompile(currentState, spec);
+                        if (_txTracer.IsTracingCalls)
+                        {
+                            // check if value or transfer value
+                            _txTracer.ReportCallEnd(currentState.GasAvailable, _returnDataBuffer);
+                        }
+                        
                         if (!callResult.PrecompileSuccess.Value)
                         {
                             if (currentState.IsPrecompile && currentState.IsTopLevel)
@@ -134,6 +145,11 @@ namespace Nethermind.Evm
                     }
                     else
                     {
+                        if (_txTracer.IsTracingCalls && !currentState.IsContinuation)
+                        {
+                            _txTracer.ReportCall(currentState.GasAvailable, currentState.Env.TransferValue, currentState.Env.Sender, currentState.Env.ExecutingAccount, currentState.Env.InputData, currentState.ExecutionType);
+                        }
+                        
                         callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
                         if (!callResult.IsReturn)
                         {
@@ -423,13 +439,7 @@ namespace Nethermind.Evm
         }
 
         private CallResult ExecuteCall(EvmState evmState, byte[] previousCallResult, byte[] previousCallOutput, UInt256 previousCallOutputDestination, IReleaseSpec spec)
-        {
-            if (_txTracer.IsTracingCalls && !evmState.IsContinuation)
-            {
-                // check if value or transfer value
-                _txTracer.ReportCall(evmState.GasAvailable, evmState.Env.Value, evmState.Env.Sender, evmState.Env.ExecutingAccount, evmState.Env.InputData, evmState.ExecutionType);
-            }
-            
+        {   
             ExecutionEnvironment env = evmState.Env;
             if (!evmState.IsContinuation)
             {
