@@ -23,6 +23,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
@@ -57,7 +58,7 @@ namespace Nethermind.Blockchain.Test
                     _resetEvent.Set();
                 };
 
-                blockProcessor.Process(Arg.Any<Keccak>(), Arg.Any<Block[]>(), ProcessingOptions.None, NullTraceListener.Instance).Returns(ci => ci.ArgAt<Block[]>(1));
+                blockProcessor.Process(Arg.Any<Keccak>(), Arg.Any<Block[]>(), ProcessingOptions.None, NullBlockTracer.Instance).Returns(ci => ci.ArgAt<Block[]>(1));
                 processor.Start();
             }
 

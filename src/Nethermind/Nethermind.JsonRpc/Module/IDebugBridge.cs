@@ -24,11 +24,11 @@ namespace Nethermind.JsonRpc.Module
 {
     public interface IDebugBridge
     {
-        TransactionTrace GetTransactionTrace(Keccak transactionHash);
-        TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index);
-        TransactionTrace GetTransactionTrace(Keccak blockHash, int index);
-        BlockTrace GetBlockTrace(Keccak blockHash);
-        BlockTrace GetBlockTrace(UInt256 blockNumber);
+        GethLikeTxTrace GetTransactionTrace(Keccak transactionHash);
+        GethLikeTxTrace GetTransactionTrace(UInt256 blockNumber, int index);
+        GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index);
+        GethLikeTxTrace[] GetBlockTrace(Keccak blockHash);
+        GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber);
         byte[] GetDbValue(string dbName, byte[] key);
         void AddTxData(Keccak blockHash);
         void AddTxData(UInt256 blockNumber);

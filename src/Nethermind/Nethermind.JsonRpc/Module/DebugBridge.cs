@@ -30,14 +30,14 @@ namespace Nethermind.JsonRpc.Module
     public class DebugBridge : IDebugBridge
     {
         private readonly IBlockchainProcessor _receiptsProcessor;
-        private readonly ITxTracer _txTracer;
+        private readonly ITracer _tracer;
         private Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IReadOnlyDbProvider dbProvider, ITxTracer txTracer, IBlockchainProcessor receiptsProcessor)
+        public DebugBridge(IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockchainProcessor receiptsProcessor)
         {
             _receiptsProcessor = receiptsProcessor ?? throw new ArgumentNullException(nameof(receiptsProcessor));
             _receiptsProcessor.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
-            _txTracer = txTracer ?? throw new ArgumentNullException(nameof(txTracer));
+            _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -60,29 +60,29 @@ namespace Nethermind.JsonRpc.Module
             return _dbMappings[dbName][key];
         }
         
-        public TransactionTrace GetTransactionTrace(Keccak transactionHash)
+        public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash)
         {
-            return _txTracer.Trace(transactionHash);
+            return _tracer.Trace(transactionHash);
         }
 
-        public TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index)
+        public GethLikeTxTrace GetTransactionTrace(UInt256 blockNumber, int index)
         {
-            return _txTracer.Trace(blockNumber, index);
+            return _tracer.Trace(blockNumber, index);
         }
 
-        public TransactionTrace GetTransactionTrace(Keccak blockHash, int index)
+        public GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index)
         {
-            return _txTracer.Trace(blockHash, index);
+            return _tracer.Trace(blockHash, index);
         }
 
-        public BlockTrace GetBlockTrace(Keccak blockHash)
+        public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash)
         {
-            return _txTracer.TraceBlock(blockHash);
+            return _tracer.TraceBlock(blockHash);
         }
 
-        public BlockTrace GetBlockTrace(UInt256 blockNumber)
+        public GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber)
         {
-            return _txTracer.TraceBlock(blockNumber);
+            return _tracer.TraceBlock(blockNumber);
         }
         
         private AutoResetEvent _receiptProcessedEvent = new AutoResetEvent(false);

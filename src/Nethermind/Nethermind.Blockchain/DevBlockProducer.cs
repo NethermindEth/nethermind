@@ -28,6 +28,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain
 {
@@ -134,7 +135,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
+            Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullBlockTracer.Instance);
             if (processedBlock == null)
             {
                 if (_logger.IsError) _logger.Error("Block prepared by block producer was rejected by processor");

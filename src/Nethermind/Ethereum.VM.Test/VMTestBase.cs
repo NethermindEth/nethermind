@@ -30,6 +30,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -185,12 +186,12 @@ namespace Ethereum.VM.Test
                 }
             }
 
-            EvmState state = new EvmState((long)test.Execution.Gas, environment, ExecutionType.Transaction, false);
+            EvmState state = new EvmState((long)test.Execution.Gas, environment, ExecutionType.Transaction, false, true, false);
 
             _storageProvider.Commit(Olympic.Instance);
             _stateProvider.Commit(Olympic.Instance);
 
-            TransactionSubstate substate = machine.Run(state, Olympic.Instance, false);
+            TransactionSubstate substate = machine.Run(state, Olympic.Instance, NullTxTracer.Instance);
             if (test.Out == null)
             {
                 Assert.NotNull(substate.Error);

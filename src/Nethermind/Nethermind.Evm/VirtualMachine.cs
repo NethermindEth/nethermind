@@ -21,6 +21,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -77,8 +78,7 @@ namespace Nethermind.Evm
         private Address _parityTouchBugAccount;
         private Dictionary<Address, IPrecompiledContract> _precompiles;
         private byte[] _returnDataBuffer = EmptyBytes;
-        private TransactionTrace _trace;
-        private TransactionTraceEntry _traceEntry;
+        private ITxTracer _txTracer;
 
         public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogManager logManager)
         {
@@ -91,10 +91,9 @@ namespace Nethermind.Evm
         }
 
         // can refactor and integrate the other call
-        public TransactionSubstate Run(EvmState state, IReleaseSpec releaseSpec, bool enableTracing)
+        public TransactionSubstate Run(EvmState state, IReleaseSpec releaseSpec, ITxTracer txTracer)
         {
-            _traceEntry = null;
-            _trace = enableTracing ? new TransactionTrace() : null;
+            _txTracer = txTracer;
 
             IReleaseSpec spec = releaseSpec;
             EvmState currentState = state;
@@ -117,12 +116,23 @@ namespace Nethermind.Evm
                     }
 
                     CallResult callResult;
-                    if (currentState.ExecutionType == ExecutionType.Precompile || currentState.ExecutionType == ExecutionType.DirectPrecompile)
+                    if (currentState.IsPrecompile)
                     {
+                        if (_txTracer.IsTracingCalls)
+                        {
+                            _txTracer.ReportCall(currentState.GasAvailable, currentState.Env.TransferValue, currentState.Env.Sender, currentState.Env.ExecutingAccount, currentState.Env.InputData, currentState.ExecutionType);
+                        }
+                        
                         callResult = ExecutePrecompile(currentState, spec);
+                        if (_txTracer.IsTracingCalls)
+                        {
+                            // check if value or transfer value
+                            _txTracer.ReportCallEnd(currentState.GasAvailable, _returnDataBuffer);
+                        }
+                        
                         if (!callResult.PrecompileSuccess.Value)
                         {
-                            if (currentState.ExecutionType == ExecutionType.DirectPrecompile)
+                            if (currentState.IsPrecompile && currentState.IsTopLevel)
                             {
                                 Metrics.EvmExceptions++;
                                 // TODO: when direct / calls are treated same we should not need such differentiation
@@ -135,6 +145,11 @@ namespace Nethermind.Evm
                     }
                     else
                     {
+                        if (_txTracer.IsTracingCalls && !currentState.IsContinuation)
+                        {
+                            _txTracer.ReportCall(currentState.GasAvailable, currentState.Env.TransferValue, currentState.Env.Sender, currentState.Env.ExecutingAccount, currentState.Env.InputData, currentState.ExecutionType);
+                        }
+                        
                         callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
                         if (!callResult.IsReturn)
                         {
@@ -143,6 +158,12 @@ namespace Nethermind.Evm
                             previousCallResult = null; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests (failing block 9411 on Ropsten https://ropsten.etherscan.io/vmtrace?txhash=0x666194d15c14c54fffafab1a04c08064af165870ef9a87f65711dcce7ed27fe1)
                             _returnDataBuffer = previousCallOutput = Bytes.Empty; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests
                             continue;
+                        }
+                        
+                        if (_txTracer.IsTracingCalls)
+                        {
+                            // check if value or transfer value
+                            _txTracer.ReportCallEnd(currentState.GasAvailable, _returnDataBuffer);
                         }
 
                         if (callResult.IsException)
@@ -156,10 +177,9 @@ namespace Nethermind.Evm
                                 _parityTouchBugAccount = null;
                             }
 
-                            if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
+                            if (currentState.IsTopLevel)
                             {
-                                if(_trace != null) _trace.Failed = true;
-                                return new TransactionSubstate("Error", _trace);
+                                return new TransactionSubstate("Error");
                             }
 
                             previousCallResult = StatusCode.FailureBytes;
@@ -173,13 +193,9 @@ namespace Nethermind.Evm
                         }
                     }
 
-                    if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectCreate || currentState.ExecutionType == ExecutionType.DirectPrecompile)
+                    if (currentState.IsTopLevel)
                     {
-                        if(_trace != null) _trace.Failed = _trace.Failed = callResult.ShouldRevert || callResult.IsException;
-                        // TODO: review refund logic as there was a quick change for Refunds for Ropsten 2005537
-                        TransactionSubstate substate = new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert, _trace);
-                        _traceEntry = null; _trace = null; // do not keep in memory between blocks
-                        return substate;
+                        return new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert);
                     }
 
                     Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -192,7 +208,7 @@ namespace Nethermind.Evm
                     if (!callResult.ShouldRevert)
                     {
                         long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
-                        if (previousState.ExecutionType == ExecutionType.Create || previousState.ExecutionType == ExecutionType.DirectCreate)
+                        if (previousState.ExecutionType == ExecutionType.Create)
                         {
                             previousCallResult = callCodeOwner.Bytes;
                             previousCallOutputDestination = UInt256.Zero;
@@ -280,17 +296,15 @@ namespace Nethermind.Evm
                         _parityTouchBugAccount = null;
                     }
 
-                    if (_trace != null)
+                    if (txTracer.IsTracingInstructions)
                     {
-                        _traceEntry.Error = ex.GetType().Name;
-                        _traceEntry.GasCost = 0;
-                        _trace.Entries.Add(_traceEntry);
+                        txTracer.SetOperationError(ex.GetType().Name);
+                        txTracer.SetOperationRemainingGas(0);
                     }
                     
-                    if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
+                    if (currentState.IsTopLevel)
                     {
-                        if(_trace != null) _trace.Failed = true;
-                        return new TransactionSubstate("Error", _trace);
+                        return new TransactionSubstate("Error");
                     }
 
                     previousCallResult = StatusCode.FailureBytes;
@@ -425,7 +439,7 @@ namespace Nethermind.Evm
         }
 
         private CallResult ExecuteCall(EvmState evmState, byte[] previousCallResult, byte[] previousCallOutput, UInt256 previousCallOutputDestination, IReleaseSpec spec)
-        {
+        {   
             ExecutionEnvironment env = evmState.Env;
             if (!evmState.IsContinuation)
             {
@@ -438,7 +452,7 @@ namespace Nethermind.Evm
                     _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec);
                 }
 
-                if ((evmState.ExecutionType == ExecutionType.Create || evmState.ExecutionType == ExecutionType.DirectCreate) && spec.IsEip158Enabled)
+                if (evmState.ExecutionType == ExecutionType.Create && spec.IsEip158Enabled)
                 {
                     _state.IncrementNonce(env.ExecutingAccount);
                 }
@@ -465,63 +479,35 @@ namespace Nethermind.Evm
 
             void StartInstructionTrace(Instruction instruction, Span<byte> stack)
             {
-                if (_trace == null)
+                if (!_txTracer.IsTracingInstructions)
                 {
                     return;
                 }
 
-                TransactionTraceEntry previousTraceEntry = _traceEntry;
-                _traceEntry = new TransactionTraceEntry();
-                _traceEntry.Depth = env.CallDepth + 1; // todo: call depth in geth starts with 1 - is it for trace only or also consensus?
-                _traceEntry.Gas = gasAvailable;
-                _traceEntry.Operation = Enum.GetName(typeof(Instruction), instruction);
-                _traceEntry.Memory = evmState.Memory.GetTrace();
-                _traceEntry.Pc = (long)programCounter;
-                _traceEntry.Stack = GetStackTrace(stack);
-
-                if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
-                {
-                    _traceEntry.Storage = new Dictionary<string, string>();
-                    _trace.StoragesByDepth.Add(_traceEntry.Storage);
-                }
-                else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
-                {
-                    if (previousTraceEntry == null)
-                    {
-                        throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
-                    }
-                    
-                    _trace.StoragesByDepth.Remove(previousTraceEntry.Storage);
-                    _trace.StoragesByDepth[_trace.StoragesByDepth.Count - 1] = _traceEntry.Storage = new Dictionary<string, string>(_trace.StoragesByDepth[_trace.StoragesByDepth.Count - 1]);
-                }
-                else
-                {
-                    if (previousTraceEntry == null)
-                    {
-                        throw new InvalidOperationException("Unexpected missing previous trace on continuation.");
-                    }
-                    
-                    _traceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);    
-                }
+                if (_txTracer.IsTracingInstructions) { _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, (int)programCounter); }
+                if (_txTracer.IsTracingMemory) { _txTracer.SetOperationMemory(evmState.Memory.GetTrace()); }
+                if (_txTracer.IsTracingStack) { _txTracer.SetOperationStack(GetStackTrace(stack)); }
             }
 
             void EndInstructionTrace()
             {
-                if (_trace != null)
+                if (_txTracer.IsTracingInstructions)
                 {
-                    _traceEntry.UpdateMemorySize(evmState.Memory.Size);
-                    _traceEntry.GasCost = _traceEntry.Gas - gasAvailable;
-                    _trace.Entries.Add(_traceEntry);
+                    if (_txTracer.IsTracingMemory)
+                    {
+                        _txTracer.SetOperationMemorySize(evmState.Memory.Size);
+                    }
+
+                    _txTracer.SetOperationRemainingGas(gasAvailable);
                 }
             }
             
             void EndInstructionTraceError(string error)
             {
-                if (_trace != null)
+                if (_txTracer.IsTracingInstructions)
                 {
-                    _traceEntry.Error = error;
-                    _traceEntry.GasCost = _traceEntry.Gas - gasAvailable;
-                    _trace.Entries.Add(_traceEntry);
+                    _txTracer.SetOperationError(error);
+                    _txTracer.SetOperationRemainingGas(gasAvailable);
                 }
             }
 
@@ -799,7 +785,7 @@ namespace Nethermind.Evm
             while (programCounter < code.Length)
             {
                 Instruction instruction = (Instruction)code[(int)programCounter];
-                if (_trace != null) // TODO: review local method and move them to separate classes where needed and better
+                if (_txTracer.IsTracingInstructions) // TODO: review local method and move them to separate classes where needed and better
                 {
                     StartInstructionTrace(instruction, bytesOnStack);
                 }
@@ -1682,15 +1668,8 @@ namespace Nethermind.Evm
                         bool currentIsZero = currentValue.IsZero();
                         
                         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
-                        StorageTraceEntry storageTraceEntry = null;
-                        if(_trace != null)
-                        {
-                            storageTraceEntry = new StorageTraceEntry();
-                            storageTraceEntry.Address = storageAddress.Address.ToString();
-                            storageTraceEntry.NewValue = newValue.ToHexString();
-                            storageTraceEntry.OldValue = currentValue.ToHexString();
-                            storageTraceEntry.Cost = (int)GasCostOf.SReset;
-                        }
+                        long cost = GasCostOf.SReset;
+                        long refund = 0;
 
                         if (!spec.IsEip1283Enabled) // note that for this case we already deducted 5000
                         {
@@ -1699,10 +1678,7 @@ namespace Nethermind.Evm
                                 if (!newSameAsCurrent)
                                 {
                                     evmState.Refund += RefundOf.SClear;
-                                    if (storageTraceEntry != null)
-                                    {
-                                        storageTraceEntry.Refund = (int)RefundOf.SClear;
-                                    }
+                                    refund = (int)RefundOf.SClear;
                                 }
                             }
                             else if (currentIsZero)
@@ -1713,10 +1689,7 @@ namespace Nethermind.Evm
                                     return CallResult.OutOfGasException;    
                                 }
                                 
-                                if (storageTraceEntry != null)
-                                {
-                                    storageTraceEntry.Cost = (int)GasCostOf.SSet;
-                                }
+                                cost = (int)GasCostOf.SSet;
                             }
                         }
                         else // eip1283enabled
@@ -1802,13 +1775,10 @@ namespace Nethermind.Evm
                             _storage.Set(storageAddress, valueToStore);
                             if (_logger.IsTrace) _logger.Trace($"Updating storage: {env.ExecutingAccount} {storageIndex} {valueToStore.ToHexString(true)}");
                         }
-
-                        if (_trace != null)
+                        
+                        if (_txTracer.IsTracingStorage)
                         {
-                            _trace.StorageTrace.Entries.Add(storageTraceEntry);
-                            byte[] bigEndian = new byte[32];
-                            storageIndex.ToBigEndian(bigEndian);
-                            _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);
+                            _txTracer.ReportStorageChange(storageAddress.Address, storageIndex, newValue, currentValue, cost, refund);
                         }
 
                         break;
@@ -2185,6 +2155,8 @@ namespace Nethermind.Evm
                             callGas,
                             callEnv,
                             ExecutionType.Create,
+                            false,
+                            false,
                             stateSnapshot,
                             storageSnapshot,
                             0L,
@@ -2344,10 +2316,34 @@ namespace Nethermind.Evm
                             outputOffset = 0;
                         }
 
+                        ExecutionType executionType;
+                        if (instruction == Instruction.CALL)
+                        {
+                            executionType = ExecutionType.Call;
+                        }
+                        else if (instruction == Instruction.DELEGATECALL) 
+                        {
+                            executionType = ExecutionType.DelegateCall;
+                        }
+                        else if (instruction == Instruction.STATICCALL) 
+                        {
+                            executionType = ExecutionType.StaticCall;
+                        }
+                        else if (instruction == Instruction.CALLCODE) 
+                        {
+                            executionType = ExecutionType.CallCode;
+                        }
+                        else
+                        {
+                            throw new NotImplementedException($"Execution type is undefined for {Enum.GetName(typeof(Instruction), instruction)}"); 
+                        }
+                        
                         EvmState callState = new EvmState(
                             gasLimitUl,
                             callEnv,
-                            isPrecompile ? ExecutionType.Precompile : (instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? ExecutionType.Call : ExecutionType.CallCode),
+                            executionType,
+                            isPrecompile,
+                            false,
                             stateSnapshot,
                             storageSnapshot,
                             (long)outputOffset,

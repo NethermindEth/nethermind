@@ -25,10 +25,9 @@ namespace Nethermind.Evm
     {
         Transaction,
         Call,
+        StaticCall,
         CallCode,
-        Create,
-        Precompile,
-        DirectPrecompile,
-        DirectCreate,
+        DelegateCall,
+        Create
     }
 }

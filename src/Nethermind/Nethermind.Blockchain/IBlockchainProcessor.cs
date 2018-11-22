@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain
 {
@@ -29,7 +30,7 @@ namespace Nethermind.Blockchain
     {
         void Start();
         Task StopAsync(bool processRemainingBlocks = false);
-        Block Process(Block block, ProcessingOptions options, ITraceListener listener);
+        Block Process(Block block, ProcessingOptions options, IBlockTracer listener);
         void SuggestBlock(Block block, ProcessingOptions options);
         void SuggestBlock(Keccak blockHash, ProcessingOptions options);
         void SuggestBlock(UInt256 blockNumber, ProcessingOptions options);

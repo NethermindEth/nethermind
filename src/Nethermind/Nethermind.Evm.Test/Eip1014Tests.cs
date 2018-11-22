@@ -94,7 +94,7 @@ namespace Nethermind.Evm.Test
                 .Call(TestObject.AddressC, 50000)
                 .Done;
 
-            (var receipt, var trace) =  ExecuteAndTrace(code);
+            var trace = ExecuteAndTrace(code);
             
             Address expectedAddress = new Address(resultHex);
             AssertEip1014(expectedAddress, deployedCode);

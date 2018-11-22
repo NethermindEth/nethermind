@@ -28,20 +28,20 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain
 {
-    public class TxTracer : ITxTracer
+    public class Tracer : ITracer
     {
         private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _processor;
         private readonly IReceiptStorage _receiptStorage;
 
-        public TxTracer(IBlockchainProcessor processor, IReceiptStorage receiptStorage, IBlockTree blockTree)
+        public Tracer(IBlockchainProcessor processor, IReceiptStorage receiptStorage, IBlockTree blockTree)
         {
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
-        public TransactionTrace Trace(Keccak blockHash, int txIndex)
+        public GethLikeTxTrace Trace(Keccak blockHash, int txIndex)
         {
             Block block = _blockTree.FindBlock(blockHash, false);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain
             return Trace(block, block.Transactions[txIndex].Hash);
         }
 
-        public TransactionTrace Trace(Keccak txHash)
+        public GethLikeTxTrace Trace(Keccak txHash)
         {
             TransactionReceipt receipt = _receiptStorage.Get(txHash);
             Block block = _blockTree.FindBlock(receipt.BlockNumber);
@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain
             return Trace(block, txHash);
         }
 
-        public TransactionTrace Trace(UInt256 blockNumber, int txIndex)
+        public GethLikeTxTrace Trace(UInt256 blockNumber, int txIndex)
         {
             Block block = _blockTree.FindBlock(blockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
@@ -70,36 +70,36 @@ namespace Nethermind.Blockchain
             return Trace(block, block.Transactions[txIndex].Hash);
         }
 
-        public TransactionTrace Trace(UInt256 blockNumber, Transaction tx)
+        public GethLikeTxTrace Trace(UInt256 blockNumber, Transaction tx)
         {
             Block block = _blockTree.FindBlock(blockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
             block.Transactions = new[] {tx};
-            TraceListener listener = new TraceListener(tx.Hash);
-            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
-            return listener.Trace;
+            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, blockTracer);
+            return blockTracer.BuildResult()[0];
         }
 
-        public BlockTrace TraceBlock(Keccak blockHash)
+        public GethLikeTxTrace[] TraceBlock(Keccak blockHash)
         {
             Block block = _blockTree.FindBlock(blockHash, false);
             return TraceBlock(block);
         }
 
-        public BlockTrace TraceBlock(UInt256 blockNumber)
+        public GethLikeTxTrace[] TraceBlock(UInt256 blockNumber)
         {
             Block block = _blockTree.FindBlock(blockNumber);
             return TraceBlock(block);
         }
 
-        private TransactionTrace Trace(Block block, Keccak txHash)
+        private GethLikeTxTrace Trace(Block block, Keccak txHash)
         {
-            TraceListener listener = new TraceListener(txHash);
+            GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
-            return listener.Trace;
+            return listener.BuildResult()[0];
         }
 
-        private BlockTrace TraceBlock(Block block)
+        private GethLikeTxTrace[] TraceBlock(Block block)
         {
             if (block == null) throw new InvalidOperationException("Only canonical, historical blocks supported");
 
@@ -109,9 +109,9 @@ namespace Nethermind.Blockchain
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
-            BlockTraceListener listener = new BlockTraceListener(block);
+            GethLikeBlockTracer listener = new GethLikeBlockTracer(block);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
-            return listener.BlockTrace;
+            return listener.BuildResult();
         }
     }
 }

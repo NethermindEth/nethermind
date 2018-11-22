@@ -16,34 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using System.Collections.Generic;
+using System.Numerics;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class BlockTraceListener : ITraceListener
+    public class GethLikeTxTrace
     {
-        private Keccak _blockHash;
-        private int _currentIndex;
+        public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new Stack<Dictionary<string, string>>();
 
-        public BlockTraceListener(Block block)
+        public GethLikeTxTrace()
         {
-            _blockHash = block.Hash;
-            BlockTrace = new BlockTrace(new TransactionTrace[block.Transactions.Length]);
+            Entries = new List<TransactionTraceEntry>();
+            StorageTrace = new StorageTrace();
         }
 
-        public BlockTrace BlockTrace { get; set; }
+        public StorageTrace StorageTrace { get; set; }
+        
+        public BigInteger Gas { get; set; }
 
-        public bool ShouldTrace(Keccak txHash)
-        {
-            return true;
-        }
+        public bool Failed { get; set; }
 
-        public void RecordTrace(Keccak txHash, TransactionTrace trace)
-        {
-            if (_currentIndex > BlockTrace.TxTraces.Length - 1) throw new InvalidOperationException($"Unexpected trace for tx {txHash} beyond the number of transactions in block {_blockHash}");
-            BlockTrace.TxTraces[_currentIndex++] = trace;
-        }
+        public string ReturnValue { get; set; }
+        
+        public List<TransactionTraceEntry> Entries { get; set; }
+
+        public static GethLikeTxTrace QuickFail { get; } = new GethLikeTxTrace {Failed = true, ReturnValue = string.Empty};
     }
 }

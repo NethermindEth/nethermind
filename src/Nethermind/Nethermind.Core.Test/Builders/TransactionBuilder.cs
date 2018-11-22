@@ -60,6 +60,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
+        public TransactionBuilder WithInit(byte[] initCode)
+        {
+            TestObjectInternal.Init = initCode;
+            return this;
+        }
+        
         public TransactionBuilder WithGasPrice(UInt256 gasPrice)
         {
             TestObjectInternal.GasPrice = gasPrice;

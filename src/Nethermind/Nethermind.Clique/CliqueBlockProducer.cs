@@ -34,6 +34,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 
 namespace Nethermind.Clique
@@ -219,7 +220,7 @@ namespace Nethermind.Clique
                     }
 
                     if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
-                    Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
+                    Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullBlockTracer.Instance);
                     if (_logger.IsInfo) _logger.Info($"Sealing prepared block {processedBlock.Number}");
 
                     _sealEngine.SealBlock(processedBlock, _cancellationTokenSource.Token).ContinueWith(t =>

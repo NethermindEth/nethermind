@@ -16,34 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.Tracing
 {
-    public class NullTraceListener : ITraceListener
+    public class GethLikeBlockTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxTracer>
     {
-        private static NullTraceListener _instance;
-
-        private NullTraceListener()
+        public GethLikeBlockTracer(Block block)
+        :base(block)
         {
         }
 
-        public static NullTraceListener Instance
+        public GethLikeBlockTracer(Keccak txHash)
+        :base(txHash)
         {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullTraceListener()); }
         }
 
-        public bool ShouldTrace(Keccak txHash)
+        protected override GethLikeTxTracer OnStart(Keccak txHash)
         {
-            return false;
+            return new GethLikeTxTracer();
         }
 
-        public void RecordTrace(Keccak txHash, TransactionTrace trace)
+        protected override GethLikeTxTrace OnEnd(GethLikeTxTracer txTracer)
         {
-            throw new InvalidOperationException("I am not interested in this trace.");
+            return txTracer.BuildResult();
         }
     }
 }

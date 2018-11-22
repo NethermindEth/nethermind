@@ -20,12 +20,13 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain
 {
     public interface IBlockProcessor
     {
-        Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions processingOptions, ITraceListener traceListener);
+        Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer);
         event EventHandler<BlockProcessedEventArgs> BlockProcessed;
         event EventHandler<TransactionProcessedEventArgs> TransactionProcessed;
     }

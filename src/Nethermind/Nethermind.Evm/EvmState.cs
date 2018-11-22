@@ -32,7 +32,7 @@ namespace Nethermind.Evm
         {
             private readonly int _capacity;
 
-            public StackPool(int capacity = VirtualMachine.MaxCallDepth * 2) // TODO: we have wrong call depth calculation somehwere
+            public StackPool(int capacity = VirtualMachine.MaxCallDepth * 2) // TODO: we have wrong call depth calculation somewhere
             {
                 _capacity = capacity;
             }
@@ -71,8 +71,8 @@ namespace Nethermind.Evm
         private List<LogEntry> _logs;
         public int StackHead = 0;
 
-        public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isContinuation)
-            : this(gasAvailable, env, executionType, -1, -1, 0L, 0L, false, isContinuation)
+        public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isPrecompile, bool isTopLevel, bool isContinuation)
+            : this(gasAvailable, env, executionType, isPrecompile, isTopLevel, -1, -1, 0L, 0L, false, isContinuation)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -82,6 +82,8 @@ namespace Nethermind.Evm
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
+            bool isPrecompile,
+            bool isTopLevel,
             int stateSnapshot,
             int storageSnapshot,
             long outputDestination,
@@ -91,6 +93,8 @@ namespace Nethermind.Evm
         {
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
+            IsPrecompile = isPrecompile;
+            IsTopLevel = isTopLevel;
             StateSnapshot = stateSnapshot;
             StorageSnapshot = storageSnapshot;
             Env = env;
@@ -105,6 +109,8 @@ namespace Nethermind.Evm
         public UInt256 ProgramCounter { get; set; }
 
         internal ExecutionType ExecutionType { get; }
+        internal bool IsPrecompile { get; }
+        public bool IsTopLevel { get; }
         internal long OutputDestination { get; }
         internal long OutputLength { get; }
         public bool IsStatic { get; }

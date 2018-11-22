@@ -16,31 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Numerics;
+using System.Threading;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class TransactionTrace
+    public class NullBlockTracer : IBlockTracer
     {
-        public List<Dictionary<string, string>> StoragesByDepth { get; } = new List<Dictionary<string, string>>();
+        private static NullBlockTracer _instance;
 
-        public TransactionTrace()
+        private NullBlockTracer()
         {
-            Entries = new List<TransactionTraceEntry>();
-            StorageTrace = new StorageTrace();
         }
 
-        public StorageTrace StorageTrace { get; set; }
-        
-        public BigInteger Gas { get; set; }
+        public static NullBlockTracer Instance
+        {
+            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullBlockTracer()); }
+        }
 
-        public bool Failed { get; set; }
+        public ITxTracer StartNewTxTrace(Keccak txHash)
+        {
+            return NullTxTracer.Instance;
+        }
 
-        public string ReturnValue { get; set; }
-        
-        public List<TransactionTraceEntry> Entries { get; set; }
-
-        public static TransactionTrace QuickFail { get; } = new TransactionTrace {Failed = true, ReturnValue = string.Empty};
+        public void EndTxTrace()
+        {
+        }
     }
 }

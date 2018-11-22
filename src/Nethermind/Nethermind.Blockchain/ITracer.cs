@@ -16,15 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Evm.Tracing
-{
-    public class BlockTrace
-    {
-        public TransactionTrace[] TxTraces { get; }
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm.Tracing;
 
-        public BlockTrace(TransactionTrace[] txTraces)
-        {
-            TxTraces = txTraces;
-        }
+namespace Nethermind.Blockchain
+{
+    public interface ITracer
+    {
+        GethLikeTxTrace Trace(Keccak txHash);
+        GethLikeTxTrace Trace(UInt256 blockNumber, Transaction transaction);
+        GethLikeTxTrace Trace(UInt256 blockNumber, int txIndex);
+        GethLikeTxTrace Trace(Keccak blockHash, int txIndex);
+        GethLikeTxTrace[] TraceBlock(Keccak blockHash);
+        GethLikeTxTrace[] TraceBlock(UInt256 blockNumber);
     }
 }

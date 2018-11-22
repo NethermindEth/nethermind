@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,17 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
-
-namespace Nethermind.Evm
+namespace Nethermind.Evm.Tracing
 {
-    public interface IVirtualMachine
+    public class ParityTraceResult
     {
-        TransactionSubstate Run(EvmState state, IReleaseSpec spec, ITxTracer tracer);
-        
-        [Todo(Improve.Refactor, "Remove this responsibility from VM")]
-        CodeInfo GetCachedCodeInfo(Address codeSource);
+        public long GasUsed { get; set; }
+        public byte[] Output { get; set; }   
     }
 }

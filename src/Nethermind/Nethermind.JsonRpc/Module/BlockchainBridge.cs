@@ -29,12 +29,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
 using Transaction = Nethermind.Core.Transaction;
 using TransactionReceipt = Nethermind.Core.TransactionReceipt;
-using TransactionTrace = Nethermind.Evm.Tracing.TransactionTrace;
 
 namespace Nethermind.JsonRpc.Module
 {
@@ -146,11 +146,10 @@ namespace Nethermind.JsonRpc.Module
                     block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
                 transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                (TransactionReceipt receipt, TransactionTrace trace) =
-                    _transactionProcessor.CallAndRestore(0, transaction, header, true);
-
+                CallOutputTracer callOutputTracer = new CallOutputTracer();
+                _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
                 _stateProvider.Reset();
-                return Bytes.FromHexString(trace.ReturnValue);
+                return callOutputTracer.ReturnValue;
             }
             finally
             {

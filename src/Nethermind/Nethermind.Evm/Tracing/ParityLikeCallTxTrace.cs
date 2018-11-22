@@ -16,35 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class TraceListener : ITraceListener
+    public class ParityLikeCallTxTrace
     {
-        public TransactionTrace Trace { get; private set; }
-
-        private readonly Keccak _txHash;
-
-        public TraceListener(Keccak txHash)
-        {
-            _txHash = txHash;
-        }
-
-        public bool ShouldTrace(Keccak txHash)
-        {
-            return txHash == _txHash;
-        }
-
-        public void RecordTrace(Keccak txHash, TransactionTrace trace)
-        {
-            if (_txHash != txHash)
-            {
-                throw new InvalidOperationException($"Received a trace for {txHash} while only interested in {_txHash}");
-            }
-
-            Trace = trace;
-        }
+        public ParityTraceAction Action { get; set; }
+        
+        public Keccak BlockHash { get; set; }
+        
+        public UInt256 BlockNumber { get; set; }
+        
+        public int TransactionPosition { get; set; }
+        
+        public Keccak TransactionHash { get; set; }
+        
+        public string Type { get; set; }
     }
 }
