@@ -92,7 +92,31 @@ namespace Nethermind.Evm.Test
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
         }
-        
+
+        protected (ParityLikeCallTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
+        {
+            (var block, var transaction) = PrepareInitTx(BlockNumber, 100000, code);
+            ParityLikeCallTxTracer tracer = new ParityLikeCallTxTracer(block, transaction);
+            _processor.Execute(transaction, block.Header, tracer);
+            return (tracer.BuildResult(), block, transaction);
+        }
+
+        protected (ParityLikeCallTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(params byte[] code)
+        {
+            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            ParityLikeCallTxTracer tracer = new ParityLikeCallTxTracer(block, transaction);
+            _processor.Execute(transaction, block.Header, tracer);
+            return (tracer.BuildResult(), block, transaction);
+        }
+
+        protected (ParityLikeCallTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(byte[] input, UInt256 value, params byte[] code)
+        {
+            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
+            ParityLikeCallTxTracer tracer = new ParityLikeCallTxTracer(block, transaction);
+            _processor.Execute(transaction, block.Header, tracer);
+            return (tracer.BuildResult(), block, transaction);
+        }
+
         protected GethLikeTxTrace ExecuteAndTrace(UInt256 blockNumber, long gasLimit, params byte[] code)
         {
             GethLikeTxTracer tracer = new GethLikeTxTracer();
@@ -100,7 +124,7 @@ namespace Nethermind.Evm.Test
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
         }
-        
+
         protected VmTestResultTracer Execute(params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
@@ -137,6 +161,46 @@ namespace Nethermind.Evm.Test
             return (block, transaction);
         }
 
+        private (Block block, Transaction transaction) PrepareTx(UInt256 blockNumber, long gasLimit, byte[] code, byte[] input, UInt256 value)
+        {
+            TestState.CreateAccount(Sender, 100.Ether());
+            TestState.CreateAccount(Recipient, 100.Ether());
+            Keccak codeHash = TestState.UpdateCode(code);
+            TestState.UpdateCodeHash(TestObject.AddressB, codeHash, SpecProvider.GenesisSpec);
+
+            TestState.Commit(SpecProvider.GenesisSpec);
+
+            Transaction transaction = Build.A.Transaction
+                .WithGasLimit((ulong) gasLimit)
+                .WithGasPrice(1)
+                .WithData(input)
+                .WithValue(value)
+                .To(TestObject.AddressB)
+                .SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, blockNumber)
+                .TestObject;
+
+            Block block = BuildBlock(blockNumber);
+            return (block, transaction);
+        }
+
+        private (Block block, Transaction transaction) PrepareInitTx(UInt256 blockNumber, long gasLimit, byte[] code)
+        {
+            TestState.CreateAccount(Sender, 100.Ether());
+            TestState.Commit(SpecProvider.GenesisSpec);
+
+            Transaction transaction = Build.A.Transaction
+                .WithTo(null)
+                .WithData(Bytes.Empty)
+                .WithGasLimit((ulong) gasLimit)
+                .WithGasPrice(1)
+                .WithInit(code)
+                .SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, blockNumber)
+                .TestObject;
+
+            Block block = BuildBlock(blockNumber);
+            return (block, transaction);
+        }
+
         protected virtual Block BuildBlock(UInt256 blockNumber)
         {
             return Build.A.Block.WithNumber(blockNumber).TestObject;
@@ -151,7 +215,7 @@ namespace Nethermind.Evm.Test
         {
             Assert.AreEqual(value.Bytes.PadLeft(32), Storage.Get(new StorageAddress(Recipient, address)).PadLeft(32), "storage");
         }
-        
+
         protected void AssertStorage(UInt256 address, Keccak value)
         {
             Assert.AreEqual(value.Bytes, Storage.Get(new StorageAddress(Recipient, address)).PadLeft(32), "storage");
@@ -166,7 +230,7 @@ namespace Nethermind.Evm.Test
         {
             Assert.AreEqual(value.ToBigEndianByteArray(), Storage.Get(new StorageAddress(Recipient, address)), "storage");
         }
-        
+
         protected void AssertCodeHash(Address address, Keccak codeHash)
         {
             Assert.AreEqual(codeHash, TestState.GetCodeHash(address), "code hash");
@@ -193,7 +257,7 @@ namespace Nethermind.Evm.Test
                 Op(Instruction.CREATE);
                 return this;
             }
-            
+
             public Prepare Create2(byte[] code, byte[] salt, BigInteger value)
             {
                 StoreDataInMemory(0, code);
@@ -204,14 +268,14 @@ namespace Nethermind.Evm.Test
                 Op(Instruction.CREATE2);
                 return this;
             }
-            
+
             public Prepare ForInitOf(byte[] codeToBeDeployed)
             {
                 StoreDataInMemory(0, codeToBeDeployed.PadRight(32));
                 PushData(codeToBeDeployed.Length);
                 PushData(0);
                 Op(Instruction.RETURN);
-                
+
                 return this;
             }
 
@@ -282,28 +346,28 @@ namespace Nethermind.Evm.Test
                 PushData(value);
                 PushData(key);
                 Op(Instruction.SSTORE);
-                return this;    
+                return this;
             }
-            
+
             public Prepare StoreDataInMemory(int position, string hexString)
             {
                 return StoreDataInMemory(position, Bytes.FromHexString(hexString));
             }
-            
+
             public Prepare StoreDataInMemory(int position, byte[] data)
             {
                 if (position % 32 != 0)
                 {
                     throw new NotSupportedException();
                 }
-                
+
                 for (int i = 0; i < data.Length; i += 32)
                 {
                     PushData(data.Slice(i, data.Length - i).PadRight(32));
                     PushData(position + i);
-                    Op(Instruction.MSTORE);    
+                    Op(Instruction.MSTORE);
                 }
-                
+
                 return this;
             }
         }
