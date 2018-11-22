@@ -17,16 +17,17 @@
  */
 
 using System.Numerics;
+using Nethermind.Config;
 
 namespace Nethermind.Runner.Config
 {
-    public class HiveInitConfig : IHiveInitConfig
+    public interface IHiveConfig : IConfig
     {
-        public string ChainFile { get; set; }
-        public string BlocksDir { get; set; }
-        public string KeysDir { get; set; }
-        public BigInteger? HomesteadBlockNr { get; set; }
-        public string Bootnode { get; set; }
-        public string GenesisFilePath { get; set; }
+        string ChainFile { get; set; }
+        string BlocksDir { get; set; }
+        string KeysDir { get; set; }
+        BigInteger? HomesteadBlockNr { get; set; }
+        string Bootnode { get; set; }
+        string GenesisFilePath { get; set; }
     }
 }

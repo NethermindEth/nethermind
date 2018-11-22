@@ -64,14 +64,14 @@ namespace Nethermind.Core
             try
             {
                 var token = JToken.Parse(json);
-                if (token is JArray)
+                if (token is JArray array)
                 {
-                    foreach (var tokenElement in (JArray)token)
+                    foreach (var tokenElement in array)
                     {
                         UpdateParams(tokenElement);
                     }
 
-                    return (default, token.ToObject<List<T>>());
+                    return (default, array.ToObject<List<T>>());
                 }
                 UpdateParams(token);
 

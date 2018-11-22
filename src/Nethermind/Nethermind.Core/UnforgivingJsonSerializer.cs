@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -37,12 +38,52 @@ namespace Nethermind.Core
         public (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json)
         {
             var token = JToken.Parse(json);
-            if (token is JArray)
+            if (token is JArray array)
             {
-                return (default, token.ToObject<List<T>>());
+                foreach (var tokenElement in array)
+                {
+                    UpdateParams(tokenElement);
+                }
+
+                return (default, array.ToObject<List<T>>());
             }
+            UpdateParams(token);
 
             return (token.ToObject<T>(), null);
+        }
+        
+        private void UpdateParams(JToken token)
+        {
+            var paramsToken = token.SelectToken("params");
+            if (paramsToken == null)
+            {
+                paramsToken = token.SelectToken("Params");
+                if (paramsToken == null)
+                {
+                    throw new FormatException("Missing 'params' token");
+                }
+            }
+            
+            var values = new List<string>();
+            foreach (var value in paramsToken.Value<IEnumerable<object>>())
+            {
+                var valueString = value?.ToString();
+                if (valueString == null)
+                {
+                    values.Add($"\"null\"");
+                    continue;
+                }
+                
+                if (valueString.StartsWith("{") || valueString.StartsWith("["))
+                {
+                    values.Add(Serialize(valueString));
+                    continue;
+                }
+                values.Add($"\"{valueString}\"");
+            }
+
+            var json = $"[{string.Join(",", values)}]";
+            paramsToken.Replace(JToken.Parse(json));
         }
 
         public string Serialize<T>(T value, bool indented = false)
