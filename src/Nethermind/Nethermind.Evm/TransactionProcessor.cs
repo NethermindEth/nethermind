@@ -169,13 +169,8 @@ namespace Nethermind.Evm
                 env.CodeInfo = isPrecompile ? new CodeInfo(recipient) : machineCode == null ? _virtualMachine.GetCachedCodeInfo(recipient) : new CodeInfo(machineCode);
                 env.Originator = sender;
 
-                ExecutionType executionType = isPrecompile
-                    ? ExecutionType.DirectPrecompile
-                    : transaction.IsContractCreation
-                        ? ExecutionType.DirectCreate
-                        : ExecutionType.Transaction;
-
-                using (EvmState state = new EvmState(unspentGas, env, executionType, false))
+                ExecutionType executionType = transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
+                using (EvmState state = new EvmState(unspentGas, env, executionType, isPrecompile, true, false))
                 {
                     substate = _virtualMachine.Run(state, spec, txTracer);
                     unspentGas = state.GasAvailable;

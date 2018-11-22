@@ -38,8 +38,8 @@ namespace Nethermind.Core
         public Address SenderAddress { get; set; }
         public Signature Signature { get; set; }
         public bool IsSigned => Signature != null;
-        public bool IsContractCreation => To == null;
-        public bool IsMessageCall => To != null;
+        public bool IsContractCreation => Init != null;
+        public bool IsMessageCall => Data != null;
         public Keccak Hash { get; set; }
         public PublicKey DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }

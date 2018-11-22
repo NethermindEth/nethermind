@@ -355,6 +355,114 @@ namespace Nethermind.Evm.Test.Tracing
         }
         
         [Test]
+        public void Can_trace_delegate_calls()
+        {
+            byte[] deployedCode = new byte[3];
+
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode)
+                .Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .Create(initCode, 0)
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .DelegateCall(TestObject.AddressC, 50000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            int[] depths = new int[]
+            {
+                1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
+                2, 2, 2, 2, 2, 2, 2, 2, 2, // DELEGATE CALL
+                3, 3, 3, 3, 3, 3, // CREATE
+                2, // STOP 
+                1, // STOP
+            };
+
+            Assert.AreEqual("delegateCall", trace.Action.Subtraces[0].CallType, "[0] type");
+        }
+        
+        [Test]
+        public void Can_trace_call_code_calls()
+        {
+            byte[] deployedCode = new byte[3];
+
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode)
+                .Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .Create(initCode, 0)
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .CallCode(TestObject.AddressC, 50000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            int[] depths = new int[]
+            {
+                1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
+                2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL CODE
+                3, 3, 3, 3, 3, 3, // CREATE
+                2, // STOP 
+                1, // STOP
+            };
+
+            Assert.AreEqual("callCode", trace.Action.Subtraces[0].CallType, "[0] type");
+        }
+        
+        [Test]
+        public void Can_trace_static_calls()
+        {
+            byte[] deployedCode = new byte[3];
+
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode)
+                .Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .Create(initCode, 0)
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .StaticCall(TestObject.AddressC, 50000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            int[] depths = new int[]
+            {
+                1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
+                2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL CODE
+                3, 3, 3, 3, 3, 3, // CREATE
+                2, // STOP 
+                1, // STOP
+            };
+
+            Assert.AreEqual("staticCall", trace.Action.Subtraces[0].CallType, "[0] type");
+        }
+        
+        [Test]
         public void Can_trace_same_level_calls()
         {
             byte[] deployedCode = new byte[3];
@@ -408,7 +516,6 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(new[] {1, 0}, trace.Action.Subtraces[1].Subtraces[0].TraceAddress, "[1, 0] address");
             Assert.AreEqual(0, trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, "[1, 0] subtraces");
             Assert.AreEqual("init", trace.Action.Subtraces[1].Subtraces[0].CallType, "[1, 0] type");
-            
         }
     }
 }

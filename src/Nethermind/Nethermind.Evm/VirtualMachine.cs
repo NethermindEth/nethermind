@@ -116,12 +116,12 @@ namespace Nethermind.Evm
                     }
 
                     CallResult callResult;
-                    if (currentState.ExecutionType == ExecutionType.Precompile || currentState.ExecutionType == ExecutionType.DirectPrecompile)
+                    if (currentState.IsPrecompile)
                     {
                         callResult = ExecutePrecompile(currentState, spec);
                         if (!callResult.PrecompileSuccess.Value)
                         {
-                            if (currentState.ExecutionType == ExecutionType.DirectPrecompile)
+                            if (currentState.IsPrecompile && currentState.IsTopLevel)
                             {
                                 Metrics.EvmExceptions++;
                                 // TODO: when direct / calls are treated same we should not need such differentiation
@@ -161,7 +161,7 @@ namespace Nethermind.Evm
                                 _parityTouchBugAccount = null;
                             }
 
-                            if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
+                            if (currentState.IsTopLevel)
                             {
                                 return new TransactionSubstate("Error");
                             }
@@ -177,7 +177,7 @@ namespace Nethermind.Evm
                         }
                     }
 
-                    if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectCreate || currentState.ExecutionType == ExecutionType.DirectPrecompile)
+                    if (currentState.IsTopLevel)
                     {
                         return new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert);
                     }
@@ -192,7 +192,7 @@ namespace Nethermind.Evm
                     if (!callResult.ShouldRevert)
                     {
                         long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
-                        if (previousState.ExecutionType == ExecutionType.Create || previousState.ExecutionType == ExecutionType.DirectCreate)
+                        if (previousState.ExecutionType == ExecutionType.Create)
                         {
                             previousCallResult = callCodeOwner.Bytes;
                             previousCallOutputDestination = UInt256.Zero;
@@ -286,7 +286,7 @@ namespace Nethermind.Evm
                         txTracer.SetOperationRemainingGas(0);
                     }
                     
-                    if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
+                    if (currentState.IsTopLevel)
                     {
                         return new TransactionSubstate("Error");
                     }
@@ -442,7 +442,7 @@ namespace Nethermind.Evm
                     _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec);
                 }
 
-                if ((evmState.ExecutionType == ExecutionType.Create || evmState.ExecutionType == ExecutionType.DirectCreate) && spec.IsEip158Enabled)
+                if (evmState.ExecutionType == ExecutionType.Create && spec.IsEip158Enabled)
                 {
                     _state.IncrementNonce(env.ExecutingAccount);
                 }
@@ -2145,6 +2145,8 @@ namespace Nethermind.Evm
                             callGas,
                             callEnv,
                             ExecutionType.Create,
+                            false,
+                            false,
                             stateSnapshot,
                             storageSnapshot,
                             0L,
@@ -2304,10 +2306,34 @@ namespace Nethermind.Evm
                             outputOffset = 0;
                         }
 
+                        ExecutionType executionType;
+                        if (instruction == Instruction.CALL)
+                        {
+                            executionType = ExecutionType.Call;
+                        }
+                        else if (instruction == Instruction.DELEGATECALL) 
+                        {
+                            executionType = ExecutionType.DelegateCall;
+                        }
+                        else if (instruction == Instruction.STATICCALL) 
+                        {
+                            executionType = ExecutionType.StaticCall;
+                        }
+                        else if (instruction == Instruction.CALLCODE) 
+                        {
+                            executionType = ExecutionType.CallCode;
+                        }
+                        else
+                        {
+                            throw new NotImplementedException($"Execution type is undefined for {Enum.GetName(typeof(Instruction), instruction)}"); 
+                        }
+                        
                         EvmState callState = new EvmState(
                             gasLimitUl,
                             callEnv,
-                            isPrecompile ? ExecutionType.Precompile : (instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? ExecutionType.Call : ExecutionType.CallCode),
+                            executionType,
+                            isPrecompile,
+                            false,
                             stateSnapshot,
                             storageSnapshot,
                             (long)outputOffset,

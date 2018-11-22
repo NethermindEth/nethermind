@@ -126,9 +126,30 @@ namespace Nethermind.Evm.Tracing
             action.Value = value;
             action.Input = input;
             action.Gas = gas;
-            action.CallType = (callType == ExecutionType.Create || callType == ExecutionType.DirectCreate) ? "init" : "call";
+            action.CallType = GetCallType(callType);
 
             PushCall(action);
+        }
+
+        private string GetCallType(ExecutionType executionType)
+        {            
+            switch (executionType)
+            {
+                case ExecutionType.Transaction:
+                    return "call";
+                case ExecutionType.Create:
+                    return "init";
+                case ExecutionType.Call:
+                    return "call";
+                case ExecutionType.DelegateCall:
+                    return "delegateCall";
+                case ExecutionType.StaticCall:
+                    return "staticCall";
+                case ExecutionType.CallCode:
+                    return "callCode";
+                default:
+                    throw new NotImplementedException($"Parity trace call type is undefined for {Enum.GetName(typeof(ExecutionType), executionType)}");
+            }
         }
 
         public void ReportCallEnd(long gas, byte[] output)

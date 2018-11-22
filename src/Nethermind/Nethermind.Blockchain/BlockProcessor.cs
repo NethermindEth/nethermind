@@ -264,6 +264,11 @@ namespace Nethermind.Blockchain
         private void ApplyDaoTransition()
         {
             Address withdrawAccount = DaoData.DaoWithdrawalAccount;
+            if (!_stateProvider.AccountExists(withdrawAccount))
+            {
+                _stateProvider.CreateAccount(withdrawAccount, 0);
+            }
+
             foreach (Address daoAccount in DaoData.DaoAccounts)
             {
                 UInt256 balance = _stateProvider.GetBalance(daoAccount);

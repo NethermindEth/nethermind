@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Tracing
         private GethLikeTxTrace _trace = new GethLikeTxTrace();
         
         public bool IsTracingReceipt => true;
-        bool ITxTracer.IsTracingCalls => true;
+        bool ITxTracer.IsTracingCalls => false;
         bool ITxTracer.IsTracingStorage => true;
         bool ITxTracer.IsTracingMemory => true;
         bool ITxTracer.IsTracingInstructions => true;

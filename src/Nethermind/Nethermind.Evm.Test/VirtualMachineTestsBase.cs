@@ -291,6 +291,43 @@ namespace Nethermind.Evm.Test
                 Op(Instruction.CALL);
                 return this;
             }
+            
+            public Prepare DelegateCall(Address address, long gasLimit)
+            {
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(address);
+                PushData(gasLimit);
+                Op(Instruction.DELEGATECALL);
+                return this;
+            }
+            
+            public Prepare CallCode(Address address, long gasLimit)
+            {
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(address);
+                PushData(gasLimit);
+                Op(Instruction.CALLCODE);
+                return this;
+            }
+            
+            public Prepare StaticCall(Address address, long gasLimit)
+            {                
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(address);
+                PushData(gasLimit);
+                Op(Instruction.STATICCALL);
+                return this;
+            }
 
             public Prepare PushData(Address address)
             {
