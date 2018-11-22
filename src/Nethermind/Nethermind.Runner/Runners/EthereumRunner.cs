@@ -365,6 +365,10 @@ namespace Nethermind.Runner.Runners
             {
                 _specProvider = GoerliSpecProvider.Instance;
             }
+            else if (_chainSpec.ChainId == SturebySpecProvider.Instance.ChainId)
+            {
+                _specProvider = SturebySpecProvider.Instance;
+            }
             else
             {
                 _specProvider = new SingleReleaseSpecProvider(LatestRelease.Instance, _chainSpec.ChainId);
@@ -409,6 +413,7 @@ namespace Nethermind.Runner.Runners
             _sealEngine =
                 (_specProvider is MainNetSpecProvider) ? ConfigureSealEngine() :
                 (_specProvider is RopstenSpecProvider) ? ConfigureSealEngine() :
+                (_specProvider is SturebySpecProvider) ? ConfigureSealEngine() :
                 (_specProvider is RinkebySpecProvider) ? clique :
                 (_specProvider is GoerliSpecProvider) ? (ISealEngine) clique :
                 NullSealEngine.Instance;
