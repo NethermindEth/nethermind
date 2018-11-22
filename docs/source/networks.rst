@@ -11,6 +11,7 @@ Network name can be any of the following
 * rinkeby
 * goerli
 * ropsten
+* stureby
 
 Mainnet
 ^^^^^^^
@@ -47,6 +48,17 @@ This is a Clique-PoA based testnet supported by Geth and Nethermind. It has a 15
 ::
 
     Nethermind.Runner --config rinkeby
+
+
+Stureby
+^^^^^^^
+
+This is a PoW-based testnet introduced to rapidly test all the transitions between different Ethereum releases - first 50000 blocks include transitions from Frontier all the way to Constantinople.
+
+::
+
+    Nethermind.Runner --config stureby
+
 
 Kovan
 ^^^^^

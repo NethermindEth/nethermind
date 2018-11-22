@@ -20,14 +20,24 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs
 {
-    public class RopstenSpecProvider : ISpecProvider
+    public class SturebySpecProvider : ISpecProvider
     {
         public IReleaseSpec CurrentSpec => Constantinople.Instance;
 
-        public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
+        public IReleaseSpec GenesisSpec => Frontier.Instance;
 
         public IReleaseSpec GetSpec(UInt256 blockNumber)
-        {            
+        {
+            if (blockNumber < HomesteadBlockNumber)
+            {
+                return Frontier.Instance;
+            }
+            
+            if (blockNumber < TangerineWhistleBlockNumber)
+            {
+                return Homestead.Instance;
+            }
+            
             if (blockNumber < SpuriousDragonBlockNumber)
             {
                 return TangerineWhistle.Instance;
@@ -47,16 +57,18 @@ namespace Nethermind.Core.Specs
         }
         
         public UInt256? DaoBlockNumber { get; } = null;
-        public static UInt256 SpuriousDragonBlockNumber { get; } = 10;
-        public static UInt256 ByzantiumBlockNumber { get; } = 1700000;
-        public static UInt256 ConstantinopleBlockNumber { get; } = 4230000;
+        public static UInt256 HomesteadBlockNumber { get; } = 10000;
+        public static UInt256 TangerineWhistleBlockNumber { get; } = 15000;
+        public static UInt256 SpuriousDragonBlockNumber { get; } = 23000;
+        public static UInt256 ByzantiumBlockNumber { get; } = 30000;
+        public static UInt256 ConstantinopleBlockNumber { get; } = 40000;
         
-        public int ChainId => 3;
+        public int ChainId => 314158;
 
-        private RopstenSpecProvider()
+        private SturebySpecProvider()
         {
         }
         
-        public static readonly RopstenSpecProvider Instance = new RopstenSpecProvider();
+        public static readonly SturebySpecProvider Instance = new SturebySpecProvider();
     }
 }
