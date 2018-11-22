@@ -31,13 +31,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.HashLib;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
     public class SynchronizationManager : ISynchronizationManager
-    {
+    {   
         public const int MinBatchSize = 8;
         private int _batchSize = 256;
         public const int MaxBatchSize = 256;
@@ -150,20 +151,31 @@ namespace Nethermind.Blockchain
             return _blockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
         }
 
+        private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
+        private object _dummyValue = new object();
+        
         public void AddNewBlock(Block block, NodeId receivedFrom)
         {
-            // TODO: validation
-
             _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
             if (peerInfo == null)
             {
                 string errorMessage = $"Received a new block from an unknown peer {receivedFrom}";
-                _logger.Error(errorMessage);
+                if(_logger.IsDebug) _logger.Debug(errorMessage);
                 return;
             }
 
             peerInfo.NumberAvailable = UInt256.Max(block.Number, peerInfo.NumberAvailable);
 //            peerInfo.Difficulty = UInt256.Max(block.Difficulty, peerInfo.Difficulty);
+            
+            lock (_recentlySuggested)
+            {
+                if (_recentlySuggested.Get(block.Hash) != null)
+                {
+                    return;
+                }
+
+                _recentlySuggested.Set(block.Hash, _dummyValue);
+            }
 
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.Hash} ({block.Number}) from {receivedFrom}");
 
@@ -193,14 +205,25 @@ namespace Nethermind.Blockchain
         }
 
         public void HintBlock(Keccak hash, UInt256 number, NodeId receivedFrom)
-        {
+        {   
             if (!_peers.TryGetValue(receivedFrom, out PeerInfo peerInfo))
             {
-                if (_logger.IsTrace) _logger.Trace($"Received a block hint from an unknown peer {receivedFrom}, ignoring");
+                if (_logger.IsDebug) _logger.Debug($"Received a block hint from an unknown peer {receivedFrom}, ignoring");
                 return;
             }
 
             peerInfo.NumberAvailable = UInt256.Max(number, peerInfo.NumberAvailable);
+            
+            lock (_recentlySuggested)
+            {
+                if (_recentlySuggested.Get(hash) != null)
+                {
+                    return;
+                }
+
+                /* do not add as this is a hint only */
+            }
+            
             if (number > _blockTree.BestKnownNumber)
             {
                 RequestSync();
