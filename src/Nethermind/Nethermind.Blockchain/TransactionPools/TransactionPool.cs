@@ -110,9 +110,6 @@ namespace Nethermind.Blockchain.TransactionPools
                 return;
             }
 
-            // TODO: we can use these to recover sender address much quicker when processing new blocks!
-            transaction.SenderAddress = _signer.RecoverAddress(transaction, blockNumber);
-
             NewPending?.Invoke(this, new TransactionEventArgs(transaction));
             NotifyPeers(SelectPeers(transaction), transaction);
             FilterAndStoreTransaction(transaction, blockNumber);
@@ -126,6 +123,7 @@ namespace Nethermind.Blockchain.TransactionPools
                 return;
             }
 
+            transaction.SenderAddress = _signer.RecoverAddress(transaction, blockNumber);
             _transactionStorage.Add(transaction, blockNumber);
             if (_logger.IsTrace) _logger.Trace($"Added a transaction: {transaction.Hash}");
         }
