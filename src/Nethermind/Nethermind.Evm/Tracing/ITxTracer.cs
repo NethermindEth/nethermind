@@ -27,7 +27,7 @@ namespace Nethermind.Evm.Tracing
     {
         bool IsTracingReceipt { get; }
         bool IsTracingCalls { get; }
-        bool IsTracingStorage { get; }
+        bool IsTracingOpLevelStorage { get; }
         bool IsTracingMemory { get; }
         bool IsTracingInstructions { get; }
         bool IsTracingStack { get; }

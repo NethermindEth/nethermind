@@ -16,12 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
-
 namespace Nethermind.Store
 {
     public interface IStorageTracer
     {
-        void ReportStorageChange(StorageAddress storageAddress, UInt256 before, UInt256 after);
+        void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after);
     }
 }

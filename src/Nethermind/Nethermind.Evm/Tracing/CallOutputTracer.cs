@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Tracing
     {
         public bool IsTracingReceipt => true;
         public bool IsTracingCalls => false;
-        public bool IsTracingStorage => false;
+        public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
         public bool IsTracingStack => false;
@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportStorageChange(StorageAddress storageAddress, UInt256 before, UInt256 after)
+        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
         {
             throw new NotSupportedException();
         }

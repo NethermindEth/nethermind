@@ -95,7 +95,7 @@ namespace Nethermind.Evm.Tracing
 
         public bool IsTracingReceipt { get; }
         public bool IsTracingCalls { get; }
-        public bool IsTracingStorage => false;
+        public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
         public bool IsTracingStack => false;
@@ -179,9 +179,26 @@ namespace Nethermind.Evm.Tracing
             _trace.StateChanges[address].Nonce = new ParityStateChange<UInt256>(before, after);
         }
 
-        public void ReportStorageChange(StorageAddress storageAddress, UInt256 before, UInt256 after)
+        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
         {
-            throw new NotImplementedException();
+            Dictionary<UInt256, ParityStateChange<byte[]>> storage = null;
+            if (!_trace.StateChanges.ContainsKey(storageAddress.Address))
+            {
+                _trace.StateChanges[storageAddress.Address] = new ParityAccountStateChange();
+            }
+
+            storage = _trace.StateChanges[storageAddress.Address].Storage;
+            if (storage == null)
+            {
+                storage = _trace.StateChanges[storageAddress.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>();
+            }
+
+            if (storage.ContainsKey(storageAddress.Index))
+            {
+                before = storage[storageAddress.Index].Before ?? before;
+            }
+
+            storage[storageAddress.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
         public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)

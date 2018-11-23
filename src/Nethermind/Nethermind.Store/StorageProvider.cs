@@ -22,7 +22,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Store
 {
@@ -158,8 +157,28 @@ namespace Nethermind.Store
         {
             Commit(null);
         }
+
+        private static byte[] _zeroValue = {0}; 
         
-        public void Commit(IStateTracer stateTracer)
+        private struct ChangeTrace
+        {
+            public ChangeTrace(byte[] before, byte[] after)
+            {
+                After = after ?? _zeroValue;
+                Before = before ?? _zeroValue;
+            }
+            
+            public ChangeTrace(byte[] after)
+            {
+                After = after ?? _zeroValue;
+                Before = _zeroValue;
+            }
+            
+            public byte[] Before { get; }
+            public byte[] After { get; }
+        }
+        
+        public void Commit(IStorageTracer tracer)
         {
             if (_currentPosition == -1)
             {
@@ -181,11 +200,23 @@ namespace Nethermind.Store
 
             HashSet<Address> toUpdateRoots = new HashSet<Address>();
 
+            bool isTracing = tracer != null;
+            Dictionary<StorageAddress, ChangeTrace> trace = null;
+            if (isTracing)
+            {
+                trace = new Dictionary<StorageAddress, ChangeTrace>();
+            }
+            
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
                 if (_committedThisRound.Contains(change.StorageAddress))
                 {
+                    if (isTracing && change.ChangeType == ChangeType.JustCache)
+                    {
+                        trace[change.StorageAddress] = new ChangeTrace(change.Value, trace[change.StorageAddress].After);
+                    }
+                    
                     continue;
                 }
 
@@ -226,6 +257,10 @@ namespace Nethermind.Store
                         Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageAddress.Address);
                         tree.Set(change.StorageAddress.Index, change.Value);
+                        if (isTracing)
+                        {
+                            trace[change.StorageAddress] = new ChangeTrace(change.Value);
+                        }
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -249,6 +284,25 @@ namespace Nethermind.Store
             _intraBlockCache = new Dictionary<StorageAddress, Stack<int>>(Math.Max(StartCapacity, _intraBlockCache.Count / 2));
             _originalValues = new Dictionary<StorageAddress, byte[]>(Math.Max(StartCapacity, _originalValues.Count / 2));
 //            _destructedStorages.Clear();
+            
+            if (isTracing)
+            {
+                ReportChanges(tracer, trace);
+            }
+        }
+        
+        private void ReportChanges(IStorageTracer tracer, Dictionary<StorageAddress, ChangeTrace> trace)
+        {
+            foreach ((StorageAddress address, ChangeTrace change) in trace)
+            {
+                byte[] before = change.Before;
+                byte[] after = change.After;
+                
+                if (!Bytes.AreEqual(before, after))
+                {
+                    tracer.ReportStorageChange(address, before, after);
+                }
+            }
         }
 
         public void Reset()

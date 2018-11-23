@@ -1776,7 +1776,7 @@ namespace Nethermind.Evm
                             if (_logger.IsTrace) _logger.Trace($"Updating storage: {env.ExecutingAccount} {storageIndex} {valueToStore.ToHexString(true)}");
                         }
                         
-                        if (_txTracer.IsTracingStorage)
+                        if (_txTracer.IsTracingOpLevelStorage)
                         {
                             _txTracer.SetOperationStorage(storageAddress.Address, storageIndex, newValue, currentValue, cost, refund);
                         }

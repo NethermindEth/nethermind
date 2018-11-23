@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Tracing
         private readonly IStateProvider _stateProvider;
         public bool IsTracingReceipt => true;
         public bool IsTracingCalls => _currentTxTracer.IsTracingCalls;
-        public bool IsTracingStorage => _currentTxTracer.IsTracingStorage;
+        public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
         public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
         public bool IsTracingInstructions => _currentTxTracer.IsTracingInstructions;
         public bool IsTracingStack => _currentTxTracer.IsTracingStack;
@@ -130,7 +130,7 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportNonceChange(address, before, after);
         }
 
-        public void ReportStorageChange(StorageAddress storageAddress, UInt256 before, UInt256 after)
+        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
         {
             _currentTxTracer.ReportStorageChange(storageAddress, before, after);
         }

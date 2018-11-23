@@ -38,7 +38,7 @@ namespace Nethermind.Store
 
         void Commit();
         
-        void Commit(IStateTracer stateTracer);
+        void Commit(IStorageTracer stateTracer);
         
         int TakeSnapshot();
     }

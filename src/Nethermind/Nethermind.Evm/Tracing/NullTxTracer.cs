@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Tracing
 
         public bool IsTracingReceipt => false;
         public bool IsTracingCalls => false;
-        public bool IsTracingStorage => false;
+        public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
         public bool IsTracingStack => false;
@@ -72,7 +72,7 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportNonceChange(Address address, UInt256 before, UInt256 after) => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportStorageChange(StorageAddress storageAddress, UInt256 before, UInt256 after) => throw new InvalidOperationException(ErrorMessage);
+        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType) => throw new InvalidOperationException(ErrorMessage);
 
