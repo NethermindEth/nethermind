@@ -361,17 +361,31 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (!CheckLastDisconnectTime(candidate.Value))
+                var delayResult = candidate.Value.NodeStats.IsConnectionDelayed();
+                if (delayResult.Result)
                 {
-                    counters[ActivePeerSelectionCounter.FilteredByDisconnect] = counters[ActivePeerSelectionCounter.FilteredByDisconnect] + 1;
+                    if (delayResult.DelayReason == NodeStatsEventType.Disconnect)
+                    {
+                        counters[ActivePeerSelectionCounter.FilteredByDisconnect] = counters[ActivePeerSelectionCounter.FilteredByDisconnect] + 1;    
+                    }
+                    else if (delayResult.DelayReason == NodeStatsEventType.ConnectionFailed)
+                    {
+                        counters[ActivePeerSelectionCounter.FilteredByFailedConnection] = counters[ActivePeerSelectionCounter.FilteredByFailedConnection] + 1;
+                    }
                     continue;
                 }
+                
+//                if (!CheckLastDisconnectTime(candidate.Value))
+//                {
+//                    counters[ActivePeerSelectionCounter.FilteredByDisconnect] = counters[ActivePeerSelectionCounter.FilteredByDisconnect] + 1;
+//                    continue;
+//                }
 
-                if (!CheckLastFailedConnectionTime(candidate.Value))
-                {
-                    counters[ActivePeerSelectionCounter.FilteredByFailedConnection] = counters[ActivePeerSelectionCounter.FilteredByFailedConnection] + 1;
-                    continue;
-                }
+//                if (!CheckLastFailedConnectionTime(candidate.Value))
+//                {
+//                    counters[ActivePeerSelectionCounter.FilteredByFailedConnection] = counters[ActivePeerSelectionCounter.FilteredByFailedConnection] + 1;
+//                    continue;
+//                }
 
                 if (candidate.Value.NodeStats.FailedCompatibilityValidation.HasValue)
                 {
@@ -450,57 +464,59 @@ namespace Nethermind.Network
             return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
         }
 
-        private bool CheckLastDisconnectTime(Peer peer)
-        {
-            var time = peer.NodeStats.LastDisconnectTime;
-            if (!time.HasValue)
-            {
-                return true;
-            }
-
-            var timePassed = DateTime.Now.Subtract(time.Value).TotalMilliseconds;
-            var result = timePassed > GetDelayTime(peer);
-            if (!result && _logger.IsTrace)
-            {
-                _logger.Trace($"Skipping connection to peer, due to disconnect delay, time from last disconnect: {timePassed}, delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}");
-            }
-
-            return result;
-        }
-
-        private int GetDelayTime(Peer peer)
-        {
-            //In case of last disconnect reason is AlreadyConnected we randomize small delay time 
-            var lastDisconnectReason = peer.NodeStats.LastLocalDisconnectReason;
-            if (lastDisconnectReason.HasValue && lastDisconnectReason.Value == DisconnectReason.AlreadyConnected)
-            {
-                var random = new Random();
-                var randomizedDelay = random.Next(500);
-                if (_logger.IsDebug) _logger.Debug($"Randomized delay: {randomizedDelay}, peer: {peer.Node.Id}");
-                return randomizedDelay;
-            }
-            if (_logger.IsDebug) _logger.Debug($"Regular delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}, lastDisconnectReason: {lastDisconnectReason?.ToString() ?? "none"}");
-
-            return _networkConfig.DisconnectDelay;
-        }
-
-        private bool CheckLastFailedConnectionTime(Peer peer)
-        {
-            var time = peer.NodeStats.LastFailedConnectionTime;
-            if (!time.HasValue)
-            {
-                return true;
-            }
-
-            var timePassed = DateTime.Now.Subtract(time.Value).TotalMilliseconds;
-            var result = timePassed > _networkConfig.FailedConnectionDelay;
-            if (!result && _logger.IsTrace)
-            {
-                _logger.Trace($"Skipping connection to peer, due to failed connection delay, time from last failed connection: {timePassed}, delay: {_networkConfig.FailedConnectionDelay}, peer: {peer.Node.Id}");
-            }
-
-            return result;
-        }
+//        private bool CheckLastDisconnectTime(Peer peer)
+//        {
+//            var delay = peer.NodeStats.GetDisconnectDelay();
+//            if (!delay.HasValue)
+//            {
+//                return true;
+//            }
+//
+//            var random = new Random();
+//            var randomizedDelay = random.Next(delay.Value);
+//            
+//            var result = timePassed > GetDelayTime(peer);
+//            if (!result && _logger.IsTrace)
+//            {
+//                _logger.Trace($"Skipping connection to peer, due to disconnect delay, time from last disconnect: {timePassed}, delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}");
+//            }
+//
+//            return result;
+//        }
+//
+//        private int GetDelayTime(Peer peer)
+//        {
+//            //In case of last disconnect reason is AlreadyConnected we randomize small delay time 
+//            var lastDisconnectReason = peer.NodeStats.LastLocalDisconnectReason;
+//            if (lastDisconnectReason.HasValue && lastDisconnectReason.Value == DisconnectReason.AlreadyConnected)
+//            {
+//                var random = new Random();
+//                var randomizedDelay = random.Next(500);
+//                if (_logger.IsWarn) _logger.Warn($"Randomized delay: {randomizedDelay}, peer: {peer.Node.Id}");
+//                return randomizedDelay;
+//            }
+//            if (_logger.IsWarn) _logger.Warn($"Regular delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}, lastDisconnectReason: {lastDisconnectReason?.ToString() ?? "none"}");
+//
+//            return _networkConfig.DisconnectDelay;
+//        }
+//
+//        private bool CheckLastFailedConnectionTime(Peer peer)
+//        {
+//            var time = peer.NodeStats.LastFailedConnectionTime;
+//            if (!time.HasValue)
+//            {
+//                return true;
+//            }
+//
+//            var timePassed = DateTime.Now.Subtract(time.Value).TotalMilliseconds;
+//            var result = timePassed > _networkConfig.FailedConnectionDelay;
+//            if (!result && _logger.IsTrace)
+//            {
+//                _logger.Trace($"Skipping connection to peer, due to failed connection delay, time from last failed connection: {timePassed}, delay: {_networkConfig.FailedConnectionDelay}, peer: {peer.Node.Id}");
+//            }
+//
+//            return result;
+//        }
 
         private async Task<bool> InitializePeerConnection(Peer candidate)
         {
@@ -616,18 +632,14 @@ namespace Nethermind.Network
 
                     if (_logger.IsTrace)
                     {
-                        var timeFromLastDisconnect = candidatePeer.NodeStats.LastDisconnectTime.HasValue
-                            ? DateTime.Now.Subtract(candidatePeer.NodeStats.LastDisconnectTime.Value).TotalMilliseconds.ToString()
-                            : "no disconnect";
-
-                        _logger.Trace($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, time from last disconnect: {timeFromLastDisconnect}.");
+                        _logger.Trace($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}.");
                     }
                 }
                 else
                 {
-                    if (_logger.IsDebug)
+                    if (_logger.IsError)
                     {
-                        _logger.Debug($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, peer not in candidate collection.");
+                        _logger.Error($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, peer not in candidate collection.");
                     }
                 }
 
@@ -692,7 +704,7 @@ namespace Nethermind.Network
         }
 
         /// <summary>
-        /// In case of IN connection we don't know what is the port node is listening on until we receive the Hello message
+        /// In case of IN connection we dont know what is the port node is listening on until we receive the Hello message
         /// </summary>
         private void AddNodeToDiscovery(Peer peer, P2PProtocolInitializedEventArgs eventArgs)
         {
@@ -708,7 +720,7 @@ namespace Nethermind.Network
 
                 if (peer.AddedToDiscovery)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Discovery node already initialized with wrong port, nodeId: {peer.Node.Id}, port: {peer.Node.Port}, listen port: {eventArgs.ListenPort}");
+                    if (_logger.IsDebug) _logger.Debug($"Discovery note already initialized with wrong port, nodeId: {peer.Node.Id}, port: {peer.Node.Port}, listen port: {eventArgs.ListenPort}");
                 }
 
                 peer.Node.Port = eventArgs.ListenPort;
@@ -933,8 +945,38 @@ namespace Nethermind.Network
 
         private void OnHandshakeComplete(IP2PSession session)
         {
+            //In case of OUT connections and different RemodeNodeId we need to replace existing Active Peer with new peer 
+            ManageNewRemoteNodeId(session);
+
             //Fire and forget
             Task.Run(async () => await OnHandshakeCompleteAsync(session));
+        }
+
+        private void ManageNewRemoteNodeId(IP2PSession session)
+        {
+            if (session.ObsoleteRemoteNodeId == null)
+            {
+                return;
+            }
+
+            //if remote id changed we remove active peer with old remote id and add new remote id peer to active peers
+            _activePeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
+            
+            if (_candidatePeers.TryGetValue(session.RemoteNodeId, out Peer newPeer))
+            {
+                if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer present in candidate collection");
+                _activePeers.TryAdd(newPeer.Node.Id, newPeer);
+                return;
+            }
+            
+            var node = _nodeFactory.CreateNode(session.RemoteNodeId, session.RemoteHost, session.RemotePort ?? 0);
+            newPeer = new Peer(node, _nodeStatsProvider.GetOrAddNodeStats(node), session.ConnectionDirection)
+            {
+                Session = session,
+            };
+            _activePeers.TryAdd(newPeer.Node.Id, newPeer);
+            _candidatePeers.TryAdd(newPeer.Node.Id, newPeer);
+            if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer not present in candidate collection");
         }
 
         private async Task OnHandshakeCompleteAsync(IP2PSession session)

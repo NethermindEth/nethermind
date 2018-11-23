@@ -349,6 +349,7 @@ namespace Nethermind.Network.Test
         public DisconnectReason DisconnectReason { get; set; }
 
         public NodeId RemoteNodeId { get; set; }
+        public NodeId ObsoleteRemoteNodeId { get; set; }
         public string RemoteHost { get; set; }
         public int? RemotePort { get; set; }
         public ConnectionDirection ConnectionDirection { get; set; }
@@ -400,7 +401,7 @@ namespace Nethermind.Network.Test
             return Task.CompletedTask;
         }
 
-        public void Handshake()
+        public void Handshake(NodeId handshakeRemoteNodeId)
         {
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
             var task = Task.Delay(1000);

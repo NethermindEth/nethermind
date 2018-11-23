@@ -39,22 +39,30 @@ namespace Nethermind.Stats
         private ConcurrentDictionary<NodeLatencyStatType, object> _latencyStatsLocks;
         private ConcurrentDictionary<NodeStatsEventType, AtomicLong> _statCounters;
         private ConcurrentDictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;        
-        private readonly ConcurrentBag<NodeStatsEvent> _eventHistory;
-
+        private ConcurrentBag<NodeStatsEvent> _eventHistory;
+        private DateTime? LastDisconnectTime;
+        private DateTime? LastFailedConnectionTime;
+        
         public NodeStats(Node node, IStatsConfig statsConfig, ILogManager logManager)
         {
             Node = node;
             _statsConfig = statsConfig;
             _logger = logManager.GetClassLogger();
-            _eventHistory = new ConcurrentBag<NodeStatsEvent>();
             Initialize();
         }
 
         public IEnumerable<NodeStatsEvent> EventHistory => _eventHistory.ToArray();
         public IEnumerable<NodeLatencyStatsEvent> LatencyHistory => _latencyStatsLog.SelectMany(x => x.Value).ToArray();
-
+        public IDictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> LastDisconnects => _lastDisconnects.ToDictionary(x => x.Key, y => y.Value);
+        
         public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
         {
+            if (nodeStatsEventType == NodeStatsEventType.ConnectionEstablished)
+            {
+                //reset failed connection counter in case connection was established
+                _statCounters[NodeStatsEventType.ConnectionFailed] = new AtomicLong();
+            }
+
             if (nodeStatsEventType == NodeStatsEventType.ConnectionFailed)
             {
                 LastFailedConnectionTime = DateTime.Now;
@@ -71,17 +79,8 @@ namespace Nethermind.Stats
 
         public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
         {
-            _lastDisconnects[disconnectType] = (disconnectReason, DateTime.Now);
             LastDisconnectTime = DateTime.Now;
-            if (disconnectType == DisconnectType.Local)
-            {
-                LastLocalDisconnectReason = disconnectReason;
-            }
-            else if (disconnectType == DisconnectType.Remote)
-            {
-                LastRemoteDisconnectReason = disconnectReason;
-            }
-            
+            _lastDisconnects[disconnectType] = (disconnectReason, DateTime.Now);
             _statCounters[NodeStatsEventType.Disconnect].Increment();
             CaptureEvent(NodeStatsEventType.Disconnect, null, null, new DisconnectDetails
             {
@@ -149,26 +148,98 @@ namespace Nethermind.Stats
         {
             lock (_latencyStatsLocks[latencyType])
             {
-                //var collection = _latencyStatsLog[latencyType];
-                //if (!collection.Any())
-                //{
-                //    return null;
-                //}
-
-                //var verifyLat = collection.Sum(x => x.Latency) / (decimal)collection.Count;
                 var lat = _latencyStats[latencyType].Latency;
-
-                //if (verifyLat != lat)
-                //{
-                //    _logger.Error($"Wrong latency calc: {verifyLat}-{lat}, node: {Node.Id}");
-                //}
-                //else
-                //{
-                //    _logger.Info($"TESTTEST Correct latency calc: {verifyLat}-{lat}");
-                //}
-
                 return lat != null ? (long)lat : (long?)null;
             }
+        }
+
+        public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed()
+        {
+            if (IsDelayedDueToDisconnect())
+            {
+                return (true, NodeStatsEventType.Disconnect);
+            }
+
+            if (IsDelayedDueToFailedConnection())
+            {
+                return (true, NodeStatsEventType.ConnectionFailed);
+            }
+            return (false, null);
+        }
+
+        private bool IsDelayedDueToDisconnect()
+        {
+            if (!LastDisconnectTime.HasValue)
+            {
+                return false;
+            }
+
+            var timePassed = DateTime.Now.Subtract(LastDisconnectTime.Value).TotalMilliseconds;
+            var disconnectDelay = GetDisconnectDelay();
+            if (disconnectDelay <= 500)
+            {
+                //randomize early disconnect delay - for private networks
+                var random = new Random();
+                var randomizedDelay = random.Next(disconnectDelay);
+                disconnectDelay = randomizedDelay < 10 ? randomizedDelay + 10 : randomizedDelay;
+            }
+            var result = timePassed < disconnectDelay;
+//            if (result && _logger.IsInfo)
+//            {
+//                _logger.Error($"TESTTEST Skipping connection to peer, due to disconnect delay, time from last disconnect: {timePassed}, delay: {disconnectDelay}, peer: {Node.Id}");
+//            }
+
+            return result;
+        }
+
+        private bool IsDelayedDueToFailedConnection()
+        {
+            if (!LastFailedConnectionTime.HasValue)
+            {
+                return false;
+            }
+
+            var timePassed = DateTime.Now.Subtract(LastFailedConnectionTime.Value).TotalMilliseconds;
+            var failedConnectionDelay = GetFailedConnectionDelay();
+            var result = timePassed < failedConnectionDelay;
+//            if (result && _logger.IsInfo)
+//            {
+//                _logger.Error($"TESTTEST Skipping connection to peer, due to failed connection delay, time from last failed connection: {timePassed}, delay: {failedConnectionDelay}, peer: {Node.Id}");
+//            }
+
+            return result;
+        }
+        
+        private int GetFailedConnectionDelay()
+        {
+            var failedConnectionFailed = _statCounters[NodeStatsEventType.ConnectionFailed].Value;
+            if (failedConnectionFailed == 0)
+            {
+                return 100;
+            }
+
+            if (failedConnectionFailed > _statsConfig.FailedConnectionDelays.Length)
+            {
+                return _statsConfig.FailedConnectionDelays.Last();
+            }
+
+            return _statsConfig.FailedConnectionDelays[failedConnectionFailed - 1];
+        }
+        
+        private int GetDisconnectDelay()
+        {
+            var disconnectCount = _statCounters[NodeStatsEventType.Disconnect].Value;
+            if (disconnectCount == 0)
+            {
+                return 100;
+            }
+
+            if (disconnectCount > _statsConfig.DisconnectDelays.Length)
+            {
+                return _statsConfig.DisconnectDelays.Last();
+            }
+
+            return _statsConfig.DisconnectDelays[disconnectCount - 1];
         }
 
         public long CurrentNodeReputation => CalculateCurrentReputation();
@@ -179,13 +250,7 @@ namespace Nethermind.Stats
 
         public bool IsTrustedPeer { get; set; }
 
-        public DateTime? LastDisconnectTime { get; set; }
-       
-        public DisconnectReason? LastLocalDisconnectReason { get; set; }
-        
-        public DisconnectReason? LastRemoteDisconnectReason { get; set; }
-
-        public DateTime? LastFailedConnectionTime { get; set; }
+        //public DateTime? LastFailedConnectionTime { get; set; }
 
         public P2PNodeDetails P2PNodeDetails { get; private set; }
 
@@ -326,6 +391,8 @@ namespace Nethermind.Stats
 
         private void Initialize()
         {
+            _eventHistory = new ConcurrentBag<NodeStatsEvent>();
+            
             IsTrustedPeer = false;
             _statCounters = new ConcurrentDictionary<NodeStatsEventType, AtomicLong>();
             foreach (NodeStatsEventType statType in Enum.GetValues(typeof(NodeStatsEventType)))

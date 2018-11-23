@@ -36,14 +36,13 @@ namespace Nethermind.Stats
         void AddLatencyCaptureEvent(NodeLatencyStatType latencyType, long miliseconds);
         long? GetAverageLatency(NodeLatencyStatType latencyType);
 
+        (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed();
+        
         long CurrentNodeReputation { get; }
         long CurrentPersistedNodeReputation { get; set; }
         long NewPersistedNodeReputation { get; }
         bool IsTrustedPeer { get; set; }
-        DateTime? LastDisconnectTime { get; set; }
-        DisconnectReason? LastLocalDisconnectReason { get; set; }
-        DisconnectReason? LastRemoteDisconnectReason { get; set; }
-        DateTime? LastFailedConnectionTime { get; set; }
+        //DateTime? LastFailedConnectionTime { get; set; }
         P2PNodeDetails P2PNodeDetails { get; }
         EthNodeDetails EthNodeDetails { get; }
         CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
@@ -51,5 +50,6 @@ namespace Nethermind.Stats
 
         IEnumerable<NodeStatsEvent> EventHistory { get; }
         IEnumerable<NodeLatencyStatsEvent> LatencyHistory { get; }
+        IDictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> LastDisconnects { get; }
     }
 }

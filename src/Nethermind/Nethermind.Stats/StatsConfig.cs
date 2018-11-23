@@ -22,6 +22,12 @@ namespace Nethermind.Stats
 {
     public class StatsConfig : IStatsConfig
     {
+        public StatsConfig()
+        {
+            FailedConnectionDelays = new []{ 100, 100, 100, 100, 100, 500, 500, 500, 500, 500, 1000, 1000, 1000, 1000, 1000, 5000, 10000, 1000 * 60, 1000 * 60 * 5, 1000 * 60 * 10 };
+            DisconnectDelays = new []{ 100, 100, 100, 100, 100, 500, 500, 500, 500, 500, 1000, 1000, 1000, 1000, 1000, 5000, 10000, 1000 * 60, 1000 * 60 * 5 };
+        }
+        
         public bool CaptureNodeStatsEventHistory { get; } = true;
 
         public bool CaptureNodeLatencyStatsEventHistory { get; set; } = false;
@@ -39,5 +45,9 @@ namespace Nethermind.Stats
         };
 
         public long PenalizedReputationTooManyPeersTimeout { get; set; } = 10 * 1000;
+
+        public int[] FailedConnectionDelays { get; }
+        
+        public int[] DisconnectDelays { get; }
     }
 }

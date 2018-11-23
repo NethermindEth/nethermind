@@ -94,6 +94,7 @@ namespace Nethermind.Network.P2P
         public NodeId LocalNodeId { get; }
         public int LocalPort { get; }
         public NodeId RemoteNodeId { get; set; }
+        public NodeId ObsoleteRemoteNodeId { get; set; }
         public string RemoteHost { get; set; }
         public int? RemotePort { get; set; }
         public ConnectionDirection ConnectionDirection { get; }
@@ -162,8 +163,22 @@ namespace Nethermind.Network.P2P
             InitProtocol(Protocol.P2P, p2PVersion);
         }
 
-        public void Handshake()
+        public void Handshake(NodeId handshakeRemoteNodeId)
         {
+            //For IN connections we dont have NodeId until that moment, so we need to set it in Session
+            //For OUT connections it is possible remote id is diffent than what we had persisted or received from Discovery
+            //If that is the case we need to set it in the session
+            if (RemoteNodeId == null)
+            {
+                RemoteNodeId = handshakeRemoteNodeId;
+            }
+            else if (handshakeRemoteNodeId != null && RemoteNodeId != handshakeRemoteNodeId)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Different NodeId received in handshake: old: {RemoteNodeId.PublicKey}, new: {handshakeRemoteNodeId.PublicKey}");
+                ObsoleteRemoteNodeId = RemoteNodeId;
+                RemoteNodeId = handshakeRemoteNodeId;
+            }
+            
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 
@@ -205,12 +220,18 @@ namespace Nethermind.Network.P2P
             if (_context == null)
             {
                 //in case pipeline did not get to p2p - no disconnect delay
-                await _channel.DisconnectAsync();
+                await _channel.DisconnectAsync().ContinueWith(x =>
+                {
+                    if (x.IsFaulted &&  _logger.IsTrace) _logger.Trace($"Error while disconnecting on channel: {x.Exception}");
+                });
                 return;
             }
             await Task.Delay(Timeouts.Disconnection).ContinueWith(t =>
             {
-                _context.DisconnectAsync();
+                _context.DisconnectAsync().ContinueWith(x =>
+                {
+                    if (x.IsFaulted && _logger.IsTrace) _logger.Trace($"Error while disconnecting on context: {x.Exception}");
+                });
                 if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} Disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");
             });
         }

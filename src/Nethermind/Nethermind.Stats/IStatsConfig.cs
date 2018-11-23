@@ -52,5 +52,15 @@ namespace Nethermind.Stats
         /// Time within which we penalized peer if disconnection happends due to too many peers
         /// </summary>
         long PenalizedReputationTooManyPeersTimeout { get; }
+        
+        /// <summary>
+        /// Failed connection delays - last entry is used for all further events
+        /// </summary>
+        int[] FailedConnectionDelays { get; }
+        
+        /// <summary>
+        /// Disconnect delays - last entry is used for all further events
+        /// </summary>
+        int[] DisconnectDelays { get; }
     }
 }

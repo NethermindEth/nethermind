@@ -149,9 +149,8 @@ namespace Nethermind.Network.Rlpx
                     byte[] authData = new byte[byteBuffer.ReadableBytes];
                     byteBuffer.ReadBytes(authData);
                     Packet ack = _service.Ack(_handshake, new Packet(authData));
-                    _remoteId = _handshake.RemoteNodeId;
-                    _p2PSession.RemoteNodeId = _remoteId;
-
+                    
+                    //_p2PSession.RemoteNodeId = _remoteId;
                     if (_logger.IsTrace) _logger.Trace($"Sending ACK to {_remoteId} @ {context.Channel.RemoteAddress}");
                     _buffer.WriteBytes(ack.Data);
                     context.WriteAndFlushAsync(_buffer);
@@ -164,8 +163,9 @@ namespace Nethermind.Network.Rlpx
                     _service.Agree(_handshake, new Packet(ackData));
                 }
 
+                _remoteId = _handshake.RemoteNodeId;
                 _initCompletionSource?.SetResult(message);
-                _p2PSession.Handshake();
+                _p2PSession.Handshake(_handshake.RemoteNodeId);
 
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_handshake.Secrets);

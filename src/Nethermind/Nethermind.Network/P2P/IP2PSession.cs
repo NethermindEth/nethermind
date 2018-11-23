@@ -29,6 +29,7 @@ namespace Nethermind.Network.P2P
     public interface IP2PSession
     {
         NodeId RemoteNodeId { get; set; }
+        NodeId ObsoleteRemoteNodeId { get; set; }
         string RemoteHost { get; set; }
         int? RemotePort { get; set; }
         ConnectionDirection ConnectionDirection { get; }
@@ -50,7 +51,7 @@ namespace Nethermind.Network.P2P
         /// </summary>     
         Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType);
 
-        void Handshake();
+        void Handshake(NodeId handshakeRemoteNodeId);
 
         event EventHandler<DisconnectEventArgs> PeerDisconnected;
         event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
