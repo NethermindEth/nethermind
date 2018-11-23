@@ -46,11 +46,11 @@ You can find all of the possible settings `here <https://github.com/NethermindEt
 
 To fully override a configuration file, you need to use a volume::
 
-    -v $/home/mainnet.cfg:/app/configs/mainnet.cfg
+    -v $/home/mainnet.cfg:/nethermind/configs/mainnet.cfg
 
-In order to map an internal database to a local volume, you need to map /app/nethermind_db/::
+In order to map an internal database to a local volume, you need to map /nethermind/nethermind_db/::
 
-    -v /tmp/nethermind_db:/app/nethermind_db
+    -v /tmp/nethermind_db:/nethermind/nethermind_db
     
     
 
