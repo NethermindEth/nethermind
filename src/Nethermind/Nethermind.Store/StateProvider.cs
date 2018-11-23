@@ -392,7 +392,7 @@ namespace Nethermind.Store
                             if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             SetState(change.Address, null);
                         }
-                        else if(change.ChangeType == ChangeType.Update)
+                        else
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             SetState(change.Address, change.Account);
@@ -400,10 +400,6 @@ namespace Nethermind.Store
                             {
                                 trace[change.Address] = new ChangeTrace(change.Account);
                             }
-                        }
-                        else if(change.ChangeType == ChangeType.Touch)
-                        {
-                            _committedThisRound.Remove(change.Address);
                         }
 
                         break;
