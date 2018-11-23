@@ -32,6 +32,7 @@ namespace Nethermind.Blockchain.TransactionPools
         void RemovePeer(NodeId nodeId);
         void AddTransaction(Transaction transaction, UInt256 blockNumber);
         void RemoveTransaction(Keccak hash);
+        bool TryGetSender(Keccak hash, out Address sender);
         event EventHandler<TransactionEventArgs> NewPending;
         event EventHandler<TransactionEventArgs> RemovedPending;
     }

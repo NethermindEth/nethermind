@@ -500,7 +500,7 @@ namespace Nethermind.Runner.Runners
                 virtualMachine,
                 _logManager);
 
-            var txRecoveryStep = new TxSignaturesRecoveryStep(_ethereumSigner);
+            var txRecoveryStep = new TxSignaturesRecoveryStep(_ethereumSigner, _transactionPool);
             _recoveryStep = _sealEngine is CliqueSealEngine
                 ? new CompositeDataRecoveryStep(txRecoveryStep, new AuthorRecoveryStep(clique))
                 : (IBlockDataRecoveryStep) txRecoveryStep;

@@ -55,6 +55,12 @@ namespace Nethermind.Blockchain
         {
         }
 
+        public bool TryGetSender(Keccak hash, out Address sender)
+        {
+            sender = null;
+            return false;
+        }
+
         public event EventHandler<TransactionEventArgs> NewPending;
         public event EventHandler<TransactionEventArgs> RemovedPending;
     }

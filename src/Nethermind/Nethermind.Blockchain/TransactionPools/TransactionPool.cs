@@ -110,12 +110,8 @@ namespace Nethermind.Blockchain.TransactionPools
                 return;
             }
 
-            var recoveredAddress = _signer.RecoverAddress(transaction, blockNumber);
-            if (recoveredAddress != transaction.SenderAddress)
-            {
-                //return;
-                throw new InvalidOperationException("Invalid signature");
-            }
+            // TODO: we can use these to recover sender address much quicker when processing new blocks!
+            transaction.SenderAddress = _signer.RecoverAddress(transaction, blockNumber);
 
             NewPending?.Invoke(this, new TransactionEventArgs(transaction));
             NotifyPeers(SelectPeers(transaction), transaction);
@@ -169,6 +165,13 @@ namespace Nethermind.Blockchain.TransactionPools
 
             _transactionStorage.Delete(hash);
             if (_logger.IsTrace) _logger.Trace($"Deleted a transaction: {hash}");
+        }
+
+        public bool TryGetSender(Keccak hash, out Address sender)
+        {
+            bool found = _pendingTransactions.TryGetValue(hash, out Transaction transaction);
+            sender = found ? transaction.SenderAddress : null;
+            return found;
         }
 
         public event EventHandler<TransactionEventArgs> NewPending;

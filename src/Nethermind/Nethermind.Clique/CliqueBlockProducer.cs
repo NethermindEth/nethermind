@@ -366,7 +366,7 @@ namespace Nethermind.Clique
                 total++;
                 if (transaction.SenderAddress == null)
                 {
-                    if (_logger.IsError) _logger.Error($"Rejecting null sender pending transaction.");
+                    if (_logger.IsError) _logger.Error("Rejecting null sender pending transaction.");
                     continue;
                 }
 

@@ -239,7 +239,7 @@ namespace Nethermind.Runner.Runners
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,
                 blockProcessor,
-                new TxSignaturesRecoveryStep(ethereumSigner), 
+                new TxSignaturesRecoveryStep(ethereumSigner, NullTransactionPool.Instance), 
                 _logManager,
                 true);
 
