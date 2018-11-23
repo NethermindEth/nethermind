@@ -1,6 +1,9 @@
 Docker
 ******
 
+Using an existing image
+=============
+
 https://hub.docker.com/r/nethermind/nethermind.runner/
 
 Docker pull command::
@@ -48,3 +51,25 @@ To fully override a configuration file, you need to use a volume::
 In order to map an internal database to a local volume, you need to map /app/nethermind_db/::
 
     -v /tmp/nethermind_db:/app/nethermind_db
+    
+    
+
+Building an image
+=============
+
+`Dockerfile` can be found in the repository `root <https://github.com/NethermindEth/nethermind>`_ and it comes with 2 flavors:
+
+-  `Dockerfile <https://github.com/NethermindEth/nethermind/blob/master/Dockerfile>`_ - requires to have a cloned repository in order to build an image.
+-  `Dockerfile_full <https://github.com/NethermindEth/nethermind/blob/master/Dockerfile_full>`_ - doesn't require to have a cloned repository, as it will download it during the first step.
+
+
+In order to build the images, run either:: 
+
+    docker build -t nethermind.runner .
+    
+or::
+
+    docker build -f Dockerfile_full -t nethermind.runner .
+
+Depending on the chosen version.
+
