@@ -37,7 +37,8 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
         public bool IsTracingInstructions => _currentTxTracer.IsTracingInstructions;
         public bool IsTracingStack => _currentTxTracer.IsTracingStack;
-        
+        public bool IsTracingState => _currentTxTracer.IsTracingState;
+
         private IBlockTracer _otherTracer;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
@@ -109,9 +110,29 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.SetOperationMemorySize(newSize);
         }
 
-        public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
         {
-            _currentTxTracer.ReportStorageChange(address, storageIndex, newValue, currentValue, cost, refund);
+            _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue, cost, refund);
+        }
+
+        public void ReportBalanceChange(Address address, UInt256 before, UInt256 after)
+        {
+            _currentTxTracer.ReportBalanceChange(address, before, after);
+        }
+
+        public void ReportCodeChange(Address address, byte[] before, byte[] after)
+        {
+            _currentTxTracer.ReportCodeChange(address, before, after);
+        }
+
+        public void ReportNonceChange(Address address, UInt256 before, UInt256 after)
+        {
+            _currentTxTracer.ReportNonceChange(address, before, after);
+        }
+
+        public void ReportStorageChange(StorageAddress storageAddress, UInt256 before, UInt256 after)
+        {
+            _currentTxTracer.ReportStorageChange(storageAddress, before, after);
         }
 
         public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)

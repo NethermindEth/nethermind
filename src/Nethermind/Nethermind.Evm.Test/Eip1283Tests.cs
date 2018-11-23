@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(Recipient, 0);
             Storage.Set(new StorageAddress(Recipient, 0), new [] {originalValue});
-            Storage.Commit(RopstenSpecProvider.Instance.GenesisSpec);
+            Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
             var receipt = Execute(Bytes.FromHexString(codeHex));

@@ -96,7 +96,70 @@ namespace Nethermind.Evm.Test.Tracing
      *    "transactionPosition": 42,
      *    "type": "call"
      *  }
-     *
+     *}
+     */
+
+    /*
+     *{
+     *  "0x00a0a24b9f0e5ec7aa4c7389b8302fd0123194de": {
+     *      "balance": {
+     *          "*": {
+     *              "from": "0x28f84c2fe0b971dd2fd97",
+     *              "to": "0x28f84c2fe6eccbfaf8197"
+     *          }
+     *      },
+     *      "code": "=",
+     *      "nonce": "=",
+     *      "storage": {}
+     *  },
+     *  "0x36f10dca25c48764b36abb94baacbb3eff3119e9": {
+     *      "balance": "=",
+     *      "code": "=",
+     *      "nonce": "=",
+     *      "storage": {
+     *          "0x000000000000000000000000000000000000000000000000000000000000000a": {
+     *              "*": {
+     *                  "from": "0x0000000000000000000000000000000000000000000000000000000000000000",
+     *                  "to": "0x0000000000000000000000000000000000000000000000000000000000000013"
+     *              }
+     *          },
+     *          "0x4858b84e94c24fd507358cd907f2ed3ff6be8f50148ffcf988e9ec9c141a11a4": {
+     *              "*": {
+     *                  "from": "0x0000000000000000000000000000000000000000000000000000000000000000",
+     *                  "to": "0x0000000000000000000000000000000000000000000000000000000000000001"
+     *              }
+     *          },
+     *          "0x765af639bffa44f9c0431d8b56fb73b047a8a9a37616eaa417f70a1de1d8906f": {
+     *              "*": {
+     *                  "from": "0x0000000000000000000000000000000000000000000000000000000000000000",
+     *                  "to": "0x000000000031a17e847807b1bc000000000000000000000000000000004d50ee"
+     *              }
+     *          },
+     *          "0xc65a7bb8d6351c1cf70c95a316cc6a92839c986682d98bc35f958f4883f9d2ba": {
+     *              "*": {
+     *                  "from": "0x0000000000000000000000000000000000000000000000000000000000000000",
+     *                  "to": "0x00000000020278dff90dbceb832ca300000000000000000000000000004d50ee"
+     *              }
+     *          }
+     *      }
+     *  },
+     *  "0xf94e5cdf41247e268d4847c30a0dc2893b33e85d": {
+     *      "balance": {
+     *          "*": {
+     *              "from": "0x2928392f507bac00",
+     *              "to": "0x2927d5f9ae9f2800"
+     *          }
+     *      },
+     *      "code": "=",
+     *      "nonce": {
+     *          "*": {
+     *              "from": "0x2d",
+     *              "to": "0x2e"
+     *          }
+     *      },
+     *      "storage": {}
+     *  }
+     *}
      */
 
     [TestFixture]
@@ -113,7 +176,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.ADD)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(100000, trace.Action.Result.GasUsed);
         }
 
@@ -124,7 +187,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.ADD)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(Bytes.Empty, trace.Action.Result.Output);
         }
 
@@ -135,7 +198,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.ADD)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(tx.SenderAddress, trace.Action.From, "from");
             Assert.AreEqual(tx.To, trace.Action.To, "to");
             Assert.AreEqual(block.Hash, trace.BlockHash, "hash");
@@ -156,7 +219,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(block.Hash, trace.BlockHash);
         }
 
@@ -168,7 +231,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(0, trace.TransactionPosition);
         }
 
@@ -179,7 +242,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(Array.Empty<int>(), trace.Action.TraceAddress);
         }
 
@@ -190,7 +253,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(tx.Hash, trace.TransactionHash);
         }
 
@@ -201,7 +264,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual("call", trace.Type);
         }
 
@@ -214,7 +277,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .ForInitOf(deployedCode)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteInitAndTraceParityCall(initCode);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteInitAndTraceParityCall(initCode);
             Assert.AreEqual("init", trace.Type);
         }
 
@@ -225,7 +288,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(79000, trace.Action.Gas);
         }
 
@@ -236,7 +299,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual("call", trace.Action.CallType);
         }
 
@@ -247,7 +310,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(Sender, trace.Action.From);
         }
 
@@ -258,7 +321,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(Recipient, trace.Action.To);
         }
 
@@ -272,7 +335,7 @@ namespace Nethermind.Evm.Test.Tracing
             byte[] input = Bytes.FromHexString(SampleHexData2);
             UInt256 value = 1.Ether();
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(input, value, code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(input, value, code);
             Assert.AreEqual(input, trace.Action.Input);
         }
 
@@ -286,7 +349,7 @@ namespace Nethermind.Evm.Test.Tracing
             byte[] input = Bytes.FromHexString(SampleHexData2);
             UInt256 value = 1.Ether();
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(input, value, code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(input, value, code);
             Assert.AreEqual(value, trace.Action.Value);
         }
 
@@ -297,7 +360,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(21003, trace.Action.Result.GasUsed);
         }
 
@@ -311,7 +374,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.RETURN)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(Bytes.FromHexString(SampleHexData1.PadLeft(64, '0')), trace.Action.Result.Output);
         }
 
@@ -338,7 +401,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             int[] depths = new int[]
             {
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
@@ -354,7 +417,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(0, trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, "[0, 0] subtraces");
             Assert.AreEqual(new[] {0, 0}, trace.Action.Subtraces[0].Subtraces[0].TraceAddress, "[0, 0] address");
         }
-        
+
         [Test]
         public void Can_trace_delegate_calls()
         {
@@ -378,7 +441,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             int[] depths = new int[]
             {
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
@@ -390,7 +453,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.AreEqual("delegateCall", trace.Action.Subtraces[0].CallType, "[0] type");
         }
-        
+
         [Test]
         public void Can_trace_call_code_calls()
         {
@@ -414,7 +477,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             int[] depths = new int[]
             {
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
@@ -426,7 +489,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.AreEqual("callCode", trace.Action.Subtraces[0].CallType, "[0] type");
         }
-        
+
         [Test]
         public void Can_trace_static_calls()
         {
@@ -450,7 +513,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             int[] depths = new int[]
             {
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
@@ -462,7 +525,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.AreEqual("staticCall", trace.Action.Subtraces[0].CallType, "[0] type");
         }
-        
+
         [Test]
         public void Can_trace_precompile_calls()
         {
@@ -471,7 +534,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             int[] depths = new int[]
             {
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
@@ -483,7 +546,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual("call", trace.Action.Subtraces[0].CallType, "[0] type");
             Assert.AreEqual(IdentityPrecompiledContract.Instance.Address, trace.Action.Subtraces[0].To, "[0] to");
         }
-        
+
         [Test]
         public void Can_trace_same_level_calls()
         {
@@ -508,7 +571,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            (ParityLikeCallTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
             int[] depths = new int[]
             {
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
@@ -522,11 +585,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.AreEqual(2, trace.Action.Subtraces.Count, "[] subtraces");
             Assert.AreEqual("call", trace.Action.CallType, "[] type");
-            
+
             Assert.AreEqual(1, trace.Action.Subtraces[0].Subtraces.Count, "[0] subtraces");
             Assert.AreEqual(new[] {0}, trace.Action.Subtraces[0].TraceAddress, "[0] address");
             Assert.AreEqual("call", trace.Action.Subtraces[0].CallType, "[0] type");
-            
+
             Assert.AreEqual(1, trace.Action.Subtraces[1].Subtraces.Count, "[1] subtraces");
             Assert.AreEqual(new[] {1}, trace.Action.Subtraces[1].TraceAddress, "[1] address");
             Assert.AreEqual("call", trace.Action.Subtraces[1].CallType, "[1] type");
@@ -534,10 +597,119 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(new[] {0, 0}, trace.Action.Subtraces[0].Subtraces[0].TraceAddress, "[0, 0] address");
             Assert.AreEqual(0, trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, "[0, 0] subtraces");
             Assert.AreEqual("init", trace.Action.Subtraces[1].Subtraces[0].CallType, "[0, 0] type");
-            
+
             Assert.AreEqual(new[] {1, 0}, trace.Action.Subtraces[1].Subtraces[0].TraceAddress, "[1, 0] address");
             Assert.AreEqual(0, trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, "[1, 0] subtraces");
             Assert.AreEqual("init", trace.Action.Subtraces[1].Subtraces[0].CallType, "[1, 0] type");
+        }
+
+        [Test]
+        public void Can_trace_storage_changes()
+        {
+            byte[] deployedCode = new byte[3];
+
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode)
+                .Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .PersistData("0x1", HexZero) // just to test if storage is restored
+                .Create(initCode, 0)
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .PersistData("0x2", SampleHexData1)
+                .PersistData("0x3", SampleHexData2)
+                .Call(TestObject.AddressC, 70000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+
+            Assert.AreEqual(3, trace.StateChanges.Count, "state changes count");
+            Assert.True(trace.StateChanges.ContainsKey(Sender), "sender");
+            Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
+            Assert.True(trace.StateChanges.ContainsKey(TestObject.AddressC), "address c");
+        }
+        
+        [Test]
+        public void Can_trace_code_changes()
+        {
+            byte[] deployedCode = new byte[3];
+
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode)
+                .Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .PersistData("0x1", HexZero) // just to test if storage is restored
+                .Create(initCode, 0)
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .PersistData("0x2", SampleHexData1)
+                .PersistData("0x3", SampleHexData2)
+                .Call(TestObject.AddressC, 70000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+
+            Assert.AreEqual(5, trace.StateChanges.Count, "state changes count");
+            Assert.True(trace.StateChanges.ContainsKey(TestObject.AddressC), "call target");
+            Assert.True(trace.StateChanges.ContainsKey(Sender), "sender");
+            Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
+            Assert.True(trace.StateChanges.ContainsKey(Miner), "miner");
+            Assert.AreEqual(Bytes.Empty, trace.StateChanges[Contract].Code.Before, "code before");
+            Assert.AreEqual(deployedCode, trace.StateChanges[Contract].Code.After, "code after");
+        }
+        
+        [Test]
+        public void Can_trace_balance_changes()
+        {
+            byte[] code = Prepare.EvmCode
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, Transaction tx) = ExecuteAndTraceParityCall(code);
+
+            Assert.AreEqual(3, trace.StateChanges.Count, "state changes count");
+            Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
+            Assert.True(trace.StateChanges.ContainsKey(Sender), "sender");
+            Assert.True(trace.StateChanges.ContainsKey(Miner), "sender");
+            Assert.AreEqual(100.Ether(), trace.StateChanges[Sender].Balance.Before, "sender before");
+            Assert.AreEqual(100.Ether() - 21001, trace.StateChanges[Sender].Balance.After, "sender after");
+            Assert.AreEqual(100.Ether(), trace.StateChanges[Recipient].Balance.Before, "recipient before");
+            Assert.AreEqual(100.Ether() + 1, trace.StateChanges[Recipient].Balance.After, "recipient after");
+            Assert.AreEqual(0.Ether(), trace.StateChanges[Miner].Balance.Before, "miner before");
+            Assert.AreEqual(0.Ether() + 21000, trace.StateChanges[Miner].Balance.After, "miner after");
+        }
+        
+        [Test]
+        public void Can_trace_nonce_changes()
+        {
+            byte[] code = Prepare.EvmCode
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+
+            Assert.AreEqual(3, trace.StateChanges.Count, "state changes count");
+            Assert.True(trace.StateChanges.ContainsKey(Sender), "sender");
+            Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
+            Assert.True(trace.StateChanges.ContainsKey(Miner), "miner");
+            Assert.AreEqual(UInt256.Zero, trace.StateChanges[Sender].Nonce.Before, "sender before");
+            Assert.AreEqual(UInt256.One, trace.StateChanges[Sender].Nonce.After, "sender after");
         }
     }
 }

@@ -42,8 +42,10 @@ namespace Nethermind.Evm.Test
         protected internal IStateProvider TestState { get; }
         protected internal IStorageProvider Storage { get; }
 
+        protected internal static Address Contract { get; } = new Address("0xd75a3a95360e44a3874e691fb48d77855f127069");
         protected internal static Address Sender { get; } = TestObject.AddressA;
         protected internal static Address Recipient { get; } = TestObject.AddressB;
+        protected internal static Address Miner { get; } = TestObject.AddressD;
 
         protected virtual UInt256 BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
 
@@ -93,26 +95,26 @@ namespace Nethermind.Evm.Test
             return tracer.BuildResult();
         }
 
-        protected (ParityLikeCallTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
+        protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
         {
             (var block, var transaction) = PrepareInitTx(BlockNumber, 100000, code);
-            ParityLikeCallTxTracer tracer = new ParityLikeCallTxTracer(block, transaction);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceType.Call | ParityTraceType.State);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
 
-        protected (ParityLikeCallTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(params byte[] code)
+        protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            ParityLikeCallTxTracer tracer = new ParityLikeCallTxTracer(block, transaction);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceType.Call | ParityTraceType.State);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
 
-        protected (ParityLikeCallTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(byte[] input, UInt256 value, params byte[] code)
+        protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(byte[] input, UInt256 value, params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
-            ParityLikeCallTxTracer tracer = new ParityLikeCallTxTracer(block, transaction);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceType.Call | ParityTraceType.State);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
@@ -203,7 +205,7 @@ namespace Nethermind.Evm.Test
 
         protected virtual Block BuildBlock(UInt256 blockNumber)
         {
-            return Build.A.Block.WithNumber(blockNumber).TestObject;
+            return Build.A.Block.WithNumber(blockNumber).WithBeneficiary(Miner).TestObject;
         }
 
         protected void AssertGas(VmTestResultTracer receipt, long gas)

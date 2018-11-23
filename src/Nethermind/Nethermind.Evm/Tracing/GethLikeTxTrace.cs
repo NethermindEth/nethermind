@@ -27,11 +27,11 @@ namespace Nethermind.Evm.Tracing
 
         public GethLikeTxTrace()
         {
-            Entries = new List<TransactionTraceEntry>();
-            StorageTrace = new StorageTrace();
+            Entries = new List<GethTxTraceEntry>();
+            GethStorageTrace = new GethStorageTrace();
         }
 
-        public StorageTrace StorageTrace { get; set; }
+        public GethStorageTrace GethStorageTrace { get; set; }
         
         public BigInteger Gas { get; set; }
 
@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Tracing
 
         public string ReturnValue { get; set; }
         
-        public List<TransactionTraceEntry> Entries { get; set; }
+        public List<GethTxTraceEntry> Entries { get; set; }
 
         public static GethLikeTxTrace QuickFail { get; } = new GethLikeTxTrace {Failed = true, ReturnValue = string.Empty};
     }

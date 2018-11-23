@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Ethereum.Test.Base
+using System;
+
+namespace Nethermind.Evm.Tracing
 {
-    public class TestBlock
+    [Flags]
+    public enum ParityTraceType
     {
-        public TestBlockHeader BlockHeader { get; set; }
-        public TestBlockHeader[] UncleHeaders { get; set; }
-        public string Rlp { get; set; }
-        public IncomingTransaction[] Transactions { get; set; }
-        public string ExpectedException { get; set; }
+        Vm,
+        State,
+        Call
     }
 }

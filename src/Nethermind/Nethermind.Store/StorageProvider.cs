@@ -154,7 +154,12 @@ namespace Nethermind.Store
             }
         }
 
-        public void Commit(IReleaseSpec spec)
+        public void Commit()
+        {
+            Commit(null);
+        }
+        
+        public void Commit(IStateTracer stateTracer)
         {
             if (_currentPosition == -1)
             {

@@ -19,10 +19,11 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing
 {
-    public interface ITxTracer
+    public interface ITxTracer : IStateTracer, IStorageTracer
     {
         bool IsTracingReceipt { get; }
         bool IsTracingCalls { get; }
@@ -30,6 +31,7 @@ namespace Nethermind.Evm.Tracing
         bool IsTracingMemory { get; }
         bool IsTracingInstructions { get; }
         bool IsTracingStack { get; }
+        bool IsTracingState { get; }
 
         void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs);
         void MarkAsFailed(Address recipient, long gasSpent);
@@ -40,8 +42,8 @@ namespace Nethermind.Evm.Tracing
         void SetOperationStack(List<string> stackTrace);
         void SetOperationMemory(List<string> memoryTrace);
         void SetOperationMemorySize(ulong newSize);
+        void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund);
         
-        void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund);
         void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType);
         void ReportCallEnd(long gas, byte[] output);
     }

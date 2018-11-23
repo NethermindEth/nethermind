@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
+using Nethermind.Store;
 
 namespace Nethermind.Evm.Test
 {
@@ -32,6 +33,7 @@ namespace Nethermind.Evm.Test
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
         public bool IsTracingStack => false;
+        public bool IsTracingState => false;
 
         public long GasUsed { get; set; }
         public byte StatusCode { get; set; }
@@ -78,7 +80,27 @@ namespace Nethermind.Evm.Test
             throw new NotImplementedException();
         }
 
-        public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportBalanceChange(Address address, UInt256 before, UInt256 after)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportCodeChange(Address address, byte[] before, byte[] after)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportNonceChange(Address address, UInt256 before, UInt256 after)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportStorageChange(StorageAddress storageAddress, UInt256 before, UInt256 after)
         {
             throw new NotImplementedException();
         }

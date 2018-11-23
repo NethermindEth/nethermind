@@ -20,7 +20,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Store
 {
-    public interface IStorageProvider : ISnapshotable
+    public interface IStorageProvider
     {
         byte[] GetOriginal(StorageAddress storageAddress);
         
@@ -33,5 +33,13 @@ namespace Nethermind.Store
         void Destroy(Address address);
         
         void CommitTrees();
+        
+        void Restore(int snapshot);
+
+        void Commit();
+        
+        void Commit(IStateTracer stateTracer);
+        
+        int TakeSnapshot();
     }
 }

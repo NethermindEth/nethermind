@@ -23,7 +23,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Store
 {
-    public interface IStateProvider : ISnapshotable
+    public interface IStateProvider
     {
         Keccak StateRoot { get; set; }
 
@@ -66,5 +66,13 @@ namespace Nethermind.Store
         void Reset();
 
         void CommitTree();
+        
+        void Restore(int snapshot);
+
+        void Commit(IReleaseSpec releaseSpec);
+        
+        void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer);
+        
+        int TakeSnapshot();
     }
 }

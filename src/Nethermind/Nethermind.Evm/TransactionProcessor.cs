@@ -122,8 +122,9 @@ namespace Nethermind.Evm
 
             _stateProvider.IncrementNonce(sender);
             _stateProvider.SubtractFromBalance(sender, (ulong) gasLimit * gasPrice, spec);
-            _stateProvider.Commit(_specProvider.GetSpec(block.Number));
             
+            // TODO: I think we can skip this commit and decrease the tree operations this way
+            _stateProvider.Commit(_specProvider.GetSpec(block.Number), txTracer is NullTxTracer ? null : txTracer);
 
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
@@ -242,8 +243,8 @@ namespace Nethermind.Evm
 
             if (!readOnly)
             {
-                _storageProvider.Commit(spec);
-                _stateProvider.Commit(spec);
+                _storageProvider.Commit();
+                _stateProvider.Commit(spec, txTracer is NullTxTracer ? null : txTracer);
             }
             else
             {

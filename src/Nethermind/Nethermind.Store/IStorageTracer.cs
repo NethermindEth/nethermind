@@ -16,16 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Store
 {
-    public interface ISnapshotable
+    public interface IStorageTracer
     {
-        void Restore(int snapshot);
-
-        void Commit(IReleaseSpec releaseSpec);
-        
-        int TakeSnapshot();
+        void ReportStorageChange(StorageAddress storageAddress, UInt256 before, UInt256 after);
     }
 }

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -31,6 +32,13 @@ namespace Nethermind.Store
         
         public static byte[] Get(this IDb db, Keccak key)
         {
+            #if DEBUG
+            if (key == Keccak.OfAnEmptyString)
+            {
+                throw new InvalidOperationException();
+            }
+            #endif
+            
             return db[key.Bytes];
         }
         

@@ -22,27 +22,45 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class ParityLikeCallTxTracer : ITxTracer
+    public class ParityLikeTxTracer : ITxTracer
     {
-        private ParityLikeCallTxTrace _trace;
+        private ParityLikeTxTrace _trace;
         private Stack<ParityTraceAction> _callStack = new Stack<ParityTraceAction>();
         private ParityTraceAction _currentCall;
 
-        public ParityLikeCallTxTrace BuildResult()
+        public ParityLikeTxTrace BuildResult()
         {
             return _trace;
         }
 
-        public ParityLikeCallTxTracer(Block block, Transaction tx)
+        public ParityLikeTxTracer(Block block, Transaction tx, ParityTraceType parityTraceType)
         {
-            _trace = new ParityLikeCallTxTrace();
+            _trace = new ParityLikeTxTrace();
             _trace.TransactionHash = tx.Hash;
             _trace.TransactionPosition = block.Transactions.Select((t, ix) => (t, ix)).Where(p => p.t.Hash == tx.Hash).Select((t, ix) => ix).SingleOrDefault();
             _trace.BlockNumber = block.Number;
             _trace.BlockHash = block.Hash;
+
+            if ((parityTraceType & ParityTraceType.State) != 0)
+            {
+                IsTracingState = true;
+                _trace.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
+            }
+
+            if ((parityTraceType & ParityTraceType.Call) != 0)
+            {
+                IsTracingCalls = true;
+                IsTracingReceipt = true;
+            }
+
+            if ((parityTraceType & ParityTraceType.Vm) != 0)
+            {
+                throw new NotImplementedException();
+            }
         }
 
         private void PushCall(ParityTraceAction call)
@@ -75,12 +93,13 @@ namespace Nethermind.Evm.Tracing
             _currentCall = _callStack.Count == 0 ? null : _callStack.Peek();
         }
 
-        public bool IsTracingReceipt => true;
-        public bool IsTracingCalls => true;
+        public bool IsTracingReceipt { get; }
+        public bool IsTracingCalls { get; }
         public bool IsTracingStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
         public bool IsTracingStack => false;
+        public bool IsTracingState { get; }
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
@@ -116,7 +135,54 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
 
-        public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund) => throw new NotSupportedException();
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund) => throw new NotSupportedException();
+
+        public void ReportBalanceChange(Address address, UInt256 before, UInt256 after)
+        {
+            if (!_trace.StateChanges.ContainsKey(address))
+            {
+                _trace.StateChanges[address] = new ParityAccountStateChange();
+            }
+            else
+            {
+                before = _trace.StateChanges[address].Balance?.Before ?? before;
+            }
+
+            _trace.StateChanges[address].Balance = new ParityStateChange<UInt256>(before, after);
+        }
+
+        public void ReportCodeChange(Address address, byte[] before, byte[] after)
+        {
+            if (!_trace.StateChanges.ContainsKey(address))
+            {
+                _trace.StateChanges[address] = new ParityAccountStateChange();
+            }
+            else
+            {
+                before = _trace.StateChanges[address].Code?.Before ?? before;
+            }
+
+            _trace.StateChanges[address].Code = new ParityStateChange<byte[]>(before, after);
+        }
+
+        public void ReportNonceChange(Address address, UInt256 before, UInt256 after)
+        {
+            if (!_trace.StateChanges.ContainsKey(address))
+            {
+                _trace.StateChanges[address] = new ParityAccountStateChange();
+            }
+            else
+            {
+                before = _trace.StateChanges[address].Nonce?.Before ?? before;
+            }
+
+            _trace.StateChanges[address].Nonce = new ParityStateChange<UInt256>(before, after);
+        }
+
+        public void ReportStorageChange(StorageAddress storageAddress, UInt256 before, UInt256 after)
+        {
+            throw new NotImplementedException();
+        }
 
         public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
         {
@@ -132,7 +198,7 @@ namespace Nethermind.Evm.Tracing
         }
 
         private string GetCallType(ExecutionType executionType)
-        {            
+        {
             switch (executionType)
             {
                 case ExecutionType.Transaction:

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Ethereum.Test.Base
+using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
+
+namespace Nethermind.Store
 {
-    public class TestBlock
+    public interface IStateTracer
     {
-        public TestBlockHeader BlockHeader { get; set; }
-        public TestBlockHeader[] UncleHeaders { get; set; }
-        public string Rlp { get; set; }
-        public IncomingTransaction[] Transactions { get; set; }
-        public string ExpectedException { get; set; }
+        void ReportBalanceChange(Address address, UInt256 before, UInt256 after);
+        void ReportCodeChange(Address address, byte[] before, byte[] after);
+        void ReportNonceChange(Address address, UInt256 before, UInt256 after);
     }
 }

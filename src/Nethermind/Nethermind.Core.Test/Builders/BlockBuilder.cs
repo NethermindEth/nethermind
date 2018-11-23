@@ -42,6 +42,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Number = number;
             return this;
         }
+        
+        public BlockBuilder WithBeneficiary(Address address)
+        {
+            TestObjectInternal.Header.Beneficiary = address;
+            return this;
+        }
 
         public BlockBuilder WithTotalDifficulty(UInt256 difficulty)
         {

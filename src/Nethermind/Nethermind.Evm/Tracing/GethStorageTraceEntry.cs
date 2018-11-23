@@ -16,14 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Ethereum.Test.Base
+using System.Numerics;
+
+namespace Nethermind.Evm.Tracing
 {
-    public class TestBlock
+    public class GethStorageTraceEntry
     {
-        public TestBlockHeader BlockHeader { get; set; }
-        public TestBlockHeader[] UncleHeaders { get; set; }
-        public string Rlp { get; set; }
-        public IncomingTransaction[] Transactions { get; set; }
-        public string ExpectedException { get; set; }
+        public string Address { get; set; }
+        public BigInteger Index { get; set; }
+        public string OldValue { get; set; }
+        public string NewValue { get; set; }
+        public long Cost { get; set; }
+        public long Refund { get; set; }
     }
 }

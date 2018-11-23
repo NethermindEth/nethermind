@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -32,6 +33,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
         public bool IsTracingStack => false;
+        public bool IsTracingState => false;
 
         public byte[] ReturnValue { get; set; }
         
@@ -75,7 +77,27 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportBalanceChange(Address address, UInt256 before, UInt256 after)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportCodeChange(Address address, byte[] before, byte[] after)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportNonceChange(Address address, UInt256 before, UInt256 after)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportStorageChange(StorageAddress storageAddress, UInt256 before, UInt256 after)
         {
             throw new NotSupportedException();
         }

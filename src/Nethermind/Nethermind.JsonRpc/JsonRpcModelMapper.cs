@@ -203,7 +203,7 @@ namespace Nethermind.JsonRpc
                 Gas = gethLikeTxTrace.Gas,
                 Failed = gethLikeTxTrace.Failed,
                 ReturnValue = gethLikeTxTrace.ReturnValue,
-                StorageTrace = MapStorageTrace(gethLikeTxTrace.StorageTrace),
+                StorageTrace = MapStorageTrace(gethLikeTxTrace.GethStorageTrace),
                 StructLogs = gethLikeTxTrace.Entries?.Select(x => new TransactionTraceEntry
                 {
                     Pc = x.Pc,
@@ -219,16 +219,16 @@ namespace Nethermind.JsonRpc
             };
         }
         
-        public StorageTrace MapStorageTrace(Evm.Tracing.StorageTrace storageTrace)
+        public StorageTrace MapStorageTrace(Evm.Tracing.GethStorageTrace gethStorageTrace)
         {
-            if (storageTrace == null)
+            if (gethStorageTrace == null)
             {
                 return null;
             }
 
             return new StorageTrace
             {
-                Entries = storageTrace.Entries?.Select(x => new StorageTraceEntry
+                Entries = gethStorageTrace.Entries?.Select(x => new StorageTraceEntry
                 {
                     Cost = x.Cost,
                     Refund = x.Refund,

@@ -21,12 +21,13 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing
 {
     public class GethLikeTxTracer : ITxTracer
     {
-        private TransactionTraceEntry _traceEntry;
+        private GethTxTraceEntry _traceEntry;
         private GethLikeTxTrace _trace = new GethLikeTxTrace();
         
         public bool IsTracingReceipt => true;
@@ -35,6 +36,7 @@ namespace Nethermind.Evm.Tracing
         bool ITxTracer.IsTracingMemory => true;
         bool ITxTracer.IsTracingInstructions => true;
         bool ITxTracer.IsTracingStack => true;
+        bool ITxTracer.IsTracingState => false;
         
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
@@ -61,7 +63,7 @@ namespace Nethermind.Evm.Tracing
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
             var previousTraceEntry = _traceEntry;
-            _traceEntry = new TransactionTraceEntry();
+            _traceEntry = new GethTxTraceEntry();
             _traceEntry.Pc = pc;
             _traceEntry.Operation = Enum.GetName(typeof(Instruction), opcode);
             _traceEntry.Gas = gas;
@@ -108,20 +110,40 @@ namespace Nethermind.Evm.Tracing
             _traceEntry.UpdateMemorySize(newSize);
         }
 
-        public void ReportStorageChange(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
         {
-            StorageTraceEntry storageTraceEntry = new StorageTraceEntry();
-            storageTraceEntry.Address = address.ToString();
-            storageTraceEntry.Index = storageIndex;
-            storageTraceEntry.Cost = cost;
-            storageTraceEntry.Refund = refund;
-            storageTraceEntry.NewValue = newValue.ToHexString();
-            storageTraceEntry.OldValue = currentValue.ToHexString();
+            GethStorageTraceEntry gethStorageTraceEntry = new GethStorageTraceEntry();
+            gethStorageTraceEntry.Address = address.ToString();
+            gethStorageTraceEntry.Index = storageIndex;
+            gethStorageTraceEntry.Cost = cost;
+            gethStorageTraceEntry.Refund = refund;
+            gethStorageTraceEntry.NewValue = newValue.ToHexString();
+            gethStorageTraceEntry.OldValue = currentValue.ToHexString();
             
-            _trace.StorageTrace.Entries.Add(storageTraceEntry);
+            _trace.GethStorageTrace.Entries.Add(gethStorageTraceEntry);
             byte[] bigEndian = new byte[32];
             storageIndex.ToBigEndian(bigEndian);
             _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);
+        }
+
+        public void ReportBalanceChange(Address address, UInt256 before, UInt256 after)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportCodeChange(Address address, byte[] before, byte[] after)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportNonceChange(Address address, UInt256 before, UInt256 after)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportStorageChange(StorageAddress storageAddress, UInt256 before, UInt256 after)
+        {
+            throw new NotSupportedException();
         }
 
         public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)

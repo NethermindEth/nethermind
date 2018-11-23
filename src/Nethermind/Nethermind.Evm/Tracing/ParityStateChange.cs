@@ -16,17 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-
 namespace Nethermind.Evm.Tracing
 {
-    public class StorageTrace
+    public class ParityStateChange<T>
     {
-        public StorageTrace()
+        public ParityStateChange(T before, T after)
         {
-            Entries = new List<StorageTraceEntry>();
+            Before = before;
+            After = after;
         }
         
-        public List<StorageTraceEntry> Entries { get; set; }
+        public T Before { get; set; }
+        public T After { get; set; }
     }
 }

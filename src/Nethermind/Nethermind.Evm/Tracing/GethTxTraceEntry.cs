@@ -21,9 +21,9 @@ using System.Linq;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class TransactionTraceEntry
+    public class GethTxTraceEntry
     {
-        public TransactionTraceEntry()
+        public GethTxTraceEntry()
         {
             Stack = new List<string>();
             Memory = new List<string>();
@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Tracing
         internal void UpdateMemorySize(ulong size)
         {
             // Geth's approach to memory trace is to show empty memory spaces on entry for the values that are being set by the operation
-            int missingChunks = (int)((size - (ulong)Memory.Count * (ulong)EvmPooledMemory.WordSize) / EvmPooledMemory.WordSize);
+            int missingChunks = (int)((size - (ulong)Memory.Count * EvmPooledMemory.WordSize) / EvmPooledMemory.WordSize);
             for (int i = 0; i < missingChunks; i++)
             {
                 Memory.Add("0000000000000000000000000000000000000000000000000000000000000000");
