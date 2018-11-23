@@ -19,12 +19,15 @@
 using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.HashLib;
 
 namespace Nethermind.Evm.Benchmark
 {
     [CoreJob(baseline: true)]
     public class KeccakQuest
     {
+        private static HashLib.Crypto.SHA3.Keccak256 _hash = HashFactory.Crypto.SHA3.CreateKeccak256();
+        
         private static Random _random = new Random(0);
 
         private byte[] _a;
@@ -45,15 +48,27 @@ namespace Nethermind.Evm.Benchmark
         }
         
         [Benchmark]
-        public byte[] Proposed()
+        public void MeadowHashSpan()
         {
-            throw new NotImplementedException();
+            MeadowHash.ComputeHash(_a);
+        }
+        
+        [Benchmark]
+        public byte[] MeadowHashBytes()
+        {
+            return MeadowHash.ComputeHashBytes(_a);
         }
         
         [Benchmark]
         public byte[] Current()
         {
             return Keccak.Compute(_a).Bytes;
+        }
+        
+        [Benchmark]
+        public byte[] HashLib()
+        {
+            return _hash.ComputeBytes(_a).GetBytes();
         }
     }
 }
