@@ -4,11 +4,15 @@ dotnet: 2.1.402
 sudo: required
 git:
   depth: 3
+before_script:
+  - chmod -R +x scripts
 notifications:
   slack:
     rooms:
       - demerzelsolutions:hzD3lmq2hbUgHuLFxjCOvk6x#team
       - demerzelsolutions:hzD3lmq2hbUgHuLFxjCOvk6x#general
+after_success:
+  - ./scripts/docker-publish.sh
 jobs:
   include:
     - stage: restore and build
