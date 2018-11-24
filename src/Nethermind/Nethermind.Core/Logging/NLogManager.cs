@@ -16,6 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Concurrent;
+
 namespace Nethermind.Core.Logging
 {
     public class NLogManager : ILogManager
@@ -28,7 +31,24 @@ namespace Nethermind.Core.Logging
             _logFileName = logFileName;
             _logDirectory = logDirectory;
         }
-        
+
+        private ConcurrentDictionary<Type, NLogLogger> _loggers = new ConcurrentDictionary<Type, NLogLogger>();
+
+        private NLogLogger BuildLogger(Type type)
+        {
+            return new NLogLogger(type, _logFileName, _logDirectory);
+        }
+
+        public ILogger GetClassLogger(Type type)
+        {
+            return _loggers.GetOrAdd(type, BuildLogger);
+        }
+
+        public ILogger GetClassLogger<T>()
+        {
+            return GetClassLogger(typeof(T));
+        }
+
         public ILogger GetClassLogger()
         {
             return new NLogLogger(_logFileName, _logDirectory);

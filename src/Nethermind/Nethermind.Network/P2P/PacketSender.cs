@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P
 
         public PacketSender(ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void Enqueue(Packet packet, bool priority = false)

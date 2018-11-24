@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P
 
         protected ProtocolHandlerBase(IP2PSession p2PSession, IMessageSerializationService serializer, ILogManager logManager)
         {
-            Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            Logger = logManager?.GetClassLogger(GetType()) ?? throw new ArgumentNullException(nameof(logManager));
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             P2PSession = p2PSession ?? throw new ArgumentNullException(nameof(p2PSession));
             _initCompletionSource = new TaskCompletionSource<MessageBase>();

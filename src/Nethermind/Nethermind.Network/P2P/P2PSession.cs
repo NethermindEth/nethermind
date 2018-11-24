@@ -81,7 +81,7 @@ namespace Nethermind.Network.P2P
             _timestamp = timestamp;
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<P2PSession>();
             
             NodeStats = nodeStats;
             LocalNodeId = localNodeId;

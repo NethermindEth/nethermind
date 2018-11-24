@@ -34,14 +34,32 @@ namespace Nethermind.Core.Logging
 
         internal readonly NLog.Logger Logger;
 
+        public NLogLogger(Type type, string fileName, string logDirectory = null, string loggerName = null)
+        {
+            loggerName = string.IsNullOrEmpty(loggerName) ? type.FullName.Replace("Nethermind.", string.Empty) : loggerName;
+            Logger = NLog.LogManager.GetLogger(loggerName);
+
+            var logsDir = string.IsNullOrEmpty(logDirectory) ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs") : logDirectory;
+            if (!Directory.Exists(logsDir))
+            {
+                Directory.CreateDirectory(logsDir);
+            }
+
+            if (NLog.LogManager.Configuration?.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
+            {
+                target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine("logs", fileName) : fileName;
+            }
+
+            /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
+            IsInfo = Logger.IsInfoEnabled;
+            IsWarn = Logger.IsWarnEnabled;
+            IsDebug = Logger.IsDebugEnabled;
+            IsTrace = Logger.IsTraceEnabled;
+            IsError = Logger.IsErrorEnabled || Logger.IsFatalEnabled;
+        }
+
         public NLogLogger(string fileName, string logDirectory = null, string loggerName = null)
         {
-            //if (string.IsNullOrEmpty(loggerName))
-            //{
-            //    string fullClassName = StackTraceUsageUtils.GetClassFullName();
-            //    //loggerName = fullClassName.Substring(fullClassName.LastIndexOf('.') + 1);
-            //    loggerName = StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
-            //}
             loggerName = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
             Logger = NLog.LogManager.GetLogger(loggerName);
 

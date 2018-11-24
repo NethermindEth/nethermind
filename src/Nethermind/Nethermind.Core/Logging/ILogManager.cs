@@ -16,10 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+
 namespace Nethermind.Core.Logging
 {
     public interface ILogManager
     {
+        ILogger GetClassLogger(Type type);
+        ILogger GetClassLogger<T>();
         ILogger GetClassLogger();
         ILogger GetLogger(string loggerName);
     }

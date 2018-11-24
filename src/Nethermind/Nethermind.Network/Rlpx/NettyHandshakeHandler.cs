@@ -23,8 +23,6 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
@@ -57,7 +55,7 @@ namespace Nethermind.Network.Rlpx
             _role = role;
             _remoteId = remoteId;
             _logManager = logManager?? throw new ArgumentNullException(nameof(NettyHandshakeHandler));
-            _logger = logManager.GetClassLogger(); 
+            _logger = logManager.GetClassLogger<NettyHandshakeHandler>(); 
             _service = service;
             _p2PSession = p2PSession;
             _initCompletionSource = new TaskCompletionSource<object>();

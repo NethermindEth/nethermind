@@ -47,7 +47,7 @@ namespace Nethermind.Stats
         {
             Node = node;
             _statsConfig = statsConfig;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<NodeStats>();
             Initialize();
         }
 

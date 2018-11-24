@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Threading;
 
 namespace Nethermind.Core.Logging
@@ -29,6 +30,16 @@ namespace Nethermind.Core.Logging
         private static NullLogManager _instance;
         
         public static NullLogManager Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogManager());
+
+        public ILogger GetClassLogger(Type type)
+        {
+            return NullLogger.Instance;
+        }
+
+        public ILogger GetClassLogger<T>()
+        {
+            return NullLogger.Instance;
+        }
 
         public ILogger GetClassLogger()
         {

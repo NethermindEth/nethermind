@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+
 namespace Nethermind.Core.Logging
 {
     public class OneLoggerLogManager : ILogManager
@@ -25,6 +27,16 @@ namespace Nethermind.Core.Logging
         public OneLoggerLogManager(ILogger logger)
         {
             _logger = logger;
+        }
+
+        public ILogger GetClassLogger(Type type)
+        {
+            return _logger;
+        }
+
+        public ILogger GetClassLogger<T>()
+        {
+            return _logger;
         }
 
         public ILogger GetClassLogger()
