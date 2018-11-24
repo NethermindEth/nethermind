@@ -793,7 +793,7 @@ namespace Nethermind.Core.Encoding
                     if (lengthOfLength > 4)
                     {
                         // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                        throw new RlpException("Expected length of lenth less or equal 4");
+                        throw new RlpException("Expected length of length less or equal 4");
                     }
 
                     int length = DeserializeLength(lengthOfLength);
@@ -830,8 +830,7 @@ namespace Nethermind.Core.Encoding
                 int prefix = ReadByte();
                 if (prefix < 192)
                 {
-                    throw new RlpException(
-                        $"Expected a sequence prefix to be in the range of <192, 255> and got {prefix}");
+                    throw new RlpException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix} at position {Position} in the message starting with {Data.Slice(0, Math.Min(64, Data.Length)).ToHexString()}");
                 }
 
                 if (prefix <= 247)
@@ -914,7 +913,7 @@ namespace Nethermind.Core.Encoding
 
                 if (prefix != 128 + 32)
                 {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)}");
+                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message starting with {Data.Slice(0, Math.Min(64, Data.Length)).ToHexString()}");
                 }
 
                 byte[] buffer = Read(32).ToArray();
@@ -931,7 +930,7 @@ namespace Nethermind.Core.Encoding
 
                 if (prefix != 128 + 20)
                 {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Address)}");
+                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Address)} at position {Position} in the message starting with {Data.Slice(0, Math.Min(64, Data.Length)).ToHexString()}");
                 }
 
                 byte[] buffer = Read(20).ToArray();
@@ -1017,7 +1016,7 @@ namespace Nethermind.Core.Encoding
                     if (lengthOfLength > 4)
                     {
                         // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                        throw new RlpException("Expected length of lenth less or equal 4");
+                        throw new RlpException("Expected length of length less or equal 4");
                     }
 
                     int length = DeserializeLength(lengthOfLength);
@@ -1031,7 +1030,7 @@ namespace Nethermind.Core.Encoding
                     return result;
                 }
 
-                throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
+                throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message starting with {Data.Slice(0, Math.Min(64, Data.Length)).ToHexString()}");
             }
 
             public T[] DecodeArray<T>(Func<DecoderContext, T> decodeItem)
