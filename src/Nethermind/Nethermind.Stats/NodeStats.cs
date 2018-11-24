@@ -57,11 +57,11 @@ namespace Nethermind.Stats
         
         public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
         {
-            if (nodeStatsEventType == NodeStatsEventType.ConnectionEstablished)
-            {
-                //reset failed connection counter in case connection was established
-                _statCounters[NodeStatsEventType.ConnectionFailed] = new AtomicLong();
-            }
+//            if (nodeStatsEventType == NodeStatsEventType.ConnectionEstablished)
+//            {
+//                //reset failed connection counter in case connection was established
+//                _statCounters[NodeStatsEventType.ConnectionFailed] = new AtomicLong();
+//            }
 
             if (nodeStatsEventType == NodeStatsEventType.ConnectionFailed)
             {

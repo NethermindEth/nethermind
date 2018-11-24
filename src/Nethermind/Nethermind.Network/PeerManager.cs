@@ -25,8 +25,6 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.Lifecycle;
-using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
@@ -38,7 +36,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -115,6 +112,7 @@ namespace Nethermind.Network
 
             LoadConfiguredTrustedPeers();
             LoadPeersFromDb();
+            LoadConfiguredBootnodes();
 
             _rlpxPeer.SessionCreated += (sender, args) =>
             {
@@ -432,7 +430,7 @@ namespace Nethermind.Network
                 {
                     LogLatencyComparison(peersWithLatencyStats);
                 }
-
+                
                 if (_networkConfig.CaptureNodeStatsEventHistory)
                 {
                     _logger.Debug($"Logging {peers.Length} peers log event histories");
@@ -568,9 +566,9 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (_logger.IsTrace)
+                if (_logger.IsDebug)
                 {
-                    _logger.Trace($"Adding persisted peer to New collection {node.Id}@{node.Host}:{node.Port}");
+                    _logger.Debug($"Adding persisted peer to New collection {node.Id}@{node.Host}:{node.Port}");
                 }
             }
         }
@@ -578,37 +576,61 @@ namespace Nethermind.Network
         private void LoadConfiguredTrustedPeers()
         {
             var trustedPeers = _networkConfig.TrustedPeers;
+            
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Initializing trusted peers: {trustedPeers?.Length ?? 0}.");
+            }
+            
             if (trustedPeers == null || !trustedPeers.Any())
             {
                 return;
             }
 
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Initializing trusted peers: {trustedPeers.Length}.");
-            }
-
             foreach (var trustedPeer in trustedPeers)
             {
-                var node = _nodeFactory.CreateNode(new NodeId(new PublicKey(Bytes.FromHexString(trustedPeer.NodeId))), trustedPeer.Host, trustedPeer.Port);
-                node.Description = trustedPeer.Description;
+                AddConfigNode(trustedPeer, true);
+            }
+        }
+        
+        private void LoadConfiguredBootnodes()
+        {
+            var bootNodes = _networkConfig.BootNodes;
+            
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Initializing bootnode peers: {bootNodes?.Length ?? 0}.");
+            }
+            
+            if (bootNodes == null || !bootNodes.Any())
+            {
+                return;
+            }
 
-                var nodeStats = _nodeStatsProvider.GetOrAddNodeStats(node);
-                nodeStats.IsTrustedPeer = true;
-
-                var peer = new Peer(node, nodeStats, ConnectionDirection.Out);
-                if (!_candidatePeers.TryAdd(node.Id, peer))
-                {
-                    continue;
-                }
-
-                if (_logger.IsDebug)
-                {
-                    _logger.Debug($"Adding trusted peer to New collection {node.Id}@{node.Host}:{node.Port}");
-                }
+            foreach (var node in bootNodes)
+            {
+                AddConfigNode(node);
             }
         }
 
+        private void AddConfigNode(ConfigNode configNode, bool isTrustedPeer = false)
+        {
+            var node = _nodeFactory.CreateNode(new NodeId(new PublicKey(Bytes.FromHexString(configNode.NodeId))), configNode.Host, configNode.Port);
+            node.Description = configNode.Description;
+
+            var nodeStats = _nodeStatsProvider.GetOrAddNodeStats(node);
+            nodeStats.IsTrustedPeer = isTrustedPeer;
+
+            var peer = new Peer(node, nodeStats, ConnectionDirection.Out);
+            if (_candidatePeers.TryAdd(node.Id, peer))
+            {
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"Adding config peer ({(isTrustedPeer ? "trusted" : "bootnode")}) to New collection {node.Id}@{node.Host}:{node.Port}");
+                }
+            }
+        }
+        
         private void OnProtocolInitialized(object sender, ProtocolInitializedEventArgs e)
         {
             //Fire and forget
@@ -637,9 +659,9 @@ namespace Nethermind.Network
                 }
                 else
                 {
-                    if (_logger.IsError)
+                    if (_logger.IsTrace)
                     {
-                        _logger.Error($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, peer not in candidate collection.");
+                        _logger.Trace($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, peer not in candidate collection.");
                     }
                 }
 
@@ -1293,7 +1315,8 @@ namespace Nethermind.Network
         {
             var sb = new StringBuilder();
             sb.AppendLine();
-            sb.AppendLine($"NodeEventHistory, Node: {nodeStats.Node.Id}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Desc: {nodeStats.Node.Description}");
+            var isBootnode = _networkConfig.BootNodes?.Any(x => new NodeId(new PublicKey(Bytes.FromHexString(x.NodeId))) == nodeStats.Node.Id) ?? false;
+            sb.AppendLine($"NodeEventHistory, Node: {nodeStats.Node.Id}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Desc: {nodeStats.Node.Description}, Trusted: {nodeStats.IsTrustedPeer}, Bootnode: {isBootnode}");
 
             if (nodeStats.P2PNodeDetails != null)
             {
