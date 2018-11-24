@@ -162,13 +162,7 @@ namespace Nethermind.Db
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
-
-                if (_currentBatch != null)
-                {
-                    throw new NotSupportedException("Index not needed, am I right?");
-                    //return _currentBatch.Get(key);
-                }
-
+                
                 return _db.Get(key);
             }
             set
