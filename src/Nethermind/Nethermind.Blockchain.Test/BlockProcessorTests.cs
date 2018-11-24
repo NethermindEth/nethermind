@@ -38,6 +38,7 @@ namespace Nethermind.Blockchain.Test
         {
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
+            IDb traceDb = new MemDb();
             IStateProvider stateProvider = new StateProvider(new StateTree(stateDb, Keccak.EmptyTreeHash), codeDb, NullLogManager.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new BlockProcessor(
@@ -47,6 +48,7 @@ namespace Nethermind.Blockchain.Test
                 transactionProcessor,
                 stateDb,
                 codeDb,
+                traceDb,
                 stateProvider,
                 new StorageProvider(stateDb, stateProvider, NullLogManager.Instance),
                 NullTransactionPool.Instance,

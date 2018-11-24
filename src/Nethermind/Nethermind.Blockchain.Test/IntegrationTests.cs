@@ -64,6 +64,7 @@ namespace Nethermind.Blockchain.Test
 
             EthereumSigner ethereumSigner = new EthereumSigner(specProvider, logManager);
             MemDb receiptsDb = new MemDb();
+            MemDb traceDb = new MemDb();
             TransactionPool transactionPool = new TransactionPool(new NullTransactionStorage(),
                 new PendingTransactionThresholdValidator(), new Timestamp(), ethereumSigner, logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider);
@@ -91,7 +92,7 @@ namespace Nethermind.Blockchain.Test
             TransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator,
-                processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, logManager);
+                processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, logManager);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumSigner, NullTransactionPool.Instance), logManager, false);
 
             /* load ChainSpec and init */

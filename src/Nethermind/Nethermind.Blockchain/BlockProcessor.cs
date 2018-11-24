@@ -53,6 +53,7 @@ namespace Nethermind.Blockchain
             ITransactionProcessor transactionProcessor,
             ISnapshotableDb stateDb,
             ISnapshotableDb codeDb,
+            IDb traceDb,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             ITransactionPool transactionPool,

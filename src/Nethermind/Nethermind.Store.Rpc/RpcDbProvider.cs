@@ -35,6 +35,7 @@ namespace Nethermind.Store.Rpc
             BlocksDb = new ReadOnlyDb(new RpcDb(DbNames.Blocks, serializer, client, logManager, recordDbProvider?.BlocksDb), true);
             BlockInfosDb = new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb), true);
             PendingTxsDb = new ReadOnlyDb(new RpcDb(DbNames.PendingTxs, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
+            TraceDb = new ReadOnlyDb(new RpcDb(DbNames.Trace, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -43,6 +44,7 @@ namespace Nethermind.Store.Rpc
         public IDb BlocksDb { get; }
         public IDb BlockInfosDb { get; }
         public IDb PendingTxsDb { get; }
+        public IDb TraceDb { get; }
 
         public void Dispose()
         {

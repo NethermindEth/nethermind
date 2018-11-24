@@ -305,6 +305,7 @@ namespace Nethermind.PerfTest
             var dbProvider = new RocksDbProvider(DbBasePath, DbConfig.Default, _logManager);
             var stateDb = dbProvider.StateDb;
             var codeDb = dbProvider.CodeDb;
+            var traceDb = dbProvider.TraceDb;
             var blocksDb = dbProvider.BlocksDb;
             var blockInfosDb = dbProvider.BlockInfosDb;
             var receiptsDb = dbProvider.ReceiptsDb;
@@ -333,7 +334,7 @@ namespace Nethermind.PerfTest
             //var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, new TransactionTracer("D:\\tx_traces\\perf_test", new UnforgivingJsonSerializer()), _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumSigner, transactionPool), _logManager, true);
 
             /* load ChainSpec and init */

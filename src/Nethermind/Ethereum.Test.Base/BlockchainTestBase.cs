@@ -211,6 +211,7 @@ namespace Ethereum.Test.Base
 
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
+            IDb traceDb = new MemDb();
             StateTree stateTree = new StateTree(stateDb);
 
 
@@ -268,6 +269,7 @@ namespace Ethereum.Test.Base
                     _logManager),
                 stateDb,
                 codeDb,
+                traceDb,
                 stateProvider,
                 storageProvider,
                 transactionPool,

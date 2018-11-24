@@ -224,6 +224,7 @@ namespace Nethermind.Runner.Runners
                 transactionProcessor,
                 _dbProvider.StateDb,
                 _dbProvider.CodeDb,
+                _dbProvider.TraceDb,
                 stateProvider,
                 storageProvider,
                 transactionPool,

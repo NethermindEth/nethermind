@@ -26,6 +26,7 @@ namespace Nethermind.Store
         public IDb BlocksDb { get; } = new MemDb();
         public IDb BlockInfosDb { get; } = new MemDb();
         public IDb PendingTxsDb { get; } = new MemDb();
+        public IDb TraceDb { get; } = new MemDb();
 
         public void Dispose()
         {

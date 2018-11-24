@@ -48,6 +48,10 @@ namespace Nethermind.Db
             PendingTxsDb = new DbOnTheRocks(
                 Path.Combine(basePath, DbOnTheRocks.PendingTxsDbPath),
                 dbConfig, logManager);
+            
+            TraceDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.TraceDbPath),
+                dbConfig, logManager);
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -56,6 +60,7 @@ namespace Nethermind.Db
         public IDb BlocksDb { get; }
         public IDb BlockInfosDb { get; }
         public IDb PendingTxsDb { get; }
+        public IDb TraceDb { get; }
 
         public void Dispose()
         {

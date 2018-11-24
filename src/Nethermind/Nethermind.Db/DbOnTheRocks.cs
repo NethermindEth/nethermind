@@ -36,6 +36,7 @@ namespace Nethermind.Db
         public const string TxsDbPath = "txs";
         public const string BlockInfosDbPath = "blockInfos";
         public const string PendingTxsDbPath = "pendingtxs";
+        public const string TraceDbPath = "trace";
 
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
 

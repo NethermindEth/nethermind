@@ -333,7 +333,7 @@ namespace Nethermind.Runner.Runners
                 VirtualMachine virtualMachine = new VirtualMachine(StateProvider, storageProvider, blockhashProvider, logManager);
                 ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, StateProvider, storageProvider, virtualMachine, logManager);
                 ITransactionPool transactionPool = customTransactionPool;
-                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, StateProvider, storageProvider, transactionPool, receiptStorage, logManager);
+                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, storageProvider, transactionPool, receiptStorage, logManager);
                 Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, true);
             }
         }
@@ -512,6 +512,7 @@ namespace Nethermind.Runner.Runners
                 transactionProcessor,
                 _dbProvider.StateDb,
                 _dbProvider.CodeDb,
+                _dbProvider.TraceDb,
                 stateProvider,
                 storageProvider,
                 _transactionPool,

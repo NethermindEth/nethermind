@@ -62,7 +62,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             byte[] sizeBytes = allBytes.Slice(0, 2);
             int size = sizeBytes.ToInt32();
 
-            byte[] deciphered = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes);
+            (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes);
 
             AuthEip8Message authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(deciphered);
             Assert.AreEqual(authMessage.PublicKey, NetTestVectors.StaticKeyA.PublicKey);
@@ -84,7 +84,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "0f2c703f851cbf5ac47396d9ca65b6260bd141ac4d53e2de585a73d1750780db4c9ee4cd4d225173" +
                       "a4592ee77e2bd94d0be3691f3b406f9bba9b591fc63facc016bfa8");
 
-            byte[] deciphered = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes);
+            (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes);
 
             AuthMessage authMessage = _messageSerializationService.Deserialize<AuthMessage>(deciphered);
             Assert.AreEqual(authMessage.PublicKey, NetTestVectors.StaticKeyA.PublicKey);
@@ -118,7 +118,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
             EciesCipher cipher = new EciesCipher(cryptoRandom);
-            byte[] deciphered = cipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes);
+            (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes);
 
             AuthEip8Message authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(deciphered);
             Assert.AreEqual(authMessage.PublicKey, NetTestVectors.StaticKeyA.PublicKey);
@@ -143,7 +143,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "dca6505b7196532e5f85b259a20c45e1979491683fee108e9660edbf38f3add489ae73e3dda2c71b" +
                       "d1497113d5c755e942d1");
 
-            byte[] deciphered = _eciesCipher.Decrypt(NetTestVectors.StaticKeyA, allBytes);
+            (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyA, allBytes);
 
             AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(deciphered);
             Assert.AreEqual(ackMessage.EphemeralPublicKey, NetTestVectors.EphemeralKeyB.PublicKey);
@@ -177,7 +177,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
             EciesCipher cipher = new EciesCipher(cryptoRandom);
-            byte[] deciphered = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes);
+            (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes);
 
             AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);
             Assert.AreEqual(ackMessage.EphemeralPublicKey, NetTestVectors.EphemeralKeyB.PublicKey);
@@ -213,7 +213,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
             EciesCipher cipher = new EciesCipher(cryptoRandom);
-            byte[] deciphered = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes);
+            (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes);
 
             AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);
             Assert.AreEqual(ackMessage.EphemeralPublicKey, NetTestVectors.EphemeralKeyB.PublicKey);
@@ -231,7 +231,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _cryptoRandom.EnqueueRandomBytes(NetTestVectors.EphemeralKeyA.KeyBytes);
             byte[] cipherText = _eciesCipher.Encrypt(privateKey.PublicKey, plainText, null); // public(65) | IV(16) | cipher(...)
 
-            byte[] deciphered = _eciesCipher.Decrypt(privateKey, cipherText);
+            (_, byte[] deciphered) = _eciesCipher.Decrypt(privateKey, cipherText);
             Assert.AreEqual(plainText, deciphered);
         }
     }
