@@ -1,4 +1,5 @@
 ﻿using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Stats;
@@ -11,15 +12,16 @@ namespace Nethermind.Network.Test
     public class NodeStatsTests
     {
         private INodeStats _nodeStats;
+        private StatsConfig _config;
 
         [SetUp]
         public void Initialize()
         {
             var nodeFactory = new NodeFactory();
             var node = nodeFactory.CreateNode("192.1.1.1", 3333);
-            StatsConfig config = new StatsConfig();
-            config.CaptureNodeLatencyStatsEventHistory = true;
-            _nodeStats = new NodeStats(node, config, NullLogManager.Instance);
+            _config = new StatsConfig();
+            _config.CaptureNodeLatencyStatsEventHistory = true;
+            _nodeStats = new NodeStats(node, _config, NullLogManager.Instance);
         }
 
         [Test]
@@ -43,6 +45,38 @@ namespace Nethermind.Network.Test
             var events = _nodeStats.LatencyHistory.ToList();
             var avCompare = events.Sum(x => x.Latency) / events.Count();
             Assert.AreEqual(av, avCompare);
+        }
+
+        [Test]
+        public void DisconnectDelayTest()
+        {
+            var isConnDelayed = _nodeStats.IsConnectionDelayed();
+            Assert.IsFalse(isConnDelayed.Result);
+            
+            _nodeStats.AddNodeStatsDisconnectEvent(DisconnectType.Remote, DisconnectReason.Other);
+            isConnDelayed = _nodeStats.IsConnectionDelayed();
+            Assert.IsTrue(isConnDelayed.Result);
+            Assert.AreEqual(NodeStatsEventType.Disconnect, isConnDelayed.DelayReason);
+            var task = Task.Delay(100);
+            task.Wait();
+            isConnDelayed = _nodeStats.IsConnectionDelayed();
+            Assert.IsFalse(isConnDelayed.Result);
+        }
+        
+        [Test]
+        public void FailedConnectionDelayTest()
+        {
+            var isConnDelayed = _nodeStats.IsConnectionDelayed();
+            Assert.IsFalse(isConnDelayed.Result);
+            
+            _nodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
+            isConnDelayed = _nodeStats.IsConnectionDelayed();
+            Assert.IsTrue(isConnDelayed.Result);
+            Assert.AreEqual(NodeStatsEventType.ConnectionFailed, isConnDelayed.DelayReason);
+            var task = Task.Delay(100);
+            task.Wait();
+            isConnDelayed = _nodeStats.IsConnectionDelayed();
+            Assert.IsFalse(isConnDelayed.Result);
         }
     }
 }

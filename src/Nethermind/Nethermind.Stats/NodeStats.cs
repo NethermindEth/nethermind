@@ -39,8 +39,9 @@ namespace Nethermind.Stats
         private ConcurrentDictionary<NodeStatsEventType, AtomicLong> _statCounters;
         private ConcurrentDictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;        
         private ConcurrentBag<NodeStatsEvent> _eventHistory;
-        private DateTime? LastDisconnectTime;
-        private DateTime? LastFailedConnectionTime;
+        private DateTime? _lastDisconnectTime;
+        private DateTime? _lastFailedConnectionTime;
+        private static readonly Random Random = new Random();
         
         public NodeStats(Node node, IStatsConfig statsConfig, ILogManager logManager)
         {
@@ -64,7 +65,7 @@ namespace Nethermind.Stats
 
             if (nodeStatsEventType == NodeStatsEventType.ConnectionFailed)
             {
-                LastFailedConnectionTime = DateTime.Now;
+                _lastFailedConnectionTime = DateTime.Now;
             }
             _statCounters[nodeStatsEventType].Increment();
             CaptureEvent(nodeStatsEventType);
@@ -78,7 +79,7 @@ namespace Nethermind.Stats
 
         public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
         {
-            LastDisconnectTime = DateTime.Now;
+            _lastDisconnectTime = DateTime.Now;
             _lastDisconnects[disconnectType] = (disconnectReason, DateTime.Now);
             _statCounters[NodeStatsEventType.Disconnect].Increment();
             CaptureEvent(NodeStatsEventType.Disconnect, null, null, new DisconnectDetails
@@ -166,49 +167,56 @@ namespace Nethermind.Stats
             return (false, null);
         }
 
-        private static Random _random = new Random();
+        public long CurrentNodeReputation => CalculateCurrentReputation();
+
+        public long CurrentPersistedNodeReputation { get; set; }
+
+        public long NewPersistedNodeReputation => IsReputationPenalized() ? -100 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
+
+        public bool IsTrustedPeer { get; set; }
+
+        public P2PNodeDetails P2PNodeDetails { get; private set; }
+
+        public EthNodeDetails EthNodeDetails { get; private set; }
+
+        public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
+
+        public SyncNodeDetails SyncNodeDetails { get; private set; }
+
+        public Node Node { get; }
 
         private bool IsDelayedDueToDisconnect()
         {
-            if (!LastDisconnectTime.HasValue)
+            if (!_lastDisconnectTime.HasValue)
             {
                 return false;
             }
 
-            var timePassed = DateTime.Now.Subtract(LastDisconnectTime.Value).TotalMilliseconds;
+            var timePassed = DateTime.Now.Subtract(_lastDisconnectTime.Value).TotalMilliseconds;
             var disconnectDelay = GetDisconnectDelay();
             if (disconnectDelay <= 500)
             {
                 //randomize early disconnect delay - for private networks
-                lock (_random)
+                lock (Random)
                 {
-                    var randomizedDelay = _random.Next(disconnectDelay);
+                    var randomizedDelay = Random.Next(disconnectDelay);
                     disconnectDelay = randomizedDelay < 10 ? randomizedDelay + 10 : randomizedDelay;
                 }
             }
             var result = timePassed < disconnectDelay;
-//            if (result && _logger.IsInfo)
-//            {
-//                _logger.Error($"TESTTEST Skipping connection to peer, due to disconnect delay, time from last disconnect: {timePassed}, delay: {disconnectDelay}, peer: {Node.Id}");
-//            }
-
             return result;
         }
 
         private bool IsDelayedDueToFailedConnection()
         {
-            if (!LastFailedConnectionTime.HasValue)
+            if (!_lastFailedConnectionTime.HasValue)
             {
                 return false;
             }
 
-            var timePassed = DateTime.Now.Subtract(LastFailedConnectionTime.Value).TotalMilliseconds;
+            var timePassed = DateTime.Now.Subtract(_lastFailedConnectionTime.Value).TotalMilliseconds;
             var failedConnectionDelay = GetFailedConnectionDelay();
             var result = timePassed < failedConnectionDelay;
-//            if (result && _logger.IsInfo)
-//            {
-//                _logger.Error($"TESTTEST Skipping connection to peer, due to failed connection delay, time from last failed connection: {timePassed}, delay: {failedConnectionDelay}, peer: {Node.Id}");
-//            }
 
             return result;
         }
@@ -244,27 +252,7 @@ namespace Nethermind.Stats
 
             return _statsConfig.DisconnectDelays[disconnectCount - 1];
         }
-
-        public long CurrentNodeReputation => CalculateCurrentReputation();
-
-        public long CurrentPersistedNodeReputation { get; set; }
-
-        public long NewPersistedNodeReputation => IsReputationPenalized() ? -100 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
-
-        public bool IsTrustedPeer { get; set; }
-
-        //public DateTime? LastFailedConnectionTime { get; set; }
-
-        public P2PNodeDetails P2PNodeDetails { get; private set; }
-
-        public EthNodeDetails EthNodeDetails { get; private set; }
-
-        public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
-
-        public SyncNodeDetails SyncNodeDetails { get; private set; }
-
-        public Node Node { get; }
-
+        
         private void CaptureEvent(NodeStatsEventType eventType, P2PNodeDetails p2PNodeDetails = null, EthNodeDetails ethNodeDetails = null, DisconnectDetails disconnectDetails = null, ConnectionDirection? connectionDirection = null, SyncNodeDetails syncNodeDetails = null)
         {
             if (!_statsConfig.CaptureNodeStatsEventHistory)
