@@ -44,7 +44,7 @@ namespace Nethermind.Network.Crypto
             _keyGenerator = new PrivateKeyGenerator(cryptoRandom);
         }
 
-        public byte[] Decrypt(PrivateKey privateKey, byte[] ciphertextBody, byte[] macData = null)
+        public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] ciphertextBody, byte[] macData = null)
         {
             MemoryStream inputStream = new MemoryStream(ciphertextBody);
             int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
@@ -55,9 +55,13 @@ namespace Nethermind.Network.Crypto
             inputStream.Read(iv, 0, iv.Length);
             byte[] cipherBody = new byte[inputStream.Length - inputStream.Position];
             inputStream.Read(cipherBody, 0, cipherBody.Length);
+            if (ephemBytes[0] != 4) // if not a compressed public key then probably we need to use EIP8
+            {
+                return (false, null);
+            }
 
             byte[] plaintext = Decrypt(new PublicKey(ephemBytes), privateKey, iv, cipherBody, macData);
-            return plaintext;
+            return (true, plaintext);
         }
 
         public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plaintext, byte[] macData)

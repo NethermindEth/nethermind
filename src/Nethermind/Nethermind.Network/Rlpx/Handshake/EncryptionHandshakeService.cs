@@ -17,6 +17,7 @@
  */
 
 using System;
+using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -91,21 +92,29 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             AuthMessageBase authMessage;
             bool isOld = false;
+            byte[] plainText = null;
             try
             {
                 if(_logger.IsTrace) _logger.Trace($"Trying to decrypt an old version of {nameof(AuthMessage)}");
-                byte[] plaintextOld = _eciesCipher.Decrypt(_privateKey, auth.Data);
-                authMessage = _messageSerializationService.Deserialize<AuthMessage>(plaintextOld);
-                isOld = true;
+                (isOld, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data);   
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                if(_logger.IsTrace) _logger.Trace($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
-                byte[] sizeData = auth.Data.Slice(0, 2);
-                byte[] plaintext = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
-                authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plaintext);
+                if(_logger.IsTrace) _logger.Trace($"Exception when decrypting ack {ex.Message}");
             }
 
+            if (!isOld)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
+                byte[] sizeData = auth.Data.Slice(0, 2);
+                (_, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
+                authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plainText);
+            }
+            else
+            {
+                authMessage = _messageSerializationService.Deserialize<AuthMessage>(plainText);
+            }
+            
             var nodeId = new NodeId(authMessage.PublicKey);
             if(_logger.IsTrace) _logger.Trace($"Received AUTH v{authMessage.Version} from {nodeId}");
 
@@ -149,24 +158,35 @@ namespace Nethermind.Network.Rlpx.Handshake
         {
             handshake.AckPacket = ack;
 
+            bool isOld = false;
+            byte[] plainText = null;
             try
             {
-                byte[] plaintextOld = _eciesCipher.Decrypt(_privateKey, ack.Data);
-                AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(plaintextOld);
-                if(_logger.IsTrace) _logger.Trace($"Received ACK old");
-                
-                handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
-                handshake.RecipientNonce = ackMessage.Nonce;
+                (isOld, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data);
             }
-            catch (Exception)
+            catch (Exception ex)
+            {
+                if(_logger.IsTrace) _logger.Trace($"Exception when decrypting agree {ex.Message}");
+            }
+            
+            if (isOld)
+            {
+                AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(plainText);
+                if(_logger.IsTrace) _logger.Trace("Received ACK old");
+                    
+                handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
+                handshake.RecipientNonce = ackMessage.Nonce;   
+            }
+            else
             {
                 byte[] sizeData = ack.Data.Slice(0, 2);
-                byte[] plaintext = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
-                AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(plaintext);
-                if(_logger.IsTrace) _logger.Trace($"Received ACK v{ackMessage.Version}");
+                (_, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
                 
-                handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
-                handshake.RecipientNonce = ackMessage.Nonce;
+                AckEip8Message ackEip8Message = _messageSerializationService.Deserialize<AckEip8Message>(plainText);
+                if (_logger.IsTrace) _logger.Trace($"Received ACK v{ackEip8Message.Version}");
+                
+                handshake.RemoteEphemeralPublicKey = ackEip8Message.EphemeralPublicKey;
+                handshake.RecipientNonce = ackEip8Message.Nonce;
             }
 
             SetSecrets(handshake, HandshakeRole.Initiator);

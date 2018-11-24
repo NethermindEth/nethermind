@@ -22,7 +22,7 @@ namespace Nethermind.Network.Crypto
 {
     public interface IEciesCipher
     {
-        byte[] Decrypt(PrivateKey privateKey, byte[] ciphertextBody, byte[] macData = null);
+        (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] ciphertextBody, byte[] macData = null);
         byte[] Encrypt(PublicKey recipientPublicKey, byte[] plaintext, byte[] macData);
     }
 }
