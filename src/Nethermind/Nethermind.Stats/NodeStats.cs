@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
@@ -311,7 +310,7 @@ namespace Nethermind.Stats
             rlpxReputation += _statCounters[NodeStatsEventType.Eth62Initialized].Value > 0 ? 20 : 0;
             rlpxReputation += _statCounters[NodeStatsEventType.SyncStarted].Value > 0 ? 1000 : 0;
 
-            if (_lastDisconnects.Any())
+            if (_lastDisconnects.Count != 0)
             {
                 var localDisconnectReason = _lastDisconnects.ContainsKey(DisconnectType.Local) ? _lastDisconnects[DisconnectType.Local].DisconnectReason : (DisconnectReason?)null;
                 var remoteDisconnectReason = _lastDisconnects.ContainsKey(DisconnectType.Remote) ? _lastDisconnects[DisconnectType.Remote].DisconnectReason : (DisconnectReason?)null;
@@ -352,7 +351,7 @@ namespace Nethermind.Stats
 
         private bool IsReputationPenalized()
         {
-            if (!_lastDisconnects.Any())
+            if (_lastDisconnects.Count == 0)
             {
                 return false;
             }
