@@ -40,8 +40,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Rlp.DecoderContext context = bytes.AsRlpContext();
             context.ReadSequenceLength();
             statusMessage.ProtocolVersion = context.DecodeByte();
-            statusMessage.ChainId = context.DecodeInt();
-            statusMessage.TotalDifficulty = context.DecodeUBigInt();
+            statusMessage.ChainId = context.DecodeUInt256();
+            statusMessage.TotalDifficulty = context.DecodeUInt256();
             statusMessage.BestHash = context.DecodeKeccak();
             statusMessage.GenesisHash = context.DecodeKeccak();
             return statusMessage;

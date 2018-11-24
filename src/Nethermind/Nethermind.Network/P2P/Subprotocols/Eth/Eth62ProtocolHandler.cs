@@ -100,7 +100,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             BlockHeader head = SyncManager.Head;
             StatusMessage statusMessage = new StatusMessage();
-            statusMessage.ChainId = SyncManager.ChainId;
+            statusMessage.ChainId = (UInt256)SyncManager.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.Difficulty;
             statusMessage.BestHash = head.Hash;
@@ -236,7 +236,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             var eventArgs = new EthProtocolInitializedEventArgs(this)
             {
-                ChainId = status.ChainId,
+                ChainId = (long)status.ChainId,
                 BestHash = status.BestHash,
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
