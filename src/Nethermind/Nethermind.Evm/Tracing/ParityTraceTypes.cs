@@ -21,7 +21,7 @@ using System;
 namespace Nethermind.Evm.Tracing
 {
     [Flags]
-    public enum ParityTraceType
+    public enum ParityTraceTypes
     {
         Vm,
         State,

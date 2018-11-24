@@ -89,6 +89,27 @@ namespace Nethermind.Blockchain
             Block block = _blockTree.FindBlock(blockNumber);
             return TraceBlock(block);
         }
+        
+        public ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes parityTraceTypes)
+        {
+            TransactionReceipt receipt = _receiptStorage.Get(txHash);
+            Block block = _blockTree.FindBlock(receipt.BlockNumber);
+            if (block == null) throw new InvalidOperationException("Only historical blocks");
+
+            return ParityTrace(block, txHash);
+        }
+
+        public ParityLikeTxTrace[] ParityTraceBlock(UInt256 blockNumber, ParityTraceTypes parityTraceTypes)
+        {
+            Block block = _blockTree.FindBlock(blockNumber);
+            return ParityTraceBlock(block);
+        }
+        
+        public ParityLikeTxTrace[] ParityTraceBlock(Keccak blockHash, ParityTraceTypes parityTraceTypes)
+        {
+            Block block = _blockTree.FindBlock(blockHash, false);
+            return ParityTraceBlock(block);
+        }
 
         private GethLikeTxTrace Trace(Block block, Keccak txHash)
         {
@@ -96,7 +117,14 @@ namespace Nethermind.Blockchain
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
             return listener.BuildResult()[0];
         }
-
+        
+        private ParityLikeTxTrace ParityTrace(Block block, Keccak txHash)
+        {
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(block, txHash, ParityTraceTypes.Call | ParityTraceTypes.State);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
+            return listener.BuildResult()[0];
+        }
+        
         private GethLikeTxTrace[] TraceBlock(Block block)
         {
             if (block == null) throw new InvalidOperationException("Only canonical, historical blocks supported");
@@ -108,6 +136,21 @@ namespace Nethermind.Blockchain
             }
 
             GethLikeBlockTracer listener = new GethLikeBlockTracer(block);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
+            return listener.BuildResult();
+        }
+        
+        private ParityLikeTxTrace[] ParityTraceBlock(Block block)
+        {
+            if (block == null) throw new InvalidOperationException("Only canonical, historical blocks supported");
+
+            if (block.Number != 0)
+            {
+                Block parent = _blockTree.FindParent(block);
+                if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
+            }
+
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(block, ParityTraceTypes.Call | ParityTraceTypes.State);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
             return listener.BuildResult();
         }

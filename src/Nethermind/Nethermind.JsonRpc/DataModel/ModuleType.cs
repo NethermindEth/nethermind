@@ -32,6 +32,7 @@ namespace Nethermind.JsonRpc.DataModel
         Shh,
         Nethm,
         Debug,
-        TxPool
+        TxPool,
+        Trace,
     }
 }

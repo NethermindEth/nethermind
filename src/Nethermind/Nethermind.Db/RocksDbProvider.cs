@@ -56,6 +56,7 @@ namespace Nethermind.Db
         
         public ISnapshotableDb StateDb { get; }
         public ISnapshotableDb CodeDb { get; }
+        public IDb TraceDb { get; }
         public IDb ReceiptsDb { get; }
         public IDb BlocksDb { get; }
         public IDb BlockInfosDb { get; }
