@@ -167,6 +167,8 @@ namespace Nethermind.Stats
             return (false, null);
         }
 
+        private static Random _random = new Random();
+
         private bool IsDelayedDueToDisconnect()
         {
             if (!LastDisconnectTime.HasValue)
@@ -179,9 +181,11 @@ namespace Nethermind.Stats
             if (disconnectDelay <= 500)
             {
                 //randomize early disconnect delay - for private networks
-                var random = new Random();
-                var randomizedDelay = random.Next(disconnectDelay);
-                disconnectDelay = randomizedDelay < 10 ? randomizedDelay + 10 : randomizedDelay;
+                lock (_random)
+                {
+                    var randomizedDelay = _random.Next(disconnectDelay);
+                    disconnectDelay = randomizedDelay < 10 ? randomizedDelay + 10 : randomizedDelay;
+                }
             }
             var result = timePassed < disconnectDelay;
 //            if (result && _logger.IsInfo)
