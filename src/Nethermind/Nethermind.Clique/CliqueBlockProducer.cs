@@ -261,6 +261,8 @@ namespace Nethermind.Clique
             await (_producerTask ?? Task.CompletedTask);
         }
 
+        private Keccak _recentNotAllowedParent;
+        
         private Block PrepareBlock(Block parentBlock)
         {
             BlockHeader parentHeader = parentBlock.Header;
@@ -270,9 +272,15 @@ namespace Nethermind.Clique
                 return null;
             }
 
+            if (_recentNotAllowedParent == parentBlock.Hash)
+            {
+                return null;
+            }
+
             if (!_sealEngine.CanSignBlock(parentHeader.Number + 1, parentHeader.Hash))
             {
                 if (_logger.IsInfo) _logger.Info($"Not allowed to sign block ({parentBlock.Number + 1})");
+                _recentNotAllowedParent = parentHeader.Hash;
                 return null;
             }
 
