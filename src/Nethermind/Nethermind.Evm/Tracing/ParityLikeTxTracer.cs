@@ -45,19 +45,19 @@ namespace Nethermind.Evm.Tracing
             _trace.BlockNumber = block.Number;
             _trace.BlockHash = block.Hash;
 
-            if ((parityTraceTypes & ParityTraceTypes.State) != 0)
+            if ((parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
             {
                 IsTracingState = true;
                 _trace.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
             }
 
-            if ((parityTraceTypes & ParityTraceTypes.Call) != 0)
+            if ((parityTraceTypes & ParityTraceTypes.Trace) != 0)
             {
                 IsTracingCalls = true;
                 IsTracingReceipt = true;
             }
 
-            if ((parityTraceTypes & ParityTraceTypes.Vm) != 0)
+            if ((parityTraceTypes & ParityTraceTypes.VmTrace) != 0)
             {
                 throw new NotImplementedException();
             }
