@@ -127,7 +127,7 @@ namespace Nethermind.JsonRpc.DataModel.Trace
             writer.WritePropertyName("storage");
 
 
-            if (value.Storage.Count == 0 || value.Storage == null)
+            if ((value.Storage?.Count ?? 0) == 0)
             {
                 writer.WriteValue("=");
             }

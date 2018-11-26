@@ -23,6 +23,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -50,11 +51,13 @@ namespace Nethermind.JsonRpc
                 new UInt256Converter(),
             };
         }
-        
+
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IRpcModuleProvider _rpcModuleProvider;
         private readonly JsonSerializer _serializer;
+
+        private Dictionary<Type, JsonConverter> _converterLookup = new Dictionary<Type, JsonConverter>();
 
         public JsonRpcService(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider, ILogManager logManager)
         {
@@ -67,15 +70,17 @@ namespace Nethermind.JsonRpc
             {
                 foreach (JsonConverter converter in module.Converters)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name}");
+                    if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name}");
                     _serializer.Converters.Add(converter);
+                    _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
                 }
             }
-            
+
             foreach (JsonConverter converter in GetStandardConverters())
             {
-                if(_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name}");
+                if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name}");
                 _serializer.Converters.Add(converter);
+                _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
             }
         }
 
@@ -183,6 +188,14 @@ namespace Nethermind.JsonRpc
 
         private object GetDataObject(object data)
         {
+            if (_converterLookup.ContainsKey(data.GetType()))
+            {
+                StringBuilder builder = new StringBuilder();
+                TextWriter writer = new StringWriter(builder);
+                _converterLookup[data.GetType()].WriteJson(new JsonTextWriter(writer), data, _serializer);
+                return builder.ToString();
+            }
+
             return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data is bool ? data : data?.ToString();
         }
 

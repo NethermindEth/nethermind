@@ -242,9 +242,12 @@ namespace Nethermind.Runner.Runners
             TxPoolModule txPoolModule = new TxPoolModule(_configProvider, _logManager, _jsonSerializer, blockchainBridge, mapper);
             _rpcModuleProvider.Register<ITxPoolModule>(txPoolModule);
 
-            NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_syncManager));
-            _rpcModuleProvider.Register<INetModule>(netModule);
-            
+            if (_initConfig.NetworkEnabled && _initConfig.SynchronizationEnabled)
+            {
+                NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_syncManager));
+                _rpcModuleProvider.Register<INetModule>(netModule);
+            }
+
             TraceModule traceModule = new TraceModule(_configProvider, _logManager, _jsonSerializer, tracer);
             _rpcModuleProvider.Register<ITraceModule>(traceModule);
             

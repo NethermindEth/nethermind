@@ -44,5 +44,13 @@ namespace Nethermind.JsonRpc.Test.DataModel
 
             TestOneWaySerialization(result, "{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":\"0x2\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x1\"}},\"storage\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":{\"*\":{\"from\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"to\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}}}");
         }
+        
+        [Test]
+        public void Can_serialize_nulls()
+        {
+            ParityAccountStateChange result = new ParityAccountStateChange();
+
+            TestOneWaySerialization(result, "{\"balance\":\"=\",\"code\":\"=\",\"nonce\":\"=\",\"storage\":\"=\"}");
+        }
     }
 }
