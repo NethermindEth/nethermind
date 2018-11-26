@@ -33,5 +33,8 @@ namespace Nethermind.Evm.Tracing
         public byte[] Input { get; set; }
         public ParityTraceResult Result { get; set; } = new ParityTraceResult();
         public List<ParityTraceAction> Subtraces { get; set; } = new List<ParityTraceAction>();
+        
+        public Address Author { get; set; }
+        public string RewardType { get; set; }
     }
 }

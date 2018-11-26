@@ -16,9 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -43,12 +45,28 @@ namespace Nethermind.Evm.Tracing
 
         protected override ParityLikeTxTracer OnStart(Keccak txHash)
         {
-            return new ParityLikeTxTracer(_block, _block.Transactions.Single(t => t.Hash == txHash), _types);
+            return new ParityLikeTxTracer(_block, txHash == null ? null : _block.Transactions.Single(t => t.Hash == txHash), _types);
         }
 
         protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer)
         {
             return txTracer.BuildResult();
+        }
+
+        public override bool IsTracingRewards => true;
+
+        public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+        {
+            if ((_types & ParityTraceTypes.Trace) != 0)
+            {
+                ParityLikeTxTrace rewardTrace = TxTraces.Last();
+                rewardTrace.Action = new ParityTraceAction();
+                rewardTrace.Action.RewardType = rewardType;
+                rewardTrace.Action.Value = rewardValue;
+                rewardTrace.Action.Author = author;
+                rewardTrace.Action.CallType = "reward";
+                rewardTrace.Action.TraceAddress = new int[] { };
+            }
         }
     }
 }

@@ -17,7 +17,9 @@
  */
 
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -32,6 +34,12 @@ namespace Nethermind.Evm.Tracing
         public static NullBlockTracer Instance
         {
             get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullBlockTracer()); }
+        }
+
+        public bool IsTracingRewards => false;
+
+        public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+        {
         }
 
         public ITxTracer StartNewTxTrace(Keccak txHash)

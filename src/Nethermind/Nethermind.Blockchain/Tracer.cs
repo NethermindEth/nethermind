@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -75,7 +76,7 @@ namespace Nethermind.Blockchain
             block.Transactions = new[] {tx};
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, blockTracer);
-            return blockTracer.BuildResult()[0];
+            return blockTracer.BuildResult().SingleOrDefault();
         }
 
         public GethLikeTxTrace[] TraceBlock(Keccak blockHash)
@@ -96,33 +97,33 @@ namespace Nethermind.Blockchain
             Block block = _blockTree.FindBlock(receipt.BlockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
 
-            return ParityTrace(block, txHash);
+            return ParityTrace(block, txHash, parityTraceTypes);
         }
 
         public ParityLikeTxTrace[] ParityTraceBlock(UInt256 blockNumber, ParityTraceTypes parityTraceTypes)
         {
             Block block = _blockTree.FindBlock(blockNumber);
-            return ParityTraceBlock(block);
+            return ParityTraceBlock(block, parityTraceTypes);
         }
         
         public ParityLikeTxTrace[] ParityTraceBlock(Keccak blockHash, ParityTraceTypes parityTraceTypes)
         {
             Block block = _blockTree.FindBlock(blockHash, false);
-            return ParityTraceBlock(block);
+            return ParityTraceBlock(block, parityTraceTypes);
         }
 
         private GethLikeTxTrace Trace(Block block, Keccak txHash)
         {
             GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
-            return listener.BuildResult()[0];
+            return listener.BuildResult().SingleOrDefault();
         }
         
-        private ParityLikeTxTrace ParityTrace(Block block, Keccak txHash)
+        private ParityLikeTxTrace ParityTrace(Block block, Keccak txHash, ParityTraceTypes traceTypes)
         {
-            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(block, txHash, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(block, txHash, traceTypes);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
-            return listener.BuildResult()[0];
+            return listener.BuildResult().SingleOrDefault();
         }
         
         private GethLikeTxTrace[] TraceBlock(Block block)
@@ -137,10 +138,10 @@ namespace Nethermind.Blockchain
 
             GethLikeBlockTracer listener = new GethLikeBlockTracer(block);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
-            return listener.BuildResult();
+            return listener.BuildResult().ToArray();
         }
         
-        private ParityLikeTxTrace[] ParityTraceBlock(Block block)
+        private ParityLikeTxTrace[] ParityTraceBlock(Block block, ParityTraceTypes traceTypes)
         {
             if (block == null) throw new InvalidOperationException("Only canonical, historical blocks supported");
 
@@ -150,9 +151,9 @@ namespace Nethermind.Blockchain
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
-            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(block, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(block, traceTypes);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
-            return listener.BuildResult();
+            return listener.BuildResult().ToArray();
         }
     }
 }
