@@ -61,7 +61,6 @@ namespace Nethermind.Db
         public IDb BlocksDb { get; }
         public IDb BlockInfosDb { get; }
         public IDb PendingTxsDb { get; }
-        public IDb TraceDb { get; }
 
         public void Dispose()
         {
