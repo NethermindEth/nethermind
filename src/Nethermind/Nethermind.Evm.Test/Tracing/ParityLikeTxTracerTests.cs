@@ -205,7 +205,6 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(block.Number, trace.BlockNumber, "number");
             Assert.AreEqual(0, trace.TransactionPosition, "tx index");
             Assert.AreEqual(tx.Hash, trace.TransactionHash, "tx hash");
-            Assert.AreEqual("call", trace.Type, "type");
             Assert.AreEqual((long) tx.GasLimit - 21000, trace.Action.Gas, "gas");
             Assert.AreEqual(tx.Value, trace.Action.Value, "value");
             Assert.AreEqual(tx.Data, trace.Action.Input, "input");
@@ -265,7 +264,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-            Assert.AreEqual("call", trace.Type);
+            Assert.AreEqual("call", trace.Action.CallType);
         }
 
         [Test]
@@ -278,7 +277,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteInitAndTraceParityCall(initCode);
-            Assert.AreEqual("init", trace.Type);
+            Assert.AreEqual("init", trace.Action.CallType);
         }
 
         [Test]

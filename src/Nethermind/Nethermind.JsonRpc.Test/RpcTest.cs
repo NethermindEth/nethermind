@@ -18,10 +18,13 @@
 
 using System.Linq;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.JsonRpc.Module;
+using Newtonsoft.Json;
 using NSubstitute;
+using JsonSerializer = Nethermind.Core.JsonSerializer;
 
 namespace Nethermind.JsonRpc.Test
 {
@@ -30,13 +33,15 @@ namespace Nethermind.JsonRpc.Test
         public static JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
         {
             IJsonRpcService service = BuildRpcService<T>(module);
-            JsonRpcRequest request = GetJsonRequest("debug_getFromDb", parameters);
+            JsonRpcRequest request = GetJsonRequest(method, parameters);
             return service.SendRequest(request);
         }
         
         public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IModule
         {
             var moduleProvider = new TestRpcModuleProvider<T>(module);
+            moduleProvider.Register<T>(module);
+            Newtonsoft.Json.JsonSerializer rpcSerializer = new Newtonsoft.Json.JsonSerializer();
             IJsonRpcService service = new JsonRpcService(moduleProvider, Substitute.For<IConfigProvider>(), NullLogManager.Instance);
             return service;
         }

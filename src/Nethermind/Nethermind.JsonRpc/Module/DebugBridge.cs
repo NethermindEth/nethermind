@@ -86,17 +86,6 @@ namespace Nethermind.JsonRpc.Module
         }
         
         private AutoResetEvent _receiptProcessedEvent = new AutoResetEvent(false);
-        
-        public void AddTxData(UInt256 blockNumber)
-        {
-            _receiptsProcessor.SuggestBlock(blockNumber, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain); 
-            _receiptProcessedEvent.WaitOne(TimeSpan.FromSeconds(60));
-        }
-        
-        public void AddTxData(Keccak blockHash)
-        {
-            _receiptsProcessor.SuggestBlock(blockHash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain); 
-            _receiptProcessedEvent.WaitOne(TimeSpan.FromSeconds(60));
-        }
+       
     }
 }

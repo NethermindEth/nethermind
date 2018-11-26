@@ -17,14 +17,23 @@
  */
 
 using System;
+using Nethermind.Core;
+using Newtonsoft.Json;
+using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
-namespace Nethermind.Evm.Tracing
+namespace Nethermind.JsonRpc.DataModel.Converters
 {
-    [Flags]
-    public enum ParityTraceType
+    public class AddressConverter : JsonConverter<Address>
     {
-        Vm,
-        State,
-        Call
+        public override void WriteJson(JsonWriter writer, Address value, JsonSerializer serializer)
+        {
+            writer.WriteValue(value.ToString());
+        }
+
+        public override Address ReadJson(JsonReader reader, Type objectType, Address existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            string s = (string)reader.Value;
+            return new Address(s);
+        }
     }
 }

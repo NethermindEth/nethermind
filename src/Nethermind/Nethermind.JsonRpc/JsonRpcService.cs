@@ -19,10 +19,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
-using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -30,21 +31,57 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.DataModel;
+using Nethermind.JsonRpc.DataModel.Converters;
 using Nethermind.JsonRpc.Module;
+using Newtonsoft.Json;
+using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Nethermind.JsonRpc
 {
+    [Todo(Improve.Refactor, "Use JsonConverters and JSON serialization everywhere")]
     public class JsonRpcService : IJsonRpcService
     {
+        public static IReadOnlyCollection<JsonConverter> GetStandardConverters()
+        {
+            return new JsonConverter[]
+            {
+                new AddressConverter(),
+                new KeccakConverter(),
+                new ByteArrayConverter(),
+                new UInt256Converter(),
+            };
+        }
+
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IRpcModuleProvider _rpcModuleProvider;
+        private readonly JsonSerializer _serializer;
+
+        private Dictionary<Type, JsonConverter> _converterLookup = new Dictionary<Type, JsonConverter>();
 
         public JsonRpcService(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _rpcModuleProvider = rpcModuleProvider;
+            _serializer = new JsonSerializer();
+
+            foreach (ModuleInfo module in _rpcModuleProvider.GetEnabledModules())
+            {
+                foreach (JsonConverter converter in module.Converters)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name}");
+                    _serializer.Converters.Add(converter);
+                    _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
+                }
+            }
+
+            foreach (JsonConverter converter in GetStandardConverters())
+            {
+                if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name}");
+                _serializer.Converters.Add(converter);
+                _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
+            }
         }
 
         public JsonRpcResponse SendRequest(JsonRpcRequest rpcRequest)
@@ -56,6 +93,7 @@ namespace Nethermind.JsonRpc
                 {
                     return GetErrorResponse(errorType.Value, errorMessage, rpcRequest.Id, rpcRequest?.Method);
                 }
+
                 try
                 {
                     return ExecuteRequest(rpcRequest);
@@ -75,12 +113,13 @@ namespace Nethermind.JsonRpc
             {
                 _logger.Error($"Error during validation, request: {rpcRequest}", ex);
                 return GetErrorResponse(ErrorType.ParseError, "Incorrect message", 0, null);
-            }         
+            }
         }
+
         private JsonRpcResponse ExecuteRequest(JsonRpcRequest rpcRequest)
         {
             var methodName = rpcRequest.Method.Trim().ToLower();
-            
+
             var module = _rpcModuleProvider.GetEnabledModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
             if (module != null)
             {
@@ -117,7 +156,7 @@ namespace Nethermind.JsonRpc
                 _logger.Error($"Method {methodName} execution result does not implement IResultWrapper");
                 return GetErrorResponse(ErrorType.InternalError, "Internal error", request.Id, methodName);
             }
-            
+
             if (resultWrapper.GetResult() == null || resultWrapper.GetResult().ResultType == ResultType.Failure)
             {
                 _logger.Error($"Error during method: {methodName} execution: {resultWrapper.GetResult()?.Error ?? "no result"}");
@@ -128,27 +167,35 @@ namespace Nethermind.JsonRpc
             var data = resultWrapper.GetData();
             if (data is byte[] bytes)
             {
-                return GetSuccessResponse(bytes.ToHexString(), request.Id);        
+                return GetSuccessResponse(bytes.ToHexString(), request.Id);
             }
-            
+
             if (!(data is IEnumerable collection) || data is string)
             {
                 var json = GetDataObject(data);
-                return GetSuccessResponse(json, request.Id);        
+                return GetSuccessResponse(json, request.Id);
             }
-            
+
             var items = new List<object>();
             foreach (var item in collection)
             {
                 var jsonItem = GetDataObject(item);
                 items.Add(jsonItem);
             }
-            
+
             return GetSuccessResponse(items, request.Id);
         }
 
         private object GetDataObject(object data)
         {
+            if (_converterLookup.ContainsKey(data.GetType()))
+            {
+                StringBuilder builder = new StringBuilder();
+                TextWriter writer = new StringWriter(builder);
+                _converterLookup[data.GetType()].WriteJson(new JsonTextWriter(writer), data, _serializer);
+                return builder.ToString();
+            }
+
             return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data is bool ? data : data?.ToString();
         }
 
@@ -166,14 +213,20 @@ namespace Nethermind.JsonRpc
                     if (typeof(IJsonRpcRequest).IsAssignableFrom(paramType))
                     {
                         executionParam = Activator.CreateInstance(paramType);
-                        ((IJsonRpcRequest)executionParam).FromJson(providedParameter);
+                        ((IJsonRpcRequest) executionParam).FromJson(providedParameter);
+                    }
+                    else if (paramType == typeof(string[]))
+                    {
+                        executionParam = _serializer.Deserialize<string[]>(new JsonTextReader(new StringReader(providedParameter)));
                     }
                     else
                     {
                         executionParam = Convert.ChangeType(providedParameter, paramType);
                     }
+
                     executionParameters.Add(executionParam);
                 }
+
                 return executionParameters.ToArray();
             }
             catch (Exception e)
@@ -188,7 +241,7 @@ namespace Nethermind.JsonRpc
             var response = new JsonRpcResponse
             {
                 Id = id,
-                Jsonrpc = _jsonRpcConfig.JsonRpcVersion,
+                JsonRpc = _jsonRpcConfig.JsonRpcVersion,
                 Result = result,
             };
 
@@ -199,13 +252,13 @@ namespace Nethermind.JsonRpc
         {
             return GetErrorResponse(errorType, message, 0, null);
         }
-        
+
         private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, BigInteger id, string methodName)
         {
             _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
             var response = new JsonRpcResponse
             {
-                Jsonrpc = _jsonRpcConfig.JsonRpcVersion,
+                JsonRpc = _jsonRpcConfig.JsonRpcVersion,
                 Id = id,
                 Error = new Error
                 {
@@ -213,7 +266,7 @@ namespace Nethermind.JsonRpc
                     Message = message
                 }
             };
-            
+
             return response;
         }
 
@@ -229,7 +282,7 @@ namespace Nethermind.JsonRpc
             {
                 return (ErrorType.InvalidRequest, "Method is required");
             }
-            
+
             methodName = methodName.Trim().ToLower();
 
             var module = _rpcModuleProvider.GetAllModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));

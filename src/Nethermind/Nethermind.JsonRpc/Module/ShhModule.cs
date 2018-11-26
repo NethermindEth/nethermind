@@ -65,6 +65,6 @@ namespace Nethermind.JsonRpc.Module
             throw new System.NotImplementedException();
         }
         
-        public ModuleType ModuleType => ModuleType.Shh;
+        public override ModuleType ModuleType => ModuleType.Shh;
     }
 }

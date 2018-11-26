@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Tracing
             return _trace;
         }
 
-        public ParityLikeTxTracer(Block block, Transaction tx, ParityTraceType parityTraceType)
+        public ParityLikeTxTracer(Block block, Transaction tx, ParityTraceTypes parityTraceTypes)
         {
             _trace = new ParityLikeTxTrace();
             _trace.TransactionHash = tx.Hash;
@@ -45,19 +45,19 @@ namespace Nethermind.Evm.Tracing
             _trace.BlockNumber = block.Number;
             _trace.BlockHash = block.Hash;
 
-            if ((parityTraceType & ParityTraceType.State) != 0)
+            if ((parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
             {
                 IsTracingState = true;
                 _trace.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
             }
 
-            if ((parityTraceType & ParityTraceType.Call) != 0)
+            if ((parityTraceTypes & ParityTraceTypes.Trace) != 0)
             {
                 IsTracingCalls = true;
                 IsTracingReceipt = true;
             }
 
-            if ((parityTraceType & ParityTraceType.Vm) != 0)
+            if ((parityTraceTypes & ParityTraceTypes.VmTrace) != 0)
             {
                 throw new NotImplementedException();
             }
@@ -79,7 +79,6 @@ namespace Nethermind.Evm.Tracing
             else
             {
                 _trace.Action = call;
-                _trace.Type = _trace.Action.CallType;
                 call.TraceAddress = Array.Empty<int>();
             }
 

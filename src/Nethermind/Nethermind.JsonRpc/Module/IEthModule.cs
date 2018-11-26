@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<Data> eth_getCode(Data address, BlockParameter blockParameter);
         ResultWrapper<Data> eth_sign(Data addressData, Data message);
         ResultWrapper<Data> eth_sendTransaction(Transaction transaction);
-        ResultWrapper<Data> eth_sendRawTransaction(Data transation);
+        ResultWrapper<Data> eth_sendRawTransaction(Data transaction);
         ResultWrapper<Data> eth_call(Transaction transactionCall, BlockParameter blockParameter);
         ResultWrapper<Quantity> eth_estimateGas(Transaction transactionCall, BlockParameter blockParameter);
         ResultWrapper<Block> eth_getBlockByHash(Data blockHash, bool returnFullTransactionObjects);

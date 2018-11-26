@@ -98,7 +98,7 @@ namespace Nethermind.Evm.Test
         protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
         {
             (var block, var transaction) = PrepareInitTx(BlockNumber, 100000, code);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceType.Call | ParityTraceType.State);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
@@ -106,7 +106,7 @@ namespace Nethermind.Evm.Test
         protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceType.Call | ParityTraceType.State);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
@@ -114,7 +114,7 @@ namespace Nethermind.Evm.Test
         protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(byte[] input, UInt256 value, params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceType.Call | ParityTraceType.State);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }

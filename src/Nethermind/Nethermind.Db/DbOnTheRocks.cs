@@ -33,7 +33,6 @@ namespace Nethermind.Db
         public const string CodeDbPath = "code";
         public const string BlocksDbPath = "blocks";
         public const string ReceiptsDbPath = "receipts";
-        public const string TxsDbPath = "txs";
         public const string BlockInfosDbPath = "blockInfos";
         public const string PendingTxsDbPath = "pendingtxs";
         public const string TraceDbPath = "trace";
@@ -260,7 +259,7 @@ namespace Nethermind.Db
             Block,
             Code,
             Receipts,
-            Tx,
+            Trace,
             PendingTxs,
             Other
         }

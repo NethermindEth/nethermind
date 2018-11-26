@@ -20,7 +20,6 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -35,8 +34,6 @@ namespace Nethermind.Evm.Tracing
         public int TransactionPosition { get; set; }
         
         public Keccak TransactionHash { get; set; }
-        
-        public string Type { get; set; }
 
         public Dictionary<Address, ParityAccountStateChange> StateChanges { get; set; }
     }

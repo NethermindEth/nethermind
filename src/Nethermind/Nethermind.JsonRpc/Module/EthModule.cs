@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Module
             _modelMapper = modelMapper;
         }
         
-        public ModuleType ModuleType => ModuleType.Eth;
+        public override ModuleType ModuleType => ModuleType.Eth;
 
         public ResultWrapper<string> eth_protocolVersion()
         {

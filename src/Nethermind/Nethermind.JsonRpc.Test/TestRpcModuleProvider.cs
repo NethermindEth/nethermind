@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.JsonRpc.Module;
 using NSubstitute;
@@ -36,12 +37,19 @@ namespace Nethermind.JsonRpc.Test
                 new ModuleInfo(ModuleType.Web3, typeof(IWeb3Module), typeof(IWeb3Module).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Shh, typeof(IShhModule), typeof(ShhModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Nethm, typeof(INethmModule), typeof(INethmModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
-                new ModuleInfo(ModuleType.Debug, typeof(IDebugModule), typeof(IDebugModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>())
+                new ModuleInfo(ModuleType.Debug, typeof(IDebugModule), typeof(IDebugModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
+                new ModuleInfo(ModuleType.Trace, typeof(ITraceModule), typeof(ITraceModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>())
             });
         }
 
         public void Register<TOther>(IModule module) where TOther : IModule
         {
+            ModuleInfo mi = _modules.SingleOrDefault(m => m.ModuleType == module.ModuleType);
+            if (mi != null)
+            {
+                _modules.Remove(mi);
+            }
+
             _modules.Add(new ModuleInfo(module.ModuleType, typeof(TOther), module));
         }
 

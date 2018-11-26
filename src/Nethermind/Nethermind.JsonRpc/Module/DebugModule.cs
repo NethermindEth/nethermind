@@ -90,26 +90,6 @@ namespace Nethermind.JsonRpc.Module
             if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<TransactionTrace>.Success(transactionModel);
         }
-        
-        public ResultWrapper<bool> debug_addTxDataByNumber(Quantity blockNumberData)
-        {
-            UInt256? blockNumber = blockNumberData.AsNumber();
-            if (!blockNumber.HasValue)
-            {
-                throw new InvalidDataException("Expected block number value");
-            }
-            
-            _debugBridge.AddTxData(blockNumber.Value);
-            return ResultWrapper<bool>.Success(true);
-        }
-        
-        public ResultWrapper<bool> debug_addTxDataByHash(Data blockHashData)
-        {
-            Keccak blockHash = new Keccak(blockHashData.Value);
-            
-            _debugBridge.AddTxData(blockHash);
-            return ResultWrapper<bool>.Success(true);
-        }
 
         public ResultWrapper<BlockTraceItem[]> debug_traceBlock(Data blockRlp)
         {
@@ -192,6 +172,6 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<byte[]>.Success(dbValue);
         }
 
-        public ModuleType ModuleType => ModuleType.Debug;
+        public override ModuleType ModuleType => ModuleType.Debug;
     }
 }

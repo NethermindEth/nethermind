@@ -21,28 +21,26 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nethermind.JsonRpc.DataModel;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Module
 {
     public class ModuleInfo
     {
-        public ModuleInfo(ModuleType moduleType, Type moduleInterface, object moduleObject)
+        public ModuleInfo(ModuleType moduleType, Type moduleInterface, IModule moduleObject)
         {
             ModuleInterface = moduleInterface;
             ModuleObject = moduleObject;
             ModuleType = moduleType;
-            Initialize();
+            MethodDictionary = GetMethodDict(ModuleInterface);
+            Converters = moduleObject.GetConverters();
         }
 
         public ModuleType ModuleType { get; }
         public Type ModuleInterface { get; }
         public object ModuleObject { get; }
-        public IDictionary<string, MethodInfo> MethodDictionary { get; private set; }
-
-        private void Initialize()
-        {
-            MethodDictionary = GetMethodDict(ModuleInterface);
-        }
+        public IDictionary<string, MethodInfo> MethodDictionary { get;  }
+        public IReadOnlyCollection<JsonConverter> Converters { get; }
 
         private IDictionary<string, MethodInfo> GetMethodDict(Type type)
         {
