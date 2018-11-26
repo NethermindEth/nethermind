@@ -16,12 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Tracing
 {
     public interface IBlockTracer
     {
+        bool IsTracingRewards { get; }
+        void ReportReward(Address author, string rewardType, UInt256 rewardValue);
         ITxTracer StartNewTxTrace(Keccak txHash);
         void EndTxTrace();
     }

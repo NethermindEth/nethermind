@@ -17,8 +17,10 @@
  */
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -31,28 +33,32 @@ namespace Nethermind.Evm.Tracing
         protected BlockTracerBase(Block block)
         {
             _isTracingEntireBlock = true;
-            _txTraces = new TTrace[block.Transactions.Length];
+            TxTraces = new List<TTrace>();
         }
 
         protected BlockTracerBase(Keccak txHash)
         {
             _txHash = txHash;
-            _txTraces = new TTrace[1];
+            TxTraces = new List<TTrace>();
         }
 
-        private int _currentTxIndex;
-        
-        private TTracer _currentTxTracer;
+        protected TTracer CurrentTxTracer { get; set; }
 
         protected abstract TTracer OnStart(Keccak txHash);
         protected abstract TTrace OnEnd(TTracer txTracer);
-        
+
+        public virtual bool IsTracingRewards => false;
+
+        public virtual void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+        {
+        }
+
         ITxTracer IBlockTracer.StartNewTxTrace(Keccak txHash)
         {
             if (_isTracingEntireBlock || _txHash == txHash)
             {
-                _currentTxTracer = OnStart(txHash);
-                return _currentTxTracer;
+                CurrentTxTracer = OnStart(txHash);
+                return CurrentTxTracer;
             }
             
             if(!_isTracingEntireBlock && _txHash != txHash)
@@ -65,20 +71,20 @@ namespace Nethermind.Evm.Tracing
 
         void IBlockTracer.EndTxTrace()
         {
-            if (_currentTxTracer == null)
+            if (CurrentTxTracer == null)
             {
                 throw new InvalidOperationException("Cannot end tx trace that has not been started");
             }
                 
-            _txTraces[_currentTxIndex++] = OnEnd(_currentTxTracer);
-            _currentTxTracer = null;
+            TxTraces.Add(OnEnd(CurrentTxTracer));
+            CurrentTxTracer = null;
         }
-        
-        private TTrace[] _txTraces;
 
-        public TTrace[] BuildResult()
+        protected List<TTrace> TxTraces { get; }
+
+        public IReadOnlyCollection<TTrace> BuildResult()
         {
-            return _txTraces;
+            return TxTraces;
         }
     }
 }

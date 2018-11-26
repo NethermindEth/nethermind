@@ -23,16 +23,15 @@ namespace Nethermind.JsonRpc.Module
 {
     public interface ITraceModule : IModule
     {
-        ResultWrapper<ParityLikeTxTrace> trace_call(Transaction message, string[] traceTypes, BlockParameter quantity);
-        ResultWrapper<ParityLikeTxTrace[]> trace_callMany((Transaction message, string[] traceTypes, BlockParameter quantity)[] a);
+        ResultWrapper<ParityLikeTxTrace> trace_call(Transaction message, string[] traceTypes, BlockParameter numberOrTag);
+        ResultWrapper<ParityLikeTxTrace[]> trace_callMany((Transaction message, string[] traceTypes, BlockParameter numberOrTag)[] calls);
         ResultWrapper<ParityLikeTxTrace> trace_rawTransaction(Data data, string[] traceTypes);
         ResultWrapper<ParityLikeTxTrace> trace_replayTransaction(Data data, string[] traceTypes);
-        ResultWrapper<ParityLikeTxTrace[]> trace_replayBlockTransactions(BlockParameter filterId, string[] traceTypes);
+        ResultWrapper<ParityLikeTxTrace[]> trace_replayBlockTransactions(BlockParameter numberOrTag, string[] traceTypes);
         
 //        ResultWrapper<ParityLikeTxTrace[]> trace_filter();
-//        ResultWrapper<ParityLikeTxTrace[]> trace_block(BlockParameter block);
+//        ResultWrapper<ParityLikeTxTrace[]> trace_block(BlockParameter numberOrTag);
 //        ResultWrapper<ParityLikeTxTrace> trace_get(Data txHash, int[] positions);
 //        ResultWrapper<ParityLikeTxTrace> trace_transaction(Data transactionHash);
-        
     }
 }

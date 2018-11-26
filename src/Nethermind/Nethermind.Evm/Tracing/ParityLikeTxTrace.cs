@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Tracing
         
         public UInt256 BlockNumber { get; set; }
         
-        public int TransactionPosition { get; set; }
+        public int? TransactionPosition { get; set; }
         
         public Keccak TransactionHash { get; set; }
 

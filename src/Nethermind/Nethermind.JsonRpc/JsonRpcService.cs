@@ -188,6 +188,11 @@ namespace Nethermind.JsonRpc
 
         private object GetDataObject(object data)
         {
+            if (data == null)
+            {
+                return null;
+            }
+            
             if (_converterLookup.ContainsKey(data.GetType()))
             {
                 StringBuilder builder = new StringBuilder();

@@ -40,8 +40,8 @@ namespace Nethermind.Evm.Tracing
         public ParityLikeTxTracer(Block block, Transaction tx, ParityTraceTypes parityTraceTypes)
         {
             _trace = new ParityLikeTxTrace();
-            _trace.TransactionHash = tx.Hash;
-            _trace.TransactionPosition = block.Transactions.Select((t, ix) => (t, ix)).Where(p => p.t.Hash == tx.Hash).Select((t, ix) => ix).SingleOrDefault();
+            _trace.TransactionHash = tx?.Hash;
+            _trace.TransactionPosition = tx == null ? (int?)null : block.Transactions.Select((t, ix) => (t, ix)).Where(p => p.t.Hash == tx.Hash).Select((t, ix) => ix).SingleOrDefault();
             _trace.BlockNumber = block.Number;
             _trace.BlockHash = block.Hash;
 

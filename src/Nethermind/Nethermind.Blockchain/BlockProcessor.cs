@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain
         private TransactionReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
             BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer(block, blockTracer, _specProvider, _stateProvider);
-            
+
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 if (_logger.IsTrace) _logger.Trace($"Processing transaction {i}");
@@ -193,7 +193,7 @@ namespace Nethermind.Blockchain
             Block block = PrepareBlockForProcessing(suggestedBlock);
             var receipts = ProcessTransactions(block, options, blockTracer);
             SetReceiptsRootAndBloom(block, receipts);
-            ApplyMinerRewards(block);
+            ApplyMinerRewards(block, blockTracer);
             _stateProvider.Commit(_specProvider.GetSpec(block.Number));
 
             block.Header.StateRoot = _stateProvider.StateRoot;
@@ -238,20 +238,36 @@ namespace Nethermind.Blockchain
             return processedBlock;
         }
 
-        private void ApplyMinerRewards(Block block)
+        private void ApplyMinerRewards(Block block, IBlockTracer tracer)
         {
             if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
             var rewards = _rewardCalculator.CalculateRewards(block);
             for (int i = 0; i < rewards.Length; i++)
             {
                 BlockReward reward = rewards[i];
-                ApplyMinerReward(block, reward);
+
+                ITxTracer txTracer = null;
+                if (tracer.IsTracingRewards)
+                {
+                    txTracer = tracer.StartNewTxTrace(null);
+                }
+
+                ApplyMinerReward(block, reward, tracer.IsTracingRewards ? tracer : NullBlockTracer.Instance);
+
+                if (tracer.IsTracingRewards)
+                {
+                    if (txTracer?.IsTracingState ?? false)
+                    {
+                        _stateProvider.Commit(_specProvider.GetSpec(block.Number), txTracer);
+                    }
+                }
             }
         }
 
-        private void ApplyMinerReward(Block block, BlockReward reward)
+        private void ApplyMinerReward(Block block, BlockReward reward, IBlockTracer tracer)
         {
             if (_logger.IsTrace) _logger.Trace($"  {(decimal) reward.Value / (decimal) Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
+
             if (!_stateProvider.AccountExists(reward.Address))
             {
                 _stateProvider.CreateAccount(reward.Address, (UInt256) reward.Value);
@@ -260,6 +276,9 @@ namespace Nethermind.Blockchain
             {
                 _stateProvider.AddToBalance(reward.Address, (UInt256) reward.Value, _specProvider.GetSpec(block.Number));
             }
+
+            tracer.EndTxTrace();
+            if (tracer.IsTracingRewards) tracer.ReportReward(reward.Address, "block", (UInt256) reward.Value);
         }
 
         private void ApplyDaoTransition()

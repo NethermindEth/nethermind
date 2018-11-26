@@ -159,6 +159,13 @@ namespace Nethermind.Evm.Tracing
         private int _currentIndex;
         public TransactionReceipt[] Receipts { get; }
 
+        public bool IsTracingRewards => _otherTracer.IsTracingRewards;
+
+        public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+        {
+            _otherTracer.ReportReward(author, rewardType, rewardValue);
+        }
+
         public ITxTracer StartNewTxTrace(Keccak txHash)
         {
             _currentTxTracer = _otherTracer.StartNewTxTrace(txHash);
@@ -174,7 +181,7 @@ namespace Nethermind.Evm.Tracing
         public BlockReceiptsTracer(Block block, IBlockTracer otherTracer, ISpecProvider specProvider, IStateProvider stateProvider)
         {
             _block = block;
-            _otherTracer = otherTracer;
+            _otherTracer = otherTracer ?? throw new ArgumentNullException(nameof(otherTracer));
             Receipts = new TransactionReceipt[_block.Transactions.Length];
             
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));

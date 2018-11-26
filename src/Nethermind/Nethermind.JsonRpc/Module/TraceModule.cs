@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Module
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<ParityLikeTxTrace[]> trace_callMany((Transaction message, string[] traceTypes, BlockParameter quantity)[] a)
+        public ResultWrapper<ParityLikeTxTrace[]> trace_callMany((Transaction message, string[] traceTypes, BlockParameter numberOrTag)[] a)
         {
             throw new NotImplementedException();
         }
