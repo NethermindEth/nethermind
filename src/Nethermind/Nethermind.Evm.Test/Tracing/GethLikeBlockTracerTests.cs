@@ -52,6 +52,13 @@ namespace Nethermind.Evm.Test.Tracing
             block.Transactions = new Transaction[3];
 
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(block);
+
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                ((IBlockTracer) blockTracer).StartNewTxTrace(TestObject.KeccakA);
+                ((IBlockTracer) blockTracer).EndTxTrace();    
+            }
+            
             Assert.AreEqual(3, blockTracer.BuildResult().Count);
         }
 
@@ -71,9 +78,9 @@ namespace Nethermind.Evm.Test.Tracing
             ((IBlockTracer) blockTracer).StartNewTxTrace(TestObject.KeccakC);
             ((IBlockTracer) blockTracer).EndTxTrace();
 
-            Assert.NotNull(blockTracer.BuildResult().SingleOrDefault(), "0");
-            Assert.NotNull(blockTracer.BuildResult().SingleOrDefault(), "1");
-            Assert.NotNull(blockTracer.BuildResult().SingleOrDefault(), "2");
+            Assert.NotNull(blockTracer.BuildResult().First(), "0");
+            Assert.NotNull(blockTracer.BuildResult().Skip(1).First(), "1");
+            Assert.NotNull(blockTracer.BuildResult().Last(), "2");
         }
         
         [Test]
