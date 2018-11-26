@@ -340,7 +340,7 @@ namespace Nethermind.Runner.Runners
                 ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, StateProvider, storageProvider, virtualMachine, logManager);
                 ITransactionPool transactionPool = customTransactionPool;
                 IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, storageProvider, transactionPool, receiptStorage, logManager);
-                Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, true);
+                Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false);
             }
         }
 
@@ -530,6 +530,7 @@ namespace Nethermind.Runner.Runners
                 _blockProcessor,
                 _recoveryStep,
                 _logManager,
+                true,
                 true);
 
             // create shared objects between discovery and peer manager

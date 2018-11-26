@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.Validators;
@@ -208,6 +209,11 @@ namespace Nethermind.Blockchain
             {
                 StoreTxReceipts(block, receipts);
             }
+            
+            if ((options & ProcessingOptions.StoreTraces) != 0)
+            {
+                StoreTraces(blockTracer as ParityLikeBlockTracer);
+            }
 
             BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(block));
             return block;
@@ -221,6 +227,16 @@ namespace Nethermind.Blockchain
                 _receiptStorage.Add(receipts[i]);
                 _transactionPool.RemoveTransaction(receipts[i].TransactionHash);
             }
+        }
+        
+        private void StoreTraces(ParityLikeBlockTracer blockTracer)
+        {
+            if (blockTracer == null)
+            {
+                throw new ArgumentNullException(nameof(blockTracer));
+            }
+//            IReadOnlyCollection<ParityLikeTxTrace> traces = blockTracer.BuildResult();
+            // store
         }
 
         private Block PrepareBlockForProcessing(Block suggestedBlock)

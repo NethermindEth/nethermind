@@ -29,6 +29,7 @@ namespace Nethermind.Blockchain
         StoreReceipts = 4,
         NoValidation = 8,
         WithRollback = 16,
-        All = 31
+        StoreTraces = 32,
+        All = 63
     }
 }

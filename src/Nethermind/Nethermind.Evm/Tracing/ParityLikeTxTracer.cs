@@ -113,9 +113,9 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsFailed(Address recipient, long gasSpent)
         {
-            if (_currentCall.TraceAddress.Length != 0)
+            if ((_currentCall?.TraceAddress.Length ?? 0) != 0)
             {
-                throw new InvalidOperationException($"Closing trace at level {_currentCall.TraceAddress.Length}");
+                throw new InvalidOperationException($"Closing trace at level {_currentCall?.TraceAddress.Length ?? 0}");
             }
 
             _trace.Action.To = recipient;

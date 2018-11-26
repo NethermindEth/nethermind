@@ -35,6 +35,7 @@ namespace Nethermind.Blockchain
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBlockDataRecoveryStep _recoveryStep;
         private readonly bool _storeReceiptsByDefault;
+        private readonly bool _storeTracesByDefault;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
@@ -56,13 +57,15 @@ namespace Nethermind.Blockchain
             IBlockProcessor blockProcessor,
             IBlockDataRecoveryStep recoveryStep,
             ILogManager logManager,
-            bool storeReceiptsByDefault)
+            bool storeReceiptsByDefault,
+            bool storeTracesByDefault)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _storeReceiptsByDefault = storeReceiptsByDefault;
+            _storeTracesByDefault = storeTracesByDefault;
 
             _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
             _stats = new ProcessingStats(_logger);
@@ -70,7 +73,18 @@ namespace Nethermind.Blockchain
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
         {
-            SuggestBlock(blockEventArgs.Block, _storeReceiptsByDefault ? ProcessingOptions.StoreReceipts : ProcessingOptions.None);
+            ProcessingOptions options = ProcessingOptions.None;
+            if (_storeReceiptsByDefault)
+            {
+                options |= ProcessingOptions.StoreReceipts;
+            }
+            
+            if (_storeTracesByDefault)
+            {
+                options |= ProcessingOptions.StoreTraces;
+            }
+            
+            SuggestBlock(blockEventArgs.Block, options);
         }
 
         public void SuggestBlock(UInt256 blockNumber, ProcessingOptions processingOptions)
@@ -204,7 +218,7 @@ namespace Nethermind.Blockchain
                 blockRef.IsInDb = false;
             }
         }
-
+        
         private void RunProcessingLoop()
         {
             _stats.Start();
@@ -225,7 +239,14 @@ namespace Nethermind.Blockchain
                 Block block = blockRef.Block;
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
-                Process(block, blockRef.ProcessingOptions, NullBlockTracer.Instance);
+
+                IBlockTracer tracer = NullBlockTracer.Instance;
+                if ((blockRef.ProcessingOptions & ProcessingOptions.StoreTraces) != 0)
+                {
+                    tracer = new ParityLikeBlockTracer(block, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+                }
+
+                Process(block, blockRef.ProcessingOptions, tracer);
                 if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
 
                 _stats.UpdateStats(block, _recoveryQueue.Count, _blockQueue.Count);

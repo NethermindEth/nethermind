@@ -26,7 +26,6 @@ namespace Nethermind.Runner.Config
         public bool NetworkEnabled { get; set; } = true;
         public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;
-        public bool RunAsReceiptsFiller { get; set; } = false;
         public bool IsMining { get; set; } = false;
         public string HttpHost { get; set; } = "127.0.0.1";
         public int HttpPort { get; set; } = 8545;
@@ -42,8 +41,7 @@ namespace Nethermind.Runner.Config
         //in case of null, the path is set to ExecutingAssembly.Location\logs
         public string LogDirectory { get; set; } = null;
         public bool LogPerfStatsOnDebug { get; set; } = false;
-        public int ReceiptsFillerStart { get; set; } = 0;
-        public int ReceiptsFillerEnd { get; set; } = 1;
+        public bool StoreTraces { get; set; } = false;
         public int ObsoletePendingTransactionInterval { get; set; } = 15;
         public int RemovePendingTransactionInterval { get; set; } = 600;
         public int PeerNotificationThreshold { get; set; } = 20;
