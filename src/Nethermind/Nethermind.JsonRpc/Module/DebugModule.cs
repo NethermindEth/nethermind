@@ -172,6 +172,6 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<byte[]>.Success(dbValue);
         }
 
-        public ModuleType ModuleType => ModuleType.Debug;
+        public override ModuleType ModuleType => ModuleType.Debug;
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Nethermind.JsonRpc.DataModel;
-using Newtonsoft.Json;
+using Nethermind.Evm.Tracing;
+using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Module
+namespace Nethermind.JsonRpc.Test.DataModel
 {
-    public interface IModule
+    [TestFixture]
+    public class ParityTraceResultSerializationTests : SerializationTestBase
     {
-        ModuleType ModuleType { get; }
-        IReadOnlyCollection<JsonConverter> GetConverters();
+        [Test]
+        public void Can_serialize()
+        {
+            ParityTraceResult result = new ParityTraceResult();
+            result.GasUsed = 12345;
+            result.Output = new byte[] {6, 7, 8, 9, 0};
+
+            TestOneWaySerialization(result, "{\"gasUsed\":12345,\"output\":\"0x0607080900\"}");
+        }
+        
+        [Test]
+        public void Can_serialize_nulls()
+        {
+            ParityTraceResult result = new ParityTraceResult();
+
+            TestOneWaySerialization(result, "{\"gasUsed\":0,\"output\":null}");
+        }
     }
 }

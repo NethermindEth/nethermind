@@ -23,9 +23,9 @@ using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
 {
-    public class AdminModule : ModuleBase, IAdminModule
+    public class AdminModule : ModuleBase
     {
-        public ModuleType ModuleType => ModuleType.Admin;
+        public override ModuleType ModuleType => ModuleType.Admin;
 
         public ResultWrapper<PeerInfo[]> admin_addPeer()
         {

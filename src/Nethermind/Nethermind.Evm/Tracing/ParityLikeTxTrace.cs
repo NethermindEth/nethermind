@@ -34,8 +34,6 @@ namespace Nethermind.Evm.Tracing
         public int TransactionPosition { get; set; }
         
         public Keccak TransactionHash { get; set; }
-        
-        public string Type { get; set; }
 
         public Dictionary<Address, ParityAccountStateChange> StateChanges { get; set; }
     }

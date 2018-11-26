@@ -16,14 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Config;
+using Nethermind.JsonRpc.DataModel;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Module
 {
-    public abstract class ModuleBase
+    public abstract class ModuleBase : IModule
     {
         protected readonly ILogger Logger;
         protected readonly IJsonRpcConfig JsonRpcConfig;
@@ -36,13 +40,16 @@ namespace Nethermind.JsonRpc.Module
             JsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
         }
 
-        public virtual void Initialize()
-        {
-        }
-
         protected string GetJsonLog(object model)
         {
             return JsonSerializer.Serialize(model);
+        }
+        
+        public abstract ModuleType ModuleType { get; }
+
+        public virtual IReadOnlyCollection<JsonConverter> GetConverters()
+        {
+            return Array.Empty<JsonConverter>();   
         }
     }
 }

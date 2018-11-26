@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
+using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.DataModel;
-using Newtonsoft.Json;
+using Nethermind.JsonRpc.DataModel.Converters;
+using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Module
+namespace Nethermind.JsonRpc.Test.DataModel
 {
-    public interface IModule
+    [TestFixture]
+    public class AddressSerializationTests : SerializationTestBase
     {
-        ModuleType ModuleType { get; }
-        IReadOnlyCollection<JsonConverter> GetConverters();
+        [Test]
+        public void Can_do_roundtrip()
+        {
+            TestSerialization(TestObject.AddressA, (a, b) => a.Equals(b));
+        }
     }
 }

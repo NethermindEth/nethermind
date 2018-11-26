@@ -81,6 +81,6 @@ namespace Nethermind.JsonRpc.Module
         public ResultWrapper<string> enode_info()
             => ResultWrapper<string>.Success(_enode.Info);
 
-        public ModuleType ModuleType => ModuleType.Nethm;
+        public override ModuleType ModuleType => ModuleType.Nethm;
     }
 }

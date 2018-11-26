@@ -21,25 +21,32 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.DataModel;
+using Nethermind.JsonRpc.DataModel.Trace;
+using Newtonsoft.Json;
+using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
 
 namespace Nethermind.JsonRpc.Module
 {
-    public class TraceModule : ITraceModule
+    public class TraceModule : ModuleBase, ITraceModule
     {
         private readonly ITracer _tracer;
 
-        public TraceModule(ITracer tracer)
+        public TraceModule(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer, ITracer tracer)
+            : base(configProvider, logManager, jsonSerializer)
         {
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         }
 
         private ParityTraceTypes GetParityTypes(string[] types)
         {
-            return types.Select(s => (ParityTraceTypes) Enum.Parse(typeof(ParityTraceTypes), s)).Aggregate((t1, t2) => t1 | t2);
+            return types.Select(s => (ParityTraceTypes) Enum.Parse(typeof(ParityTraceTypes), s, true)).Aggregate((t1, t2) => t1 | t2);
         }
 
         public ResultWrapper<ParityLikeTxTrace> trace_call(Transaction message, string[] traceTypes, BlockParameter quantity)
@@ -57,9 +64,9 @@ namespace Nethermind.JsonRpc.Module
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<ParityLikeTxTrace> trace_replayTransaction(Keccak hash, string[] traceTypes)
+        public ResultWrapper<ParityLikeTxTrace> trace_replayTransaction(Data hash, string[] traceTypes)
         {
-            return ResultWrapper<ParityLikeTxTrace>.Success(_tracer.ParityTrace(hash, GetParityTypes(traceTypes)));
+            return ResultWrapper<ParityLikeTxTrace>.Success(_tracer.ParityTrace(new Keccak(hash.Value), GetParityTypes(traceTypes)));
         }
 
         public ResultWrapper<ParityLikeTxTrace[]> trace_replayBlockTransactions(BlockParameter numberOrTag, string[] traceTypes)
@@ -88,8 +95,19 @@ namespace Nethermind.JsonRpc.Module
             throw new NotImplementedException();
         }
 
-        public ModuleType ModuleType => ModuleType.Trace;
-        
+        public override ModuleType ModuleType => ModuleType.Trace;
+
+        public override IReadOnlyCollection<JsonConverter> GetConverters()
+        {
+            return new JsonConverter[]
+            {
+                new ParityLikeTxTraceConverter(),
+                new ParityAccountStateChangeConverter(),
+                new ParityTraceActionConverter(),
+                new ParityTraceResultConverter(),
+            };
+        }
+
         public void Initialize()
         {
         }

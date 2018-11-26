@@ -79,7 +79,6 @@ namespace Nethermind.Evm.Tracing
             else
             {
                 _trace.Action = call;
-                _trace.Type = _trace.Action.CallType;
                 call.TraceAddress = Array.Empty<int>();
             }
 

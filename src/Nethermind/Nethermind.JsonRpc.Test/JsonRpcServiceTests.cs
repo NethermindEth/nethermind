@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Reflection;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Config;
@@ -27,6 +28,7 @@ using Nethermind.JsonRpc.Module;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
+using Block = Nethermind.JsonRpc.DataModel.Block;
 
 namespace Nethermind.JsonRpc.Test
 {
@@ -130,7 +132,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcResponse response = TestRequest<IEthModule>(Substitute.For<IEthModule>(), "incorrect_method");
             Assert.AreEqual(response.Error.Code, _configurationProvider.GetConfig<IJsonRpcConfig>().ErrorCodes[ErrorType.MethodNotFound]);
             Assert.IsNull(response.Result);
-            Assert.AreEqual(response.Jsonrpc, _configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion);
+            Assert.AreEqual(response.JsonRpc, _configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion);
         }
 
         [Test]
@@ -152,7 +154,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcResponse response = TestRequest<INetModule>(netModule, "net_version");
             Assert.AreEqual(response.Result, "1");
             Assert.IsNull(response.Error);
-            Assert.AreEqual(_configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion, response.Jsonrpc);
+            Assert.AreEqual(_configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion, response.JsonRpc);
         }
 
         [Test]

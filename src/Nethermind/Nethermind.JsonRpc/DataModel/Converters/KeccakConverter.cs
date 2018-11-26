@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Nethermind.JsonRpc.DataModel;
+using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
+using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
-namespace Nethermind.JsonRpc.Module
+namespace Nethermind.JsonRpc.DataModel.Converters
 {
-    public interface IModule
+    public class KeccakConverter : JsonConverter<Keccak>
     {
-        ModuleType ModuleType { get; }
-        IReadOnlyCollection<JsonConverter> GetConverters();
+        public override void WriteJson(JsonWriter writer, Keccak value, JsonSerializer serializer)
+        {
+            writer.WriteValue(value.Bytes.ToHexString(true));
+        }
+
+        public override Keccak ReadJson(JsonReader reader, Type objectType, Keccak existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            string s = (string)reader.Value;
+            return new Keccak(Bytes.FromHexString(s));
+        }
     }
 }

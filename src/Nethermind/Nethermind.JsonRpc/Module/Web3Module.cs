@@ -44,6 +44,6 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<Data>.Success(new Data(keccak));
         }
         
-        public ModuleType ModuleType => ModuleType.Web3;
+        public override ModuleType ModuleType => ModuleType.Web3;
     }
 }

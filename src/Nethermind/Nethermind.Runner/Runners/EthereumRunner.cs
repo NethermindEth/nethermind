@@ -245,7 +245,7 @@ namespace Nethermind.Runner.Runners
             NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_syncManager));
             _rpcModuleProvider.Register<INetModule>(netModule);
             
-            TraceModule traceModule = new TraceModule(tracer);
+            TraceModule traceModule = new TraceModule(_configProvider, _logManager, _jsonSerializer, tracer);
             _rpcModuleProvider.Register<ITraceModule>(traceModule);
             
             _rpcModuleProvider.Register<INethmModule>(new NethmModule(_configProvider, _logManager, _jsonSerializer, _enode));

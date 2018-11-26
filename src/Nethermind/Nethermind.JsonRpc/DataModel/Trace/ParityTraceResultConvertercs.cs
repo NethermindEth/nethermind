@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Nethermind.JsonRpc.DataModel;
+using System;
+using Nethermind.Evm.Tracing;
 using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc.Module
+namespace Nethermind.JsonRpc.DataModel.Trace
 {
-    public interface IModule
+    public class ParityTraceResultConverter : JsonConverter<ParityTraceResult>
     {
-        ModuleType ModuleType { get; }
-        IReadOnlyCollection<JsonConverter> GetConverters();
+        public override void WriteJson(JsonWriter writer, ParityTraceResult value, JsonSerializer serializer)
+        {
+            writer.WriteStartObject();
+            writer.WriteProperty("gasUsed", value.GasUsed);
+            writer.SerializeProperty("output", value.Output, serializer);
+            writer.WriteEndObject();
+        }
+
+        public override ParityTraceResult ReadJson(JsonReader reader, Type objectType, ParityTraceResult existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            throw new NotSupportedException();
+        }
     }
 }
