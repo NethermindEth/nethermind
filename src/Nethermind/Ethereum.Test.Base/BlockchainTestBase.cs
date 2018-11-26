@@ -281,6 +281,7 @@ namespace Ethereum.Test.Base
                 blockProcessor,
                 new TxSignaturesRecoveryStep(signer, NullTransactionPool.Instance),
                 _logManager,
+                false,
                 false);
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);

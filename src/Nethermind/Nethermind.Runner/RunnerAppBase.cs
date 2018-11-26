@@ -172,21 +172,13 @@ namespace Nethermind.Runner
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>())
                 : (IRpcModuleProvider) NullModuleProvider.Instance;
 
-            if (initParams.RunAsReceiptsFiller)
-            {
-                _ethereumRunner = new ReceiptsFiller(configProvider, logManager);
-            }
-            else
-            {
-                _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager);
-            }
-
+            _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager);
             await _ethereumRunner.Start().ContinueWith(x =>
             {
                 if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
             });
 
-            if (initParams.JsonRpcEnabled && !initParams.RunAsReceiptsFiller)
+            if (initParams.JsonRpcEnabled)
             {
                 var serializer = new UnforgivingJsonSerializer();
                 rpcModuleProvider.Register<IShhModule>(new ShhModule(configProvider, logManager, serializer));

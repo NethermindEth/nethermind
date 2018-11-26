@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test
                 MemDb blockInfoDb = new MemDb();
                 _blockTree = new BlockTree(blockDb, blockInfoDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, NullLogManager.Instance);
                 IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
-                BlockchainProcessor processor = new BlockchainProcessor(_blockTree, blockProcessor, NullRecoveryStep.Instance, NullLogManager.Instance, false);
+                BlockchainProcessor processor = new BlockchainProcessor(_blockTree, blockProcessor, NullRecoveryStep.Instance, NullLogManager.Instance, false, false);
                 _resetEvent = new AutoResetEvent(false);
                 bool ignoreNextSignal = true;
                 processor.ProcessingQueueEmpty += (sender, args) =>
