@@ -160,11 +160,16 @@ namespace Nethermind.Network.P2P
             }
 
             _isInitialized = true;
-             
-            if(!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63)))
+            
+            if(!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62)))
             {    
                 Disconnect(DisconnectReason.UselessPeer);
             }
+            
+//            if(!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63)))
+//            {    
+//                Disconnect(DisconnectReason.UselessPeer);
+//            }
                 
             ReceivedProtocolInitMsg(hello);
 
@@ -227,7 +232,7 @@ namespace Nethermind.Network.P2P
         private static readonly List<Capability> SupportedCapabilities = new List<Capability>
         {
             new Capability(Protocol.Eth, 62),
-            new Capability(Protocol.Eth, 63),
+//            new Capability(Protocol.Eth, 63),
         };
 
         private void SendHello()

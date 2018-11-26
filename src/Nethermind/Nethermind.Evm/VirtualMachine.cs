@@ -126,8 +126,7 @@ namespace Nethermind.Evm
                         callResult = ExecutePrecompile(currentState, spec);
                         if (_txTracer.IsTracingCalls)
                         {
-                            // check if value or transfer value
-                            _txTracer.ReportCallEnd(currentState.GasAvailable, _returnDataBuffer);
+                            _txTracer.ReportCallEnd(!callResult.PrecompileSuccess.Value ? currentState.GasAvailable : 0, _returnDataBuffer);
                         }
                         
                         if (!callResult.PrecompileSuccess.Value)
@@ -162,8 +161,7 @@ namespace Nethermind.Evm
                         
                         if (_txTracer.IsTracingCalls)
                         {
-                            // check if value or transfer value
-                            _txTracer.ReportCallEnd(currentState.GasAvailable, _returnDataBuffer);
+                            _txTracer.ReportCallEnd(callResult.IsException ? 0 : currentState.GasAvailable, _returnDataBuffer);
                         }
 
                         if (callResult.IsException)
@@ -300,6 +298,11 @@ namespace Nethermind.Evm
                     {
                         txTracer.SetOperationError(ex.GetType().Name);
                         txTracer.SetOperationRemainingGas(0);
+                    }
+                    
+                    if (_txTracer.IsTracingCalls)
+                    {
+                        _txTracer.ReportCallEnd(0, _returnDataBuffer);
                     }
                     
                     if (currentState.IsTopLevel)

@@ -336,3 +336,4 @@ docs/build/
 out/
 db/
 src/Nethermind/Nethermind.Runner/git-hash
+src/Nethermind/Nethermind.Runner/node.key.plain
