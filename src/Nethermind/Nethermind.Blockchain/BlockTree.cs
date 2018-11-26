@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain
             _specProvider = specProvider;
             _transactionPool = transactionPool;
 
-            ChainLevelInfo genesisLevel = LoadLevel(0);
+            ChainLevelInfo genesisLevel = LoadLevel(0, true);
             if (genesisLevel != null)
             {
                 if (genesisLevel.BlockInfos.Length != 1)
@@ -82,14 +82,14 @@ namespace Nethermind.Blockchain
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
 
+                LoadBestKnown();
+
                 if (genesisLevel.BlockInfos[0].WasProcessed)
                 {
                     Block genesisBlock = Load(genesisLevel.BlockInfos[0].BlockHash).Block;
                     Genesis = genesisBlock.Header;
                     LoadHeadBlock();
                 }
-
-                LoadBestKnown();
             }
 
             if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggested?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}");
@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain
             while (left != right)
             {
                 BigInteger index = left + (right - left) / 2;
-                ChainLevelInfo level = LoadLevel(index);
+                ChainLevelInfo level = LoadLevel(index, true);
                 if (level == null)
                 {
                     right = index;
@@ -162,7 +162,7 @@ namespace Nethermind.Blockchain
                     break;
                 }
 
-                ChainLevelInfo level = LoadLevel(blockNumber);
+                ChainLevelInfo level = LoadLevel(blockNumber, true);
                 BigInteger maxDifficultySoFar = 0;
                 BlockInfo maxDifficultyBlock = null;
                 for (int blockIndex = 0; blockIndex < level.BlockInfos.Length; blockIndex++)
@@ -551,6 +551,16 @@ namespace Nethermind.Blockchain
 
         public bool IsKnownBlock(UInt256 number, Keccak blockHash)
         {
+            if (number > BestKnownNumber)
+            {
+                return false;
+            }
+
+            if (blockHash == Head.Hash)
+            {
+                return true;
+            }
+
             if (_blockCache.Get(blockHash) != null)
             {
                 return true;
@@ -588,7 +598,7 @@ namespace Nethermind.Blockchain
 
         private void UpdateOrCreateLevel(UInt256 number, BlockInfo blockInfo)
         {
-            ChainLevelInfo level = LoadLevel(number);
+            ChainLevelInfo level = LoadLevel(number, false);
             if (level != null)
             {
                 BlockInfo[] blockInfos = new BlockInfo[level.BlockInfos.Length + 1];
@@ -645,8 +655,13 @@ namespace Nethermind.Blockchain
             return null;
         }
 
-        private ChainLevelInfo LoadLevel(BigInteger number)
+        private ChainLevelInfo LoadLevel(BigInteger number, bool forceLoad = true)
         {
+            if (number > BestKnownNumber  && !forceLoad)
+            {
+                return null;
+            }
+
             ChainLevelInfo chainLevelInfo = _blockInfoCache.Get(number);
             if (chainLevelInfo == null)
             {

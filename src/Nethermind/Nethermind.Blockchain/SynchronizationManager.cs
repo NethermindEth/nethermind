@@ -38,7 +38,7 @@ using Nethermind.Store;
 namespace Nethermind.Blockchain
 {
     public class SynchronizationManager : ISynchronizationManager
-    {   
+    {
         public const int MinBatchSize = 8;
         private int _batchSize = 256;
         public const int MaxBatchSize = 256;
@@ -153,20 +153,25 @@ namespace Nethermind.Blockchain
 
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
         private object _dummyValue = new object();
-        
+
         public void AddNewBlock(Block block, NodeId receivedFrom)
         {
             _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
             if (peerInfo == null)
             {
                 string errorMessage = $"Received a new block from an unknown peer {receivedFrom}";
-                if(_logger.IsDebug) _logger.Debug(errorMessage);
+                if (_logger.IsDebug) _logger.Debug(errorMessage);
                 return;
             }
 
             peerInfo.NumberAvailable = UInt256.Max(block.Number, peerInfo.NumberAvailable);
-//            peerInfo.Difficulty = UInt256.Max(block.Difficulty, peerInfo.Difficulty);
-            
+            if (block.Number > _blockTree.BestKnownNumber + 8)
+            {
+                // ignore blocks when syncing in a simple non-locking way
+                return;
+            }
+            // peerInfo.Difficulty = UInt256.Max(block.Difficulty, peerInfo.Difficulty);
+
             lock (_recentlySuggested)
             {
                 if (_recentlySuggested.Get(block.Hash) != null)
@@ -205,7 +210,7 @@ namespace Nethermind.Blockchain
         }
 
         public void HintBlock(Keccak hash, UInt256 number, NodeId receivedFrom)
-        {   
+        {
             if (!_peers.TryGetValue(receivedFrom, out PeerInfo peerInfo))
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a block hint from an unknown peer {receivedFrom}, ignoring");
@@ -213,7 +218,7 @@ namespace Nethermind.Blockchain
             }
 
             peerInfo.NumberAvailable = UInt256.Max(number, peerInfo.NumberAvailable);
-            
+
             lock (_recentlySuggested)
             {
                 if (_recentlySuggested.Get(hash) != null)
@@ -223,7 +228,7 @@ namespace Nethermind.Blockchain
 
                 /* do not add as this is a hint only */
             }
-            
+
             if (number > _blockTree.BestKnownNumber)
             {
                 RequestSync();
@@ -487,7 +492,7 @@ namespace Nethermind.Blockchain
                     return;
                 }
             }
-            
+
             if (_aggregateSyncCancellationTokenSource.IsCancellationRequested)
             {
                 if (_logger.IsDebug) _logger.Debug("Cancellation requested will not start sync");
@@ -495,7 +500,7 @@ namespace Nethermind.Blockchain
             }
 
             bool anyPeerWithHigherNumber = false;
-            foreach (KeyValuePair<NodeId,PeerInfo> peer in _peers)
+            foreach (KeyValuePair<NodeId, PeerInfo> peer in _peers)
             {
                 if (peer.Value.NumberAvailable > _blockTree.BestKnownNumber)
                 {
@@ -641,7 +646,7 @@ namespace Nethermind.Blockchain
 
         private PeerInfo SelectBestPeerForSync()
         {
-            var availablePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestKnownNumber).Where(x => x.IsInitialized).Select(x => new {PeerInfo = x, AvLat = x.Peer?.NodeStats?.GetAverageLatency(NodeLatencyStatType.BlockHeaders)})
+            var availablePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestKnownNumber).Where(x => x.IsInitialized).Select(x => new { PeerInfo = x, AvLat = x.Peer?.NodeStats?.GetAverageLatency(NodeLatencyStatType.BlockHeaders) })
                 .OrderBy(x => x.AvLat ?? 100000).ToArray();
             if (!availablePeers.Any())
             {
@@ -667,7 +672,7 @@ namespace Nethermind.Blockchain
 
             ISynchronizationPeer peer = peerInfo.Peer;
             UInt256 bestNumber = _blockTree.BestKnownNumber;
-//            UInt256 bestDifficulty = _blockTree.BestSuggested.Difficulty;
+            //            UInt256 bestDifficulty = _blockTree.BestSuggested.Difficulty;
 
             const int maxLookup = 2 * MaxBatchSize;
             int ancestorLookupLevel = 0;
@@ -699,7 +704,7 @@ namespace Nethermind.Blockchain
                 }
 
                 UInt256 blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
-                int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _batchSize);
+                int blocksToRequest = (int)BigInteger.Min(blocksLeft + 1, _batchSize);
                 if (_logger.IsTrace) _logger.Trace($"Sync request to peer {peerInfo.Peer.NodeId} with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
 
                 Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.NumberReceived, blocksToRequest, 0, _peerSyncCancellationTokenSource.Token);
@@ -739,7 +744,7 @@ namespace Nethermind.Blockchain
                     {
                         break;
                     }
-                    
+
                     hashes.Add(headers[i].Hash);
                     headersByHash[headers[i].Hash] = headers[i];
                 }
@@ -779,16 +784,16 @@ namespace Nethermind.Blockchain
                     DecreaseBatchSize();
                     continue;
                 }
-                
+
                 if (blocks.Length != 0)
                 {
-                    emptyBlockListCounter = 0;    
+                    emptyBlockListCounter = 0;
                 }
                 else
                 {
                     continue;
                 }
-                
+
                 _sinceLastTimeout++;
                 if (_sinceLastTimeout > 8)
                 {
@@ -811,7 +816,7 @@ namespace Nethermind.Blockchain
                     if (parent == null)
                     {
                         ancestorLookupLevel += _batchSize;
-                        peerInfo.NumberReceived = peerInfo.NumberReceived >= _batchSize ? (peerInfo.NumberReceived - (UInt256) _batchSize) : UInt256.Zero;
+                        peerInfo.NumberReceived = peerInfo.NumberReceived >= _batchSize ? (peerInfo.NumberReceived - (UInt256)_batchSize) : UInt256.Zero;
                         continue;
                     }
                 }
@@ -848,7 +853,7 @@ namespace Nethermind.Blockchain
                             {
                                 const string message = "Peer sent orphaned blocks";
                                 _logger.Error(message);
-                                peerInfo.NumberReceived -= peerInfo.NumberReceived <= 60 ? UInt256.Zero : (UInt256) 60;
+                                peerInfo.NumberReceived -= peerInfo.NumberReceived <= 60 ? UInt256.Zero : (UInt256)60;
                                 throw new EthSynchronizationException(message);
                             }
                             else
@@ -954,7 +959,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {peer.NodeId}");
             Task<Keccak> getHashTask = peer.GetHeadBlockHash(token);
             Task<UInt256> getNumberTask = peer.GetHeadBlockNumber(token);
-//            Task<UInt256> getDifficultyTask = peer.GetHeadDifficulty(token);
+            //            Task<UInt256> getDifficultyTask = peer.GetHeadDifficulty(token);
 
             await Task.WhenAny(Task.WhenAll(getHashTask, getNumberTask), Task.Delay(10000, token)).ContinueWith(
                 t =>
@@ -990,7 +995,7 @@ namespace Nethermind.Blockchain
                         }
 
                         peerInfo.NumberAvailable = getNumberTask.Result;
-//                        peerInfo.Difficulty = getDifficultyTask.Result;
+                        //                        peerInfo.Difficulty = getDifficultyTask.Result;
                         peerInfo.NumberReceived = _blockTree.BestKnownNumber;
                         peerInfo.IsInitialized = true;
                     }
@@ -1008,7 +1013,7 @@ namespace Nethermind.Blockchain
 
             public ISynchronizationPeer Peer { get; }
 
-//            public UInt256 Difficulty { get; set; }
+            //            public UInt256 Difficulty { get; set; }
             public UInt256 NumberAvailable { get; set; }
             public UInt256 NumberReceived { get; set; }
 
