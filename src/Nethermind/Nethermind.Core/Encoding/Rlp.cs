@@ -33,6 +33,8 @@ namespace Nethermind.Core.Encoding
     //[DebuggerStepThrough]
     public class Rlp
     {
+        private const int DebugMessageContentLength = 2048;
+        
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
 
         public static readonly Rlp OfEmptySequence = new Rlp(192);
@@ -837,7 +839,7 @@ namespace Nethermind.Core.Encoding
                 int prefix = ReadByte();
                 if (prefix < 192)
                 {
-                    throw new RlpException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix} at position {Position} in the message starting with {Data.Slice(0, Math.Min(64, Data.Length)).ToHexString()}");
+                    throw new RlpException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
                 }
 
                 if (prefix <= 247)
@@ -920,7 +922,7 @@ namespace Nethermind.Core.Encoding
 
                 if (prefix != 128 + 32)
                 {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message starting with {Data.Slice(0, Math.Min(64, Data.Length)).ToHexString()}");
+                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
                 }
 
                 byte[] buffer = Read(32).ToArray();
@@ -937,7 +939,7 @@ namespace Nethermind.Core.Encoding
 
                 if (prefix != 128 + 20)
                 {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Address)} at position {Position} in the message starting with {Data.Slice(0, Math.Min(64, Data.Length)).ToHexString()}");
+                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
                 }
 
                 byte[] buffer = Read(20).ToArray();
@@ -1037,7 +1039,7 @@ namespace Nethermind.Core.Encoding
                     return result;
                 }
 
-                throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message starting with {Data.Slice(0, Math.Min(64, Data.Length)).ToHexString()}");
+                throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
             }
 
             public T[] DecodeArray<T>(Func<DecoderContext, T> decodeItem)

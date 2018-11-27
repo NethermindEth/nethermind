@@ -410,7 +410,7 @@ namespace Nethermind.Network.Discovery
 
                 if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Any())
                 {
-                    if(_logger.IsTrace) _logger.Trace("Couldnt connect to any of the bootnodes, but succsessfully connected to at least one persisted node.");
+                    if(_logger.IsTrace) _logger.Trace("Was not able to connect to any of the bootnodes, but successfully connected to at least one persisted node.");
                     break;
                 }
 
