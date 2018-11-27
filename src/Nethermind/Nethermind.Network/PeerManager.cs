@@ -742,7 +742,7 @@ namespace Nethermind.Network
 
                 if (peer.AddedToDiscovery)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Discovery note already initialized with wrong port, nodeId: {peer.Node.Id}, port: {peer.Node.Port}, listen port: {eventArgs.ListenPort}");
+                    if (_logger.IsDebug) _logger.Debug($"Discovery node already initialized with wrong port, nodeId: {peer.Node.Id}, port: {peer.Node.Port}, listen port: {eventArgs.ListenPort}");
                 }
 
                 peer.Node.Port = eventArgs.ListenPort;
