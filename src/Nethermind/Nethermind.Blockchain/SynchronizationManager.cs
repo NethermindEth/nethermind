@@ -345,27 +345,50 @@ namespace Nethermind.Blockchain
             _perfService.EndPerfCalc(key, "Close: SynchronizationManager");
         }
 
+        private DateTime _lastFullInfo = DateTime.Now;
+
         private void StartSyncTimer()
         {
             if (_logger.IsDebug) _logger.Debug("Starting sync timer");
             _syncTimer = new System.Timers.Timer(_blockchainConfig.SyncTimerInterval);
             _syncTimer.Elapsed += (s, e) =>
             {
-                _syncTimer.Enabled = false;
-                if (_isInitialized)
+                try
                 {
-                    RequestSync();
-                }
+                    _syncTimer.Enabled = false;
+                    if (_isInitialized)
+                    {
+                        RequestSync();
+                    }
 
-                var initPeerCount = _peers.Count(p => p.Value.IsInitialized);
-                if (initPeerCount != _lastSyncPeersCount)
+                    var initPeerCount = _peers.Count(p => p.Value.IsInitialized);
+
+                    if (DateTime.Now - _lastFullInfo > TimeSpan.FromSeconds(120) && _logger.IsDebug)
+                    {
+                        _logger.Debug("Sync peers list:");
+                        foreach (KeyValuePair<NodeId, PeerInfo> peer in _peers)
+                        {
+                            _logger.Debug($"{peer.Value}");
+                        }
+                        
+                        _lastFullInfo = DateTime.Now;
+                    }
+                    else if (initPeerCount != _lastSyncPeersCount)
+                    {
+                        _lastSyncPeersCount = initPeerCount;
+                        if (_logger.IsInfo) _logger.Info($"Sync peers {initPeerCount}({_peers.Count})/{_blockchainConfig.SyncPeersMaxCount} {(_isSyncing ? $"(sync in progress with {_currentSyncingPeerInfo?.ToString()})" : string.Empty)}");
+                    }
+
+                    CheckIfSyncingWithFastestPeer();
+                }
+                catch (Exception exception)
                 {
-                    _lastSyncPeersCount = initPeerCount;
-                    if (_logger.IsInfo) _logger.Info($"Sync peers {initPeerCount}({_peers.Count})/{_blockchainConfig.SyncPeersMaxCount} {(_isSyncing ? $"(sync in progress with {_currentSyncingPeerInfo?.ToString()})" : string.Empty)}");
+                    if(_logger.IsDebug) _logger.Error("Sync timer failed", exception);
                 }
-
-                CheckIfSyncingWithFastestPeer();
-                _syncTimer.Enabled = true;
+                finally
+                {
+                    _syncTimer.Enabled = true;
+                }
             };
 
             _syncTimer.Start();
@@ -646,7 +669,7 @@ namespace Nethermind.Blockchain
 
         private PeerInfo SelectBestPeerForSync()
         {
-            var availablePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestKnownNumber).Where(x => x.IsInitialized).Select(x => new { PeerInfo = x, AvLat = x.Peer?.NodeStats?.GetAverageLatency(NodeLatencyStatType.BlockHeaders) })
+            var availablePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestKnownNumber).Where(x => x.IsInitialized).Select(x => new {PeerInfo = x, AvLat = x.Peer?.NodeStats?.GetAverageLatency(NodeLatencyStatType.BlockHeaders)})
                 .OrderBy(x => x.AvLat ?? 100000).ToArray();
             if (!availablePeers.Any())
             {
@@ -704,7 +727,7 @@ namespace Nethermind.Blockchain
                 }
 
                 UInt256 blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
-                int blocksToRequest = (int)BigInteger.Min(blocksLeft + 1, _batchSize);
+                int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _batchSize);
                 if (_logger.IsTrace) _logger.Trace($"Sync request to peer {peerInfo.Peer.NodeId} with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
 
                 Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.NumberReceived, blocksToRequest, 0, _peerSyncCancellationTokenSource.Token);
@@ -816,7 +839,7 @@ namespace Nethermind.Blockchain
                     if (parent == null)
                     {
                         ancestorLookupLevel += _batchSize;
-                        peerInfo.NumberReceived = peerInfo.NumberReceived >= _batchSize ? (peerInfo.NumberReceived - (UInt256)_batchSize) : UInt256.Zero;
+                        peerInfo.NumberReceived = peerInfo.NumberReceived >= _batchSize ? (peerInfo.NumberReceived - (UInt256) _batchSize) : UInt256.Zero;
                         continue;
                     }
                 }
@@ -853,7 +876,7 @@ namespace Nethermind.Blockchain
                             {
                                 const string message = "Peer sent orphaned blocks";
                                 _logger.Error(message);
-                                peerInfo.NumberReceived -= peerInfo.NumberReceived <= 60 ? UInt256.Zero : (UInt256)60;
+                                peerInfo.NumberReceived -= peerInfo.NumberReceived <= 60 ? UInt256.Zero : (UInt256) 60;
                                 throw new EthSynchronizationException(message);
                             }
                             else

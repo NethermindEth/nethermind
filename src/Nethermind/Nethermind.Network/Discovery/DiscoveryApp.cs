@@ -289,9 +289,19 @@ namespace Nethermind.Network.Discovery
             _discoveryTimer = new Timer(_configurationProvider.DiscoveryInterval) {AutoReset = false};
             _discoveryTimer.Elapsed += (sender, e) =>
             {
-                _discoveryTimer.Enabled = false;
-                RunDiscoveryProcess();
-                _discoveryTimer.Enabled = true;
+                try
+                {
+                    _discoveryTimer.Enabled = false;
+                    RunDiscoveryProcess();
+                }
+                catch (Exception exception)
+                {
+                    if (_logger.IsDebug) _logger.Error("Discovery timer failed", exception);
+                }
+                finally
+                {
+                    _discoveryTimer.Enabled = true;
+                }
             };
             _discoveryTimer.Start();
         }
@@ -315,9 +325,19 @@ namespace Nethermind.Network.Discovery
             _discoveryPersistenceTimer = new Timer(_configurationProvider.DiscoveryPersistenceInterval) {AutoReset = false};
             _discoveryPersistenceTimer.Elapsed += (sender, e) =>
             {
-                _discoveryPersistenceTimer.Enabled = false;
-                RunDiscoveryCommit();
-                _discoveryPersistenceTimer.Enabled = true;
+                try
+                {
+                    _discoveryPersistenceTimer.Enabled = false;
+                    RunDiscoveryCommit();
+                }
+                catch (Exception exception)
+                {
+                    if (_logger.IsDebug) _logger.Error("Discovery persistence timer failed", exception);
+                }
+                finally
+                {
+                    _discoveryPersistenceTimer.Enabled = true;
+                }
             };
             _discoveryPersistenceTimer.Start();
         }

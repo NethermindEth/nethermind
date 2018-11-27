@@ -203,9 +203,9 @@ namespace Nethermind.Network
 
                     _isPeerUpdateInProgress = true;
                 }
-                
+
                 //_logger.Info($"TESTTEST All active peers: {_activePeers.Count}, can: {_candidatePeers.Count}, peers: IN: {_activePeers.Values.Count(x => x.ConnectionDirection == ConnectionDirection.In)}, OUT: {_activePeers.Values.Count(x => x.ConnectionDirection == ConnectionDirection.Out)}");
-                
+
                 int availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
                 if (availableActiveCount == 0)
                 {
@@ -364,15 +364,16 @@ namespace Nethermind.Network
                 {
                     if (delayResult.DelayReason == NodeStatsEventType.Disconnect)
                     {
-                        counters[ActivePeerSelectionCounter.FilteredByDisconnect] = counters[ActivePeerSelectionCounter.FilteredByDisconnect] + 1;    
+                        counters[ActivePeerSelectionCounter.FilteredByDisconnect] = counters[ActivePeerSelectionCounter.FilteredByDisconnect] + 1;
                     }
                     else if (delayResult.DelayReason == NodeStatsEventType.ConnectionFailed)
                     {
                         counters[ActivePeerSelectionCounter.FilteredByFailedConnection] = counters[ActivePeerSelectionCounter.FilteredByFailedConnection] + 1;
                     }
+
                     continue;
                 }
-                
+
 //                if (!CheckLastDisconnectTime(candidate.Value))
 //                {
 //                    counters[ActivePeerSelectionCounter.FilteredByDisconnect] = counters[ActivePeerSelectionCounter.FilteredByDisconnect] + 1;
@@ -430,7 +431,7 @@ namespace Nethermind.Network
                 {
                     LogLatencyComparison(peersWithLatencyStats);
                 }
-                
+
                 if (_networkConfig.CaptureNodeStatsEventHistory)
                 {
                     _logger.Debug($"Logging {peers.Length} peers log event histories");
@@ -576,12 +577,12 @@ namespace Nethermind.Network
         private void LoadConfiguredTrustedPeers()
         {
             var trustedPeers = _networkConfig.TrustedPeers;
-            
+
             if (_logger.IsInfo)
             {
                 _logger.Info($"Initializing trusted peers: {trustedPeers?.Length ?? 0}.");
             }
-            
+
             if (trustedPeers == null || !trustedPeers.Any())
             {
                 return;
@@ -592,16 +593,16 @@ namespace Nethermind.Network
                 AddConfigNode(trustedPeer, true);
             }
         }
-        
+
         private void LoadConfiguredBootnodes()
         {
             var bootNodes = _networkConfig.BootNodes;
-            
+
             if (_logger.IsInfo)
             {
                 _logger.Info($"Initializing bootnode peers: {bootNodes?.Length ?? 0}.");
             }
-            
+
             if (bootNodes == null || !bootNodes.Any())
             {
                 return;
@@ -630,7 +631,7 @@ namespace Nethermind.Network
                 }
             }
         }
-        
+
         private void OnProtocolInitialized(object sender, ProtocolInitializedEventArgs e)
         {
             //Fire and forget
@@ -930,13 +931,14 @@ namespace Nethermind.Network
             {
                 //we want to update reputation always
                 activePeer.NodeStats.AddNodeStatsDisconnectEvent(e.DisconnectType, e.DisconnectReason);
-                
+
                 if (activePeer.Session?.SessionId != session.SessionId)
                 {
                     if (_logger.IsTrace)
                     {
                         _logger.Trace($"Received disconnect on a different session than the active peer runs. Ignoring. Id: {activePeer.Node.Id}");
                     }
+
                     return;
                 }
 
@@ -983,14 +985,14 @@ namespace Nethermind.Network
 
             //if remote id changed we remove active peer with old remote id and add new remote id peer to active peers
             _activePeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
-            
+
             if (_candidatePeers.TryGetValue(session.RemoteNodeId, out Peer newPeer))
             {
                 if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer present in candidate collection");
                 _activePeers.TryAdd(newPeer.Node.Id, newPeer);
                 return;
             }
-            
+
             var node = _nodeFactory.CreateNode(session.RemoteNodeId, session.RemoteHost, session.RemotePort ?? 0);
             newPeer = new Peer(node, _nodeStatsProvider.GetOrAddNodeStats(node), session.ConnectionDirection)
             {
@@ -1076,9 +1078,19 @@ namespace Nethermind.Network
             _activePeersTimer = new System.Timers.Timer(_networkConfig.ActivePeerUpdateInterval) {AutoReset = false};
             _activePeersTimer.Elapsed += (sender, e) =>
             {
-                _activePeersTimer.Enabled = false;
-                RunPeerUpdateSync();
-                _activePeersTimer.Enabled = true;
+                try
+                {
+                    _activePeersTimer.Enabled = false;
+                    RunPeerUpdateSync();
+                }
+                catch (Exception exception)
+                {
+                    if (_logger.IsDebug) _logger.Error("Active peers timer failed", exception);
+                }
+                finally
+                {
+                    _activePeersTimer.Enabled = true;
+                }
             };
 
             _activePeersTimer.Start();
@@ -1104,9 +1116,19 @@ namespace Nethermind.Network
             _peerPersistenceTimer = new System.Timers.Timer(_networkConfig.PeersPersistenceInterval) {AutoReset = false};
             _peerPersistenceTimer.Elapsed += (sender, e) =>
             {
-                _peerPersistenceTimer.Enabled = false;
-                RunPeerCommit();
-                _peerPersistenceTimer.Enabled = true;
+                try
+                {
+                    _peerPersistenceTimer.Enabled = false;
+                    RunPeerCommit();
+                }
+                catch (Exception exception)
+                {
+                    if (_logger.IsDebug) _logger.Error("Peer persistence timer failed", exception);
+                }
+                finally
+                {
+                    _peerPersistenceTimer.Enabled = true;
+                }
             };
 
             _peerPersistenceTimer.Start();
@@ -1132,9 +1154,19 @@ namespace Nethermind.Network
             _pingTimer = new System.Timers.Timer(_networkConfig.P2PPingInterval) {AutoReset = false};
             _pingTimer.Elapsed += (sender, e) =>
             {
-                _pingTimer.Enabled = false;
-                SendPingMessages();
-                _pingTimer.Enabled = true;
+                try
+                {
+                    _pingTimer.Enabled = false;
+                    SendPingMessages();
+                }
+                catch (Exception exception)
+                {
+                    if (_logger.IsDebug) _logger.Error("Ping timer failed", exception);
+                }
+                finally
+                {
+                    _pingTimer.Enabled = true;
+                }
             };
 
             _pingTimer.Start();
