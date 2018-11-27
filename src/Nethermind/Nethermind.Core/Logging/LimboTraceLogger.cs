@@ -21,23 +21,18 @@ using System.Threading;
 
 namespace Nethermind.Core.Logging
 {
-    public class NullLogger : ILogger
+    /// <summary>
+    /// Logger for testing where we want to test whether any test message creation would cause an exception
+    /// </summary>
+    public class LimboTraceLogger : ILogger
     {
-        private static NullLogger _instance;
-
-        public static NullLogger Instance
+        private static LimboTraceLogger _instance;
+        
+        public static LimboTraceLogger Instance
         {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogger()); }
+            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new LimboTraceLogger()); }
         }
-
-        private NullLogger()
-        {
-        }
-
-        public void Log(string text)
-        {
-        }
-
+        
         public void Info(string text)
         {
         }
@@ -57,11 +52,11 @@ namespace Nethermind.Core.Logging
         public void Error(string text, Exception ex = null)
         {
         }
-        
-        public bool IsInfo { get; } = false;
-        public bool IsWarn { get; } = false;
-        public bool IsDebug { get; } = false;
-        public bool IsTrace { get; } = false;
-        public bool IsError { get; } = false;
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => true;
+        public bool IsTrace => true;
+        public bool IsError => true;
     }
 }

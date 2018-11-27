@@ -21,47 +21,37 @@ using System.Threading;
 
 namespace Nethermind.Core.Logging
 {
-    public class NullLogger : ILogger
+    /// <summary>
+    /// Use with tests to check trace log message constructions.
+    /// </summary>
+    public class LimboLogs : ILogManager
     {
-        private static NullLogger _instance;
-
-        public static NullLogger Instance
-        {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogger()); }
-        }
-
-        private NullLogger()
+        private LimboLogs()
         {
         }
 
-        public void Log(string text)
-        {
-        }
-
-        public void Info(string text)
-        {
-        }
-
-        public void Warn(string text)
-        {
-        }
-
-        public void Debug(string text)
-        {
-        }
-
-        public void Trace(string text)
-        {
-        }
-
-        public void Error(string text, Exception ex = null)
-        {
-        }
+        private static LimboLogs _instance;
         
-        public bool IsInfo { get; } = false;
-        public bool IsWarn { get; } = false;
-        public bool IsDebug { get; } = false;
-        public bool IsTrace { get; } = false;
-        public bool IsError { get; } = false;
+        public static LimboLogs Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new LimboLogs());
+
+        public ILogger GetClassLogger(Type type)
+        {
+            return LimboTraceLogger.Instance;
+        }
+
+        public ILogger GetClassLogger<T>()
+        {
+            return LimboTraceLogger.Instance;
+        }
+
+        public ILogger GetClassLogger()
+        {
+            return LimboTraceLogger.Instance;
+        }
+
+        public ILogger GetLogger(string loggerName)
+        {
+            return LimboTraceLogger.Instance;
+        }
     }
 }

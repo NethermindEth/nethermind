@@ -64,8 +64,8 @@ namespace Nethermind.Clique.Test
             // Init snapshot db
             MemDb db = new MemDb();
             CliqueConfig config = new CliqueConfig(15, 30000);
-            _signer = new EthereumSigner(RinkebySpecProvider.Instance, NullLogManager.Instance);
-            _clique = new CliqueSealEngine(config, _signer, key, db, _blockTree, NullLogManager.Instance);
+            _signer = new EthereumSigner(RinkebySpecProvider.Instance, LimboLogs.Instance);
+            _clique = new CliqueSealEngine(config, _signer, key, db, _blockTree, LimboLogs.Instance);
         }
 
         [TestCase(Block1Rlp)]

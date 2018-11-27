@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Test
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
             IDb traceDb = new MemDb();
-            IStateProvider stateProvider = new StateProvider(new StateTree(stateDb, Keccak.EmptyTreeHash), codeDb, NullLogManager.Instance);
+            IStateProvider stateProvider = new StateProvider(new StateTree(stateDb, Keccak.EmptyTreeHash), codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new BlockProcessor(
                 RinkebySpecProvider.Instance,
@@ -50,10 +50,10 @@ namespace Nethermind.Blockchain.Test
                 codeDb,
                 traceDb,
                 stateProvider,
-                new StorageProvider(stateDb, stateProvider, NullLogManager.Instance),
+                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
                 NullTransactionPool.Instance,
                 NullReceiptStorage.Instance,
-                NullLogManager.Instance);
+                LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestObject.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;

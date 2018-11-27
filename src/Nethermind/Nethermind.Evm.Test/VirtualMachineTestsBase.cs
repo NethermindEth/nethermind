@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test
         public VirtualMachineTestsBase()
         {
             SpecProvider = MainNetSpecProvider.Instance;
-            ILogManager logger = NullLogManager.Instance;
+            ILogManager logger = LimboLogs.Instance;;
             IDb codeDb = new StateDb();
             _stateDb = new StateDb();
             StateTree stateTree = new StateTree(_stateDb);

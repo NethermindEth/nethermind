@@ -38,20 +38,16 @@ namespace Nethermind.Evm.Test
         private TransactionProcessor _transactionProcessor;
         private StateProvider _stateProvider;
         
-        public TransactionProcessorTests()
-        {
-        }
-        
         [SetUp]
         public void Setup()
         {
             _specProvider = MainNetSpecProvider.Instance;
             StateDb stateDb = new StateDb();
-            _stateProvider = new StateProvider(new StateTree(stateDb), new MemDb(), NullLogManager.Instance);
-            StorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, NullLogManager.Instance);
-            VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), NullLogManager.Instance);
-            _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, NullLogManager.Instance);
-            _ethereumSigner = new EthereumSigner(_specProvider, NullLogManager.Instance);
+            _stateProvider = new StateProvider(new StateTree(stateDb), new MemDb(), LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, LimboLogs.Instance);
+            VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance);
+            _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
+            _ethereumSigner = new EthereumSigner(_specProvider, LimboLogs.Instance);
         }
 
         [TestCase(true, true)]

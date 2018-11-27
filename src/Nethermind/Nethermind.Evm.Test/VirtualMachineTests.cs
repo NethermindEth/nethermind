@@ -18,9 +18,7 @@
 
 using System.Linq;
 using System.Numerics;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Store;
