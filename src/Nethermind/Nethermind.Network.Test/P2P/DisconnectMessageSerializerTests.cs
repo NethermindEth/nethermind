@@ -35,7 +35,16 @@ namespace Nethermind.Network.Test.P2P
             byte[] serialized = serializer.Serialize(msg);
             Assert.AreEqual("0xc105", serialized.ToHexString(true), "bytes");
             DisconnectMessage deserialized = serializer.Deserialize(serialized);
-            Assert.AreEqual( msg.Reason, deserialized.Reason, "reason");
+            Assert.AreEqual(msg.Reason, deserialized.Reason, "reason");
+        }
+
+        [Test]
+        public void Can_read_single_byte_message()
+        {
+            DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
+            byte[] serialized = new byte[] {16};
+            DisconnectMessage deserialized = serializer.Deserialize(serialized);
+            Assert.AreEqual(DisconnectReason.Other, (DisconnectReason)deserialized.Reason, "reason");
         }
     }
 }
