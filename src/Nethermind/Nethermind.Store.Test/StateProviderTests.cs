@@ -25,6 +25,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm.Tracing;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -156,6 +157,25 @@ namespace Nethermind.Store.Test
             Assert.AreEqual(new byte[0], provider.GetCode(_address1));
             provider.Restore(-1);
             Assert.AreEqual(false, provider.AccountExists(_address1));
+        }
+        
+        [Test(Description = "It was failing before as touch was marking the accounts as committed but not adding to trace list")]
+        public void Touch_empty_trace_does_not_throw()
+        {
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
+            
+            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), Logger);
+            provider.CreateAccount(_address1, 0);
+            Account account = provider.GetAccount(_address1);
+            Assert.True(account.IsEmpty);
+            provider.Commit(Frontier.Instance); // commit empty account (before the empty account fix in Spurious Dragon)
+            Assert.True(provider.AccountExists(_address1));
+            
+            provider.Reset(); // clear all caches
+
+            provider.GetBalance(_address1); // justcache
+            provider.AddToBalance(_address1, 0, SpuriousDragon.Instance); // touch
+            Assert.DoesNotThrow(() => provider.Commit(SpuriousDragon.Instance, tracer));
         }
     }
 }

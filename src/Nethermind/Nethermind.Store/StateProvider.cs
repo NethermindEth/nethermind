@@ -327,8 +327,8 @@ namespace Nethermind.Store
                 Before = null;
             }
             
-            public Account Before { get; set; }
-            public Account After { get; set; }
+            public Account Before { get; }
+            public Account After { get; }
         }
         
         public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer)
@@ -391,6 +391,10 @@ namespace Nethermind.Store
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             SetState(change.Address, null);
+                            if (isTracing)
+                            {
+                                trace[change.Address] = new ChangeTrace(null);
+                            }
                         }
                         else
                         {
