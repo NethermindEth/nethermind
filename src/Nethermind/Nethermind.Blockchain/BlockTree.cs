@@ -556,7 +556,7 @@ namespace Nethermind.Blockchain
                 return false;
             }
 
-            if (blockHash == Head.Hash)
+            if (blockHash == Head?.Hash)
             {
                 return true;
             }

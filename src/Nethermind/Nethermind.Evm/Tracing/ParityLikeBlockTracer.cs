@@ -25,20 +25,18 @@ namespace Nethermind.Evm.Tracing
 {
     public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLikeTxTracer>
     {
-        private readonly Block _block;
+        private Block _block;
+        
         private readonly ParityTraceTypes _types;
 
-        public ParityLikeBlockTracer(Block block, Keccak txHash, ParityTraceTypes types)
+        public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types)
             :base(txHash)
         {
-            _block = block;
             _types = types;
         }
         
-        public ParityLikeBlockTracer(Block block, ParityTraceTypes types)
-            :base(block)
+        public ParityLikeBlockTracer(ParityTraceTypes types)
         {
-            _block = block;
             _types = types;
         }
 
@@ -66,6 +64,11 @@ namespace Nethermind.Evm.Tracing
                 rewardTrace.Action.CallType = "reward";
                 rewardTrace.Action.TraceAddress = new int[] { };
             }
+        }
+
+        public override void StartNewBlockTrace(Block block)
+        {
+            _block = block;
         }
     }
 }

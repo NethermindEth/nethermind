@@ -57,6 +57,7 @@ namespace Nethermind.Network.Test.Discovery
         [SetUp]
         public void Initialize()
         {
+            NetworkNodeDecoder.Init();
             SetupNodeIds();
 
             var logManager = NullLogManager.Instance;

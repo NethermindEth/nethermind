@@ -23,13 +23,12 @@ namespace Nethermind.Evm.Tracing
 {
     public class GethLikeBlockTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxTracer>
     {
-        public GethLikeBlockTracer(Block block)
-        :base(block)
+        public GethLikeBlockTracer()
         {
         }
-
+        
         public GethLikeBlockTracer(Keccak txHash)
-        :base(txHash)
+            : base(txHash)
         {
         }
 
@@ -41,6 +40,10 @@ namespace Nethermind.Evm.Tracing
         protected override GethLikeTxTrace OnEnd(GethLikeTxTracer txTracer)
         {
             return txTracer.BuildResult();
+        }
+
+        public override void StartNewBlockTrace(Block block)
+        {
         }
     }
 }

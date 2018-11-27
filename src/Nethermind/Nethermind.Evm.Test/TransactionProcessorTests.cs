@@ -146,8 +146,9 @@ namespace Nethermind.Evm.Test
                 types = types | ParityTraceTypes.Trace;
             }
             
-            IBlockTracer otherTracer = types != ParityTraceTypes.None ? new ParityLikeBlockTracer(block, tx.Hash, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff) : (IBlockTracer)NullBlockTracer.Instance; 
-            BlockReceiptsTracer tracer = new BlockReceiptsTracer(block, otherTracer, _specProvider, _stateProvider);
+            IBlockTracer otherTracer = types != ParityTraceTypes.None ? new ParityLikeBlockTracer(tx.Hash, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff) : (IBlockTracer)NullBlockTracer.Instance; 
+            BlockReceiptsTracer tracer = new BlockReceiptsTracer(_specProvider, _stateProvider);
+            tracer.SetOtherTracer(otherTracer);
             return tracer;
         }
 
@@ -159,6 +160,7 @@ namespace Nethermind.Evm.Test
 
         private void Execute(BlockReceiptsTracer tracer, Transaction tx, Block block)
         {
+            tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(tx.Hash);
             _transactionProcessor.Execute(tx, block.Header, tracer);
             tracer.EndTxTrace();

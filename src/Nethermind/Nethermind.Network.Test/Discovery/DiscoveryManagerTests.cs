@@ -55,6 +55,7 @@ namespace Nethermind.Network.Test.Discovery
         [SetUp]
         public void Initialize()
         {
+            NetworkNodeDecoder.Init();
             var privateKey = new PrivateKey(TestPrivateKeyHex);
             _publicKey = privateKey.PublicKey;
             var logManager = NullLogManager.Instance;

@@ -31,6 +31,15 @@ namespace Nethermind.Evm.Test.Tracing
     [TestFixture]
     public class ParityLikeCallTxTracerTests : VirtualMachineTestsBase
     {
+//        2018-11-27 14:58:22.8996|ERROR|44|Blockchain.BlockchainProcessor|BlockchainProcessor encountered an exception. System.AggregateException: One or more errors occurred. (Sequence contains no matching element) ---> System.InvalidOperationException: Sequence contains no matching element
+//    at System.Linq.Enumerable.Single[TSource](IEnumerable`1 source, Func`2 predicate)
+//    at Nethermind.Evm.Tracing.ParityLikeBlockTracer.OnStart(Keccak txHash) in /root/src/nethermind/src/Nethermind/Nethermind.Evm/Tracing/ParityLikeBlockTracer.cs:line 47
+//    at Nethermind.Evm.Tracing.BlockTracerBase`2.Nethermind.Evm.Tracing.IBlockTracer.StartNewTxTrace(Keccak txHash) in /root/src/nethermind/src/Nethermind/Nethermind.Evm/Tracing/BlockTracerBase.cs:line 60
+//    at Nethermind.Blockchain.BlockProcessor.ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer) in /root/src/nethermind/src/Nethermind/Nethermind.Blockchain/BlockProcessor.cs:line 135
+//    at Nethermind.Blockchain.BlockProcessor.ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer) in /root/src/nethermind/src/Nethermind/Nethermind.Blockchain/BlockProcessor.cs:line 199
+//    at Nethermind.Blockchain.BlockProcessor.Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer) in /root/src/nethermind/src/Nethermind/Nethermind.Blockchain/BlockProcessor.cs:line 104
+
+        
         private const string SampleHexData1 = "a01234";
         private const string SampleHexData2 = "b15678";
         private const string HexZero = "00";

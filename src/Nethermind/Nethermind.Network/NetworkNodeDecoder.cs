@@ -54,5 +54,10 @@ namespace Nethermind.Network
             elements[4] = Rlp.Encode(item.Reputation);
             return Rlp.Encode(elements);
         }
+
+        public static void Init()
+        {
+            // here to register with RLP in static constructor
+        }
     }
 }

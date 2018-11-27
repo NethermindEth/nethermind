@@ -79,7 +79,8 @@ namespace Nethermind.JsonRpc.Test.DataModel
         public void Can_serialize_reward()
         {
             Block block = Build.A.Block.WithNumber(UInt256.Parse("4563918244f40000".AsSpan(), NumberStyles.AllowHexSpecifier)).TestObject;
-            IBlockTracer blockTracer = new ParityLikeBlockTracer(block, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            blockTracer.StartNewBlockTrace(block);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(null);
             txTracer.ReportBalanceChange(TestObject.AddressA, 0, 3.Ether());
             blockTracer.EndTxTrace();
@@ -94,7 +95,8 @@ namespace Nethermind.JsonRpc.Test.DataModel
         public void Can_serialize_reward_state_only()
         {
             Block block = Build.A.Block.WithNumber(UInt256.Parse("4563918244f40000".AsSpan(), NumberStyles.AllowHexSpecifier)).TestObject;
-            IBlockTracer blockTracer = new ParityLikeBlockTracer(block, ParityTraceTypes.StateDiff);
+            IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.StateDiff);
+            blockTracer.StartNewBlockTrace(block);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(null);
             txTracer.ReportBalanceChange(TestObject.AddressA, 0, 3.Ether());
             blockTracer.EndTxTrace();

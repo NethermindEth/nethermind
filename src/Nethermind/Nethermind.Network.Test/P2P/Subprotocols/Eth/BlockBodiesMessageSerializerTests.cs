@@ -34,7 +34,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         public void Roundtrip()
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
-            Transaction tx = Build.A.Transaction.SignedAndResolved(new EthereumSigner(RopstenSpecProvider.Instance, NullLogManager.Instance), TestObject.PrivateKeyA, 1).TestObject;
+            Address to = Build.An.Address.FromNumber(1).TestObject;
+            Transaction tx = Build.A.Transaction.WithTo(to).SignedAndResolved(new EthereumSigner(RopstenSpecProvider.Instance, NullLogManager.Instance), TestObject.PrivateKeyA, 1).TestObject;
             BlockBodiesMessage message = new BlockBodiesMessage();
             message.Bodies = new [] {new BlockBody(new [] {tx}, new [] {header})};
 

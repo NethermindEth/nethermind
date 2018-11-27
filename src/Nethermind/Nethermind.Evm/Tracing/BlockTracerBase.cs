@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Tracing
 
         private bool _isTracingEntireBlock;
 
-        protected BlockTracerBase(Block block)
+        protected BlockTracerBase()
         {
             _isTracingEntireBlock = true;
             TxTraces = new List<TTrace>();
@@ -52,6 +52,8 @@ namespace Nethermind.Evm.Tracing
         public virtual void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
         }
+
+        public abstract void StartNewBlockTrace(Block block);
 
         ITxTracer IBlockTracer.StartNewTxTrace(Keccak txHash)
         {

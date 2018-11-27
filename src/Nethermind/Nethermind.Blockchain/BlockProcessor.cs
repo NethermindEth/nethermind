@@ -75,6 +75,7 @@ namespace Nethermind.Blockchain
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _traceDb = traceDb ?? throw new ArgumentNullException(nameof(traceDb));
+            _receiptsTracer = new BlockReceiptsTracer(_specProvider, _stateProvider);
         }
 
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
@@ -126,25 +127,28 @@ namespace Nethermind.Blockchain
             }
         }
 
+        private BlockReceiptsTracer _receiptsTracer;
+        
         private TransactionReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
-            BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer(block, blockTracer, _specProvider, _stateProvider);
+            _receiptsTracer.SetOtherTracer(blockTracer);
+            _receiptsTracer.StartNewBlockTrace(block);   
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 if (_logger.IsTrace) _logger.Trace($"Processing transaction {i}");
                 Transaction currentTx = block.Transactions[i];
-                receiptsTracer.StartNewTxTrace(currentTx.Hash);
-                _transactionProcessor.Execute(currentTx, block.Header, receiptsTracer);
-                receiptsTracer.EndTxTrace();
+                _receiptsTracer.StartNewTxTrace(currentTx.Hash);
+                _transactionProcessor.Execute(currentTx, block.Header, _receiptsTracer);
+                _receiptsTracer.EndTxTrace();
 
                 if ((processingOptions & ProcessingOptions.ReadOnlyChain) == 0)
                 {
-                    TransactionProcessed?.Invoke(this, new TransactionProcessedEventArgs(receiptsTracer.Receipts[i]));
+                    TransactionProcessed?.Invoke(this, new TransactionProcessedEventArgs(_receiptsTracer.Receipts[i]));
                 }
             }
 
-            return receiptsTracer.Receipts;
+            return _receiptsTracer.Receipts;
         }
 
         private void SetReceiptsRootAndBloom(Block block, TransactionReceipt[] receipts)

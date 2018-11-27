@@ -42,6 +42,10 @@ namespace Nethermind.Evm.Tracing
         {
         }
 
+        public void StartNewBlockTrace(Block block)
+        {
+        }
+
         public ITxTracer StartNewTxTrace(Keccak txHash)
         {
             return NullTxTracer.Instance;

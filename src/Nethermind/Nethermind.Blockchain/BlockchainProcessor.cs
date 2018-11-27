@@ -243,7 +243,7 @@ namespace Nethermind.Blockchain
                 IBlockTracer tracer = NullBlockTracer.Instance;
                 if ((blockRef.ProcessingOptions & ProcessingOptions.StoreTraces) != 0)
                 {
-                    tracer = new ParityLikeBlockTracer(block, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+                    tracer = new ParityLikeBlockTracer(ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
                 }
 
                 Process(block, blockRef.ProcessingOptions, tracer);

@@ -163,7 +163,7 @@ namespace Nethermind.Blockchain
 
         private ParityLikeTxTrace ParityTrace(Block block, Keccak txHash, ParityTraceTypes traceTypes)
         {
-            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(block, txHash, traceTypes);
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(txHash, traceTypes);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
             return listener.BuildResult().SingleOrDefault();
         }
@@ -178,7 +178,7 @@ namespace Nethermind.Blockchain
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
-            GethLikeBlockTracer listener = new GethLikeBlockTracer(block);
+            GethLikeBlockTracer listener = new GethLikeBlockTracer();
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
             return listener.BuildResult().ToArray();
         }
@@ -193,7 +193,7 @@ namespace Nethermind.Blockchain
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
-            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(block, traceTypes);
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(traceTypes);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
             return listener.BuildResult().ToArray();
         }
