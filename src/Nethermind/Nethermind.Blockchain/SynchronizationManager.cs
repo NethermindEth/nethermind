@@ -793,7 +793,7 @@ namespace Nethermind.Blockchain
                     throw bodiesTask.Exception;
                 }
 
-                if (blocks.Length == 0 && ++emptyBlockListCounter == 10)
+                if (blocks.Length == 0 && ++emptyBlockListCounter >= 10)
                 {
                     if (_batchSize == MinBatchSize)
                     {
