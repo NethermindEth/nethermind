@@ -127,6 +127,8 @@ namespace Nethermind.Runner.Runners
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager.GetClassLogger();
+            
+            InitRlp();
             _configProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _rpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
@@ -139,7 +141,6 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsInfo) _logger.Info("Initializing Ethereum");
             _runnerCancellation = new CancellationTokenSource();
 
-            ShakeRlp();
             GenerateNodeKey();
             LoadChainSpec();
             UpdateNetworkConfig();
@@ -152,12 +153,12 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsDebug) _logger.Debug("Ethereum initialization completed");
         }
 
-        private void ShakeRlp()
+        private void InitRlp()
         {
             /* this is to invoke decoder registrations that happen in their static constructor
                looks like this will be quite a long term temporary solution (2018.11.27)*/
             System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(ParityTraceDecoder).TypeHandle);
-            System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(NetworkNodeDecoder).TypeHandle);
+            NetworkNodeDecoder.Init();
         }
 
         private void GenerateNodeKey()
