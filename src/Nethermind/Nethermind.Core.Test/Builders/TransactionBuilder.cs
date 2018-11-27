@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
@@ -29,7 +28,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = new Transaction();
             TestObjectInternal.GasPrice = 1;
             TestObjectInternal.GasLimit = 21000;
-            TestObjectInternal.To = Build.An.Address.FromNumber(1).TestObject;
+            TestObjectInternal.To = Address.Zero;
             TestObjectInternal.Nonce = 0;
             TestObjectInternal.Value = 1;
             TestObjectInternal.Data = new byte[0];

@@ -29,6 +29,11 @@ namespace Nethermind.Store
         private readonly AccountDecoder _decoder = new AccountDecoder();
         
         [DebuggerStepThrough]
+        public StateTree() : base(new MemDb(), Keccak.EmptyTreeHash, true)
+        {
+        }
+        
+        [DebuggerStepThrough]
         public StateTree(IDb db) : base(db, Keccak.EmptyTreeHash, true)
         {
         }

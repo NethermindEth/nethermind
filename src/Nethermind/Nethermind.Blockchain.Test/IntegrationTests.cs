@@ -136,7 +136,7 @@ namespace Nethermind.Blockchain.Test
                 blockchainProcessor.SuggestBlock(block.Hash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
                 blockProcessedEvent.WaitOne(1000);
 
-                Tracer tracer = new Tracer(blockchainProcessor, receiptStorage, blockTree);
+                Tracer tracer = new Tracer(blockchainProcessor, receiptStorage, blockTree, new MemDb());
 
                 int currentCount = receiptsDb.Keys.Count;
                 logger.Info($"Current count of receipts {currentCount}");

@@ -42,6 +42,7 @@ using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Module;
 using Nethermind.KeyStore;
@@ -138,6 +139,7 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsInfo) _logger.Info("Initializing Ethereum");
             _runnerCancellation = new CancellationTokenSource();
 
+            ShakeRlp();
             GenerateNodeKey();
             LoadChainSpec();
             UpdateNetworkConfig();
@@ -148,6 +150,14 @@ namespace Nethermind.Runner.Runners
                 await InitHive();
             }
             if (_logger.IsDebug) _logger.Debug("Ethereum initialization completed");
+        }
+
+        private void ShakeRlp()
+        {
+            /* this is to invoke decoder registrations that happen in their static constructor
+               looks like this will be quite a long term temporary solution (2018.11.27)*/
+            System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(ParityTraceDecoder).TypeHandle);
+            System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(NetworkNodeDecoder).TypeHandle);
         }
 
         private void GenerateNodeKey()
@@ -190,7 +200,7 @@ namespace Nethermind.Runner.Runners
             IReadOnlyDbProvider rpcDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             AlternativeChain rpcChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, _transactionPool, _receiptStorage);
 
-            ITracer tracer = new Tracer(rpcChain.Processor, _receiptStorage, _blockTree);
+            ITracer tracer = new Tracer(rpcChain.Processor, _receiptStorage, _blockTree, _dbProvider.TraceDb);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, _blockProcessor, _transactionPool, _logManager);
             _wallet = HiveEnabled ? (IWallet)new HiveWallet() : new DevWallet(_logManager);
