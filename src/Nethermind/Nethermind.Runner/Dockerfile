@@ -5,11 +5,11 @@ RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 unzip
 WORKDIR /nethermind
 COPY ./bin/docker .
 
-ENV ASPNETCORE_URLS http://*:8345
 ENV ASPNETCORE_ENVIRONMENT docker
 ENV NETHERMIND_CONFIG mainnet
 ENV NETHERMIND_DETACHED_MODE true
 ENV NETHERMIND_INITCONFIG_JSONRPCENABLED false
+ENV NETHERMIND_URL http://*:8345
 
 EXPOSE 8345
 EXPOSE 30312

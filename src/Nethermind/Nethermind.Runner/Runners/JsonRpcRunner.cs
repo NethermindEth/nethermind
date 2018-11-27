@@ -54,8 +54,7 @@ namespace Nethermind.Runner.Runners
         public Task Start()
         {
             if (_logger.IsInfo) _logger.Info("Initializing JsonRPC");
-//            var hostVariable = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
-            var hostVariable = "";
+            var hostVariable = Environment.GetEnvironmentVariable("NETHERMIND_URL");
             var host = string.IsNullOrWhiteSpace(hostVariable)
                 ? $"http://{_initConfig.HttpHost}:{_initConfig.HttpPort}"
                 : hostVariable;
