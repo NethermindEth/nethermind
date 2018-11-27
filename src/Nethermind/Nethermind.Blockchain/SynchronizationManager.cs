@@ -723,12 +723,13 @@ namespace Nethermind.Blockchain
 
                 UInt256 blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
                 int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _batchSize);
-                if (_logger.IsTrace) _logger.Trace($"Sync request to peer {peerInfo.Peer.NodeId} with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
+                if (_logger.IsTrace) _logger.Trace($"Sync request {peerInfo.NumberReceived}+{blocksToRequest} to peer {peerInfo.Peer.NodeId} with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
 
                 Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.NumberReceived, blocksToRequest, 0, _peerSyncCancellationTokenSource.Token);
                 BlockHeader[] headers = await headersTask;
                 if (headersTask.IsCanceled)
                 {
+                    if (_logger.IsTrace) _logger.Trace("Headers task cancelled");
                     wasCanceled = true;
                     break;
                 }
@@ -751,6 +752,7 @@ namespace Nethermind.Blockchain
 
                 if (_peerSyncCancellationTokenSource.IsCancellationRequested)
                 {
+                    if (_logger.IsTrace) _logger.Trace("Peer sync cancelled");
                     return;
                 }
 
@@ -772,6 +774,7 @@ namespace Nethermind.Blockchain
                 if (bodiesTask.IsCanceled)
                 {
                     wasCanceled = true;
+                    if (_logger.IsTrace) _logger.Trace("Bodies task cancelled");
                     break;
                 }
 
@@ -809,6 +812,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
+                    if (_logger.IsTrace) _logger.Trace("Blocks length is 0");
                     continue;
                 }
 
@@ -847,6 +851,7 @@ namespace Nethermind.Blockchain
                 {
                     if (i != 0 && blocks[i].ParentHash != blocks[i - 1].Hash)
                     {
+                        if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {peerInfo}");
                         throw new EthSynchronizationException("Peer sent an inconsistent block list");
                     }
                 }
@@ -855,6 +860,7 @@ namespace Nethermind.Blockchain
                 {
                     if (_peerSyncCancellationTokenSource.IsCancellationRequested)
                     {
+                        if (_logger.IsTrace) _logger.Trace("Peer sync cancelled");
                         return;
                     }
 
