@@ -166,7 +166,7 @@ namespace Nethermind.Network.Rlpx
                 _p2PSession.Handshake(_handshake.RemoteNodeId);
 
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
-                FrameMacProcessor macProcessor = new FrameMacProcessor(_handshake.Secrets);
+                FrameMacProcessor macProcessor = new FrameMacProcessor(_p2PSession.RemoteNodeId, _handshake.Secrets);
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameDecoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logger));

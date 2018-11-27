@@ -66,7 +66,7 @@ namespace Nethermind.Network.P2P
         {
             SendHello();
 
-            //We are expecting receiving Hello message anytime from the handshake completion, irrespectful from sedning Hello from our side
+            //We are expecting to receive Hello message anytime from the handshake completion, irrespective of sending Hello from our side
             CheckProtocolInitTimeout().ContinueWith(x =>
             {
                 if (x.IsFaulted && Logger.IsError)

@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Model;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -30,13 +31,15 @@ namespace Nethermind.Network.Rlpx
     /// </summary>
     public class FrameMacProcessor : IFrameMacProcessor
     {
+        private readonly NodeId _remoteNodeId;
         private readonly KeccakDigest _egressMac;
         private readonly KeccakDigest _ingressMac;
         private readonly byte[] _macSecret;
 
         // TODO: three arguments in place of secrets
-        public FrameMacProcessor(EncryptionSecrets secrets)
+        public FrameMacProcessor(NodeId remoteNodeId, EncryptionSecrets secrets)
         {
+            _remoteNodeId = remoteNodeId;
             _macSecret = secrets.MacSecret;
             _egressMac = secrets.EgressMac;
             _ingressMac = secrets.IngressMac;
@@ -118,7 +121,7 @@ namespace Nethermind.Network.Rlpx
 
                 if (!isMacSame)
                 {
-                   throw new IOException($"MAC mismatch, expected {result}, was {output.Slice(outOffset, length)}");
+                   throw new IOException($"MAC mismatch from {_remoteNodeId.ToFullString()}");
                 }
             }
 
