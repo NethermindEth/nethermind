@@ -125,10 +125,13 @@ namespace Nethermind.Network.P2P
             bool isInbound = !_sentHello;
             
             if(Logger.IsTrace) Logger.Trace($"{P2PSession.RemoteNodeId} P2P received hello.");
+            
+            
             if (!hello.NodeId.Equals(P2PSession.RemoteNodeId))
             {
-                if(Logger.IsError) Logger.Error($"Inconsistent Node ID details - expected {P2PSession.RemoteNodeId}, received hello with {hello.NodeId} on " + (isInbound ? "IN connection" : "OUT connection"));
-                throw new NodeDetailsMismatchException();
+                if(Logger.IsDebug) Logger.Debug($"Inconsistent Node ID details - expected {P2PSession.RemoteNodeId}, received hello with {hello.NodeId} on " + (isInbound ? "IN connection" : "OUT connection"));
+                // it does not really matter if there is mismatch - we do not use it anywhere
+//                throw new NodeDetailsMismatchException();
             }
 
             RemoteClientId = hello.ClientId;

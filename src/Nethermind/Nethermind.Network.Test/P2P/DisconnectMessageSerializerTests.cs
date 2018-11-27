@@ -46,5 +46,15 @@ namespace Nethermind.Network.Test.P2P
             DisconnectMessage deserialized = serializer.Deserialize(serialized);
             Assert.AreEqual(DisconnectReason.Other, (DisconnectReason)deserialized.Reason, "reason");
         }
+        
+        // does this format happen more often?
+//        [Test]
+//        public void Can_read_other_format_message()
+//        {
+//            DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
+//            byte[] serialized = Bytes.FromHexString("0204c108");
+//            DisconnectMessage deserialized = serializer.Deserialize(serialized);
+//            Assert.AreEqual(DisconnectReason.Other, (DisconnectReason)deserialized.Reason, "reason");
+//        }
     }
 }
