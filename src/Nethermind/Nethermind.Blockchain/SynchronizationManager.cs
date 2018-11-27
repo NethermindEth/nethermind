@@ -808,11 +808,12 @@ namespace Nethermind.Blockchain
 
                 if (blocks.Length != 0)
                 {
+                    if (_logger.IsTrace) _logger.Trace($"Blocks length is {blocks.Length}, counter is {emptyBlockListCounter}");
                     emptyBlockListCounter = 0;
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace("Blocks length is 0");
+                    if (_logger.IsTrace) _logger.Trace($"Blocks length is 0, counter is {emptyBlockListCounter}");
                     continue;
                 }
 
