@@ -17,8 +17,6 @@
  */
 
 using Nethermind.Core.Test.Builders;
-using Nethermind.JsonRpc.DataModel;
-using Nethermind.JsonRpc.DataModel.Converters;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.DataModel

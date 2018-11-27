@@ -24,7 +24,6 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.DataModel.Converters;
 using Nethermind.JsonRpc.Module;
 using Newtonsoft.Json;
 using NSubstitute;

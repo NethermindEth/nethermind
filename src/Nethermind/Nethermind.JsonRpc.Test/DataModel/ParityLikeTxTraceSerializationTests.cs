@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -26,9 +25,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc.DataModel;
-using Nethermind.JsonRpc.DataModel.Converters;
-using Nethermind.JsonRpc.DataModel.Trace;
 using NUnit.Framework;
 using Block = Nethermind.Core.Block;
 

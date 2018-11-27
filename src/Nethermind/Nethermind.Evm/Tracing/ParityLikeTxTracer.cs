@@ -28,6 +28,7 @@ namespace Nethermind.Evm.Tracing
 {
     public class ParityLikeTxTracer : ITxTracer
     {
+        private readonly Transaction _tx;
         private ParityLikeTxTrace _trace;
         private Stack<ParityTraceAction> _callStack = new Stack<ParityTraceAction>();
         private ParityTraceAction _currentCall;
@@ -39,6 +40,7 @@ namespace Nethermind.Evm.Tracing
 
         public ParityLikeTxTracer(Block block, Transaction tx, ParityTraceTypes parityTraceTypes)
         {
+            _tx = tx;
             _trace = new ParityLikeTxTrace();
             _trace.TransactionHash = tx?.Hash;
             _trace.TransactionPosition = tx == null ? (int?)null : block.Transactions.Select((t, ix) => (t, ix)).Where(p => p.t.Hash == tx.Hash).Select((t, ix) => ix).SingleOrDefault();
@@ -118,6 +120,18 @@ namespace Nethermind.Evm.Tracing
                 throw new InvalidOperationException($"Closing trace at level {_currentCall.TraceAddress.Length}");
             }
 
+            // quick tx fail (before execution)
+            if (_trace.Action == null)
+            {
+                _trace.Action = new ParityTraceAction();
+                _trace.Action.From = _tx.SenderAddress;
+                _trace.Action.To = _tx.To;
+                _trace.Action.Value = _tx.Value;
+                _trace.Action.Input = _tx.Data;
+                _trace.Action.Gas = (long)_tx.GasLimit;
+                _trace.Action.CallType = _tx.IsMessageCall ? "call" : "init";
+            }
+            
             _trace.Action.To = recipient;
             _trace.Action.Result = new ParityTraceResult {Output = Bytes.Empty, GasUsed = (long) gasSpent};
         }

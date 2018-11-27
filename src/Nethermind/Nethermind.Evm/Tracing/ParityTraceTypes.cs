@@ -23,8 +23,10 @@ namespace Nethermind.Evm.Tracing
     [Flags]
     public enum ParityTraceTypes
     {
-        VmTrace,
-        StateDiff,
-        Trace
+        None = 0,
+        VmTrace = 1,
+        StateDiff = 2,
+        Trace = 4,
+        All = 7,
     }
 }

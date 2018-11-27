@@ -17,7 +17,6 @@
  */
 
 using System;
-using Nethermind.JsonRpc.DataModel.Converters;
 using Nethermind.JsonRpc.DataModel.Trace;
 using NUnit.Framework;
 

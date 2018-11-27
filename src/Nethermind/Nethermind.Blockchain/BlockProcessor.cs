@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.Validators;
@@ -37,6 +38,7 @@ namespace Nethermind.Blockchain
     {
         private readonly IBlockValidator _blockValidator;
         private readonly ISnapshotableDb _codeDb;
+        private readonly IDb _traceDb;
         private readonly ILogger _logger;
         private readonly IRewardCalculator _rewardCalculator;
         private readonly ISpecProvider _specProvider;
@@ -72,6 +74,7 @@ namespace Nethermind.Blockchain
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _traceDb = traceDb ?? throw new ArgumentNullException(nameof(traceDb));
         }
 
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
@@ -229,14 +232,42 @@ namespace Nethermind.Blockchain
             }
         }
         
+        [Todo(Improve.MissingFunctionality, "Review cases where same transaction is executed as part of two different blocks")]
+        [Todo(Improve.MissingFunctionality, "How to best store reward traces?")]
         private void StoreTraces(ParityLikeBlockTracer blockTracer)
         {
             if (blockTracer == null)
             {
                 throw new ArgumentNullException(nameof(blockTracer));
             }
-//            IReadOnlyCollection<ParityLikeTxTrace> traces = blockTracer.BuildResult();
-            // store
+
+            IReadOnlyCollection<ParityLikeTxTrace> traces = blockTracer.BuildResult();
+            
+            try
+            {
+                _traceDb.StartBatch();
+                List<ParityLikeTxTrace> rewardTraces = new List<ParityLikeTxTrace>();
+                foreach (ParityLikeTxTrace parityLikeTxTrace in traces)
+                {
+                    if (parityLikeTxTrace.TransactionHash != null)
+                    {
+                        _traceDb.Set(parityLikeTxTrace.TransactionHash, Rlp.Encode(parityLikeTxTrace).Bytes);
+                    }
+                    else
+                    {
+                        rewardTraces.Add(parityLikeTxTrace);
+                    }
+                }
+
+                if (rewardTraces.Any())
+                {
+                    _traceDb.Set(rewardTraces[0].BlockHash, Rlp.Encode(rewardTraces.ToArray()).Bytes);
+                }
+            }
+            finally
+            {
+                _traceDb.CommitBatch();
+            }
         }
 
         private Block PrepareBlockForProcessing(Block suggestedBlock)

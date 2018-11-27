@@ -43,6 +43,18 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
+        public BlockBuilder WithGasLimit(long gasLimit)
+        {
+            TestObjectInternal.Header.GasLimit = gasLimit;
+            return this;
+        }
+        
+        public BlockBuilder WithTransactions(params Transaction[] transactions)
+        {
+            TestObjectInternal.Transactions = transactions;
+            return this;
+        }
+        
         public BlockBuilder WithBeneficiary(Address address)
         {
             TestObjectInternal.Header.Beneficiary = address;

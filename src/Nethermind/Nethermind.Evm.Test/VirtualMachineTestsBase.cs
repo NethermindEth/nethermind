@@ -28,7 +28,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Store;
-using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test

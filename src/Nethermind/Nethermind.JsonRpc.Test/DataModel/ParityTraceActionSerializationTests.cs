@@ -16,19 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Blockchain;
-using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc.DataModel;
-using Nethermind.JsonRpc.DataModel.Converters;
-using Nethermind.JsonRpc.DataModel.Trace;
-using Nethermind.JsonRpc.Module;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.DataModel

@@ -16,13 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Core.Encoding
+namespace Nethermind.Network
 {
     public class NetworkNodeDecoder : IRlpDecoder<NetworkNode>
     {
+        static NetworkNodeDecoder()
+        {
+            Rlp.Decoders[typeof(NetworkNode)] = new NetworkNodeDecoder();
+        }
+
         public NetworkNode Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             context.ReadSequenceLength();
