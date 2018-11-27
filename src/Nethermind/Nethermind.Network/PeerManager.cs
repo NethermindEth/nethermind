@@ -530,7 +530,7 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Error trying to initiate connetion with peer: {candidate.Node.Id}", e);
+                if (_logger.IsDebug) _logger.Error($"Error trying to initiate connection with peer: {candidate.Node.Id}", e);
                 return false;
             }
         }
