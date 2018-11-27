@@ -17,6 +17,8 @@
  */
 
 using DotNetty.Common.Utilities;
+using Nethermind.Core.Model;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
 using NUnit.Framework;
 
@@ -30,7 +32,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             byte[] frame = new byte[128];
 
-            FrameMacProcessor macProcessor = new FrameMacProcessor(NetTestVectors.BuildSecretsWithSameIngressAndEgress());
+            FrameMacProcessor macProcessor = new FrameMacProcessor(new NodeId(TestObject.PublicKeyA),NetTestVectors.BuildSecretsWithSameIngressAndEgress());
             macProcessor.AddMac(frame, 0, 112, false);
             macProcessor.CheckMac(frame, 0, 112, false);
         }
@@ -40,7 +42,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             byte[] header = new byte[32];
 
-            FrameMacProcessor macProcessor = new FrameMacProcessor(NetTestVectors.BuildSecretsWithSameIngressAndEgress());
+            FrameMacProcessor macProcessor = new FrameMacProcessor(new NodeId(TestObject.PublicKeyA), NetTestVectors.BuildSecretsWithSameIngressAndEgress());
             macProcessor.AddMac(header, 0, 16, true);
             macProcessor.CheckMac(header, 0, 16, true);
         }
@@ -50,7 +52,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             byte[] full = new byte[160];
 
-            FrameMacProcessor macProcessor = new FrameMacProcessor(NetTestVectors.BuildSecretsWithSameIngressAndEgress());
+            FrameMacProcessor macProcessor = new FrameMacProcessor(new NodeId(TestObject.PublicKeyA),NetTestVectors.BuildSecretsWithSameIngressAndEgress());
             macProcessor.AddMac(full, 0, 16, true);
             macProcessor.AddMac(full, 32, 112, false);
             macProcessor.CheckMac(full, 0, 16, true);
@@ -72,12 +74,12 @@ namespace Nethermind.Network.Test.Rlpx
             var secretsA = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
             secretsA.EgressMac.BlockUpdate(egressUpdate.Slice(0, 16), 0, 16);
             secretsA.EgressMac.BlockUpdate(egressUpdate.Slice(16, 16), 0, 16);
-            FrameMacProcessor macProcessorA = new FrameMacProcessor(secretsA);
+            FrameMacProcessor macProcessorA = new FrameMacProcessor(new NodeId(TestObject.PublicKeyA),secretsA);
             macProcessorA.AddMac(a1, 0, 16, false);
             
             var secretsB = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
             secretsB.EgressMac.BlockUpdate(egressUpdate, 0, 32);
-            FrameMacProcessor macProcessorB = new FrameMacProcessor(secretsB);
+            FrameMacProcessor macProcessorB = new FrameMacProcessor(new NodeId(TestObject.PublicKeyA),secretsB);
             macProcessorB.AddMac(b1, 0, 16, false);
             
             Assert.AreEqual(a1.Slice(16, 16), b1.Slice(16, 16));

@@ -254,7 +254,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 var transaction = msg.Transactions[i];
                 transaction.DeliveredBy = NodeId.PublicKey;
                 transaction.Timestamp = _timestamp.EpochSeconds;
-                SyncManager.AddNewTransaction(transaction, NodeId);
                 _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
             }
         }

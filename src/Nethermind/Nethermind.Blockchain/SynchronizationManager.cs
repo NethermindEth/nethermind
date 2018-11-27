@@ -235,11 +235,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void AddNewTransaction(Transaction transaction, NodeId receivedFrom)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Received a pending transaction {transaction.Hash} from {receivedFrom}");
-        }
-
         public async Task AddPeer(ISynchronizationPeer synchronizationPeer)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Adding synchronization peer {synchronizationPeer.NodeId}");
