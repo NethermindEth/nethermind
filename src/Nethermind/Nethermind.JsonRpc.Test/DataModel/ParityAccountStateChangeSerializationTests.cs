@@ -16,16 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Collections;
 using System.Collections.Generic;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc.DataModel;
-using Nethermind.JsonRpc.DataModel.Converters;
-using Nethermind.JsonRpc.DataModel.Trace;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.DataModel

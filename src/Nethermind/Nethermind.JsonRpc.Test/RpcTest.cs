@@ -18,13 +18,10 @@
 
 using System.Linq;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.JsonRpc.Module;
-using Newtonsoft.Json;
 using NSubstitute;
-using JsonSerializer = Nethermind.Core.JsonSerializer;
 
 namespace Nethermind.JsonRpc.Test
 {

@@ -19,7 +19,6 @@
 using System.Collections.Generic;
 using System.Reflection;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Config;

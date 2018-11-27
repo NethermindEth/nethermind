@@ -56,8 +56,7 @@ namespace Nethermind.Core.Encoding
 
         public int Length => Bytes.Length;
 
-        // TODO: discover decoders, use them for encoding as well
-        private static readonly Dictionary<Type, IRlpDecoder> Decoders =
+        public static readonly Dictionary<Type, IRlpDecoder> Decoders =
             new Dictionary<Type, IRlpDecoder>
             {
                 [typeof(Account)] = new AccountDecoder(),
@@ -66,7 +65,6 @@ namespace Nethermind.Core.Encoding
                 [typeof(BlockInfo)] = new BlockInfoDecoder(),
                 [typeof(ChainLevelInfo)] = new ChainLevelDecoder(),
                 [typeof(LogEntry)] = new LogEntryDecoder(),
-                [typeof(NetworkNode)] = new NetworkNodeDecoder(),
                 [typeof(Transaction)] = new TransactionDecoder(),
                 [typeof(TransactionReceipt)] = new TransactionReceiptDecoder(),
             };
@@ -81,9 +79,7 @@ namespace Nethermind.Core.Encoding
             return Decode<T>(bytes.AsRlpContext(), rlpBehaviors);
         }
 
-        public static T[]
-            DecodeArray<T>(DecoderContext context,
-                RlpBehaviors rlpBehaviors = RlpBehaviors.None) // TODO: move inside the context
+        public static T[] DecodeArray<T>(DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (Decoders.ContainsKey(typeof(T)))
             {
@@ -141,6 +137,17 @@ namespace Nethermind.Core.Encoding
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+        }
+
+        public static Rlp Encode(int[] integers)
+        {
+            Rlp[] rlpSequence = new Rlp[integers.Length];
+            for (int i = 0; i < integers.Length; i++)
+            {
+                rlpSequence[i] = Encode(integers[i]);
+            }
+
+            return Encode(rlpSequence);
         }
 
         public static Rlp Encode(Transaction transaction)
@@ -1047,7 +1054,7 @@ namespace Nethermind.Core.Encoding
                     }
                     else
                     {
-                        result[i] = decodeItem(this);    
+                        result[i] = decodeItem(this);
                     }
                 }
 
