@@ -658,7 +658,13 @@ namespace Nethermind.Runner.Runners
                 receiptStorage);
 
             InitDiscovery();
-            await InitPeer();
+            await InitPeer().ContinueWith(initPeerTask =>
+            {
+                if (initPeerTask.IsFaulted)
+                {
+                    _logger.Error("Unable to init peer manager.", initPeerTask.Exception);
+                }
+            });;
 
             await StartSync().ContinueWith(initNetTask =>
             {
