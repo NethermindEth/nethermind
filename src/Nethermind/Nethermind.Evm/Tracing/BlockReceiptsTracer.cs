@@ -174,6 +174,7 @@ namespace Nethermind.Evm.Tracing
             }
             
             _block = block;
+            _currentIndex = 0;
             Receipts = new TransactionReceipt[_block.Transactions.Length];
             _otherTracer.StartNewBlockTrace(block);
         }
