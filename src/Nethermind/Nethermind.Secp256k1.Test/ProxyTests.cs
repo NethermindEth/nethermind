@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Secp256k1.Test
@@ -98,6 +100,24 @@ namespace Nethermind.Secp256k1.Test
             byte[] signature =  Proxy.SignCompact(messageHash, privateKey, out int recoveryId);
             byte[] recovered =  Proxy.RecoverKeyFromCompact(messageHash, signature, recoveryId, false);
             Assert.AreEqual(65, recovered.Length);
+        }
+        
+        [Test]
+        public void can_recover_from_message()
+        {
+            var messageHex =
+                "8F0120AB288C789ACF066672F9CBDDB551B921C8D1B2039361BA95970894BFBF5262062492F5A33D3EACE2929082574F1F0CED1A65FEA66D78FB7439DF2BA54B48F38B495EADCBA5F584D59F455467D376122C6A9B759AA3A973C1707BC67DA10001E004CB840AD062CF827668827668CB840AD062CF82766682766686016755793C86";
+            var messageBytes = Bytes.FromHexString(messageHex);
+            var mdc = messageBytes.Slice(0, 32);
+            var signature = messageBytes.Slice(32, 65);
+            var messageType = new[] { messageBytes[97] };
+            var data = messageBytes.Slice(98, messageBytes.Length - 98);
+            var signatureSlice = signature.Slice(0, 64);
+            var recoveryId = signature[64];
+            var signatureObject = new Signature(signatureSlice, recoveryId);
+            var keccak = Keccak.Compute(Bytes.Concat(messageType, data));
+            var publicKey = Proxy.RecoverKeyFromCompact(keccak.Bytes, signatureObject.Bytes, signatureObject.RecoveryId, false);
+            Assert.AreEqual(65, publicKey.Length);
         }
     }
 }

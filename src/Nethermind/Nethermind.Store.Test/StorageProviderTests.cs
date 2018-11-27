@@ -30,7 +30,7 @@ namespace Nethermind.Store.Test
     [TestFixture]
     public class StorageProviderTests
     {
-        private static readonly ILogManager LogManager = NullLogManager.Instance;
+        private static readonly ILogManager LogManager = LimboLogs.Instance;
         private readonly Address _address1 = new Address(Keccak.Compute("1"));
         private readonly Address _address2 = new Address(Keccak.Compute("2"));
         private IStateProvider _stateProvider;

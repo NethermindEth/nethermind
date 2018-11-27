@@ -37,7 +37,7 @@ namespace Nethermind.Store.Test
         private static readonly Keccak Hash1 = Keccak.Compute("1");
         private static readonly Keccak Hash2 = Keccak.Compute("2");
         private readonly Address _address1 = new Address(Hash1);
-        private static readonly ILogManager Logger = NullLogManager.Instance;
+        private static readonly ILogManager Logger = LimboLogs.Instance;
 
         [Test]
         public void Eip_158_zero_value_transfer_deletes()

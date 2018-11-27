@@ -64,6 +64,7 @@ namespace Nethermind.Network.Test
         [SetUp]
         public void Initialize()
         {
+            NetworkNodeDecoder.Init();
             _timestamp = new Timestamp();
             _logManager = new OneLoggerLogManager(new SimpleConsoleLogger());
             _configurationProvider = new JsonConfigProvider();

@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test.P2P
 {
     [TestFixture]
-    public class MultiplexorTests
+    public class PacketSenderTests
     {
         [Test]
         public void Does_send_on_active_channel()
@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.P2P
             channel.Active.Returns(true);
             context.Channel.Returns(channel);
             
-            PacketSender packetSender = new PacketSender(NullLogManager.Instance);
+            PacketSender packetSender = new PacketSender(LimboLogs.Instance);
             packetSender.HandlerAdded(context);
             packetSender.Enqueue(packet);
 
@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.P2P
             channel.Active.Returns(false);
             context.Channel.Returns(channel);
             
-            PacketSender packetSender = new PacketSender(NullLogManager.Instance);
+            PacketSender packetSender = new PacketSender(LimboLogs.Instance);
             packetSender.HandlerAdded(context);
             packetSender.Enqueue(packet);
 

@@ -16,43 +16,47 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Threading;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Tracing
+namespace Nethermind.Core.Logging
 {
-    public class NullBlockTracer : IBlockTracer
+    /// <summary>
+    /// Logger for testing where we want to test whether any test message creation would cause an exception
+    /// </summary>
+    public class LimboTraceLogger : ILogger
     {
-        private static NullBlockTracer _instance;
-
-        private NullBlockTracer()
+        private static LimboTraceLogger _instance;
+        
+        public static LimboTraceLogger Instance
+        {
+            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new LimboTraceLogger()); }
+        }
+        
+        public void Info(string text)
         {
         }
 
-        public static NullBlockTracer Instance
-        {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullBlockTracer()); }
-        }
-
-        public bool IsTracingRewards => false;
-
-        public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+        public void Warn(string text)
         {
         }
 
-        public void StartNewBlockTrace(Block block)
+        public void Debug(string text)
         {
         }
 
-        public ITxTracer StartNewTxTrace(Keccak txHash)
+        public void Trace(string text)
         {
-            return NullTxTracer.Instance;
         }
 
-        public void EndTxTrace()
+        public void Error(string text, Exception ex = null)
         {
         }
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => true;
+        public bool IsTrace => true;
+        public bool IsError => true;
     }
 }

@@ -399,7 +399,7 @@ namespace Nethermind.Clique.Test
             }
         }
 
-        private static int _timeout = 100000;
+        private static int _timeout = 5000;
 
         [Test]
         public void Can_produce_block_with_transactions()

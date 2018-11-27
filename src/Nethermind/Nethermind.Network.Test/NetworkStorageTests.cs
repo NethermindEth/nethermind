@@ -41,6 +41,7 @@ namespace Nethermind.Network.Test
         [SetUp]
         public void SetUp()
         {
+            NetworkNodeDecoder.Init();
             NullLogManager logManager = NullLogManager.Instance;
             JsonConfigProvider configProvider = new JsonConfigProvider();
             _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());

@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Tracing
 {
     public class BlockReceiptsTracer : IBlockTracer, ITxTracer
     {
-        private readonly Block _block;
+        private Block _block;
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
         public bool IsTracingReceipt => true;
@@ -157,13 +157,26 @@ namespace Nethermind.Evm.Tracing
 
         private ITxTracer _currentTxTracer;
         private int _currentIndex;
-        public TransactionReceipt[] Receipts { get; }
+        public TransactionReceipt[] Receipts { get; private set; }
 
         public bool IsTracingRewards => _otherTracer.IsTracingRewards;
 
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
             _otherTracer.ReportReward(author, rewardType, rewardValue);
+        }
+
+        public void StartNewBlockTrace(Block block)
+        {
+            if (_otherTracer == null)
+            {
+                throw new InvalidOperationException("other tracer not set in receipts tracer");
+            }
+            
+            _block = block;
+            _currentIndex = 0;
+            Receipts = new TransactionReceipt[_block.Transactions.Length];
+            _otherTracer.StartNewBlockTrace(block);
         }
 
         public ITxTracer StartNewTxTrace(Keccak txHash)
@@ -178,14 +191,15 @@ namespace Nethermind.Evm.Tracing
             _currentIndex++;
         }
 
-        public BlockReceiptsTracer(Block block, IBlockTracer otherTracer, ISpecProvider specProvider, IStateProvider stateProvider)
+        public BlockReceiptsTracer(ISpecProvider specProvider, IStateProvider stateProvider)
         {
-            _block = block;
-            _otherTracer = otherTracer ?? throw new ArgumentNullException(nameof(otherTracer));
-            Receipts = new TransactionReceipt[_block.Transactions.Length];
-            
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+        }
+
+        public void SetOtherTracer(IBlockTracer blockTracer)
+        {
+            _otherTracer = blockTracer;
         }
     }
 }

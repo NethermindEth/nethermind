@@ -38,7 +38,7 @@ namespace Nethermind.Core.Test
     {
         private BlockTree BuildBlockTree()
         {
-            return new BlockTree(new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTransactionPool.Instance, NullLogManager.Instance);       
+            return new BlockTree(new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);       
         }
         
         private static void AddToMain(BlockTree blockTree, Block block0)
@@ -408,7 +408,7 @@ namespace Nethermind.Core.Test
             
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
 
-            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(), LimboLogs.Instance);
             Assert.AreEqual(headBlock.Hash, blockTree.Head?.Hash, "head");
             Assert.AreEqual(headBlock.Hash, blockTree.Genesis?.Hash, "genesis");
         }
@@ -435,7 +435,7 @@ namespace Nethermind.Core.Test
 
                 blocksDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock).Bytes);
 
-                BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
+                BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(), LimboLogs.Instance);
                 await blockTree.LoadBlocksFromDb(CancellationToken.None);
 
                 Assert.AreEqual(blockTree.BestSuggested.Hash, testTree.Head.Hash, $"head {chainLength}");
@@ -464,7 +464,7 @@ namespace Nethermind.Core.Test
 
                 blocksDb.Set(Keccak.Zero, Rlp.Encode(testTree.FindBlock(1)).Bytes);
 
-                BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
+                BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(), LimboLogs.Instance);
                 await blockTree.LoadBlocksFromDb(CancellationToken.None);
 
                 Assert.AreEqual(blockTree.BestSuggested.Hash, testTree.Head.Hash, $"head {chainLength}");
@@ -477,7 +477,7 @@ namespace Nethermind.Core.Test
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
 
-            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(), LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
 
@@ -545,7 +545,7 @@ namespace Nethermind.Core.Test
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
 
-            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(),NullLogManager.Instance);
+            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(), LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;

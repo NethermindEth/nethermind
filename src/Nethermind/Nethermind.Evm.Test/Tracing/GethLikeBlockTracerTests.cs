@@ -51,7 +51,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.TestObject;
             block.Transactions = new Transaction[3];
 
-            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(block);
+            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer();
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.TestObject;
             block.Transactions = new Transaction[3];
 
-            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(block);
+            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer();
             ((IBlockTracer) blockTracer).StartNewTxTrace(TestObject.KeccakA);
             ((IBlockTracer) blockTracer).EndTxTrace();
 
@@ -92,10 +92,10 @@ namespace Nethermind.Evm.Test.Tracing
             block.Transactions[1] = Build.A.Transaction.TestObject;
             block.Transactions[2] = Build.A.Transaction.TestObject;
 
-            GethLikeBlockTracer blockTracer1 = new GethLikeBlockTracer(block);
+            GethLikeBlockTracer blockTracer1 = new GethLikeBlockTracer();
             Assert.Throws<InvalidOperationException>(() => ((IBlockTracer)blockTracer1).EndTxTrace());
             
-            GethLikeBlockTracer blockTracer2 = new GethLikeBlockTracer(block);
+            GethLikeBlockTracer blockTracer2 = new GethLikeBlockTracer();
             ((IBlockTracer)blockTracer2).StartNewTxTrace(block.Transactions[0].Hash);
             Assert.DoesNotThrow(() => ((IBlockTracer)blockTracer2).EndTxTrace());
             Assert.Throws<InvalidOperationException>(() => ((IBlockTracer)blockTracer2).EndTxTrace());

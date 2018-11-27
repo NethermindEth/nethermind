@@ -48,8 +48,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogManager.Instance,
-                new PerfService(NullLogManager.Instance), blockTree, transactionPool, timestamp);
+            var handler = new Eth62ProtocolHandler(session, svc, syncManager, LimboLogs.Instance,
+                new PerfService(LimboLogs.Instance), blockTree, transactionPool, timestamp);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
@@ -80,8 +80,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogManager.Instance,
-                new PerfService(NullLogManager.Instance), blockTree, transactionPool, timestamp);
+            var handler = new Eth62ProtocolHandler(session, svc, syncManager, LimboLogs.Instance,
+                new PerfService(LimboLogs.Instance), blockTree, transactionPool, timestamp);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();

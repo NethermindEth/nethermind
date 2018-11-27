@@ -16,43 +16,42 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Threading;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Tracing
+namespace Nethermind.Core.Logging
 {
-    public class NullBlockTracer : IBlockTracer
+    /// <summary>
+    /// Use with tests to check trace log message constructions.
+    /// </summary>
+    public class LimboLogs : ILogManager
     {
-        private static NullBlockTracer _instance;
-
-        private NullBlockTracer()
+        private LimboLogs()
         {
         }
 
-        public static NullBlockTracer Instance
+        private static LimboLogs _instance;
+        
+        public static LimboLogs Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new LimboLogs());
+
+        public ILogger GetClassLogger(Type type)
         {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullBlockTracer()); }
+            return LimboTraceLogger.Instance;
         }
 
-        public bool IsTracingRewards => false;
-
-        public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+        public ILogger GetClassLogger<T>()
         {
+            return LimboTraceLogger.Instance;
         }
 
-        public void StartNewBlockTrace(Block block)
+        public ILogger GetClassLogger()
         {
+            return LimboTraceLogger.Instance;
         }
 
-        public ITxTracer StartNewTxTrace(Keccak txHash)
+        public ILogger GetLogger(string loggerName)
         {
-            return NullTxTracer.Instance;
-        }
-
-        public void EndTxTrace()
-        {
+            return LimboTraceLogger.Instance;
         }
     }
 }
