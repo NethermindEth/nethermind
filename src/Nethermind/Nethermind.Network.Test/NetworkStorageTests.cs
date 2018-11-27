@@ -49,7 +49,7 @@ namespace Nethermind.Network.Test
             _networkConfig.DbBasePath = _tempDir;
             _statsConfig = configProvider.GetConfig<IStatsConfig>();
 
-            _nodeFactory = new NodeFactory();
+            _nodeFactory = new NodeFactory(LimboLogs.Instance);
             _storage = new NetworkStorage("test", _networkConfig, logManager, new PerfService(logManager));
         }
         

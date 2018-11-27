@@ -69,7 +69,7 @@ namespace Nethermind.Network.Test.Discovery
             networkConfig.BucketSize = 3;
             networkConfig.BucketsCount = 1;
 
-            _nodeFactory = new NodeFactory();
+            _nodeFactory = new NodeFactory(LimboLogs.Instance);
             var calculator = new NodeDistanceCalculator(_configurationProvider);
 
             _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(_configurationProvider, new JsonSerializer(logManager), new AesEncrypter(_configurationProvider, logManager), new CryptoRandom(), logManager), calculator, _configurationProvider, logManager);

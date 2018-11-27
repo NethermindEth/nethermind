@@ -19,6 +19,7 @@
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Messages;
@@ -80,10 +81,10 @@ namespace Nethermind.Network.Test.Builders
             Signer signer = new Signer();
             var privateKeyProvider = new SameKeyGenerator(privateKey);
 
-            PingMessageSerializer pingSerializer = new PingMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory());
-            PongMessageSerializer pongSerializer = new PongMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory());
-            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory());
-            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory());
+            PingMessageSerializer pingSerializer = new PingMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory(LimboLogs.Instance));
+            PongMessageSerializer pongSerializer = new PongMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory(LimboLogs.Instance));
+            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory(LimboLogs.Instance));
+            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config, _timestamp), new NodeIdResolver(signer), new NodeFactory(LimboLogs.Instance));
 
             return With(pingSerializer)
                 .With(pongSerializer)

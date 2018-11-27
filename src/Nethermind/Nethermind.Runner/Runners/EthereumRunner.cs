@@ -545,7 +545,7 @@ namespace Nethermind.Runner.Runners
                 true);
 
             // create shared objects between discovery and peer manager
-            _nodeFactory = new NodeFactory();
+            _nodeFactory = new NodeFactory(_logManager);
             _nodeStatsProvider =
                 new NodeStatsProvider(_configProvider.GetConfig<IStatsConfig>(), _nodeFactory, _logManager);
 

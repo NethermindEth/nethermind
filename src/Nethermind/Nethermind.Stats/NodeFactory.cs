@@ -16,15 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Net;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Stats.Model;
+using NLog;
+using ILogger = Nethermind.Core.Logging.ILogger;
 
 namespace Nethermind.Stats
 {
     public class NodeFactory : INodeFactory
     {
+        private readonly ILogger _logger;
+
+        public NodeFactory(ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger<NodeFactory>();
+        }
+        
         public Node CreateNode(NodeId id, IPEndPoint address)
         {
             var node = new Node(id)
@@ -42,8 +53,16 @@ namespace Nethermind.Stats
             {
                 IsDicoveryNode = isDiscovery
             };
+
+            try
+            {
+                node.InitializeAddress(host, port);
+            }
+            catch (Exception e)
+            {
+                if(_logger.IsError) _logger.Error($"Unable to create node for host: {host}, port: {port} - {e.Message}");
+            }
             
-            node.InitializeAddress(host, port);
             return node;
         }
 

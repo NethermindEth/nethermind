@@ -20,6 +20,7 @@ using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
@@ -134,7 +135,7 @@ namespace Nethermind.Network.Test.Discovery
         [Test]
         public void NeighborsMessageTest()
         {
-            var nodeFactory = new NodeFactory();
+            var nodeFactory = new NodeFactory(LimboLogs.Instance);
 
             var message = new NeighborsMessage
             {

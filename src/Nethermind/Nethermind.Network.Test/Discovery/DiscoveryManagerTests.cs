@@ -67,7 +67,7 @@ namespace Nethermind.Network.Test.Discovery
             var statsConfig = config.GetConfig<IStatsConfig>();
 
             _messageSender = Substitute.For<IMessageSender>();
-            _nodeFactory = new NodeFactory();
+            _nodeFactory = new NodeFactory(LimboLogs.Instance);
             var calculator = new NodeDistanceCalculator(config);
 
             _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(config, new JsonSerializer(logManager), new AesEncrypter(config, logManager), new CryptoRandom(), logManager), calculator, config, logManager);

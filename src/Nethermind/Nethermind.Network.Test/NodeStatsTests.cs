@@ -17,7 +17,7 @@ namespace Nethermind.Network.Test
         [SetUp]
         public void Initialize()
         {
-            var nodeFactory = new NodeFactory();
+            var nodeFactory = new NodeFactory(LimboLogs.Instance);
             var node = nodeFactory.CreateNode("192.1.1.1", 3333);
             _config = new StatsConfig();
             _config.CaptureNodeLatencyStatsEventHistory = true;

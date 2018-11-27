@@ -84,7 +84,7 @@ namespace Nethermind.Network.Test
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
             
-            _nodeFactory = new NodeFactory();
+            _nodeFactory = new NodeFactory(LimboLogs.Instance);
             _localPeer = new TestRlpxPeer();
             var keyProvider = new PrivateKeyGenerator(new CryptoRandom());
             var key = keyProvider.Generate().PublicKey;
