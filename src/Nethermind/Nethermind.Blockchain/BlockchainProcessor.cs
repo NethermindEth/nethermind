@@ -337,7 +337,22 @@ namespace Nethermind.Blockchain
                     _recoveryStep.RecoverData(blocks[i]);
                 }
 
-                processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, blockTracer);
+                try
+                {
+                    processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, blockTracer);
+                }
+                catch (InvalidBlockException ex)
+                {
+                    for (int i = 0; i < blocks.Length; i++)
+                    {
+                        if (blocks[i].Hash == ex.InvalidBlockHash)
+                        {
+                            _blockTree.DeleteInvalidBlock(blocks[i].Hash);
+                            return null;
+                        }
+                    }
+                }
+                
                 if ((options & ProcessingOptions.ReadOnlyChain) == 0)
                 {
                     _blockTree.UpdateMainChain(blocksToBeAddedToMain.ToArray());

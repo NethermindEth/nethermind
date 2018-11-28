@@ -16,16 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -37,14 +38,15 @@ namespace Nethermind.Blockchain.Test
         {
             private BlockTree _blockTree;
             private AutoResetEvent _resetEvent;
+            private IBlockProcessor _blockProcessor;
 
             public ProcessingTestContext()
             {
                 MemDb blockDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
                 _blockTree = new BlockTree(blockDb, blockInfoDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, NullLogManager.Instance);
-                IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
-                BlockchainProcessor processor = new BlockchainProcessor(_blockTree, blockProcessor, NullRecoveryStep.Instance, NullLogManager.Instance, false, false);
+                _blockProcessor = Substitute.For<IBlockProcessor>();
+                BlockchainProcessor processor = new BlockchainProcessor(_blockTree, _blockProcessor, NullRecoveryStep.Instance, NullLogManager.Instance, false, false);
                 _resetEvent = new AutoResetEvent(false);
                 bool ignoreNextSignal = true;
                 processor.ProcessingQueueEmpty += (sender, args) =>
@@ -58,12 +60,19 @@ namespace Nethermind.Blockchain.Test
                     _resetEvent.Set();
                 };
 
-                blockProcessor.Process(Arg.Any<Keccak>(), Arg.Any<Block[]>(), ProcessingOptions.None, NullBlockTracer.Instance).Returns(ci => ci.ArgAt<Block[]>(1));
+                _blockProcessor.Process(Arg.Any<Keccak>(), Arg.Any<Block[]>(), ProcessingOptions.None, NullBlockTracer.Instance).Returns(ci => ci.ArgAt<Block[]>(1));
                 processor.Start();
             }
 
             public AfterBlock Then(Block block)
             {
+                return new AfterBlock(this, block);
+            }
+            
+            public AfterBlock ThenInvalid(Block block)
+            {
+                _blockProcessor.Process(Arg.Any<Keccak>(), Arg.Is<Block[]>(b => b.Contains(block)), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>())
+                    .Throws(c => new InvalidBlockException(c.Arg<Block[]>()[0].Hash));
                 return new AfterBlock(this, block);
             }
 
@@ -99,6 +108,13 @@ namespace Nethermind.Blockchain.Test
                 }
 
                 public ProcessingTestContext IsKeptOnBranch()
+                {
+                    _processingTestContext._resetEvent.WaitOne(IgnoreWait);
+                    Assert.AreEqual(_headBefore, _processingTestContext._blockTree.Head, "head");
+                    return _processingTestContext;
+                }
+                
+                public ProcessingTestContext IsDeletedAsInvalid()
                 {
                     _processingTestContext._resetEvent.WaitOne(IgnoreWait);
                     Assert.AreEqual(_headBefore, _processingTestContext._blockTree.Head, "head");
@@ -218,6 +234,16 @@ namespace Nethermind.Blockchain.Test
                 .Then(_block2D4).BecomesNewHead()
                 .Then(_block3D6).BecomesNewHead()
                 .Then(_blockC2D100).BecomesNewHead();
+        }
+        
+        [Test]
+        public void Can_change_branch_on_invalid_block()
+        {
+            When.ProcessingBlocks
+                .Then(_block0).BecomesGenesis()
+                .Then(_block1D2).BecomesNewHead()
+                .ThenInvalid(_block2D4).IsDeletedAsInvalid()
+                .Then(_blockB2D4).BecomesNewHead();
         }
     }
 }

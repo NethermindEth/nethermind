@@ -17,7 +17,10 @@
  */
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,6 +54,7 @@ namespace Nethermind.Blockchain
 
         private readonly IDb _blockDb;
 
+        private ConcurrentDictionary<UInt256, HashSet<Keccak>> _invalidBlocks = new ConcurrentDictionary<UInt256, HashSet<Keccak>>();
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly IDb _blockInfoDb;
         private readonly ILogger _logger;
@@ -234,18 +238,18 @@ namespace Nethermind.Blockchain
         public int ChainId => _specProvider.ChainId;
 
         public AddBlockResult SuggestBlock(Block block)
-        {   
-            #if DEBUG
+        {
+#if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
             if (block.StateRoot == null && !block.IsGenesis)
             {
                 throw new InvalidDataException($"State root is null in {block.ToString(Block.Format.Short)}");
             }
-            #endif
-            
+#endif
+
             if (!CanAcceptNewBlocks)
             {
-                throw new InvalidOperationException($"{nameof(BlockTree)} not ready to accept new blocks.");
+                return AddBlockResult.CannotAccept;
             }
 
             if (block.Number == 0)
@@ -373,6 +377,53 @@ namespace Nethermind.Blockchain
         {
             Keccak hash = GetBlockHashOnMain(blockNumber);
             return Load(hash).Block;
+        }
+
+        public void DeleteInvalidBlock(Keccak blockHash)
+        {
+            try
+            {
+                CanAcceptNewBlocks = false;
+                Block invalidBlock = FindBlock(blockHash, false);
+                _invalidBlocks.AddOrUpdate(
+                    invalidBlock.Number,
+                    number => new HashSet<Keccak> {invalidBlock.Hash},
+                    (number, set) =>
+                    {
+                        set.Add(invalidBlock.Hash);
+                        return set;
+                    });
+
+                UInt256 previousBestKnown = BestKnownNumber;
+                BestKnownNumber = invalidBlock.Number - 1;
+                BestSuggested = Head;
+                for (UInt256 i = invalidBlock.Number; i <= previousBestKnown; i++)
+                {
+                    ChainLevelInfo chainLevelInfo = LoadLevel(i);
+                    if (chainLevelInfo.BlockInfos.Length == 1)
+                    {
+                        _blockInfoDb.Remove(i);
+                        continue;
+                    }
+
+                    chainLevelInfo.BlockInfos = chainLevelInfo.BlockInfos.Where(b => b.BlockHash != blockHash).ToArray();
+                    
+                    try
+                    {
+                        _blockInfoLock.EnterWriteLock();
+                        PersistLevel(invalidBlock.Number, chainLevelInfo);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e);
+                        throw;
+                    }
+                }
+            }
+            finally
+            {
+                CanAcceptNewBlocks = true;
+            }
         }
 
         public bool IsMainChain(Keccak blockHash)
@@ -657,7 +708,7 @@ namespace Nethermind.Blockchain
 
         private ChainLevelInfo LoadLevel(BigInteger number, bool forceLoad = true)
         {
-            if (number > BestKnownNumber  && !forceLoad)
+            if (number > BestKnownNumber && !forceLoad)
             {
                 return null;
             }
@@ -758,10 +809,20 @@ namespace Nethermind.Blockchain
             if (level == null || blockInfo == null)
             {
                 // TODO: this is here because storing block data is not transactional
+                // TODO: would be great to remove it, he?
                 SetTotalDifficulty(block);
                 SetTotalTransactions(block);
                 blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
-                UpdateOrCreateLevel(block.Number, blockInfo);
+                try
+                {
+                    _blockInfoLock.EnterWriteLock();
+                    UpdateOrCreateLevel(block.Number, blockInfo);
+                }
+                finally
+                {
+                    _blockInfoLock.ExitWriteLock();
+                }
+
                 (blockInfo, level) = LoadInfo(block.Number, block.Hash);
             }
             else

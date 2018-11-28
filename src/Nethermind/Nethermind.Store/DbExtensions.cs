@@ -51,5 +51,10 @@ namespace Nethermind.Store
         {
             return db[key.ToBigEndianByteArray()];
         }
+        
+        public static void Remove(this IDb db, BigInteger key)
+        {
+            db.Remove(key.ToBigEndianByteArray());
+        }
     }
 }

@@ -99,5 +99,7 @@ namespace Nethermind.Blockchain
         BlockHeader FindHeader(UInt256 blockNumber);
         Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
         Block FindBlock(UInt256 blockNumber);
+        
+        void DeleteInvalidBlock(Keccak blockHash);
     }
 }

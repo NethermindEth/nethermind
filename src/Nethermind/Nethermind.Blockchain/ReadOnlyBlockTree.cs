@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.HashLib;
 
 namespace Nethermind.Blockchain
 {
@@ -76,6 +77,11 @@ namespace Nethermind.Blockchain
             return _wrapped.FindBlock(blockNumber);
         }
 
+        public void DeleteInvalidBlock(Keccak blockHash)
+        {
+            _wrapped.DeleteInvalidBlock(blockHash);
+        }
+
         public bool IsMainChain(Keccak blockHash)
         {
             return _wrapped.IsMainChain(blockHash);
@@ -112,7 +118,7 @@ namespace Nethermind.Blockchain
             add { }
             remove { }
         }
-        
+
         public event EventHandler<BlockEventArgs> NewHeadBlock
         {
             add { }
