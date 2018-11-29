@@ -157,7 +157,7 @@ namespace Nethermind.Runner.Runners
         {
             /* this is to invoke decoder registrations that happen in their static constructor
                looks like this will be quite a long term temporary solution (2018.11.27)*/
-            System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(ParityTraceDecoder).TypeHandle);
+            ParityTraceDecoder.Init();
             NetworkNodeDecoder.Init();
         }
 

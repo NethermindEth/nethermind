@@ -371,8 +371,9 @@ namespace Nethermind.Blockchain
             return lastProcessed;
         }
 
+        [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
         private void RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)
-        {
+        {   
             if (suggestedBlock.Number != 0 && _blockTree.FindParent(suggestedBlock) == null)
             {
                 throw new InvalidOperationException("Got an orphaned block for porcessing.");

@@ -289,6 +289,8 @@ namespace Nethermind.PerfTest
 
         private static async Task RunRopstenBlocks()
         {
+            ParityTraceDecoder.Init();
+            
             /* logging & instrumentation */
             _logManager = new NLogManager("perTest.logs.txt", null);
             _logger = _logManager.GetClassLogger();

@@ -433,7 +433,7 @@ namespace Nethermind.Blockchain
 
                 bool shouldRemoveLevel = false;
 
-                if (currentLevel != null)
+                if (currentLevel != null) // preparing update of the level (removal of the invalid branch block)
                 {
                     if (currentLevel.BlockInfos.Length == 1)
                     {
@@ -452,7 +452,7 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                if (nextLevel != null)
+                if (nextLevel != null) // just finding what the next descendant will be
                 {
                     if (nextLevel.BlockInfos.Length == 1)
                     {
@@ -484,6 +484,7 @@ namespace Nethermind.Blockchain
                     if (shouldRemoveLevel)
                     {
                         BestKnownNumber = UInt256.Min(BestKnownNumber, currentNumber - 1);
+                        _blockInfoCache.Delete(currentNumber);
                         _blockInfoDb.Delete(currentNumber);
                     }
                     else
@@ -496,6 +497,7 @@ namespace Nethermind.Blockchain
                     _blockInfoLock.ExitWriteLock();
                 }
 
+                _blockCache.Delete(currentHash);
                 _blockDb.Delete(currentHash);
 
                 if (nextHash == null)
