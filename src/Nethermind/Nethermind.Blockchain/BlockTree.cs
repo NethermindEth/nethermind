@@ -516,6 +516,7 @@ namespace Nethermind.Blockchain
                     _blockInfoLock.ExitWriteLock();
                 }
 
+                if(_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentLevel}");
                 _blockCache.Delete(currentHash);
                 _blockDb.Delete(currentHash);
 
