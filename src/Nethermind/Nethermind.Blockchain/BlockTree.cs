@@ -262,6 +262,11 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
+            if (_invalidBlocks.ContainsKey(block.Number) && _invalidBlocks[block.Number].Contains(block.Hash))
+            {
+                return AddBlockResult.InvalidBlock;
+            }
+
             if (block.Number == 0)
             {
                 if (BestSuggested != null)

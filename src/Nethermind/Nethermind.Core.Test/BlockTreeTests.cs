@@ -654,6 +654,50 @@ namespace Nethermind.Core.Test
         }
         
         [Test]
+        public void After_removing_invalid_block_will_not_accept_it_again()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            BlockTree tree = new BlockTree(blocksDb, blockInfosDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestBlock(block3);
+
+            tree.DeleteInvalidBlock(block1);
+            AddBlockResult result = tree.SuggestBlock(block1);
+            Assert.AreEqual(AddBlockResult.InvalidBlock, result);
+        }
+        
+        [Test]
+        public void After_deleting_invalid_block_will_accept_other_blocks()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            BlockTree tree = new BlockTree(blocksDb, blockInfosDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+            
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(1).WithParent(block0).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestBlock(block3);
+
+            tree.DeleteInvalidBlock(block1);
+            AddBlockResult result = tree.SuggestBlock(block1B);
+            Assert.AreEqual(AddBlockResult.Added, result);
+        }
+        
+        [Test]
         public async Task When_cleaning_descendants_of_invalid_does_not_touch_other_branches()
         {
             MemDb blocksDb = new MemDb();
