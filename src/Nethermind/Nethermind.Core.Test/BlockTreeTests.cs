@@ -559,5 +559,143 @@ namespace Nethermind.Core.Test
             BlockHeader storedInDb = Rlp.Decode<BlockHeader>(new Rlp(blockInfosDb.Get(Keccak.Zero)));
             Assert.AreEqual(block1.Hash, storedInDb.Hash);
         }
+        
+        [Test]
+        public void When_deleting_invalid_block_sets_head_bestKnown_and_suggested_right()
+        {
+            BlockTree tree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestBlock(block3);
+            
+            tree.UpdateMainChain(block0);
+            tree.UpdateMainChain(block1);
+            tree.DeleteInvalidBlock(block2);
+            
+            Assert.AreEqual(block1.Number, tree.BestKnownNumber);
+            Assert.AreEqual(block1.Header, tree.Head);
+            Assert.AreEqual(block1.Header, tree.BestSuggested);
+        }
+        
+        [Test]
+        public void When_deleting_invalid_block_deletes_its_descendants()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            BlockTree tree = new BlockTree(blocksDb, blockInfosDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestBlock(block3);
+            
+            tree.UpdateMainChain(block0);
+            tree.UpdateMainChain(block1);
+            tree.DeleteInvalidBlock(block2);
+            
+            Assert.AreEqual(UInt256.One, tree.BestKnownNumber, "best known");
+            Assert.AreEqual(UInt256.One, tree.Head.Number, "head");
+            Assert.AreEqual(UInt256.One, tree.BestSuggested.Number, "head");
+            
+            Assert.NotNull(blocksDb.Get(block1.Hash), "block 1");
+            Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
+            Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
+            
+            Assert.NotNull(blockInfosDb.Get(1), "level 1");
+            Assert.IsNull(blockInfosDb.Get(2), "level 2");
+            Assert.IsNull(blockInfosDb.Get(3), "level 3");
+        }
+        
+        [Test]
+        public async Task Cleans_invalid_blocks_before_starting_DB_load()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            BlockTree tree = new BlockTree(blocksDb, blockInfosDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestBlock(block3);
+
+            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
+            
+            CancellationTokenSource tokenSource = new CancellationTokenSource();
+#pragma warning disable 4014
+            Task.Delay(200000).ContinueWith(t => tokenSource.Cancel());
+#pragma warning restore 4014
+            await tree.LoadBlocksFromDb(tokenSource.Token);
+            
+            Assert.AreEqual(UInt256.Zero, tree.BestKnownNumber, "best known");
+            Assert.AreEqual(null, tree.Head, "head");
+            Assert.AreEqual(UInt256.Zero, tree.BestSuggested.Number, "head");
+            
+            Assert.IsNull(blocksDb.Get(block2.Hash), "block 1");
+            Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
+            Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
+            
+            Assert.IsNull(blockInfosDb.Get(2), "level 1");
+            Assert.IsNull(blockInfosDb.Get(2), "level 2");
+            Assert.IsNull(blockInfosDb.Get(3), "level 3");
+        }
+        
+        [Test]
+        public async Task When_cleaning_descendants_of_invalid_does_not_touch_other_branches()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            BlockTree tree = new BlockTree(blocksDb, blockInfosDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+            
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(1).WithParent(block0).TestObject;
+            Block block2B = Build.A.Block.WithNumber(2).WithDifficulty(1).WithParent(block1B).TestObject;
+            Block block3B = Build.A.Block.WithNumber(3).WithDifficulty(1).WithParent(block2B).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestBlock(block3);
+            
+            tree.SuggestBlock(block1B);
+            tree.SuggestBlock(block2B);
+            tree.SuggestBlock(block3B);
+
+            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
+            
+            CancellationTokenSource tokenSource = new CancellationTokenSource();
+#pragma warning disable 4014
+            Task.Delay(200000).ContinueWith(t => tokenSource.Cancel());
+#pragma warning restore 4014
+            await tree.LoadBlocksFromDb(tokenSource.Token);
+            
+            Assert.AreEqual((UInt256)3, tree.BestKnownNumber, "best known");
+            Assert.AreEqual(null, tree.Head, "head");
+            Assert.AreEqual(block3B.Hash, tree.BestSuggested.Hash, "head");
+            
+            Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
+            Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
+            Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
+            
+            Assert.NotNull(blockInfosDb.Get(1), "level 1");
+            Assert.NotNull(blockInfosDb.Get(2), "level 2");
+            Assert.NotNull(blockInfosDb.Get(3), "level 3");
+        }
     }
 }

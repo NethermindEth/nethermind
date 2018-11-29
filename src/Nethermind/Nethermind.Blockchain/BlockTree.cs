@@ -17,11 +17,13 @@
  */
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.TransactionPools;
@@ -139,6 +141,14 @@ namespace Nethermind.Blockchain
         {
             CanAcceptNewBlocks = false;
 
+            byte[] deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
+            if (deletePointer != null)
+            {
+                Keccak deletePointerHash = new Keccak(deletePointer);
+                if (_logger.IsInfo) _logger.Info($"Cleaning invalid blocks starting from {deletePointer}");
+                CleanInvalidBlocks(deletePointerHash);
+            }
+
             if (startBlockNumber == null)
             {
                 startBlockNumber = Head?.Number ?? 0;
@@ -166,7 +176,7 @@ namespace Nethermind.Blockchain
                     break;
                 }
 
-                ChainLevelInfo level = LoadLevel(blockNumber, true);
+                ChainLevelInfo level = LoadLevel(blockNumber);
                 BigInteger maxDifficultySoFar = 0;
                 BlockInfo maxDifficultyBlock = null;
                 for (int blockIndex = 0; blockIndex < level.BlockInfos.Length; blockIndex++)
@@ -379,50 +389,118 @@ namespace Nethermind.Blockchain
             return Load(hash).Block;
         }
 
-        public void DeleteInvalidBlock(Keccak blockHash)
+        public void DeleteInvalidBlock(Block invalidBlock)
         {
+            _invalidBlocks.AddOrUpdate(
+                invalidBlock.Number,
+                number => new HashSet<Keccak> {invalidBlock.Hash},
+                (number, set) =>
+                {
+                    set.Add(invalidBlock.Hash);
+                    return set;
+                });
+
+            BestSuggested = Head;
+
             try
             {
                 CanAcceptNewBlocks = false;
-                Block invalidBlock = FindBlock(blockHash, false);
-                _invalidBlocks.AddOrUpdate(
-                    invalidBlock.Number,
-                    number => new HashSet<Keccak> {invalidBlock.Hash},
-                    (number, set) =>
-                    {
-                        set.Add(invalidBlock.Hash);
-                        return set;
-                    });
-
-                UInt256 previousBestKnown = BestKnownNumber;
-                BestKnownNumber = invalidBlock.Number - 1;
-                BestSuggested = Head;
-                for (UInt256 i = invalidBlock.Number; i <= previousBestKnown; i++)
-                {
-                    ChainLevelInfo chainLevelInfo = LoadLevel(i);
-                    if (chainLevelInfo.BlockInfos.Length == 1)
-                    {
-                        _blockInfoDb.Remove(i);
-                        continue;
-                    }
-
-                    chainLevelInfo.BlockInfos = chainLevelInfo.BlockInfos.Where(b => b.BlockHash != blockHash).ToArray();
-                    
-                    try
-                    {
-                        _blockInfoLock.EnterWriteLock();
-                        PersistLevel(invalidBlock.Number, chainLevelInfo);
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine(e);
-                        throw;
-                    }
-                }
             }
             finally
             {
+                CleanInvalidBlocks(invalidBlock.Hash);
                 CanAcceptNewBlocks = true;
+            }
+        }
+
+        private void CleanInvalidBlocks(Keccak deletePointer)
+        {
+            BlockHeader deleteHeader = FindHeader(deletePointer);
+            UInt256 currentNumber = deleteHeader.Number;
+            Keccak currentHash = deleteHeader.Hash;
+            Keccak nextHash = null;
+            ChainLevelInfo nextLevel = null;
+
+            while (true)
+            {
+                ChainLevelInfo currentLevel = nextLevel ?? LoadLevel(currentNumber);
+                nextLevel = LoadLevel(currentNumber + 1);
+
+                bool shouldRemoveLevel = false;
+
+                if (currentLevel != null)
+                {
+                    if (currentLevel.BlockInfos.Length == 1)
+                    {
+                        shouldRemoveLevel = true;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < currentLevel.BlockInfos.Length; i++)
+                        {
+                            if (currentLevel.BlockInfos[0].BlockHash == currentHash)
+                            {
+                                currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (nextLevel != null)
+                {
+                    if (nextLevel.BlockInfos.Length == 1)
+                    {
+                        nextHash = nextLevel.BlockInfos[0].BlockHash;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < nextLevel.BlockInfos.Length; i++)
+                        {
+                            BlockHeader potentialDescendant = FindHeader(nextLevel.BlockInfos[i].BlockHash);
+                            if (potentialDescendant.ParentHash == currentHash)
+                            {
+                                nextHash = potentialDescendant.Hash;
+                                break;
+                            }
+                        }
+                    }
+
+                    UpdateDeletePointer(nextHash);
+                }
+                else
+                {
+                    UpdateDeletePointer(null);
+                }
+
+                try
+                {
+                    _blockInfoLock.EnterWriteLock();
+                    if (shouldRemoveLevel)
+                    {
+                        BestKnownNumber = UInt256.Min(BestKnownNumber, currentNumber - 1);
+                        _blockInfoDb.Delete(currentNumber);
+                    }
+                    else
+                    {
+                        PersistLevel(currentNumber, currentLevel);
+                    }
+                }
+                finally
+                {
+                    _blockInfoLock.ExitWriteLock();
+                }
+
+                _blockDb.Delete(currentHash);
+
+                if (nextHash == null)
+                {
+                    break;
+                }
+
+                currentNumber++;
+                currentHash = nextHash;
+                nextHash = null;
             }
         }
 
@@ -572,7 +650,7 @@ namespace Nethermind.Blockchain
 
         private void LoadHeadBlock()
         {
-            byte[] data = _blockInfoDb.Get(Keccak.Zero) ?? _blockDb.Get(Keccak.Zero);
+            byte[] data = _blockInfoDb.Get(HeadAddressInDb) ?? _blockDb.Get(HeadAddressInDb);
             if (data != null)
             {
                 BlockHeader headBlockHeader;
@@ -626,6 +704,21 @@ namespace Nethermind.Blockchain
             return FindIndex(blockHash, level).HasValue;
         }
 
+        internal static Keccak HeadAddressInDb = Keccak.Zero;
+        internal static Keccak DeletePointerAddressInDb = new Keccak(new BitArray(32 * 8, true).ToBytes());
+
+        private void UpdateDeletePointer(Keccak hash)
+        {
+            if (hash == null)
+            {
+                _blockInfoDb.Delete(DeletePointerAddressInDb);
+                return;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Deleting an invalid block or its descendant {hash}");
+            _blockInfoDb.Set(DeletePointerAddressInDb, hash.Bytes);
+        }
+
         private void UpdateHeadBlock(Block block)
         {
             if (block.IsGenesis)
@@ -634,7 +727,7 @@ namespace Nethermind.Blockchain
             }
 
             Head = block.Header;
-            _blockInfoDb.Set(Keccak.Zero, Rlp.Encode(Head).Bytes);
+            _blockInfoDb.Set(HeadAddressInDb, Rlp.Encode(Head).Bytes);
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
             if (_dbBatchProcessed != null)
             {

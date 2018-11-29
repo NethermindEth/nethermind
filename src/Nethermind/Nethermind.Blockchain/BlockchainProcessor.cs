@@ -347,7 +347,7 @@ namespace Nethermind.Blockchain
                     {
                         if (blocks[i].Hash == ex.InvalidBlockHash)
                         {
-                            _blockTree.DeleteInvalidBlock(blocks[i].Hash);
+                            _blockTree.DeleteInvalidBlock(blocks[i]);
                             return null;
                         }
                     }

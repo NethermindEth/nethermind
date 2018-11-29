@@ -77,9 +77,9 @@ namespace Nethermind.Blockchain
             return _wrapped.FindBlock(blockNumber);
         }
 
-        public void DeleteInvalidBlock(Keccak blockHash)
+        public void DeleteInvalidBlock(Block invalidBlock)
         {
-            _wrapped.DeleteInvalidBlock(blockHash);
+            _wrapped.DeleteInvalidBlock(invalidBlock);
         }
 
         public bool IsMainChain(Keccak blockHash)

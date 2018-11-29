@@ -239,6 +239,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindBlock(blockNumber);
             }
 
+            public void DeleteInvalidBlock(Block invalidBlock)
+            {
+                _blockTree.DeleteInvalidBlock(invalidBlock);
+            }
+
             public bool IsMainChain(Keccak blockHash)
             {
                 return _blockTree.IsMainChain(blockHash);

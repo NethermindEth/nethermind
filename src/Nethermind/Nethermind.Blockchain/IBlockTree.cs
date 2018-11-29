@@ -100,6 +100,6 @@ namespace Nethermind.Blockchain
         Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
         Block FindBlock(UInt256 blockNumber);
         
-        void DeleteInvalidBlock(Keccak blockHash);
+        void DeleteInvalidBlock(Block invalidBlock);
     }
 }
