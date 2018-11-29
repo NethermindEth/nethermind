@@ -87,18 +87,6 @@ namespace Nethermind.Blockchain
             SuggestBlock(blockEventArgs.Block, options);
         }
 
-        public void SuggestBlock(UInt256 blockNumber, ProcessingOptions processingOptions)
-        {
-            if ((processingOptions & ProcessingOptions.ReadOnlyChain) == 0 ||
-                (processingOptions & ProcessingOptions.ForceProcessing) == 0)
-            {
-                throw new InvalidOperationException("Probably not what you meant as when processing old blocks you should not modify the chain and you need to enforce processing");
-            }
-
-            Block block = _blockTree.FindBlock(blockNumber);
-            SuggestBlock(block, processingOptions);
-        }
-
         public void SuggestBlock(Keccak blockHash, ProcessingOptions processingOptions)
         {
             Block block = _blockTree.FindBlock(blockHash, false);

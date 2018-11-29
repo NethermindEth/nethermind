@@ -188,6 +188,16 @@ namespace Nethermind.Blockchain
                     }
                 }
 
+                level = null;
+                // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                if (level != null)
+                    // ReSharper disable once HeuristicUnreachableCode
+                {
+                    
+                    // ReSharper disable once HeuristicUnreachableCode
+                    throw new InvalidOperationException("just be aware that this level can be deleted by another thread after here");
+                }
+                
                 if (maxDifficultyBlock == null)
                 {
                     throw new InvalidOperationException($"Expected at least one block at level {blockNumber}");

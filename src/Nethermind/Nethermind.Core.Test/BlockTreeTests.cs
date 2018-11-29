@@ -582,6 +582,8 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(block1.Header, tree.Head);
             Assert.AreEqual(block1.Header, tree.BestSuggested);
         }
+
+        private int _dbLoadTimeout = 5000;
         
         [Test]
         public void When_deleting_invalid_block_deletes_its_descendants()
@@ -605,7 +607,7 @@ namespace Nethermind.Core.Test
             
             Assert.AreEqual(UInt256.One, tree.BestKnownNumber, "best known");
             Assert.AreEqual(UInt256.One, tree.Head.Number, "head");
-            Assert.AreEqual(UInt256.One, tree.BestSuggested.Number, "head");
+            Assert.AreEqual(UInt256.One, tree.BestSuggested.Number, "suggested");
             
             Assert.NotNull(blocksDb.Get(block1.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
@@ -636,13 +638,13 @@ namespace Nethermind.Core.Test
             
             CancellationTokenSource tokenSource = new CancellationTokenSource();
 #pragma warning disable 4014
-            Task.Delay(200000).ContinueWith(t => tokenSource.Cancel());
+            Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
 #pragma warning restore 4014
             await tree.LoadBlocksFromDb(tokenSource.Token);
             
             Assert.AreEqual(UInt256.Zero, tree.BestKnownNumber, "best known");
             Assert.AreEqual(null, tree.Head, "head");
-            Assert.AreEqual(UInt256.Zero, tree.BestSuggested.Number, "head");
+            Assert.AreEqual(UInt256.Zero, tree.BestSuggested.Number, "suggested");
             
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
@@ -725,13 +727,76 @@ namespace Nethermind.Core.Test
             
             CancellationTokenSource tokenSource = new CancellationTokenSource();
 #pragma warning disable 4014
-            Task.Delay(200000).ContinueWith(t => tokenSource.Cancel());
+            Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
 #pragma warning restore 4014
             await tree.LoadBlocksFromDb(tokenSource.Token);
             
             Assert.AreEqual((UInt256)3, tree.BestKnownNumber, "best known");
             Assert.AreEqual(null, tree.Head, "head");
-            Assert.AreEqual(block3B.Hash, tree.BestSuggested.Hash, "head");
+            Assert.AreEqual(block3B.Hash, tree.BestSuggested.Hash, "suggested");
+            
+            Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
+            Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
+            Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
+            
+            Assert.NotNull(blockInfosDb.Get(1), "level 1");
+            Assert.NotNull(blockInfosDb.Get(2), "level 2");
+            Assert.NotNull(blockInfosDb.Get(3), "level 3");
+        }
+        
+         [Test]
+        public async Task Can_load_from_DB_when_there_is_an_invalid_block_in_DB()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            BlockTree tree1 = new BlockTree(blocksDb, blockInfosDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
+            
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+            
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(1).WithParent(block0).TestObject;
+            Block block2B = Build.A.Block.WithNumber(2).WithDifficulty(1).WithParent(block1B).TestObject;
+            Block block3B = Build.A.Block.WithNumber(3).WithDifficulty(1).WithParent(block2B).TestObject;
+
+            tree1.SuggestBlock(block0);
+            tree1.SuggestBlock(block1);
+            tree1.SuggestBlock(block2);
+            tree1.SuggestBlock(block3);
+            
+            tree1.SuggestBlock(block1B);
+            tree1.SuggestBlock(block2B);
+            tree1.SuggestBlock(block3B);
+
+            tree1.UpdateMainChain(block0);
+            
+            BlockTree tree2 = new BlockTree(blocksDb, blockInfosDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
+            
+            CancellationTokenSource tokenSource = new CancellationTokenSource();
+#pragma warning disable 4014
+            Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
+#pragma warning restore 4014
+
+            tree2.NewBestSuggestedBlock += (sender, args) =>
+            {
+                if (args.Block.Hash == block1.Hash)
+                {
+                    tree2.DeleteInvalidBlock(args.Block);
+                }
+                else
+                {
+                    tree2.UpdateMainChain(args.Block);   
+                }
+            }; 
+            
+            await tree2.LoadBlocksFromDb(tokenSource.Token, startBlockNumber: null, batchSize: 1);
+            
+            /* note the block tree historically loads one less block than it could */
+            
+            Assert.AreEqual((UInt256)3, tree2.BestKnownNumber, "best known");
+            Assert.AreEqual(block2B.Hash, tree2.Head.Hash, "head");
+            Assert.AreEqual(block2B.Hash, tree2.BestSuggested.Hash, "suggested");
             
             Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");

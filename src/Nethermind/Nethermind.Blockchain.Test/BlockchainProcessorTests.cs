@@ -495,8 +495,10 @@ namespace Nethermind.Blockchain.Test
 
         [Test]
         [Ignore("Not implemented yet - scenario when from suggested blocks we can see that previously suggested will not be winning")]
+        [Todo(Improve.Performance, "We can skip processing losing branches by implementing code to pass this test")]
         public void Never_process_branches_that_are_known_to_lose_in_the_future()
         {
+            // this can be solved easily by resetting the hash to follow whenever suggesting a block that is not a child of the previously suggested block
             When.ProcessingBlocks
                 .FullyProcessed(_block0).BecomesGenesis()
                 .Suggested(_block1D2)
@@ -510,7 +512,7 @@ namespace Nethermind.Blockchain.Test
                 .Recovered(_blockB2D4)
                 .Recovered(_blockB3D8)
                 .Processed(_block1D2).BecomesNewHead()
-                .Processed(_block2D4).IsKeptOnBranch();
+                .ProcessedSkipped(_block2D4).IsKeptOnBranch();
         }
     }
 }
