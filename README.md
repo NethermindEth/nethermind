@@ -36,6 +36,7 @@ sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6
 on Mac:
 ```
 brew install gmp
+brew install snappy
 ```
 
 on Windows:
