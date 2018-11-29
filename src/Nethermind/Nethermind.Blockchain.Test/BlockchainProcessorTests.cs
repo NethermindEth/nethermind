@@ -212,7 +212,7 @@ namespace Nethermind.Blockchain.Test
 
             public class AfterBlock
             {
-                private const int ProcessingWait = 1000 * 1000;
+                private const int ProcessingWait = 1000;
                 private const int IgnoreWait = 200;
                 private readonly Block _block;
 
@@ -394,6 +394,26 @@ namespace Nethermind.Blockchain.Test
                 .Processed(_block1D2).AndThen
                 .ProcessedFail(_block2D4).AndThen
                 .FullyProcessed(_blockB2D4).BecomesNewHead();
+        }
+        
+        [Test]
+        [Ignore("Not implemented yet - scenario when from suggested blocks we can see that previously suggested will not be winning")]
+        public void Never_process_branches_that_are_known_to_lose_in_the_future()
+        {
+            When.ProcessingBlocks
+                .FullyProcessed(_block0).BecomesGenesis()
+                .Suggested(_block1D2)
+                .Suggested(_block2D4)
+                .Suggested(_block3D6)
+                .Suggested(_blockB2D4)
+                .Suggested(_blockB3D8)
+                .Recovered(_block1D2)
+                .Recovered(_block2D4)
+                .Recovered(_block3D6)
+                .Recovered(_blockB2D4)
+                .Recovered(_blockB3D8)
+                .Processed(_block1D2).BecomesNewHead()
+                .Processed(_block2D4).IsKeptOnBranch();
         }
     }
 }
