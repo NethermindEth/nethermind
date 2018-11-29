@@ -16,12 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Blockchain
 {
     public class InvalidBlockException : BlockchainException
     {
-        public InvalidBlockException(string message) : base(message)
+        public Keccak InvalidBlockHash { get; }
+
+        public InvalidBlockException(Keccak invalidBlockHash) 
+            : base($"Invalid block: {invalidBlockHash}")
         {
+            InvalidBlockHash = invalidBlockHash;
         }
     }
 }

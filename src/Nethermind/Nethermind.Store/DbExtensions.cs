@@ -42,6 +42,11 @@ namespace Nethermind.Store
             return db[key.Bytes];
         }
         
+        public static void Delete(this IDb db, Keccak key)
+        {
+            db.Remove(key.Bytes);
+        }
+        
         public static void Set(this IDb db, BigInteger key, byte[] value)
         {
             db[key.ToBigEndianByteArray()] = value;
@@ -50,6 +55,11 @@ namespace Nethermind.Store
         public static byte[] Get(this IDb db, BigInteger key)
         {
             return db[key.ToBigEndianByteArray()];
+        }
+        
+        public static void Delete(this IDb db, BigInteger key)
+        {
+            db.Remove(key.ToBigEndianByteArray());
         }
     }
 }

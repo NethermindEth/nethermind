@@ -46,14 +46,31 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = new BlockTree(blocksDb, new MemDb(), RopstenSpecProvider.Instance, Substitute.For<ITransactionPool>(), NullLogManager.Instance);
         }
 
-        public BlockTreeBuilder OfChainLength(int chainLength, int splitBlockNumber = 0, int splitVariant = 0)
+        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0)
         {
-            Block previous = _genesisBlock;
+            Block current = _genesisBlock;
             for (int i = 0; i < chainLength; i++)
             {
-                TestObjectInternal.SuggestBlock(previous);
-                TestObjectInternal.UpdateMainChain(previous);
-                previous = Build.A.Block.WithNumber((ulong)i + 1).WithParent(previous).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong)splitVariant).TestObject;
+                TestObjectInternal.SuggestBlock(current);
+                TestObjectInternal.UpdateMainChain(current);
+                current = Build.A.Block.WithNumber((ulong)i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong)splitVariant).TestObject;
+            }
+
+            return this;
+        }
+        
+        public BlockTreeBuilder WithOnlySomeBlocksProcessed(int chainLength, int processedChainLength)
+        {
+            Block current = _genesisBlock;
+            for (int i = 0; i < chainLength; i++)
+            {
+                TestObjectInternal.SuggestBlock(current);
+                if (current.Number < processedChainLength)
+                {
+                    TestObjectInternal.UpdateMainChain(current);
+                }
+                
+                current = Build.A.Block.WithNumber((ulong)i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
             }
 
             return this;

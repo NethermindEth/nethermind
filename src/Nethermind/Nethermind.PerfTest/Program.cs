@@ -239,6 +239,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindBlock(blockNumber);
             }
 
+            public void DeleteInvalidBlock(Block invalidBlock)
+            {
+                _blockTree.DeleteInvalidBlock(invalidBlock);
+            }
+
             public bool IsMainChain(Keccak blockHash)
             {
                 return _blockTree.IsMainChain(blockHash);
@@ -284,6 +289,8 @@ namespace Nethermind.PerfTest
 
         private static async Task RunRopstenBlocks()
         {
+            ParityTraceDecoder.Init();
+            
             /* logging & instrumentation */
             _logManager = new NLogManager("perTest.logs.txt", null);
             _logger = _logManager.GetClassLogger();

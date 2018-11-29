@@ -209,7 +209,7 @@ namespace Nethermind.Blockchain
             if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, suggestedBlock))
             {
                 if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.HashAndNumber)}");
-                throw new InvalidBlockException($"{suggestedBlock.ToString(Block.Format.HashAndNumber)}");
+                throw new InvalidBlockException(suggestedBlock.Hash);
             }
 
             if ((options & ProcessingOptions.StoreReceipts) != 0)

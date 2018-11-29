@@ -21,7 +21,9 @@ namespace Nethermind.Blockchain
     public enum AddBlockResult
     {
         AlreadyKnown,
+        CannotAccept,
         UnknownParent,
+        InvalidBlock,
         Added
     }
 }

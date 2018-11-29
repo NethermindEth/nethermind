@@ -888,6 +888,14 @@ namespace Nethermind.Blockchain
                                 throw new EthSynchronizationException(message);
                             }
                         }
+                        else if (addResult == AddBlockResult.CannotAccept)
+                        {
+                            return;
+                        }
+                        else if (addResult == AddBlockResult.InvalidBlock)
+                        {
+                            throw new EthSynchronizationException("Peer sent an invalid block");
+                        }
 
                         if (_logger.IsTrace) _logger.Trace($"Block {blocks[i].Number} suggested for processing");
                     }
