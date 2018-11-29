@@ -38,15 +38,15 @@ namespace Nethermind.Core.Test
     {
         private BlockTree BuildBlockTree()
         {
-            return new BlockTree(new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);       
+            return new BlockTree(new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
         }
-        
+
         private static void AddToMain(BlockTree blockTree, Block block0)
         {
             blockTree.SuggestBlock(block0);
             blockTree.UpdateMainChain(new[] {block0});
         }
-        
+
         [Test]
         public void Add_genesis_shall_notify()
         {
@@ -61,7 +61,7 @@ namespace Nethermind.Core.Test
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
         }
-        
+
         [Test]
         public void Add_genesis_shall_work_even_with_0_difficulty()
         {
@@ -204,7 +204,7 @@ namespace Nethermind.Core.Test
             Block found = blockTree.FindBlock(2);
             Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(found.Header));
         }
-        
+
         [Test]
         public void Find_by_number_beyond_what_is_known_returns_null()
         {
@@ -325,7 +325,7 @@ namespace Nethermind.Core.Test
             blockTree.SuggestBlock(block0);
             Block block1 = Build.A.Block.WithNumber(1).WithParentHash(block0.Hash).WithDifficulty(2).TestObject;
             blockTree.SuggestBlock(block1);
-            Assert.AreEqual(3, (int)block1.TotalDifficulty);
+            Assert.AreEqual(3, (int) block1.TotalDifficulty);
         }
 
         [Test]
@@ -403,9 +403,9 @@ namespace Nethermind.Core.Test
             blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
 
             MemDb blockInfosDb = new MemDb();
-            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, (ulong)headBlock.Transactions.Length)});
+            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, (ulong) headBlock.Transactions.Length)});
             level.BlockInfos[0].WasProcessed = true;
-            
+
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
 
             BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(), LimboLogs.Instance);
@@ -426,10 +426,10 @@ namespace Nethermind.Core.Test
                 BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
                 for (int i = 0; i < testTree.Head.Number + 1; i++)
                 {
-                    Block ithBlock = testTree.FindBlock((ulong)i);
+                    Block ithBlock = testTree.FindBlock((ulong) i);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, (ulong)ithBlock.Transactions.Length)});
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, (ulong) ithBlock.Transactions.Length)});
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
@@ -441,7 +441,7 @@ namespace Nethermind.Core.Test
                 Assert.AreEqual(blockTree.BestSuggested.Hash, testTree.Head.Hash, $"head {chainLength}");
             }
         }
-        
+
         [Test]
         public async Task Can_load_blocks_from_db_odd()
         {
@@ -455,10 +455,10 @@ namespace Nethermind.Core.Test
                 BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
                 for (int i = 0; i < testTree.Head.Number + 1; i++)
                 {
-                    Block ithBlock = testTree.FindBlock((ulong)i);
+                    Block ithBlock = testTree.FindBlock((ulong) i);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, (ulong)ithBlock.Transactions.Length)});
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, (ulong) ithBlock.Transactions.Length)});
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
@@ -487,58 +487,58 @@ namespace Nethermind.Core.Test
             BlockHeader storedInDb = Rlp.Decode<BlockHeader>(new Rlp(blockInfosDb.Get(Keccak.Zero)));
             Assert.AreEqual(block1.Hash, storedInDb.Hash);
         }
-        
+
         [Test]
         public void Can_check_if_block_was_processed()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-            
+
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
             Assert.False(blockTree.WasProcessed(block1.Number, block1.Hash), "before");
-            blockTree.UpdateMainChain(new []{block0, block1});
+            blockTree.UpdateMainChain(new[] {block0, block1});
             Assert.True(blockTree.WasProcessed(block1.Number, block1.Hash), "after");
         }
-        
+
         [Test]
         public void Best_known_number_is_set()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-            
+
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
             Assert.AreEqual(UInt256.One, blockTree.BestKnownNumber);
         }
-        
+
         [Test]
         public void Is_main_chain_returns_false_when_on_branch()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-            
+
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
             Assert.False(blockTree.IsMainChain(block1.Hash));
         }
-        
+
         [Test]
         public void Is_main_chain_returns_true_when_on_main()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-            
+
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
             Assert.True(blockTree.IsMainChain(block1.Hash));
         }
-        
+
         [Test(Description = "There was a bug where we switched positions and used the index from before the positions were switched")]
         public void When_moving_to_main_one_of_the_two_blocks_at_given_level_the_was_processed_check_is_executed_on_the_correct_block_index_regression()
         {
@@ -551,7 +551,7 @@ namespace Nethermind.Core.Test
             Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;
 
             AddToMain(blockTree, block0);
-            
+
             blockTree.SuggestBlock(block2);
             blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
@@ -559,7 +559,7 @@ namespace Nethermind.Core.Test
             BlockHeader storedInDb = Rlp.Decode<BlockHeader>(new Rlp(blockInfosDb.Get(Keccak.Zero)));
             Assert.AreEqual(block1.Hash, storedInDb.Hash);
         }
-        
+
         [Test]
         public void When_deleting_invalid_block_sets_head_bestKnown_and_suggested_right()
         {
@@ -573,18 +573,18 @@ namespace Nethermind.Core.Test
             tree.SuggestBlock(block1);
             tree.SuggestBlock(block2);
             tree.SuggestBlock(block3);
-            
+
             tree.UpdateMainChain(block0);
             tree.UpdateMainChain(block1);
             tree.DeleteInvalidBlock(block2);
-            
+
             Assert.AreEqual(block1.Number, tree.BestKnownNumber);
             Assert.AreEqual(block1.Header, tree.Head);
             Assert.AreEqual(block1.Header, tree.BestSuggested);
         }
 
         private int _dbLoadTimeout = 5000;
-        
+
         [Test]
         public void When_deleting_invalid_block_deletes_its_descendants()
         {
@@ -600,24 +600,24 @@ namespace Nethermind.Core.Test
             tree.SuggestBlock(block1);
             tree.SuggestBlock(block2);
             tree.SuggestBlock(block3);
-            
+
             tree.UpdateMainChain(block0);
             tree.UpdateMainChain(block1);
             tree.DeleteInvalidBlock(block2);
-            
+
             Assert.AreEqual(UInt256.One, tree.BestKnownNumber, "best known");
             Assert.AreEqual(UInt256.One, tree.Head.Number, "head");
             Assert.AreEqual(UInt256.One, tree.BestSuggested.Number, "suggested");
-            
+
             Assert.NotNull(blocksDb.Get(block1.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
             Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
-            
+
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.IsNull(blockInfosDb.Get(2), "level 2");
             Assert.IsNull(blockInfosDb.Get(3), "level 3");
         }
-        
+
         [Test]
         public async Task Cleans_invalid_blocks_before_starting_DB_load()
         {
@@ -635,26 +635,26 @@ namespace Nethermind.Core.Test
             tree.SuggestBlock(block3);
 
             blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
-            
+
             CancellationTokenSource tokenSource = new CancellationTokenSource();
 #pragma warning disable 4014
             Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
 #pragma warning restore 4014
             await tree.LoadBlocksFromDb(tokenSource.Token);
-            
+
             Assert.AreEqual(UInt256.Zero, tree.BestKnownNumber, "best known");
             Assert.AreEqual(null, tree.Head, "head");
             Assert.AreEqual(UInt256.Zero, tree.BestSuggested.Number, "suggested");
-            
+
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
             Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
-            
+
             Assert.IsNull(blockInfosDb.Get(2), "level 1");
             Assert.IsNull(blockInfosDb.Get(2), "level 2");
             Assert.IsNull(blockInfosDb.Get(3), "level 3");
         }
-        
+
         [Test]
         public void After_removing_invalid_block_will_not_accept_it_again()
         {
@@ -675,7 +675,7 @@ namespace Nethermind.Core.Test
             AddBlockResult result = tree.SuggestBlock(block1);
             Assert.AreEqual(AddBlockResult.InvalidBlock, result);
         }
-        
+
         [Test]
         public void After_deleting_invalid_block_will_accept_other_blocks()
         {
@@ -686,7 +686,7 @@ namespace Nethermind.Core.Test
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
             Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
-            
+
             Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(1).WithParent(block0).TestObject;
 
             tree.SuggestBlock(block0);
@@ -698,7 +698,7 @@ namespace Nethermind.Core.Test
             AddBlockResult result = tree.SuggestBlock(block1B);
             Assert.AreEqual(AddBlockResult.Added, result);
         }
-        
+
         [Test]
         public async Task When_cleaning_descendants_of_invalid_does_not_touch_other_branches()
         {
@@ -709,7 +709,7 @@ namespace Nethermind.Core.Test
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
             Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
-            
+
             Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(1).WithParent(block0).TestObject;
             Block block2B = Build.A.Block.WithNumber(2).WithDifficulty(1).WithParent(block1B).TestObject;
             Block block3B = Build.A.Block.WithNumber(3).WithDifficulty(1).WithParent(block2B).TestObject;
@@ -718,44 +718,44 @@ namespace Nethermind.Core.Test
             tree.SuggestBlock(block1);
             tree.SuggestBlock(block2);
             tree.SuggestBlock(block3);
-            
+
             tree.SuggestBlock(block1B);
             tree.SuggestBlock(block2B);
             tree.SuggestBlock(block3B);
 
             blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
-            
+
             CancellationTokenSource tokenSource = new CancellationTokenSource();
 #pragma warning disable 4014
             Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
 #pragma warning restore 4014
             await tree.LoadBlocksFromDb(tokenSource.Token);
-            
-            Assert.AreEqual((UInt256)3, tree.BestKnownNumber, "best known");
+
+            Assert.AreEqual((UInt256) 3, tree.BestKnownNumber, "best known");
             Assert.AreEqual(null, tree.Head, "head");
             Assert.AreEqual(block3B.Hash, tree.BestSuggested.Hash, "suggested");
-            
+
             Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
             Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
-            
+
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.NotNull(blockInfosDb.Get(2), "level 2");
             Assert.NotNull(blockInfosDb.Get(3), "level 3");
         }
-        
-         [Test]
-        public async Task Can_load_from_DB_when_there_is_an_invalid_block_in_DB()
+
+        [Test]
+        public async Task Can_load_from_DB_when_there_is_an_invalid_block_in_DB_and_a_valid_branch()
         {
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             BlockTree tree1 = new BlockTree(blocksDb, blockInfosDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
-            
+
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
             Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
-            
+
             Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(1).WithParent(block0).TestObject;
             Block block2B = Build.A.Block.WithNumber(2).WithDifficulty(1).WithParent(block1B).TestObject;
             Block block3B = Build.A.Block.WithNumber(3).WithDifficulty(1).WithParent(block2B).TestObject;
@@ -764,15 +764,15 @@ namespace Nethermind.Core.Test
             tree1.SuggestBlock(block1);
             tree1.SuggestBlock(block2);
             tree1.SuggestBlock(block3);
-            
+
             tree1.SuggestBlock(block1B);
             tree1.SuggestBlock(block2B);
             tree1.SuggestBlock(block3B);
 
             tree1.UpdateMainChain(block0);
-            
+
             BlockTree tree2 = new BlockTree(blocksDb, blockInfosDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
-            
+
             CancellationTokenSource tokenSource = new CancellationTokenSource();
 #pragma warning disable 4014
             Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
@@ -786,25 +786,80 @@ namespace Nethermind.Core.Test
                 }
                 else
                 {
-                    tree2.UpdateMainChain(args.Block);   
+                    tree2.UpdateMainChain(args.Block);
                 }
-            }; 
-            
+            };
+
             await tree2.LoadBlocksFromDb(tokenSource.Token, startBlockNumber: null, batchSize: 1);
-            
+
             /* note the block tree historically loads one less block than it could */
-            
-            Assert.AreEqual((UInt256)3, tree2.BestKnownNumber, "best known");
+
+            Assert.AreEqual((UInt256) 3, tree2.BestKnownNumber, "best known");
             Assert.AreEqual(block2B.Hash, tree2.Head.Hash, "head");
             Assert.AreEqual(block2B.Hash, tree2.BestSuggested.Hash, "suggested");
-            
+
             Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
             Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
-            
+
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.NotNull(blockInfosDb.Get(2), "level 2");
             Assert.NotNull(blockInfosDb.Get(3), "level 3");
+        }
+
+        [Test]
+        public async Task Can_load_from_DB_when_there_is_only_an_invalid_chain_in_DB()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            BlockTree tree1 = new BlockTree(blocksDb, blockInfosDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
+
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+
+            tree1.SuggestBlock(block0);
+            tree1.SuggestBlock(block1);
+            tree1.SuggestBlock(block2);
+            tree1.SuggestBlock(block3);
+
+            tree1.UpdateMainChain(block0);
+
+            BlockTree tree2 = new BlockTree(blocksDb, blockInfosDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, LimboLogs.Instance);
+
+            CancellationTokenSource tokenSource = new CancellationTokenSource();
+#pragma warning disable 4014
+            Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
+#pragma warning restore 4014
+
+            tree2.NewBestSuggestedBlock += (sender, args) =>
+            {
+                if (args.Block.Hash == block1.Hash)
+                {
+                    tree2.DeleteInvalidBlock(args.Block);
+                }
+                else
+                {
+                    tree2.UpdateMainChain(args.Block);
+                }
+            };
+
+            await tree2.LoadBlocksFromDb(tokenSource.Token, startBlockNumber: null, batchSize: 1);
+
+            /* note the block tree historically loads one less block than it could */
+
+            Assert.AreEqual((UInt256) 0, tree2.BestKnownNumber, "best known");
+            Assert.AreEqual(block0.Hash, tree2.Head.Hash, "head");
+            Assert.AreEqual(block0.Hash, tree2.BestSuggested.Hash, "suggested");
+
+            Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
+            Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
+            Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
+
+            Assert.IsNull(blockInfosDb.Get(1), "level 1");
+            Assert.IsNull(blockInfosDb.Get(2), "level 2");
+            Assert.IsNull(blockInfosDb.Get(3), "level 3");
         }
     }
 }

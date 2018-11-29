@@ -139,110 +139,119 @@ namespace Nethermind.Blockchain
             int batchSize = DbLoadBatchSize,
             int maxBlocksToLoad = int.MaxValue)
         {
-            CanAcceptNewBlocks = false;
+            try
+            {
+                CanAcceptNewBlocks = false;
 
-            byte[] deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
-            if (deletePointer != null)
-            {
-                Keccak deletePointerHash = new Keccak(deletePointer);
-                if (_logger.IsInfo) _logger.Info($"Cleaning invalid blocks starting from {deletePointer}");
-                CleanInvalidBlocks(deletePointerHash);
-            }
+                byte[] deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
+                if (deletePointer != null)
+                {
+                    Keccak deletePointerHash = new Keccak(deletePointer);
+                    if (_logger.IsInfo) _logger.Info($"Cleaning invalid blocks starting from {deletePointer}");
+                    CleanInvalidBlocks(deletePointerHash);
+                }
 
-            if (startBlockNumber == null)
-            {
-                startBlockNumber = Head?.Number ?? 0;
-            }
-            else
-            {
-                Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1)?.Header;
-            }
+                if (startBlockNumber == null)
+                {
+                    startBlockNumber = Head?.Number ?? 0;
+                }
+                else
+                {
+                    Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1)?.Header;
+                }
 
-            BigInteger blocksToLoad = BigInteger.Min(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
-            if (blocksToLoad == 0)
-            {
-                if (_logger.IsInfo) _logger.Info("Found no blocks to load from DB.");
-            }
-            else
-            {
-                if (_logger.IsInfo) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
-            }
+                BigInteger blocksToLoad = BigInteger.Min(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
+                if (blocksToLoad == 0)
+                {
+                    if (_logger.IsInfo) _logger.Info("Found no blocks to load from DB.");
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
+                }
 
-            UInt256 blockNumber = startBlockNumber.Value;
-            for (int i = 0; i < blocksToLoad; i++)
-            {
+                UInt256 blockNumber = startBlockNumber.Value;
+                for (int i = 0; i < blocksToLoad; i++)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    ChainLevelInfo level = LoadLevel(blockNumber);
+                    if (level == null)
+                    {
+                        break;
+                    }
+
+                    BigInteger maxDifficultySoFar = 0;
+                    BlockInfo maxDifficultyBlock = null;
+                    for (int blockIndex = 0; blockIndex < level.BlockInfos.Length; blockIndex++)
+                    {
+                        if (level.BlockInfos[blockIndex].TotalDifficulty > maxDifficultySoFar)
+                        {
+                            maxDifficultyBlock = level.BlockInfos[blockIndex];
+                            maxDifficultySoFar = maxDifficultyBlock.TotalDifficulty;
+                        }
+                    }
+
+                    level = null;
+                    // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                    if (level != null)
+                        // ReSharper disable once HeuristicUnreachableCode
+                    {
+                        // ReSharper disable once HeuristicUnreachableCode
+                        throw new InvalidOperationException("just be aware that this level can be deleted by another thread after here");
+                    }
+
+                    if (maxDifficultyBlock == null)
+                    {
+                        throw new InvalidOperationException($"Expected at least one block at level {blockNumber}");
+                    }
+
+                    Block block = FindBlock(maxDifficultyBlock.BlockHash, false);
+                    if (block == null)
+                    {
+                        if (_logger.IsError) _logger.Error($"Could not find block {maxDifficultyBlock.BlockHash}. DB load cancelled.");
+                        _dbBatchProcessed?.SetResult(null);
+                        break;
+                    }
+
+                    BestSuggested = block.Header;
+                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+
+                    if (i % batchSize == batchSize - 1 && !(i == blocksToLoad - 1) && (Head.Number + (UInt256) batchSize) < blockNumber)
+                    {
+                        if (_logger.IsInfo)
+                        {
+                            _logger.Info($"Loaded {i + 1} out of {blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
+                        }
+
+                        _dbBatchProcessed = new TaskCompletionSource<object>();
+                        using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
+                        {
+                            _currentDbLoadBatchEnd = blockNumber - (UInt256) batchSize;
+                            await _dbBatchProcessed.Task;
+                        }
+                    }
+
+                    blockNumber++;
+                }
+
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    break;
+                    _logger.Info($"Canceled loading blocks from DB at block {blockNumber}");
                 }
 
-                ChainLevelInfo level = LoadLevel(blockNumber);
-                BigInteger maxDifficultySoFar = 0;
-                BlockInfo maxDifficultyBlock = null;
-                for (int blockIndex = 0; blockIndex < level.BlockInfos.Length; blockIndex++)
+                if (_logger.IsInfo)
                 {
-                    if (level.BlockInfos[blockIndex].TotalDifficulty > maxDifficultySoFar)
-                    {
-                        maxDifficultyBlock = level.BlockInfos[blockIndex];
-                        maxDifficultySoFar = maxDifficultyBlock.TotalDifficulty;
-                    }
+                    _logger.Info($"Completed loading blocks from DB at block {blockNumber}");
                 }
-
-                level = null;
-                // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-                if (level != null)
-                    // ReSharper disable once HeuristicUnreachableCode
-                {
-                    
-                    // ReSharper disable once HeuristicUnreachableCode
-                    throw new InvalidOperationException("just be aware that this level can be deleted by another thread after here");
-                }
-                
-                if (maxDifficultyBlock == null)
-                {
-                    throw new InvalidOperationException($"Expected at least one block at level {blockNumber}");
-                }
-
-                Block block = FindBlock(maxDifficultyBlock.BlockHash, false);
-                if (block == null)
-                {
-                    if (_logger.IsError) _logger.Error($"Could not find block {maxDifficultyBlock.BlockHash}. DB load cancelled.");
-                    _dbBatchProcessed?.SetResult(null);
-                    break;
-                }
-
-                BestSuggested = block.Header;
-                NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
-
-                if (i % batchSize == batchSize - 1 && !(i == blocksToLoad - 1) && (Head.Number + (UInt256) batchSize) < blockNumber)
-                {
-                    if (_logger.IsInfo)
-                    {
-                        _logger.Info($"Loaded {i + 1} out of {blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
-                    }
-
-                    _dbBatchProcessed = new TaskCompletionSource<object>();
-                    using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
-                    {
-                        _currentDbLoadBatchEnd = blockNumber - (UInt256) batchSize;
-                        await _dbBatchProcessed.Task;
-                    }
-                }
-
-                blockNumber++;
             }
-
-            if (cancellationToken.IsCancellationRequested)
+            finally
             {
-                _logger.Info($"Canceled loading blocks from DB at block {blockNumber}");
+                CanAcceptNewBlocks = true;
             }
-
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Completed loading blocks from DB at block {blockNumber}");
-            }
-
-            CanAcceptNewBlocks = true;
         }
 
         public event EventHandler<BlockEventArgs> BlockAddedToMain;
