@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -43,16 +44,19 @@ namespace Nethermind.Blockchain.Test
 
                 public void Allow(Keccak hash)
                 {
+                    Console.WriteLine($"Allowing {hash} to process");
                     _allowed.Add(hash);
                 }
 
                 public void AllowToFail(Keccak hash)
                 {
+                    Console.WriteLine($"Allowing {hash} to fail");
                     _allowedToFail.Add(hash);
                 }
 
                 public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
                 {
+                    Console.WriteLine($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                     while (true)
                     {
                         bool notYet = false;
@@ -64,6 +68,7 @@ namespace Nethermind.Blockchain.Test
                                 if (_allowedToFail.Contains(hash))
                                 {
                                     _allowedToFail.Remove(hash);
+                                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last()));
                                     throw new InvalidBlockException(hash);
                                 }
 
@@ -80,6 +85,7 @@ namespace Nethermind.Blockchain.Test
                         }
                         else
                         {
+                            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last()));
                             return suggestedBlocks;
                         }
                     }
@@ -97,21 +103,25 @@ namespace Nethermind.Blockchain.Test
 
                 public void Allow(Keccak hash)
                 {
+                    Console.WriteLine($"Allowing {hash} to recover");
                     _allowed.Add(hash);
                 }
 
                 public void AllowToFail(Keccak hash)
                 {
+                    Console.WriteLine($"Allowing {hash} to fail recover");
                     _allowedToFail.Add(hash);
                 }
 
                 public void RecoverData(Block block)
                 {
+                    Console.WriteLine($"Recovering data for {block.ToString(Block.Format.Short)}");
                     if (block.Author != null)
                     {
+                        Console.WriteLine($"Data was already there for {block.ToString(Block.Format.Short)}");
                         return;
                     }
-                    
+
                     while (true)
                     {
                         if (!_allowed.Contains(block.Hash))
@@ -137,6 +147,7 @@ namespace Nethermind.Blockchain.Test
             private AutoResetEvent _resetEvent;
             private BlockProcessorMock _blockProcessor;
             private RecoveryStepMock _recoveryStep;
+            private BlockchainProcessor _processor;
 
             public ProcessingTestContext()
             {
@@ -145,40 +156,90 @@ namespace Nethermind.Blockchain.Test
                 _blockTree = new BlockTree(blockDb, blockInfoDb, MainNetSpecProvider.Instance, NullTransactionPool.Instance, NullLogManager.Instance);
                 _blockProcessor = new BlockProcessorMock();
                 _recoveryStep = new RecoveryStepMock();
-                BlockchainProcessor processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, NullLogManager.Instance, false, false);
+                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, NullLogManager.Instance, false, false);
                 _resetEvent = new AutoResetEvent(false);
-                bool ignoreNextSignal = true;
-                processor.ProcessingQueueEmpty += (sender, args) =>
-                {
-                    if (ignoreNextSignal)
-                    {
-                        ignoreNextSignal = false;
-                        return;
-                    }
+//                _blockProcessor.BlockProcessed += (sender, args) =>
+//                {
+//                    Console.WriteLine($"Finished waiting for {args.Block.ToString(Block.Format.Short)} as block was processed");
+//                    _resetEvent.Set();
+//                };
 
+                _blockTree.NewHeadBlock += (sender, args) =>
+                {
+                    Console.WriteLine($"Finished waiting for {args.Block.ToString(Block.Format.Short)} as block became the new head block");
                     _resetEvent.Set();
                 };
 
-                processor.Start();
+                _processor.Start();
             }
 
+            public ProcessingTestContext AndRecoveryQueueLimitHasBeenReached()
+            {
+                _processor.SoftMaxRecoveryQueueSizeInTx = 0;
+                return this;
+            }
+            
             public AfterBlock Processed(Block block)
             {
-                _headBefore = _blockTree.Head;
+                _headBefore = _blockTree.Head?.Hash;
+                ManualResetEvent processedEvent = new ManualResetEvent(false);
+                bool wasProcessed = false;
+                _blockProcessor.BlockProcessed += (sender, args) =>
+                {
+                    if (args.Block.Hash == block.Hash)
+                    {
+                        wasProcessed = true;
+                        processedEvent.Set();
+                    }
+                };
+                
+                Console.WriteLine($"Waiting for {block.ToString(Block.Format.Short)} to process");
+                _blockProcessor.Allow(block.Hash);
+                processedEvent.WaitOne(AfterBlock.ProcessingWait);
+                Assert.True(wasProcessed, $"Block was never processed {block.ToString(Block.Format.Short)}");
+                
+                return new AfterBlock(this, block);
+            }
+            
+            public AfterBlock ProcessedSkipped(Block block)
+            {
+                _headBefore = _blockTree.Head?.Hash;
+                Console.WriteLine($"Waiting for {block.ToString(Block.Format.Short)} to be skipped");
                 _blockProcessor.Allow(block.Hash);
                 return new AfterBlock(this, block);
             }
 
             public AfterBlock ProcessedFail(Block block)
             {
-                _headBefore = _blockTree.Head;
+                _headBefore = _blockTree.Head?.Hash;
+                ManualResetEvent processedEvent = new ManualResetEvent(false);
+                bool wasProcessed = false;
+                _blockProcessor.BlockProcessed += (sender, args) =>
+                {
+                    if (args.Block.Hash == block.Hash)
+                    {
+                        wasProcessed = true;
+                        processedEvent.Set();
+                    }
+                };
+                
+                Console.WriteLine($"Waiting for {block.ToString(Block.Format.Short)} to fail processing");
                 _blockProcessor.AllowToFail(block.Hash);
+                processedEvent.WaitOne(AfterBlock.ProcessingWait);
+                Assert.True(wasProcessed, $"Block was never processed {block.ToString(Block.Format.Short)}");
+                Assert.AreEqual(_headBefore, _blockTree.Head.Hash, $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
+                Console.WriteLine($"Finished waiting for {block.ToString(Block.Format.Short)} to fail processing");
                 return new AfterBlock(this, block);
             }
 
             public ProcessingTestContext Suggested(Block block)
             {
-                _blockTree.SuggestBlock(block);
+                AddBlockResult result = _blockTree.SuggestBlock(block);
+                if (result != AddBlockResult.Added)
+                {
+                    Console.WriteLine($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
+                    _resetEvent.Set();
+                }
                 return this;
             }
 
@@ -200,6 +261,13 @@ namespace Nethermind.Blockchain.Test
                     .Recovered(block)
                     .Processed(block);
             }
+            
+            public AfterBlock FullyProcessedSkipped(Block block)
+            {
+                return Suggested(block)
+                    .Recovered(block)
+                    .ProcessedSkipped(block);
+            }
 
             public AfterBlock FullyProcessedFail(Block block)
             {
@@ -208,12 +276,12 @@ namespace Nethermind.Blockchain.Test
                     .ProcessedFail(block);
             }
 
-            private BlockHeader _headBefore;
+            private Keccak _headBefore;
 
             public class AfterBlock
             {
-                private const int ProcessingWait = 1000;
-                private const int IgnoreWait = 200;
+                public const int ProcessingWait = 1000;
+                public const int IgnoreWait = 200;
                 private readonly Block _block;
 
                 private readonly ProcessingTestContext _processingTestContext;
@@ -224,33 +292,38 @@ namespace Nethermind.Blockchain.Test
                     _block = block;
                 }
 
-                public ProcessingTestContext AndThen => _processingTestContext;
-
                 public ProcessingTestContext BecomesGenesis()
                 {
+                    Console.WriteLine($"Waiting for {_block.ToString(Block.Format.Short)} to become genesis block");
                     _processingTestContext._resetEvent.WaitOne(ProcessingWait);
-                    Assert.AreEqual(_block.Header, _processingTestContext._blockTree.Genesis, "genesis");
+                    Assert.AreEqual(_block.Header.Hash, _processingTestContext._blockTree.Genesis.Hash, "genesis");
                     return _processingTestContext;
                 }
 
                 public ProcessingTestContext BecomesNewHead()
                 {
+                    Console.WriteLine($"Waiting for {_block.ToString(Block.Format.Short)} to become the new head block");
                     _processingTestContext._resetEvent.WaitOne(ProcessingWait);
-                    Assert.AreEqual(_block.Header, _processingTestContext._blockTree.Head, "head");
+                    Assert.AreEqual(_block.Header.Hash, _processingTestContext._blockTree.Head.Hash, "head");
                     return _processingTestContext;
                 }
 
                 public ProcessingTestContext IsKeptOnBranch()
                 {
+                    Console.WriteLine($"Waiting for {_block.ToString(Block.Format.Short)} to be ignored");
                     _processingTestContext._resetEvent.WaitOne(IgnoreWait);
-                    Assert.AreEqual(_processingTestContext._headBefore, _processingTestContext._blockTree.Head, "head");
+                    Assert.AreEqual(_processingTestContext._headBefore, _processingTestContext._blockTree.Head.Hash, "head");
+                    Console.WriteLine($"Finished waiting for {_block.ToString(Block.Format.Short)} to be ignored");
                     return _processingTestContext;
                 }
 
                 public ProcessingTestContext IsDeletedAsInvalid()
                 {
+                    Console.WriteLine($"Waiting for {_block.ToString(Block.Format.Short)} to be deleted");
                     _processingTestContext._resetEvent.WaitOne(IgnoreWait);
-                    Assert.AreEqual(_processingTestContext._headBefore, _processingTestContext._blockTree.Head, "head");
+                    Assert.AreEqual(_processingTestContext._headBefore, _processingTestContext._blockTree.Head.Hash, "head");
+                    Console.WriteLine($"Finished waiting for {_block.ToString(Block.Format.Short)} to be deleted");
+                    Assert.Null(_processingTestContext._blockTree.FindBlock(_block.Hash, false));
                     return _processingTestContext;
                 }
             }
@@ -281,8 +354,8 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block1D2).BecomesNewHead()
                 .FullyProcessed(_blockB2D4).BecomesNewHead()
                 .FullyProcessed(_blockB3D8).BecomesNewHead()
-                .FullyProcessed(_block2D4).IsKeptOnBranch()
-                .FullyProcessed(_block3D6).IsKeptOnBranch();
+                .FullyProcessedSkipped(_block2D4).IsKeptOnBranch()
+                .FullyProcessedSkipped(_block3D6).IsKeptOnBranch();
         }
 
         [Test]
@@ -292,7 +365,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block0).BecomesGenesis()
                 .FullyProcessed(_block1D2).BecomesNewHead()
                 .FullyProcessed(_block2D4).BecomesNewHead()
-                .FullyProcessed(_blockB2D4).IsKeptOnBranch();
+                .FullyProcessedSkipped(_blockB2D4).IsKeptOnBranch();
         }
 
         [Test]
@@ -326,9 +399,9 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block1D2).BecomesNewHead()
                 .FullyProcessed(_block2D4).BecomesNewHead()
                 .FullyProcessed(_block3D6).BecomesNewHead()
-                .FullyProcessed(_blockB2D4).IsKeptOnBranch()
+                .FullyProcessedSkipped(_blockB2D4).IsKeptOnBranch()
                 .FullyProcessed(_blockB3D8).BecomesNewHead()
-                .FullyProcessed(_block4D8).IsKeptOnBranch()
+                .FullyProcessedSkipped(_block4D8).IsKeptOnBranch()
                 .FullyProcessed(_block5D10).BecomesNewHead();
         }
 
@@ -340,9 +413,9 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block1D2).BecomesNewHead()
                 .FullyProcessed(_blockB2D4).BecomesNewHead()
                 .FullyProcessed(_blockB3D8).BecomesNewHead()
-                .FullyProcessed(_block2D4).IsKeptOnBranch()
-                .FullyProcessed(_block3D6).IsKeptOnBranch()
-                .FullyProcessed(_block4D8).IsKeptOnBranch()
+                .FullyProcessedSkipped(_block2D4).IsKeptOnBranch()
+                .FullyProcessedSkipped(_block3D6).IsKeptOnBranch()
+                .FullyProcessedSkipped(_block4D8).IsKeptOnBranch()
                 .FullyProcessed(_block5D10).BecomesNewHead();
         }
 
@@ -354,7 +427,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block1D2).BecomesNewHead()
                 .FullyProcessed(_block2D4).BecomesNewHead()
                 .FullyProcessed(_block3D6).BecomesNewHead()
-                .FullyProcessed(_blockB2D4).IsKeptOnBranch()
+                .FullyProcessedSkipped(_blockB2D4).IsKeptOnBranch()
                 .FullyProcessed(_blockB3D8).BecomesNewHead();
         }
 
@@ -378,7 +451,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessedFail(_block2D4).IsDeletedAsInvalid()
                 .FullyProcessed(_blockB2D4).BecomesNewHead();
         }
-        
+
         [Test]
         public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue()
         {
@@ -391,11 +464,35 @@ namespace Nethermind.Blockchain.Test
                 .Recovered(_block1D2)
                 .Recovered(_block2D4)
                 .Recovered(_block3D6)
-                .Processed(_block1D2).AndThen
-                .ProcessedFail(_block2D4).AndThen
+                .Recovered(_block4D8)
+                .Processed(_block1D2).BecomesNewHead()
+                .ProcessedFail(_block2D4).IsDeletedAsInvalid()
+                .ProcessedSkipped(_block3D6).IsDeletedAsInvalid()
+                .ProcessedSkipped(_block4D8).IsDeletedAsInvalid()
                 .FullyProcessed(_blockB2D4).BecomesNewHead();
         }
         
+        [Test]
+        public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue_and_recovery_queue_max_has_been_reached()
+        {
+            When.ProcessingBlocks
+                .AndRecoveryQueueLimitHasBeenReached()
+                .FullyProcessed(_block0).BecomesGenesis()
+                .Suggested(_block1D2)
+                .Suggested(_block2D4)
+                .Suggested(_block3D6)
+                .Suggested(_block4D8)
+                .Recovered(_block1D2)
+                .Recovered(_block2D4)
+                .Processed(_block1D2).BecomesNewHead()
+                .ProcessedFail(_block2D4).IsDeletedAsInvalid()
+                .Recovered(_block3D6)
+                .Recovered(_block4D8)
+                .ProcessedSkipped(_block3D6).IsDeletedAsInvalid()
+                .ProcessedSkipped(_block4D8).IsDeletedAsInvalid()
+                .FullyProcessed(_blockB2D4).BecomesNewHead();
+        }
+
         [Test]
         [Ignore("Not implemented yet - scenario when from suggested blocks we can see that previously suggested will not be winning")]
         public void Never_process_branches_that_are_known_to_lose_in_the_future()
