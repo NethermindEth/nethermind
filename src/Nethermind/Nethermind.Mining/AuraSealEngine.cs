@@ -41,7 +41,7 @@ namespace Nethermind.Mining
 
         public Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();return null;
+            throw new NotImplementedException();
         }
 
         public bool ValidateParams(Block parent, BlockHeader header)
