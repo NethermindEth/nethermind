@@ -32,6 +32,7 @@ MacOS
 ::
 
     brew install gmp
+    brew install snappy
     git clone https://github.com/tkstanczak/nethermind --recursive
     cd nethermind/src/Nethermind
     dotnet build -c Release
