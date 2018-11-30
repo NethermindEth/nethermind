@@ -92,7 +92,12 @@ namespace Nethermind.Blockchain.Test
                 }
 
                 public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
-                public event EventHandler<TransactionProcessedEventArgs> TransactionProcessed;
+
+                public event EventHandler<TransactionProcessedEventArgs> TransactionProcessed
+                {
+                    add { }
+                    remove { }
+                }
             }
 
             private class RecoveryStepMock : IBlockDataRecoveryStep
@@ -178,7 +183,7 @@ namespace Nethermind.Blockchain.Test
                 _processor.SoftMaxRecoveryQueueSizeInTx = 0;
                 return this;
             }
-            
+
             public AfterBlock Processed(Block block)
             {
                 _headBefore = _blockTree.Head?.Hash;
@@ -192,15 +197,15 @@ namespace Nethermind.Blockchain.Test
                         processedEvent.Set();
                     }
                 };
-                
+
                 Console.WriteLine($"Waiting for {block.ToString(Block.Format.Short)} to process");
                 _blockProcessor.Allow(block.Hash);
                 processedEvent.WaitOne(AfterBlock.ProcessingWait);
                 Assert.True(wasProcessed, $"Block was never processed {block.ToString(Block.Format.Short)}");
-                
+
                 return new AfterBlock(this, block);
             }
-            
+
             public AfterBlock ProcessedSkipped(Block block)
             {
                 _headBefore = _blockTree.Head?.Hash;
@@ -222,7 +227,7 @@ namespace Nethermind.Blockchain.Test
                         processedEvent.Set();
                     }
                 };
-                
+
                 Console.WriteLine($"Waiting for {block.ToString(Block.Format.Short)} to fail processing");
                 _blockProcessor.AllowToFail(block.Hash);
                 processedEvent.WaitOne(AfterBlock.ProcessingWait);
@@ -240,6 +245,7 @@ namespace Nethermind.Blockchain.Test
                     Console.WriteLine($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
                     _resetEvent.Set();
                 }
+
                 return this;
             }
 
@@ -261,7 +267,7 @@ namespace Nethermind.Blockchain.Test
                     .Recovered(block)
                     .Processed(block);
             }
-            
+
             public AfterBlock FullyProcessedSkipped(Block block)
             {
                 return Suggested(block)
@@ -471,7 +477,7 @@ namespace Nethermind.Blockchain.Test
                 .ProcessedSkipped(_block4D8).IsDeletedAsInvalid()
                 .FullyProcessed(_blockB2D4).BecomesNewHead();
         }
-        
+
         [Test]
         public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue_and_recovery_queue_max_has_been_reached()
         {
