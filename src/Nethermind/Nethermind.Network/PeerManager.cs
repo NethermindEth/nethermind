@@ -434,22 +434,25 @@ namespace Nethermind.Network
 
                 if (_networkConfig.CaptureNodeStatsEventHistory)
                 {
-                    _logger.Debug($"Logging {peers.Length} peers log event histories");
+                    if(_logger.IsDebug) _logger.Debug($"Logging {peers.Length} peers log event histories");
 
                     foreach (var peer in peers)
                     {
                         LogEventHistory(peer.NodeStats);
                     }
 
-                    _logger.Debug("Logging event histories finished");
+                    if(_logger.IsDebug) _logger.Debug("Logging event histories finished");
                 }
             }
         }
 
         private void LogLatencyComparison(Peer[] peers)
         {
-            var latencyDict = peers.Select(x => new {x, Av = GetAverageLatencies(x.NodeStats)}).OrderBy(x => x.Av.Select(y => new {y.Key, y.Value}).FirstOrDefault(y => y.Key == NodeLatencyStatType.BlockHeaders)?.Value ?? 10000);
-            _logger.Info($"Overall latency stats: {Environment.NewLine}{string.Join(Environment.NewLine, latencyDict.Select(x => $"{x.x.Node.Id}: {string.Join(" | ", x.Av.Select(y => $"{y.Key.ToString()}: {y.Value?.ToString() ?? "-"}"))}"))}");
+            if(_logger.IsInfo)
+            {
+                var latencyDict = peers.Select(x => new {x, Av = GetAverageLatencies(x.NodeStats)}).OrderBy(x => x.Av.Select(y => new {y.Key, y.Value}).FirstOrDefault(y => y.Key == NodeLatencyStatType.BlockHeaders)?.Value ?? 10000);
+                _logger.Info($"Overall latency stats: {Environment.NewLine}{string.Join(Environment.NewLine, latencyDict.Select(x => $"{x.x.Node.Id}: {string.Join(" | ", x.Av.Select(y => $"{y.Key.ToString()}: {y.Value?.ToString() ?? "-"}"))}"))}");
+            }
         }
 
         private string GetIncompatibleDesc(IReadOnlyCollection<Peer> incompatibleNodes)
@@ -545,10 +548,7 @@ namespace Nethermind.Network
 
             var peers = _peerStorage.GetPersistedNodes();
 
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Initializing persisted peers: {peers.Length}.");
-            }
+            if (_logger.IsInfo) _logger.Info($"Initializing persisted peers: {peers.Length}.");
 
             foreach (var persistedPeer in peers)
             {
@@ -567,10 +567,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (_logger.IsDebug)
-                {
-                    _logger.Debug($"Adding persisted peer to New collection {node.Id}@{node.Host}:{node.Port}");
-                }
+                if (_logger.IsDebug) _logger.Debug($"Adding persisted peer to New collection {node.Id}@{node.Host}:{node.Port}");
             }
         }
 
@@ -578,10 +575,7 @@ namespace Nethermind.Network
         {
             var trustedPeers = _networkConfig.TrustedPeers;
 
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Initializing trusted peers: {trustedPeers?.Length ?? 0}.");
-            }
+            if (_logger.IsInfo)  _logger.Info($"Initializing trusted peers: {trustedPeers?.Length ?? 0}.");
 
             if (trustedPeers == null || !trustedPeers.Any())
             {
@@ -598,10 +592,7 @@ namespace Nethermind.Network
         {
             var bootNodes = _networkConfig.BootNodes;
 
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Initializing bootnode peers: {bootNodes?.Length ?? 0}.");
-            }
+            if (_logger.IsInfo) _logger.Info($"Initializing bootnode peers: {bootNodes?.Length ?? 0}.");
 
             if (bootNodes == null || !bootNodes.Any())
             {
@@ -625,10 +616,7 @@ namespace Nethermind.Network
             var peer = new Peer(node, nodeStats, ConnectionDirection.Out);
             if (_candidatePeers.TryAdd(node.Id, peer))
             {
-                if (_logger.IsDebug)
-                {
-                    _logger.Debug($"Adding config peer ({(isTrustedPeer ? "trusted" : "bootnode")}) to New collection {node.Id}@{node.Host}:{node.Port}");
-                }
+                if (_logger.IsDebug) _logger.Debug($"Adding config peer ({(isTrustedPeer ? "trusted" : "bootnode")}) to New collection {node.Id}@{node.Host}:{node.Port}");
             }
         }
 
@@ -653,17 +641,11 @@ namespace Nethermind.Network
                         AddNodeToDiscovery(candidatePeer, (P2PProtocolInitializedEventArgs) e);
                     }
 
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}.");
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}.");
                 }
                 else
                 {
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, peer not in candidate collection.");
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, peer not in candidate collection.");
                 }
 
                 //Initializing disconnect if it hasn't been done already - in case of e.g. timeout earlier and unexpected further connection
@@ -770,10 +752,7 @@ namespace Nethermind.Network
 
             if (!_activePeers.TryGetValue(id, out Peer peer))
             {
-                if (_logger.IsError)
-                {
-                    _logger.Error($"Initiated rlpx connection (out) with Peer without adding it to Active collection: {id}");
-                }
+                if (_logger.IsError) _logger.Error($"Initiated rlpx connection (out) with Peer without adding it to Active collection: {id}");
 
                 return;
             }
@@ -791,10 +770,7 @@ namespace Nethermind.Network
             // if we have already initiated connection before
             if (_activePeers.ContainsKey(session.RemoteNodeId))
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Initiating disconnect, node is already connected: {session.RemoteNodeId}");
-                }
+                if (_logger.IsTrace) _logger.Trace($"Initiating disconnect, node is already connected: {session.RemoteNodeId}");
 
                 await session.InitiateDisconnectAsync(DisconnectReason.AlreadyConnected);
                 return;
@@ -868,10 +844,7 @@ namespace Nethermind.Network
                     var ethArgs = (EthProtocolInitializedEventArgs) eventArgs;
                     if (!ValidateChainId(ethArgs.ChainId))
                     {
-                        if (_logger.IsTrace)
-                        {
-                            _logger.Trace($"Initiating disconnect with peer: {peer.Node.Id}, different chainId: {ChainId.GetChainName((int) ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_synchronizationManager.ChainId)}");
-                        }
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {peer.Node.Id}, different chainId: {ChainId.GetChainName((int) ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_synchronizationManager.ChainId)}");
 
                         peer.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.ChainId;
                         //TODO confirm disconnect reason
@@ -881,10 +854,7 @@ namespace Nethermind.Network
 
                     if (ethArgs.GenesisHash != _synchronizationManager.Genesis?.Hash)
                     {
-                        if (_logger.IsTrace)
-                        {
-                            _logger.Trace($"Initiating disconnect with peer: {peer.Node.Id}, different genesis hash: {ethArgs.GenesisHash}, our: {_synchronizationManager.Genesis?.Hash}");
-                        }
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {peer.Node.Id}, different genesis hash: {ethArgs.GenesisHash}, our: {_synchronizationManager.Genesis?.Hash}");
 
                         peer.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.DifferentGenesis;
                         //TODO confirm disconnect reason
@@ -916,10 +886,7 @@ namespace Nethermind.Network
         private void OnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
             var session = (IP2PSession) sender;
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"|NetworkTrace| Peer disconnected event in PeerManager: {session.RemoteNodeId}, disconnectReason: {e.DisconnectReason}, disconnectType: {e.DisconnectType}");
-            }
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Peer disconnected event in PeerManager: {session.RemoteNodeId}, disconnectReason: {e.DisconnectReason}, disconnectType: {e.DisconnectType}");
 
             if (session.RemoteNodeId == null)
             {
@@ -934,10 +901,7 @@ namespace Nethermind.Network
 
                 if (activePeer.Session?.SessionId != session.SessionId)
                 {
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Received disconnect on a different session than the active peer runs. Ignoring. Id: {activePeer.Node.Id}");
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Received disconnect on a different session than the active peer runs. Ignoring. Id: {activePeer.Node.Id}");
 
                     return;
                 }
@@ -949,10 +913,7 @@ namespace Nethermind.Network
                     _transactionPool.RemovePeer(activePeer.Node.Id);
                 }
 
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Removing Active Peer on disconnect {session.RemoteNodeId}");
-                }
+                if (_logger.IsTrace) _logger.Trace($"Removing Active Peer on disconnect {session.RemoteNodeId}");
 
                 if (_logger.IsTrace && _networkConfig.CaptureNodeStatsEventHistory)
                 {
@@ -1010,10 +971,7 @@ namespace Nethermind.Network
             //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
             if (session.ConnectionDirection == ConnectionDirection.In)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Handshake initialized {session.ConnectionDirection.ToString().ToUpper()} channel {session.RemoteNodeId}@{session.RemoteHost}:{session.RemotePort}");
-                }
+                if (_logger.IsTrace) _logger.Trace($"Handshake initialized {session.ConnectionDirection.ToString().ToUpper()} channel {session.RemoteNodeId}@{session.RemoteHost}:{session.RemotePort}");
 
                 await ProcessIncomingConnection(session);
             }
@@ -1022,10 +980,7 @@ namespace Nethermind.Network
                 if (!_activePeers.TryGetValue(session.RemoteNodeId, out Peer peer))
                 {
                     //Can happen when peer sent Disconnect message before handshake is done, it takes us a while to disconnect
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Initiated Handshake (OUT) with Peer without adding it to Active collection: {session.RemoteNodeId}");
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Initiated Handshake (OUT) with Peer without adding it to Active collection: {session.RemoteNodeId}");
 
                     return;
                 }
@@ -1033,10 +988,7 @@ namespace Nethermind.Network
                 peer.NodeStats.AddNodeStatsHandshakeEvent(ConnectionDirection.Out);
             }
 
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Handshake initialized for peer: {session.RemoteNodeId}");
-            }
+            if (_logger.IsTrace) _logger.Trace($"Handshake initialized for peer: {session.RemoteNodeId}");
         }
 
         private void OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
@@ -1060,10 +1012,7 @@ namespace Nethermind.Network
 
             peer.NodeStats.AddNodeStatsEvent(NodeStatsEventType.NodeDiscovered);
 
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Adding newly discovered node to Candidates collection {id}@{nodeEventArgs.Node.Host}:{nodeEventArgs.Node.Port}");
-            }
+            if (_logger.IsTrace) _logger.Trace($"Adding newly discovered node to Candidates collection {id}@{nodeEventArgs.Node.Host}:{nodeEventArgs.Node.Port}");
 
             if (_isStarted)
             {
@@ -1345,69 +1294,72 @@ namespace Nethermind.Network
 
         private void LogEventHistory(INodeStats nodeStats)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine();
-            var isBootnode = _networkConfig.BootNodes?.Any(x => new NodeId(new PublicKey(Bytes.FromHexString(x.NodeId))) == nodeStats.Node.Id) ?? false;
-            sb.AppendLine($"NodeEventHistory, Node: {nodeStats.Node.Id}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Desc: {nodeStats.Node.Description}, Trusted: {nodeStats.IsTrustedPeer}, Bootnode: {isBootnode}");
-
-            if (nodeStats.P2PNodeDetails != null)
+            if (_logger.IsDebug)
             {
-                sb.AppendLine($"P2P details: ClientId: {nodeStats.P2PNodeDetails.ClientId}, P2PVersion: {nodeStats.P2PNodeDetails.P2PVersion}, Capabilities: {GetCapabilities(nodeStats.P2PNodeDetails)}");
-            }
-
-            if (nodeStats.EthNodeDetails != null)
-            {
-                sb.AppendLine($"Eth62 details: ChainId: {ChainId.GetChainName((int) nodeStats.EthNodeDetails.ChainId)}, TotalDifficulty: {nodeStats.EthNodeDetails.TotalDifficulty}");
-            }
-
-            foreach (var statsEvent in nodeStats.EventHistory.OrderBy(x => x.EventDate).ToArray())
-            {
-                sb.Append($"{statsEvent.EventDate.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.EventType}");
-                if (statsEvent.ConnectionDirection.HasValue)
-                {
-                    sb.Append($" | {statsEvent.ConnectionDirection.Value.ToString()}");
-                }
-
-                if (statsEvent.P2PNodeDetails != null)
-                {
-                    sb.Append($" | {statsEvent.P2PNodeDetails.ClientId} | v{statsEvent.P2PNodeDetails.P2PVersion} | {GetCapabilities(statsEvent.P2PNodeDetails)}");
-                }
-
-                if (statsEvent.EthNodeDetails != null)
-                {
-                    sb.Append($" | {ChainId.GetChainName((int) statsEvent.EthNodeDetails.ChainId)} | TotalDifficulty:{statsEvent.EthNodeDetails.TotalDifficulty}");
-                }
-
-                if (statsEvent.DisconnectDetails != null)
-                {
-                    sb.Append($" | {statsEvent.DisconnectDetails.DisconnectReason.ToString()} | {statsEvent.DisconnectDetails.DisconnectType.ToString()}");
-                }
-
-                if (statsEvent.SyncNodeDetails != null && (statsEvent.SyncNodeDetails.NodeBestBlockNumber.HasValue || statsEvent.SyncNodeDetails.OurBestBlockNumber.HasValue))
-                {
-                    sb.Append($" | NodeBestBlockNumber: {statsEvent.SyncNodeDetails.NodeBestBlockNumber} | OurBestBlockNumber: {statsEvent.SyncNodeDetails.OurBestBlockNumber}");
-                }
-
+                var sb = new StringBuilder();
                 sb.AppendLine();
-            }
+                var isBootnode = _networkConfig.BootNodes?.Any(x => new NodeId(new PublicKey(Bytes.FromHexString(x.NodeId))) == nodeStats.Node.Id) ?? false;
+                sb.AppendLine($"NodeEventHistory, Node: {nodeStats.Node.Id}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Desc: {nodeStats.Node.Description}, Trusted: {nodeStats.IsTrustedPeer}, Bootnode: {isBootnode}");
 
-            if (nodeStats.LatencyHistory.Any())
-            {
-                sb.AppendLine("Latency averages:");
-                var averageLatencies = GetAverageLatencies(nodeStats);
-                foreach (var latency in averageLatencies.Where(x => x.Value.HasValue))
+                if (nodeStats.P2PNodeDetails != null)
                 {
-                    sb.AppendLine($"{latency.Key.ToString()} = {latency.Value}");
+                    sb.AppendLine($"P2P details: ClientId: {nodeStats.P2PNodeDetails.ClientId}, P2PVersion: {nodeStats.P2PNodeDetails.P2PVersion}, Capabilities: {GetCapabilities(nodeStats.P2PNodeDetails)}");
                 }
 
-                sb.AppendLine("Latency events:");
-                foreach (var statsEvent in nodeStats.LatencyHistory.OrderBy(x => x.StatType).ThenBy(x => x.CaptureTime).ToArray())
+                if (nodeStats.EthNodeDetails != null)
                 {
-                    sb.AppendLine($"{statsEvent.StatType.ToString()} | {statsEvent.CaptureTime.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.Latency}");
+                    sb.AppendLine($"Eth62 details: ChainId: {ChainId.GetChainName((int) nodeStats.EthNodeDetails.ChainId)}, TotalDifficulty: {nodeStats.EthNodeDetails.TotalDifficulty}");
                 }
-            }
 
-            _logger.Debug(sb.ToString());
+                foreach (var statsEvent in nodeStats.EventHistory.OrderBy(x => x.EventDate).ToArray())
+                {
+                    sb.Append($"{statsEvent.EventDate.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.EventType}");
+                    if (statsEvent.ConnectionDirection.HasValue)
+                    {
+                        sb.Append($" | {statsEvent.ConnectionDirection.Value.ToString()}");
+                    }
+
+                    if (statsEvent.P2PNodeDetails != null)
+                    {
+                        sb.Append($" | {statsEvent.P2PNodeDetails.ClientId} | v{statsEvent.P2PNodeDetails.P2PVersion} | {GetCapabilities(statsEvent.P2PNodeDetails)}");
+                    }
+
+                    if (statsEvent.EthNodeDetails != null)
+                    {
+                        sb.Append($" | {ChainId.GetChainName((int) statsEvent.EthNodeDetails.ChainId)} | TotalDifficulty:{statsEvent.EthNodeDetails.TotalDifficulty}");
+                    }
+
+                    if (statsEvent.DisconnectDetails != null)
+                    {
+                        sb.Append($" | {statsEvent.DisconnectDetails.DisconnectReason.ToString()} | {statsEvent.DisconnectDetails.DisconnectType.ToString()}");
+                    }
+
+                    if (statsEvent.SyncNodeDetails != null && (statsEvent.SyncNodeDetails.NodeBestBlockNumber.HasValue || statsEvent.SyncNodeDetails.OurBestBlockNumber.HasValue))
+                    {
+                        sb.Append($" | NodeBestBlockNumber: {statsEvent.SyncNodeDetails.NodeBestBlockNumber} | OurBestBlockNumber: {statsEvent.SyncNodeDetails.OurBestBlockNumber}");
+                    }
+
+                    sb.AppendLine();
+                }
+
+                if (nodeStats.LatencyHistory.Any())
+                {
+                    sb.AppendLine("Latency averages:");
+                    var averageLatencies = GetAverageLatencies(nodeStats);
+                    foreach (var latency in averageLatencies.Where(x => x.Value.HasValue))
+                    {
+                        sb.AppendLine($"{latency.Key.ToString()} = {latency.Value}");
+                    }
+
+                    sb.AppendLine("Latency events:");
+                    foreach (var statsEvent in nodeStats.LatencyHistory.OrderBy(x => x.StatType).ThenBy(x => x.CaptureTime).ToArray())
+                    {
+                        sb.AppendLine($"{statsEvent.StatType.ToString()} | {statsEvent.CaptureTime.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.Latency}");
+                    }
+                }
+
+                _logger.Debug(sb.ToString());
+            }
         }
 
         private static Dictionary<NodeLatencyStatType, long?> GetAverageLatencies(INodeStats nodeStats)
