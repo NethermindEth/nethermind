@@ -1,6 +1,9 @@
 ﻿using System;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Primitives;
 
 namespace Nethermind.EvmPlayground
 {
@@ -19,7 +22,8 @@ namespace Nethermind.EvmPlayground
                     string codeText = Console.ReadLine();
                     codeText = RunMacros(codeText);
                     Console.WriteLine(codeText);
-                    var code = codeText.Split(" ", StringSplitOptions.RemoveEmptyEntries).Select(byte.Parse).ToArray();
+                    Console.WriteLine(codeText.Replace(" 0x", string.Empty));
+                    var code = codeText.Split(" ", StringSplitOptions.RemoveEmptyEntries).Select(b => byte.Parse(b.Replace("0x", string.Empty), NumberStyles.HexNumber)).ToArray();
                     string hash = await client.SendInit(code);
                     await Task.Delay(100);
                     string receipt = await client.GetReceipt(hash);
@@ -61,9 +65,42 @@ namespace Nethermind.EvmPlayground
             return result;
         }
 
+        private static string MakeHex(string input)
+        {
+            string[] split = input.Split(' ');
+            for (int i = 0; i < split.Length; i++)
+            {
+                if (!split[i].Contains("0x"))
+                {
+                    int value = int.Parse(split[i]);
+                    split[i] = value.ToString("x");
+                }
+                
+                split[i] = split[i].Replace("0x", "", StringComparison.InvariantCultureIgnoreCase);
+                split[i] = split[i].PadLeft(split[i].Length + split[i].Length % 2, '0');
+                var newValue = new StringBuilder();
+                for (int j = 0; j < split[i].Length; j += 2)
+                {
+                    if (newValue.Length != 0)
+                    {
+                        newValue.Append(" ");
+                    }
+                    
+                    newValue.Append(string.Concat("0x", split[i].Substring(j, 2)));
+                }
+
+                split[i] = newValue.ToString();
+            }
+
+            return string.Join(' ', split);
+        }
+
         private static string RunMacros(string input)
         {
-            return ExpandPushHex(input.Replace("PZ1", "96 0"));
+            input = input.Replace("PZ1", "96 0");
+            input = ExpandPushHex(input);
+            input = MakeHex(input);
+            return input;
         }
     }
 }

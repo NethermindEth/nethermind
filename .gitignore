@@ -332,6 +332,8 @@ ASALocalRun/
 .localhistory/
 
 .vscode/
+nethermind_db/
+spaceneth_db/
 docs/build/
 out/
 db/
