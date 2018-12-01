@@ -21,6 +21,8 @@ This is the main public Ethereum network secured by the ethash PoW algorithm.
 ::
 
     Nethermind.Runner --config mainnet
+    
+* `MainNet Stats <https://ethstats.net/>`_
 
 Görli (goerli)
 ^^^^^^^^^^^^^^
@@ -30,6 +32,10 @@ This is a Clique-PoA based testnet supported by all major clients. It has a 15 s
 ::
 
     Nethermind.Runner --config goerli
+    
+* `Görli Stats <https://stats.goerli.net/>`_
+* `Görli BlockScout <https://blockscout.com/eth/goerli//>`_
+* `Görli Gitter <https://gitter.im/goerli/testnet>`_
 
 Ropsten
 ^^^^^^^
@@ -49,6 +55,8 @@ This is a Clique-PoA based testnet supported by Geth and Nethermind. It has a 15
 
     Nethermind.Runner --config rinkeby
 
+* `Rinkeby Page <https://www.rinkeby.io/#stats>`_
+
 
 Stureby
 ^^^^^^^
@@ -59,11 +67,14 @@ This is a PoW-based testnet introduced to rapidly test all the transitions betwe
 
     Nethermind.Runner --config stureby
 
+* `Stureby Stats <http://boot.stureby.ethdevops.io/>`_
 
 Kovan
 ^^^^^
 
 This is an Aura-PoA based testnet supported by Parity only.
+
+* `Kovan Page <https://kovan-testnet.github.io/website/>`_
 
 
 
