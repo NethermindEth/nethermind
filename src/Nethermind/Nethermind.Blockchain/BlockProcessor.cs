@@ -304,9 +304,11 @@ namespace Nethermind.Blockchain
                 }
 
                 ApplyMinerReward(block, reward, tracer.IsTracingRewards ? tracer : NullBlockTracer.Instance);
-
+                
+                tracer.EndTxTrace();
                 if (tracer.IsTracingRewards)
                 {
+                    tracer.ReportReward(reward.Address, reward.RewardType == BlockRewardType.Block ? "block" : "uncle", (UInt256) reward.Value);
                     if (txTracer?.IsTracingState ?? false)
                     {
                         _stateProvider.Commit(_specProvider.GetSpec(block.Number), txTracer);
@@ -327,9 +329,6 @@ namespace Nethermind.Blockchain
             {
                 _stateProvider.AddToBalance(reward.Address, (UInt256) reward.Value, _specProvider.GetSpec(block.Number));
             }
-
-            tracer.EndTxTrace();
-            if (tracer.IsTracingRewards) tracer.ReportReward(reward.Address, "block", (UInt256) reward.Value);
         }
 
         private void ApplyDaoTransition()

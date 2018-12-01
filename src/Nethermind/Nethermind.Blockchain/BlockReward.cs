@@ -21,15 +21,23 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain
 {
+    public enum BlockRewardType
+    {
+        Block = 0,
+        Uncle = 1,
+    }
+    
     public class BlockReward
     {
-        public BlockReward(Address address, BigInteger value)
+        public BlockReward(Address address, BigInteger value, BlockRewardType rewardType = BlockRewardType.Block)
         {
             Address = address;
             Value = value;
+            RewardType = rewardType;
         }
         
         public Address Address { get; }
         public BigInteger Value { get; }
+        public BlockRewardType RewardType { get; }
     }
 }

@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < block.Ommers.Length; i++)
             {
                 BigInteger ommerReward = blockReward - ((uint) (blockHeader.Number - block.Ommers[i].Number) * blockReward >> 3);
-                rewards[i + 1] = new BlockReward(block.Ommers[i].Beneficiary, ommerReward);
+                rewards[i + 1] = new BlockReward(block.Ommers[i].Beneficiary, ommerReward, BlockRewardType.Uncle);
             }
 
             return rewards;
