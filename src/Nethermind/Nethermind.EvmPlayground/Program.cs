@@ -23,7 +23,7 @@ namespace Nethermind.EvmPlayground
                     codeText = RunMacros(codeText);
                     Console.WriteLine(codeText);
                     Console.WriteLine(codeText.Replace(" 0x", string.Empty));
-                    var code = codeText.Split(" ", StringSplitOptions.RemoveEmptyEntries).Select(b => byte.Parse(b.Replace("0x", string.Empty), NumberStyles.HexNumber)).ToArray();
+                    var code = codeText.Split(" ", StringSplitOptions.RemoveEmptyEntries).Select(b => byte.Parse(b.Replace("0x", string.Empty), NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
                     string hash = await client.SendInit(code);
                     await Task.Delay(100);
                     string receipt = await client.GetReceipt(hash);
