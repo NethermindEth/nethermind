@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.DataModel
         {
             ParityAccountStateChange result = new ParityAccountStateChange();
 
-            TestOneWaySerialization(result, "{\"balance\":\"=\",\"code\":\"=\",\"nonce\":\"=\",\"storage\":\"=\"}");
+            TestOneWaySerialization(result, "{\"balance\":\"=\",\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
         }
     }
 }

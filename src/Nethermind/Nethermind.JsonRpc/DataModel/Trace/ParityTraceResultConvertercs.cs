@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.DataModel.Trace
         public override void WriteJson(JsonWriter writer, ParityTraceResult value, JsonSerializer serializer)
         {
             writer.WriteStartObject();
-            writer.WriteProperty("gasUsed", value.GasUsed);
+            writer.WriteProperty("gasUsed", string.Concat("0x", value.GasUsed.ToString("x")));
             writer.SerializeProperty("output", value.Output, serializer);
             writer.WriteEndObject();
         }

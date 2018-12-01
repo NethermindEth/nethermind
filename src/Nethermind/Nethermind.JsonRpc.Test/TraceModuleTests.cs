@@ -66,6 +66,7 @@ namespace Nethermind.JsonRpc.Test
             
             Assert.IsNull(response.Error, "error");
             Assert.NotNull(response.Result, "result");
+//            Assert.False(response.Result is string s && s.Contains("\""));
         }
     }
 }

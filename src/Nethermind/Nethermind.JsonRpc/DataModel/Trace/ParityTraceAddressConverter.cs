@@ -20,7 +20,6 @@ using System;
 using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json;
-using RocksDbSharp;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Nethermind.JsonRpc.DataModel.Trace

@@ -126,22 +126,16 @@ namespace Nethermind.JsonRpc.DataModel.Trace
 
             writer.WritePropertyName("storage");
 
-
-            if ((value.Storage?.Count ?? 0) == 0)
+            writer.WriteStartObject();
+            if (value.Storage != null)
             {
-                writer.WriteValue("=");
-            }
-            else
-            {
-                writer.WriteStartObject();
                 foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> pair in value.Storage)
                 {
                     writer.WritePropertyName(string.Concat("0x", pair.Key.ToString("x64")));
                     WriteStorageChange(writer, pair.Value, serializer);
                 }
-
-                writer.WriteEndObject();
             }
+            writer.WriteEndObject();
 
             writer.WriteEndObject();
         }

@@ -18,7 +18,6 @@
 
 using System;
 using System.Globalization;
-using System.Numerics;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
