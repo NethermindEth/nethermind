@@ -50,7 +50,7 @@ git clone https://github.com/tkstanczak/nethermind --recursive
 cd nethermind/src/Nethermind
 dotnet build -c Release
 cd Nethermind.Runner
-dotnet run
+dotnet run --no-build -- --config mainnet
 ```
 
 ## Contributors welcome
