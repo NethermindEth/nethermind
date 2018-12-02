@@ -61,6 +61,11 @@ namespace Nethermind.EvmPlayground
         {
             Transaction transaction = new Transaction(sender, data);
             string responseJson = await _jsonRpcClient.Post("eth_sendTransaction", transaction);
+            if (responseJson.StartsWith("Error:"))
+            {
+                return responseJson;
+            }
+            
             JsonRpcResponse response = _serializer.Deserialize<JsonRpcResponse>(responseJson);
             return response.Result;
         }
