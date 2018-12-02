@@ -11,10 +11,10 @@ namespace Nethermind.EvmPlayground
     {
         public static async Task Main()
         {
-            try
+            Client client = new Client();
+            while (true)
             {
-                Client client = new Client();
-                while (true)
+                try
                 {
                     Console.WriteLine();
                     Console.WriteLine("======================================================");
@@ -27,16 +27,29 @@ namespace Nethermind.EvmPlayground
                     string hash = await client.SendInit(code);
                     await Task.Delay(100);
                     string receipt = await client.GetReceipt(hash);
+                    if (receipt.StartsWith("Error:"))
+                    {
+                        WriteError(receipt);
+                        continue;
+                    }
+
                     Console.WriteLine(receipt);
                     string trace = await client.GetTrace(hash);
                     Console.WriteLine(trace);
                 }
+                catch (Exception e)
+                {
+                    WriteError(e.Message);
+                }
             }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                Console.ReadLine();
-            }
+        }
+
+        private static void WriteError(string message)
+        {
+            ConsoleColor color = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"{message}");
+            Console.ForegroundColor = color;
         }
 
         private static string ExpandPushHex(string input)
@@ -75,7 +88,7 @@ namespace Nethermind.EvmPlayground
                     int value = int.Parse(split[i]);
                     split[i] = value.ToString("x");
                 }
-                
+
                 split[i] = split[i].Replace("0x", "", StringComparison.InvariantCultureIgnoreCase);
                 split[i] = split[i].PadLeft(split[i].Length + split[i].Length % 2, '0');
                 var newValue = new StringBuilder();
@@ -85,7 +98,7 @@ namespace Nethermind.EvmPlayground
                     {
                         newValue.Append(" ");
                     }
-                    
+
                     newValue.Append(string.Concat("0x", split[i].Substring(j, 2)));
                 }
 
