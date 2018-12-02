@@ -212,5 +212,24 @@ namespace Nethermind.Network.Config
         /// </summary>
         string DetailedTimeDateFormat { get; }
 
+        /// <summary>
+        /// Max Persisted Peer count
+        /// </summary>
+        int MaxPersistedPeerCount { get; }
+        
+        /// <summary>
+        /// Persisted Peer Count Cleanup Threshold
+        /// </summary>
+        int PersistedPeerCountCleanupThreshold { get; }
+        
+        /// <summary>
+        /// Max Candidate Peer count
+        /// </summary>
+        int MaxCandidatePeerCount { get; }
+        
+        /// <summary>
+        /// Candidate Peer Count Cleanup Threshold
+        /// </summary>
+        int CandidatePeerCountCleanupThreshold { get; }
     }
 }

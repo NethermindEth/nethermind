@@ -374,18 +374,6 @@ namespace Nethermind.Network
                     continue;
                 }
 
-//                if (!CheckLastDisconnectTime(candidate.Value))
-//                {
-//                    counters[ActivePeerSelectionCounter.FilteredByDisconnect] = counters[ActivePeerSelectionCounter.FilteredByDisconnect] + 1;
-//                    continue;
-//                }
-
-//                if (!CheckLastFailedConnectionTime(candidate.Value))
-//                {
-//                    counters[ActivePeerSelectionCounter.FilteredByFailedConnection] = counters[ActivePeerSelectionCounter.FilteredByFailedConnection] + 1;
-//                    continue;
-//                }
-
                 if (candidate.Value.NodeStats.FailedCompatibilityValidation.HasValue)
                 {
                     incompatiblePeers.Add(candidate.Value);
@@ -432,7 +420,6 @@ namespace Nethermind.Network
                     LogLatencyComparison(peersWithLatencyStats);
                 }
 
-                if (_networkConfig.CaptureNodeStatsEventHistory)
                 {
                     if(_logger.IsDebug) _logger.Debug($"Logging {peers.Length} peers log event histories");
 
@@ -465,60 +452,6 @@ namespace Nethermind.Network
             var validationGroups = incompatibleNodes.GroupBy(x => x.NodeStats.FailedCompatibilityValidation).ToArray();
             return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
         }
-
-//        private bool CheckLastDisconnectTime(Peer peer)
-//        {
-//            var delay = peer.NodeStats.GetDisconnectDelay();
-//            if (!delay.HasValue)
-//            {
-//                return true;
-//            }
-//
-//            var random = new Random();
-//            var randomizedDelay = random.Next(delay.Value);
-//            
-//            var result = timePassed > GetDelayTime(peer);
-//            if (!result && _logger.IsTrace)
-//            {
-//                _logger.Trace($"Skipping connection to peer, due to disconnect delay, time from last disconnect: {timePassed}, delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}");
-//            }
-//
-//            return result;
-//        }
-//
-//        private int GetDelayTime(Peer peer)
-//        {
-//            //In case of last disconnect reason is AlreadyConnected we randomize small delay time 
-//            var lastDisconnectReason = peer.NodeStats.LastLocalDisconnectReason;
-//            if (lastDisconnectReason.HasValue && lastDisconnectReason.Value == DisconnectReason.AlreadyConnected)
-//            {
-//                var random = new Random();
-//                var randomizedDelay = random.Next(500);
-//                if (_logger.IsWarn) _logger.Warn($"Randomized delay: {randomizedDelay}, peer: {peer.Node.Id}");
-//                return randomizedDelay;
-//            }
-//            if (_logger.IsWarn) _logger.Warn($"Regular delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}, lastDisconnectReason: {lastDisconnectReason?.ToString() ?? "none"}");
-//
-//            return _networkConfig.DisconnectDelay;
-//        }
-//
-//        private bool CheckLastFailedConnectionTime(Peer peer)
-//        {
-//            var time = peer.NodeStats.LastFailedConnectionTime;
-//            if (!time.HasValue)
-//            {
-//                return true;
-//            }
-//
-//            var timePassed = DateTime.Now.Subtract(time.Value).TotalMilliseconds;
-//            var result = timePassed > _networkConfig.FailedConnectionDelay;
-//            if (!result && _logger.IsTrace)
-//            {
-//                _logger.Trace($"Skipping connection to peer, due to failed connection delay, time from last failed connection: {timePassed}, delay: {_networkConfig.FailedConnectionDelay}, peer: {peer.Node.Id}");
-//            }
-//
-//            return result;
-//        }
 
         private async Task<bool> InitializePeerConnection(Peer candidate)
         {
@@ -1031,6 +964,7 @@ namespace Nethermind.Network
                 {
                     _activePeersTimer.Enabled = false;
                     RunPeerUpdateSync();
+                    CleanupCandidatePeers();
                 }
                 catch (Exception exception)
                 {
@@ -1069,6 +1003,7 @@ namespace Nethermind.Network
                 {
                     _peerPersistenceTimer.Enabled = false;
                     RunPeerCommit();
+                    //_logger.Info($"TESTTEST Candidate Count: {_candidatePeers.Count}, Active Count: {_activePeers.Count}, Persisted Peer count: {_peerStorage.GetPersistedNodes().Length}");
                 }
                 catch (Exception exception)
                 {
@@ -1138,7 +1073,7 @@ namespace Nethermind.Network
         {
             try
             {
-                UpdateCurrentlyStoredPeersReputation();
+                UpdateReputationAndMaxPeersCount();
 
                 if (!_peerStorage.AnyPendingChange())
                 {
@@ -1169,10 +1104,11 @@ namespace Nethermind.Network
             }
         }
 
-        private void UpdateCurrentlyStoredPeersReputation()
+        private void UpdateReputationAndMaxPeersCount()
         {
             var storedNodes = _peerStorage.GetPersistedNodes();
-            var peers = _activePeers.Values.Concat(_candidatePeers.Values).GroupBy(x => x.Node.Id).Select(x => x.First()).ToDictionary(x => x.Node.Id);
+            var activePeers = _activePeers.Values;
+            var peers = activePeers.Concat(_candidatePeers.Values).GroupBy(x => x.Node.Id).Select(x => x.First()).ToDictionary(x => x.Node.Id);
             var nodesForUpdate = new List<NetworkNode>();
             foreach (var node in storedNodes)
             {
@@ -1195,8 +1131,63 @@ namespace Nethermind.Network
                 //we need to update all stored notes to update reputation
                 _peerStorage.UpdateNodes(nodesForUpdate.ToArray());
             }
+
+            //if we have more persisted nodes then the threshold, we run cleanup process
+            if (storedNodes.Length > _networkConfig.PersistedPeerCountCleanupThreshold)
+            {
+                CleanupPersistedPeers(activePeers, storedNodes);
+            }
         }
 
+        private void CleanupPersistedPeers(ICollection<Peer> activePeers, NetworkNode[] storedNodes)
+        {
+            var activeNodeIds = new HashSet<NodeId>(activePeers.Select(x => x.Node.Id));
+            var nonActiveNodes = storedNodes.Where(x => !activeNodeIds.Contains(x.NodeId))
+                .OrderBy(x => x.Reputation).ToArray();
+            var countToRemove = storedNodes.Length - _networkConfig.MaxPersistedPeerCount;
+            var nodesToRemove = nonActiveNodes.Take(countToRemove).ToArray();
+            if (nodesToRemove.Length > 0)
+            {                
+                _peerStorage.RemoveNodes(nodesToRemove);
+                if (_logger.IsDebug) _logger.Debug($"Removing persisted peers: {nodesToRemove.Length}, prevPersistedCount: {storedNodes.Length}, newPersistedCount: {_peerStorage.GetPersistedNodes().Length}, PersistedPeerCountCleanupThreshold: {_networkConfig.PersistedPeerCountCleanupThreshold}, MaxPersistedPeerCount: {_networkConfig.MaxPersistedPeerCount}");
+            }
+            //_logger.Info($"Active Nodes: \n{string.Join("\n", activePeers.Select(x => $"{x.Node.Id}: {x.NodeStats.NewPersistedNodeReputation}"))}");
+            //_logger.Info($"NonActiveNodes Nodes: \n{string.Join("\n", nonActiveNodes.Select(x => $"{x.NodeId}: {x.Reputation}"))}");
+            //_logger.Info($"NodesToRemove: \n{string.Join("\n", nodesToRemove.Select(x => $"{x.NodeId}: {x.Reputation}"))}");
+        }
+
+        private void CleanupCandidatePeers()
+        {
+            var candidates = _candidatePeers.Values.ToArray();
+            if (candidates.Length <= _networkConfig.CandidatePeerCountCleanupThreshold)
+            {
+                return;
+            }
+
+            var countToRemove = candidates.Length - _networkConfig.MaxCandidatePeerCount;
+            var failedValidationCandidates = candidates.Where(x => x.NodeStats?.FailedCompatibilityValidation.HasValue ?? false)
+                .OrderBy(x => x.NodeStats.CurrentNodeReputation).ToArray();
+            var otherCandidates = candidates.Except(failedValidationCandidates).OrderBy(x => x.NodeStats?.CurrentNodeReputation ?? -200).ToArray();
+            var nodesToRemove = failedValidationCandidates.Take(countToRemove).ToArray();
+            var failedValidationRemovedCount = nodesToRemove.Length;
+            var remainingCount = countToRemove - failedValidationRemovedCount;
+            if (remainingCount > 0)
+            {
+                nodesToRemove = nodesToRemove.Concat(otherCandidates.Take(remainingCount).ToArray()).ToArray();
+            }
+           
+            if (nodesToRemove.Length > 0)
+            {
+                foreach (var peer in nodesToRemove)
+                {
+                    _candidatePeers.TryRemove(peer.Node.Id, out _);
+                }
+                if (_logger.IsDebug) _logger.Debug($"Removing candidate peers: {nodesToRemove.Length}, failedValidationRemovedCount: {failedValidationRemovedCount}, otherRemovedCount: {remainingCount}, prevCount: {candidates.Length}, newCount: {_candidatePeers.Count}, CandidatePeerCountCleanupThreshold: {_networkConfig.CandidatePeerCountCleanupThreshold}, MaxCandidatePeerCount: {_networkConfig.MaxCandidatePeerCount}");
+            }
+            //_logger.Info($"candidates: \n{string.Join("\n", candidates.Select(x => $"{x.Node.Id}: {x.NodeStats.CurrentNodeReputation}"))}");
+            //_logger.Info($"nodesToRemove: \n{string.Join("\n", nodesToRemove.Select(x => $"{x.Node.Id}: {x.NodeStats.CurrentNodeReputation}"))}");
+        }
+        
         private void SendPingMessages()
         {
             var task = Task.Run(SendPingMessagesAsync).ContinueWith(x =>
