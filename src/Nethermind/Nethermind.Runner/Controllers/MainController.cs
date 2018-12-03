@@ -22,10 +22,12 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.DataModel;
+using Newtonsoft.Json;
 
 namespace Nethermind.Runner.Controllers
 {
@@ -36,12 +38,18 @@ namespace Nethermind.Runner.Controllers
         private readonly ILogger _logger;
         private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
+        private readonly JsonSerializerSettings _jsonSettings;
 
         public MainController(ILogManager logManager, IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
+            _jsonSettings = new JsonSerializerSettings();
+            for (int i = 0; i < _jsonRpcService.Converters.Count; i++)
+            {
+                _jsonSettings.Converters.Add(_jsonRpcService.Converters[i]);    
+            }
         }
 
         [HttpGet]
@@ -73,7 +81,7 @@ namespace Nethermind.Runner.Controllers
 
                 if (rpcRequest.Model != null)
                 {
-                    return new JsonResult(_jsonRpcService.SendRequest(rpcRequest.Model));
+                    return new JsonResult(_jsonRpcService.SendRequest(rpcRequest.Model), _jsonSettings);
                 }
 
                 if (rpcRequest.Collection != null)
@@ -84,12 +92,12 @@ namespace Nethermind.Runner.Controllers
                         responses.Add(_jsonRpcService.SendRequest(jsonRpcRequest));
                     }
 
-                    return new JsonResult(responses);
+                    return new JsonResult(responses, _jsonSettings);
                 }
 
                 {
                     var response = _jsonRpcService.GetErrorResponse(ErrorType.InvalidRequest, "Incorrect request");
-                    return new JsonResult(response);    
+                    return new JsonResult(response, _jsonSettings);
                 }
             }
         }

@@ -73,6 +73,7 @@ namespace Nethermind.JsonRpc
                     if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name}");
                     _serializer.Converters.Add(converter);
                     _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
+                    Converters.Add(converter);
                 }
             }
 
@@ -81,6 +82,7 @@ namespace Nethermind.JsonRpc
                 if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name}");
                 _serializer.Converters.Add(converter);
                 _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
+                Converters.Add(converter);
             }
         }
 
@@ -100,18 +102,18 @@ namespace Nethermind.JsonRpc
                 }
                 catch (TargetInvocationException ex)
                 {
-                    _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
-                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest?.Method);
+                    if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
+                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest?.Method);
+                    if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
+                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
                 }
             }
             catch (Exception ex)
             {
-                _logger.Error($"Error during validation, request: {rpcRequest}", ex);
+                if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
                 return GetErrorResponse(ErrorType.ParseError, "Incorrect message", 0, null);
             }
         }
@@ -150,59 +152,60 @@ namespace Nethermind.JsonRpc
             }
 
             //execute method
-            var result = method.Invoke(module, parameters);
-            if (!(result is IResultWrapper resultWrapper))
+            if (!(method.Invoke(module, parameters) is IResultWrapper resultWrapper))
             {
-                _logger.Error($"Method {methodName} execution result does not implement IResultWrapper");
+                if (_logger.IsError) _logger.Error($"Method {methodName} execution result does not implement IResultWrapper");
                 return GetErrorResponse(ErrorType.InternalError, "Internal error", request.Id, methodName);
             }
 
-            if (resultWrapper.GetResult() == null || resultWrapper.GetResult().ResultType == ResultType.Failure)
+            Result result = resultWrapper.GetResult();            
+            if (result == null || result.ResultType == ResultType.Failure)
             {
-                _logger.Error($"Error during method: {methodName} execution: {resultWrapper.GetResult()?.Error ?? "no result"}");
+                if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: {result?.Error ?? "no result"}");
                 return GetErrorResponse(ErrorType.InternalError, "Internal error", request.Id, methodName);
             }
 
+            return GetSuccessResponse(resultWrapper.GetData(), request.Id);
             //process response
-            var data = resultWrapper.GetData();
-            if (data is byte[] bytes)
-            {
-                return GetSuccessResponse(bytes.ToHexString(), request.Id);
-            }
-
-            if (!(data is IEnumerable collection) || data is string)
-            {
-                var json = GetDataObject(data);
-                return GetSuccessResponse(json, request.Id);
-            }
-
-            var items = new List<object>();
-            foreach (var item in collection)
-            {
-                var jsonItem = GetDataObject(item);
-                items.Add(jsonItem);
-            }
-
-            return GetSuccessResponse(items, request.Id);
+//            var data = resultWrapper.GetData();
+//            if (data is byte[] bytes)
+//            {
+//                return GetSuccessResponse(bytes.ToHexString(), request.Id);
+//            }
+//
+//            if (!(data is IEnumerable collection) || data is string)
+//            {
+//                var json = GetDataObject(data);
+//                return GetSuccessResponse(json, request.Id);
+//            }
+//
+//            var items = new List<object>();
+//            foreach (var item in collection)
+//            {
+//                var jsonItem = GetDataObject(item);
+//                items.Add(jsonItem);
+//            }
+//
+//            return GetSuccessResponse(items, request.Id);
         }
 
-        private object GetDataObject(object data)
-        {
-            if (data == null)
-            {
-                return null;
-            }
-            
-            if (_converterLookup.ContainsKey(data.GetType()))
-            {
-                StringBuilder builder = new StringBuilder();
-                TextWriter writer = new StringWriter(builder);
-                _converterLookup[data.GetType()].WriteJson(new JsonTextWriter(writer), data, _serializer);
-                return builder.ToString();
-            }
-
-            return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data is bool ? data : data?.ToString();
-        }
+//        private object GetDataObject(object data)
+//        {
+//            if (data == null)
+//            {
+//                return null;
+//            }
+//            
+//            if (_converterLookup.ContainsKey(data.GetType()))
+//            {
+//                StringBuilder builder = new StringBuilder();
+//                TextWriter writer = new StringWriter(builder);
+//                _converterLookup[data.GetType()].WriteJson(new JsonTextWriter(writer), data, _serializer);
+//                return builder.ToString();
+//            }
+//
+//            return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data is bool ? data : data?.ToString();
+//        }
 
         private object[] GetParameters(ParameterInfo[] expectedParameters, string[] providedParameters)
         {
@@ -236,7 +239,7 @@ namespace Nethermind.JsonRpc
             }
             catch (Exception e)
             {
-                _logger.Error("Error while parsing parameters", e);
+                if (_logger.IsError) _logger.Error("Error while parsing parameters", e);
                 return null;
             }
         }
@@ -258,9 +261,11 @@ namespace Nethermind.JsonRpc
             return GetErrorResponse(errorType, message, 0, null);
         }
 
+        public IList<JsonConverter> Converters { get; } = new List<JsonConverter>();
+
         private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, BigInteger id, string methodName)
         {
-            _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
+            if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
             var response = new JsonRpcResponse
             {
                 JsonRpc = _jsonRpcConfig.JsonRpcVersion,

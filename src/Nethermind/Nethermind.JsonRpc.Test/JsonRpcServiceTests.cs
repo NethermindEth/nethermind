@@ -17,8 +17,10 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Nethermind.Config;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Config;
@@ -55,6 +57,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcResponse response = _jsonRpcService.SendRequest(request);
             Assert.AreEqual(request.Id, response.Id);
             return response;
+//            return() JsonConvert.SerializeObject(response, _jsonRpcService.Converters.ToArray());
         }
 
         [Test]
@@ -86,7 +89,7 @@ namespace Nethermind.JsonRpc.Test
             IEthModule ethModule = Substitute.For<IEthModule>();
             ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<Block>.Success(new Block {Number = new Quantity(2)}));
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_getBlockByNumber", "0x1b4", "true");
-            Assert.IsTrue(response.Result.ToString().Contains("0x02"));
+            Assert.AreEqual((UInt256)2, (response.Result as Block)?.Number?.AsNumber());
         }
 
         [Test]
@@ -112,7 +115,7 @@ namespace Nethermind.JsonRpc.Test
             };
 
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_newFilter", JsonConvert.SerializeObject(parameters));
-            Assert.AreEqual("0x01", response.Result);
+            Assert.AreEqual(UInt256.One, (response.Result as Quantity)?.AsNumber());
         }
 
         [Test]
@@ -121,8 +124,9 @@ namespace Nethermind.JsonRpc.Test
             IEthModule ethModule = Substitute.For<IEthModule>();
             ethModule.eth_getWork().ReturnsForAnyArgs(x => ResultWrapper<IEnumerable<Data>>.Success(new[] {new Data("aa"), new Data("01")}));
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_getWork");
-            Assert.Contains("0xaa", (List<object>) response.Result);
-            Assert.Contains("0x01", (List<object>) response.Result);
+            Data[] dataList = response.Result as Data[];
+            Assert.NotNull(dataList?.SingleOrDefault(d => d.Value.ToHexString(true) == "0xaa"));
+            Assert.NotNull(dataList?.SingleOrDefault(d => d.Value.ToHexString(true) == "0x01"));
         }
 
         [Test]
@@ -162,7 +166,7 @@ namespace Nethermind.JsonRpc.Test
             IWeb3Module web3Module = Substitute.For<IWeb3Module>();
             web3Module.web3_sha3(Arg.Any<Data>()).ReturnsForAnyArgs(x => ResultWrapper<Data>.Success(new Data("abcdef")));
             JsonRpcResponse response = TestRequest<IWeb3Module>(web3Module, "web3_sha3", "0x68656c6c6f20776f726c64");
-            Assert.AreEqual("0xabcdef", response.Result);
+            Assert.AreEqual("0xabcdef", (response.Result as Data)?.Value.ToHexString(true));
         }
     }
 }

@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Test
             DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, modelMapper, new UnforgivingJsonSerializer());
             JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString());
             
-            byte[] result = Bytes.FromHexString((string)response.Result);
+            byte[] result = response.Result as byte[];
             Assert.AreEqual(value, result);
         }
 
