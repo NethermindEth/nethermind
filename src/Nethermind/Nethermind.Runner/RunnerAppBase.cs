@@ -34,6 +34,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
+using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Core.Utils;
@@ -62,7 +63,8 @@ namespace Nethermind.Runner
         private IRunner _jsonRpcRunner = NullRunner.Instance;
         private IRunner _ethereumRunner = NullRunner.Instance;
         private TaskCompletionSource<object> _cancelKeySource;
-
+        private ExitType _exitType = ExitType.LightExit;
+        
         protected RunnerAppBase(ILogger logger)
         {
             Logger = logger;
@@ -120,14 +122,20 @@ namespace Nethermind.Runner
                     var detached = Environment.GetEnvironmentVariable("NETHERMIND_DETACHED_MODE")?.ToLowerInvariant() ==
                                    "true";
 
-                    Console.WriteLine("Enter 'e' to exit");
+                    Console.WriteLine("Enter 'e' to exit, 'q' to exit and log session details.");
                     while (true)
                     {
                         if (detached)
                         {
                             var line = Console.ReadLine();
-                            if (line == "e")
+                            if (line == "e" || line == "E")
                             {
+                                _exitType = ExitType.LightExit;
+                                break;
+                            }
+                            if (line == "q" || line == "Q")
+                            {
+                                _exitType = ExitType.DetailLogExit;
                                 break;
                             }
                         }
@@ -136,6 +144,12 @@ namespace Nethermind.Runner
                             var keyInfo = Console.ReadKey();
                             if (keyInfo.Key == ConsoleKey.E)
                             {
+                                _exitType = ExitType.LightExit;
+                                break;
+                            }
+                            if (keyInfo.Key == ConsoleKey.Q)
+                            {
+                                _exitType = ExitType.DetailLogExit;
                                 break;
                             }
                         }
@@ -203,8 +217,8 @@ namespace Nethermind.Runner
 
         protected async Task StopAsync()
         {
-            _jsonRpcRunner?.StopAsync(); // do not await
-            var ethereumTask = _ethereumRunner?.StopAsync() ?? Task.CompletedTask;
+            _jsonRpcRunner?.StopAsync(_exitType); // do not await
+            var ethereumTask = _ethereumRunner?.StopAsync(_exitType) ?? Task.CompletedTask;
             await ethereumTask;
         }
 

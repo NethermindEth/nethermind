@@ -17,6 +17,7 @@
  */
 
 using System.Threading.Tasks;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Network
 {
@@ -24,6 +25,7 @@ namespace Nethermind.Network
     {
         void Init(bool isDiscoveryEnabled);
         Task Start();
-        Task StopAsync();
+        Task StopAsync(ExitType exitType);
+        void LogSessionStats(bool logEventDetails);
     }
 }

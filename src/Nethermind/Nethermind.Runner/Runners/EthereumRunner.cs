@@ -38,6 +38,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
@@ -231,7 +232,7 @@ namespace Nethermind.Runner.Runners
             var debugReceiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
             AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, debugTransactionPool, debugReceiptStorage);
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            var debugBridge = new DebugBridge(debugDbProvider, tracer, debugChain.Processor);
+            var debugBridge = new DebugBridge(debugDbProvider, tracer, debugChain.Processor, _peerManager);
 
             JsonRpcModelMapper mapper = new JsonRpcModelMapper();
 
@@ -288,7 +289,7 @@ namespace Nethermind.Runner.Runners
             return node;
         }
 
-        public async Task StopAsync()
+        public async Task StopAsync(ExitType exitType)
         {
             if (_logger.IsInfo) _logger.Info("Shutting down...");
             _runnerCancellation.Cancel();
@@ -297,7 +298,7 @@ namespace Nethermind.Runner.Runners
             var rlpxPeerTask = _rlpxPeer?.Shutdown() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping peer manager...");
-            var peerManagerTask = _peerManager?.StopAsync() ?? Task.CompletedTask;
+            var peerManagerTask = _peerManager?.StopAsync(exitType) ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping sync manager...");
             var syncManagerTask = _syncManager?.StopAsync() ?? Task.CompletedTask;
@@ -820,9 +821,12 @@ namespace Nethermind.Runner.Runners
 
             await _rlpxPeer.Init();
 
-            var peerStorage = new NetworkStorage(PeersDbPath, _configProvider.GetConfig<INetworkConfig>(), _logManager, _perfService);
-            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _syncManager, _nodeStatsProvider, peerStorage,
-                _nodeFactory, _configProvider, _perfService, _transactionPool, _logManager);
+            var networkConfig = _configProvider.GetConfig<INetworkConfig>();
+            var peerStorage = new NetworkStorage(PeersDbPath, networkConfig, _logManager, _perfService);
+            var peerSessionLogger = new PeerSessionLogger(_logManager, _configProvider, _perfService);
+            peerSessionLogger.Init(_initConfig.LogDirectory);
+            
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _syncManager, _nodeStatsProvider, peerStorage, _nodeFactory, _configProvider, _perfService, _transactionPool, _logManager, peerSessionLogger);
             _peerManager.Init(_initConfig.DiscoveryEnabled);
         }
 

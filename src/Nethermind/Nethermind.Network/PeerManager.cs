@@ -31,6 +31,7 @@ using Nethermind.Network.Rlpx;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -54,6 +55,7 @@ namespace Nethermind.Network
         private readonly INodeStatsProvider _nodeStatsProvider;
         private readonly INetworkStorage _peerStorage;
         private readonly INodeFactory _nodeFactory;
+        private readonly IPeerSessionLogger _peerSessionLogger;
         private System.Timers.Timer _activePeersTimer;
         private System.Timers.Timer _peerPersistenceTimer;
         private System.Timers.Timer _pingTimer;
@@ -80,7 +82,8 @@ namespace Nethermind.Network
             IConfigProvider configurationProvider,
             IPerfService perfService,
             ITransactionPool transactionPool,
-            ILogManager logManager)
+            ILogManager logManager,
+            IPeerSessionLogger peerSessionLogger)
         {
             _logger = logManager.GetClassLogger();
             _networkConfig = configurationProvider.GetConfig<INetworkConfig>();
@@ -93,6 +96,7 @@ namespace Nethermind.Network
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
+            _peerSessionLogger = peerSessionLogger ?? throw new ArgumentNullException(nameof(peerSessionLogger));
             _peerStorage.StartBatch();
 
             _nodeStatsProvider = nodeStatsProvider;
@@ -144,7 +148,7 @@ namespace Nethermind.Network
             await RunPeerUpdate(); // initial peer update
         }
 
-        public async Task StopAsync()
+        public async Task StopAsync(ExitType exitType)
         {
             var key = _perfService.StartPerfCalc();
             _cancellationTokenSource.Cancel();
@@ -174,9 +178,15 @@ namespace Nethermind.Network
 
             await Task.WhenAll(closingTasks);
 
-            LogSessionStats();
+            if (_logger.IsInfo) LogSessionStats(exitType == ExitType.DetailLogExit);
+            
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
             _perfService.EndPerfCalc(key, "Close: PeerManager");
+        }
+
+        public void LogSessionStats(bool logEventDetails)
+        {
+            _peerSessionLogger.LogSessionStats(ActivePeers, CandidatePeers, logEventDetails);
         }
 
         public async Task RunPeerUpdate()
@@ -190,6 +200,60 @@ namespace Nethermind.Network
             });
         }
 
+//        public void LogSessionStats(bool logEventDetails)
+//        {
+//            if (!_logger.IsInfo)
+//            {
+//                return;
+//            }
+//            
+//            var peers = _activePeers.Values.Concat(_candidatePeers.Values).GroupBy(x => x.Node.Id).Select(x => x.First()).ToArray();
+//
+//            var eventTypes = Enum.GetValues(typeof(NodeStatsEventType)).OfType<NodeStatsEventType>().Where(x => !x.ToString().Contains("Discovery"))
+//                .OrderBy(x => x).ToArray();
+//            var eventStats = eventTypes.Select(x => new
+//            {
+//                EventType = x.ToString(),
+//                Count = peers.Count(y => y.NodeStats.DidEventHappen(x))
+//            }).ToArray();
+//
+//            var chains = peers.Where(x => x.NodeStats.EthNodeDetails != null).GroupBy(x => x.NodeStats.EthNodeDetails.ChainId).Select(
+//                x => new {ChainName = ChainId.GetChainName((int) x.Key), Count = x.Count()}).ToArray();
+//            var clients = peers.Where(x => x.NodeStats.P2PNodeDetails != null).Select(x => x.NodeStats.P2PNodeDetails.ClientId).GroupBy(x => x).Select(
+//                x => new {ClientId = x.Key, Count = x.Count()}).ToArray();
+//            var remoteDisconnect = peers.Count(x => x.NodeStats.EventHistory.Any(y => y.DisconnectDetails != null && y.DisconnectDetails.DisconnectType == DisconnectType.Remote));
+//
+//            _logger.Info($"Session stats: peers count with each EVENT:{Environment.NewLine}" +
+//                         $"{string.Join(Environment.NewLine, eventStats.Select(x => $"{x.EventType.ToString()}:{x.Count}"))}{Environment.NewLine}" +
+//                         $"Remote disconnect: {remoteDisconnect}{Environment.NewLine}{Environment.NewLine}" +
+//                         $"CHAINS: {Environment.NewLine}" +
+//                         $"{string.Join(Environment.NewLine, chains.Select(x => $"{x.ChainName}:{x.Count}"))}{Environment.NewLine}{Environment.NewLine}" +
+//                         $"CLIENTS:{Environment.NewLine}" +
+//                         $"{string.Join(Environment.NewLine, clients.Select(x => $"{x.ClientId}:{x.Count}"))}{Environment.NewLine}");
+//
+//            var peersWithLatencyStats = peers.Where(x => x.NodeStats.LatencyHistory.Any()).ToArray();
+//            if (peersWithLatencyStats.Any())
+//            {
+//                LogLatencyComparison(peersWithLatencyStats);
+//            }
+//
+//            if (_networkConfig.CaptureNodeStatsEventHistory && logEventDetails)
+//            {
+//                if(_logger.IsInfo) _logger.Info($"Logging {peers.Length} peers log event histories");
+//
+//                foreach (var peer in peers)
+//                {
+//                    LogPeerEventHistory(peer);
+//                }
+//
+//                if(_logger.IsInfo) _logger.Info("Logging event histories finished");
+//            }
+//            else
+//            {
+//                if (_logger.IsInfo) _logger.Info($"Detailed session log disabled, CaptureNodeStatsEventHistory: {_networkConfig.CaptureNodeStatsEventHistory}, logEventDetails: {logEventDetails}");
+//            }
+//        }
+        
         private void RunPeerUpdateSync()
         {
             try
@@ -386,61 +450,21 @@ namespace Nethermind.Network
             return (candidates.OrderBy(x => x.NodeStats.IsTrustedPeer).ThenByDescending(x => x.NodeStats.CurrentNodeReputation).ToList(), counters, incompatiblePeers);
         }
 
-        private void LogSessionStats()
-        {
-            if (_logger.IsInfo)
-            {
-                var peers = _activePeers.Values.Concat(_candidatePeers.Values).GroupBy(x => x.Node.Id).Select(x => x.First()).ToArray();
-
-                var eventTypes = Enum.GetValues(typeof(NodeStatsEventType)).OfType<NodeStatsEventType>().Where(x => !x.ToString().Contains("Discovery"))
-                    .OrderBy(x => x).ToArray();
-                var eventStats = eventTypes.Select(x => new
-                {
-                    EventType = x.ToString(),
-                    Count = peers.Count(y => y.NodeStats.DidEventHappen(x))
-                }).ToArray();
-
-                var chains = peers.Where(x => x.NodeStats.EthNodeDetails != null).GroupBy(x => x.NodeStats.EthNodeDetails.ChainId).Select(
-                    x => new {ChainName = ChainId.GetChainName((int) x.Key), Count = x.Count()}).ToArray();
-                var clients = peers.Where(x => x.NodeStats.P2PNodeDetails != null).Select(x => x.NodeStats.P2PNodeDetails.ClientId).GroupBy(x => x).Select(
-                    x => new {ClientId = x.Key, Count = x.Count()}).ToArray();
-                var remoteDisconnect = peers.Count(x => x.NodeStats.EventHistory.Any(y => y.DisconnectDetails != null && y.DisconnectDetails.DisconnectType == DisconnectType.Remote));
-
-                _logger.Info($"Session stats: peers count with each EVENT:{Environment.NewLine}" +
-                             $"{string.Join(Environment.NewLine, eventStats.Select(x => $"{x.EventType.ToString()}:{x.Count}"))}{Environment.NewLine}" +
-                             $"Remote disconnect: {remoteDisconnect}{Environment.NewLine}{Environment.NewLine}" +
-                             $"CHAINS: {Environment.NewLine}" +
-                             $"{string.Join(Environment.NewLine, chains.Select(x => $"{x.ChainName}:{x.Count}"))}{Environment.NewLine}{Environment.NewLine}" +
-                             $"CLIENTS:{Environment.NewLine}" +
-                             $"{string.Join(Environment.NewLine, clients.Select(x => $"{x.ClientId}:{x.Count}"))}{Environment.NewLine}");
-
-                var peersWithLatencyStats = peers.Where(x => x.NodeStats.LatencyHistory.Any()).ToArray();
-                if (peersWithLatencyStats.Any())
-                {
-                    LogLatencyComparison(peersWithLatencyStats);
-                }
-
-                {
-                    if(_logger.IsDebug) _logger.Debug($"Logging {peers.Length} peers log event histories");
-
-                    foreach (var peer in peers)
-                    {
-                        LogEventHistory(peer.NodeStats);
-                    }
-
-                    if(_logger.IsDebug) _logger.Debug("Logging event histories finished");
-                }
-            }
-        }
-
-        private void LogLatencyComparison(Peer[] peers)
-        {
-            if(_logger.IsInfo)
-            {
-                var latencyDict = peers.Select(x => new {x, Av = GetAverageLatencies(x.NodeStats)}).OrderBy(x => x.Av.Select(y => new {y.Key, y.Value}).FirstOrDefault(y => y.Key == NodeLatencyStatType.BlockHeaders)?.Value ?? 10000);
-                _logger.Info($"Overall latency stats: {Environment.NewLine}{string.Join(Environment.NewLine, latencyDict.Select(x => $"{x.x.Node.Id}: {string.Join(" | ", x.Av.Select(y => $"{y.Key.ToString()}: {y.Value?.ToString() ?? "-"}"))}"))}");
-            }
-        }
+//        private void LogPeerEventHistory(Peer peer)
+//        {
+//            var log = GetEventHistoryLog(peer.NodeStats);
+//            var fileName = Path.Combine(_eventLogsDirectoryPath, peer.Node.Id.PublicKey.ToString(), ".log");
+//            File.AppendAllText(fileName, log);
+//        }
+//
+//        private void LogLatencyComparison(Peer[] peers)
+//        {
+//            if(_logger.IsInfo)
+//            {
+//                var latencyDict = peers.Select(x => new {x, Av = GetAverageLatencies(x.NodeStats)}).OrderBy(x => x.Av.Select(y => new {y.Key, y.Value}).FirstOrDefault(y => y.Key == NodeLatencyStatType.BlockHeaders)?.Value ?? 10000);
+//                _logger.Info($"Overall latency stats: {Environment.NewLine}{string.Join(Environment.NewLine, latencyDict.Select(x => $"{x.x.Node.Id}: {string.Join(" | ", x.Av.Select(y => $"{y.Key.ToString()}: {y.Value?.ToString() ?? "-"}"))}"))}");
+//            }
+//        }
 
         private string GetIncompatibleDesc(IReadOnlyCollection<Peer> incompatibleNodes)
         {
@@ -848,9 +872,11 @@ namespace Nethermind.Network
 
                 if (_logger.IsTrace) _logger.Trace($"Removing Active Peer on disconnect {session.RemoteNodeId}");
 
-                if (_logger.IsTrace && _networkConfig.CaptureNodeStatsEventHistory)
+                if (_logger.IsTrace)
                 {
-                    LogEventHistory(activePeer.NodeStats);
+                    var log = _peerSessionLogger.GetEventHistoryLog(activePeer.NodeStats);
+                    //var log = GetEventHistoryLog(activePeer.NodeStats);
+                    _logger.Trace(log);
                 }
 
                 if (_isStarted)
@@ -1283,111 +1309,86 @@ namespace Nethermind.Network
             throw new Exception($"SyncStatus not supported: {syncStatus.ToString()}");
         }
 
-        private void LogEventHistory(INodeStats nodeStats)
-        {
-            if (_logger.IsDebug)
-            {
-                var sb = new StringBuilder();
-                sb.AppendLine();
-                var isBootnode = _networkConfig.BootNodes?.Any(x => new NodeId(new PublicKey(Bytes.FromHexString(x.NodeId))) == nodeStats.Node.Id) ?? false;
-                sb.AppendLine($"NodeEventHistory, Node: {nodeStats.Node.Id}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Desc: {nodeStats.Node.Description}, Trusted: {nodeStats.IsTrustedPeer}, Bootnode: {isBootnode}");
+//        private string GetEventHistoryLog(INodeStats nodeStats)
+//        {   
+//            var sb = new StringBuilder();
+//            sb.AppendLine();
+//            var isBootnode = _networkConfig.BootNodes?.Any(x => new NodeId(new PublicKey(Bytes.FromHexString(x.NodeId))) == nodeStats.Node.Id) ?? false;
+//            sb.AppendLine($"NodeEventHistory | {DateTime.Now.ToString(_networkConfig.DetailedTimeDateFormat)}, Node: {nodeStats.Node.Id}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Desc: {nodeStats.Node.Description}, Trusted: {nodeStats.IsTrustedPeer}, Bootnode: {isBootnode}");
+//
+//            if (nodeStats.P2PNodeDetails != null)
+//            {
+//                sb.AppendLine($"P2P details: ClientId: {nodeStats.P2PNodeDetails.ClientId}, P2PVersion: {nodeStats.P2PNodeDetails.P2PVersion}, Capabilities: {GetCapabilities(nodeStats.P2PNodeDetails)}");
+//            }
+//
+//            if (nodeStats.EthNodeDetails != null)
+//            {
+//                sb.AppendLine($"Eth62 details: ChainId: {ChainId.GetChainName((int) nodeStats.EthNodeDetails.ChainId)}, TotalDifficulty: {nodeStats.EthNodeDetails.TotalDifficulty}");
+//            }
+//
+//            foreach (var statsEvent in nodeStats.EventHistory.OrderBy(x => x.EventDate).ToArray())
+//            {
+//                sb.Append($"{statsEvent.EventDate.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.EventType}");
+//                if (statsEvent.ConnectionDirection.HasValue)
+//                {
+//                    sb.Append($" | {statsEvent.ConnectionDirection.Value.ToString()}");
+//                }
+//
+//                if (statsEvent.P2PNodeDetails != null)
+//                {
+//                    sb.Append($" | {statsEvent.P2PNodeDetails.ClientId} | v{statsEvent.P2PNodeDetails.P2PVersion} | {GetCapabilities(statsEvent.P2PNodeDetails)}");
+//                }
+//
+//                if (statsEvent.EthNodeDetails != null)
+//                {
+//                    sb.Append($" | {ChainId.GetChainName((int) statsEvent.EthNodeDetails.ChainId)} | TotalDifficulty:{statsEvent.EthNodeDetails.TotalDifficulty}");
+//                }
+//
+//                if (statsEvent.DisconnectDetails != null)
+//                {
+//                    sb.Append($" | {statsEvent.DisconnectDetails.DisconnectReason.ToString()} | {statsEvent.DisconnectDetails.DisconnectType.ToString()}");
+//                }
+//
+//                if (statsEvent.SyncNodeDetails != null && (statsEvent.SyncNodeDetails.NodeBestBlockNumber.HasValue || statsEvent.SyncNodeDetails.OurBestBlockNumber.HasValue))
+//                {
+//                    sb.Append($" | NodeBestBlockNumber: {statsEvent.SyncNodeDetails.NodeBestBlockNumber} | OurBestBlockNumber: {statsEvent.SyncNodeDetails.OurBestBlockNumber}");
+//                }
+//
+//                sb.AppendLine();
+//            }
+//
+//            if (nodeStats.LatencyHistory.Any())
+//            {
+//                sb.AppendLine("Latency averages:");
+//                var averageLatencies = GetAverageLatencies(nodeStats);
+//                foreach (var latency in averageLatencies.Where(x => x.Value.HasValue))
+//                {
+//                    sb.AppendLine($"{latency.Key.ToString()} = {latency.Value}");
+//                }
+//
+//                sb.AppendLine("Latency events:");
+//                foreach (var statsEvent in nodeStats.LatencyHistory.OrderBy(x => x.StatType).ThenBy(x => x.CaptureTime).ToArray())
+//                {
+//                    sb.AppendLine($"{statsEvent.StatType.ToString()} | {statsEvent.CaptureTime.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.Latency}");
+//                }
+//            }
+//
+//            return sb.ToString();
+//        }
 
-                if (nodeStats.P2PNodeDetails != null)
-                {
-                    sb.AppendLine($"P2P details: ClientId: {nodeStats.P2PNodeDetails.ClientId}, P2PVersion: {nodeStats.P2PNodeDetails.P2PVersion}, Capabilities: {GetCapabilities(nodeStats.P2PNodeDetails)}");
-                }
+//        private static Dictionary<NodeLatencyStatType, long?> GetAverageLatencies(INodeStats nodeStats)
+//        {
+//            return Enum.GetValues(typeof(NodeLatencyStatType)).OfType<NodeLatencyStatType>().ToDictionary(x => x, nodeStats.GetAverageLatency);
+//        }
 
-                if (nodeStats.EthNodeDetails != null)
-                {
-                    sb.AppendLine($"Eth62 details: ChainId: {ChainId.GetChainName((int) nodeStats.EthNodeDetails.ChainId)}, TotalDifficulty: {nodeStats.EthNodeDetails.TotalDifficulty}");
-                }
-
-                foreach (var statsEvent in nodeStats.EventHistory.OrderBy(x => x.EventDate).ToArray())
-                {
-                    sb.Append($"{statsEvent.EventDate.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.EventType}");
-                    if (statsEvent.ConnectionDirection.HasValue)
-                    {
-                        sb.Append($" | {statsEvent.ConnectionDirection.Value.ToString()}");
-                    }
-
-                    if (statsEvent.P2PNodeDetails != null)
-                    {
-                        sb.Append($" | {statsEvent.P2PNodeDetails.ClientId} | v{statsEvent.P2PNodeDetails.P2PVersion} | {GetCapabilities(statsEvent.P2PNodeDetails)}");
-                    }
-
-                    if (statsEvent.EthNodeDetails != null)
-                    {
-                        sb.Append($" | {ChainId.GetChainName((int) statsEvent.EthNodeDetails.ChainId)} | TotalDifficulty:{statsEvent.EthNodeDetails.TotalDifficulty}");
-                    }
-
-                    if (statsEvent.DisconnectDetails != null)
-                    {
-                        sb.Append($" | {statsEvent.DisconnectDetails.DisconnectReason.ToString()} | {statsEvent.DisconnectDetails.DisconnectType.ToString()}");
-                    }
-
-                    if (statsEvent.SyncNodeDetails != null && (statsEvent.SyncNodeDetails.NodeBestBlockNumber.HasValue || statsEvent.SyncNodeDetails.OurBestBlockNumber.HasValue))
-                    {
-                        sb.Append($" | NodeBestBlockNumber: {statsEvent.SyncNodeDetails.NodeBestBlockNumber} | OurBestBlockNumber: {statsEvent.SyncNodeDetails.OurBestBlockNumber}");
-                    }
-
-                    sb.AppendLine();
-                }
-
-                if (nodeStats.LatencyHistory.Any())
-                {
-                    sb.AppendLine("Latency averages:");
-                    var averageLatencies = GetAverageLatencies(nodeStats);
-                    foreach (var latency in averageLatencies.Where(x => x.Value.HasValue))
-                    {
-                        sb.AppendLine($"{latency.Key.ToString()} = {latency.Value}");
-                    }
-
-                    sb.AppendLine("Latency events:");
-                    foreach (var statsEvent in nodeStats.LatencyHistory.OrderBy(x => x.StatType).ThenBy(x => x.CaptureTime).ToArray())
-                    {
-                        sb.AppendLine($"{statsEvent.StatType.ToString()} | {statsEvent.CaptureTime.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.Latency}");
-                    }
-                }
-
-                _logger.Debug(sb.ToString());
-            }
-        }
-
-        private static Dictionary<NodeLatencyStatType, long?> GetAverageLatencies(INodeStats nodeStats)
-        {
-            return Enum.GetValues(typeof(NodeLatencyStatType)).OfType<NodeLatencyStatType>().ToDictionary(x => x, nodeStats.GetAverageLatency);
-        }
-
-        private string GetCapabilities(P2PNodeDetails nodeDetails)
-        {
-            if (nodeDetails.Capabilities == null || !nodeDetails.Capabilities.Any())
-            {
-                return "none";
-            }
-
-            return string.Join("|", nodeDetails.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"));
-        }
-
-        internal class Peer
-        {
-            public Peer(Node node, INodeStats nodeStats, ConnectionDirection connectionDirection)
-            {
-                Node = node;
-                //NodeLifecycleManager = manager;
-                NodeStats = nodeStats;
-                ConnectionDirection = connectionDirection;
-            }
-
-            public Node Node { get; }
-
-            public bool AddedToDiscovery { get; set; }
-
-            //public INodeLifecycleManager NodeLifecycleManager { get; set; }
-            public INodeStats NodeStats { get; }
-            public IP2PSession Session { get; set; }
-            public ISynchronizationPeer SynchronizationPeer { get; set; }
-            public IP2PMessageSender P2PMessageSender { get; set; }
-            public ConnectionDirection ConnectionDirection { get; set; }
-        }
+//        private string GetCapabilities(P2PNodeDetails nodeDetails)
+//        {
+//            if (nodeDetails.Capabilities == null || !nodeDetails.Capabilities.Any())
+//            {
+//                return "none";
+//            }
+//
+//            return string.Join("|", nodeDetails.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"));
+//        }
     }
 }

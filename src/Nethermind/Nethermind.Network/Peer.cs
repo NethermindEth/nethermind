@@ -16,20 +16,28 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm.Tracing;
+using Nethermind.Blockchain;
+using Nethermind.Network.P2P;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
-namespace Nethermind.JsonRpc.Module
+namespace Nethermind.Network
 {
-    public interface IDebugBridge
+    public class Peer
     {
-        GethLikeTxTrace GetTransactionTrace(Keccak transactionHash);
-        GethLikeTxTrace GetTransactionTrace(UInt256 blockNumber, int index);
-        GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index);
-        GethLikeTxTrace[] GetBlockTrace(Keccak blockHash);
-        GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber);
-        byte[] GetDbValue(string dbName, byte[] key);
-        bool LogPeerConnectionDetails();
+        public Peer(Node node, INodeStats nodeStats, ConnectionDirection connectionDirection)
+        {
+            Node = node;
+            NodeStats = nodeStats;
+            ConnectionDirection = connectionDirection;
+        }
+
+        public Node Node { get; }
+        public bool AddedToDiscovery { get; set; }
+        public INodeStats NodeStats { get; }
+        public IP2PSession Session { get; set; }
+        public ISynchronizationPeer SynchronizationPeer { get; set; }
+        public IP2PMessageSender P2PMessageSender { get; set; }
+        public ConnectionDirection ConnectionDirection { get; set; }
     }
 }

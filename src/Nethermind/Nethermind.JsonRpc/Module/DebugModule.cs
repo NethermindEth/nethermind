@@ -172,6 +172,12 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<byte[]>.Success(dbValue);
         }
 
+        public ResultWrapper<bool> debug_dumpPeerConnectionDetails()
+        {
+            var result = _debugBridge.LogPeerConnectionDetails();
+            return ResultWrapper<bool>.Success(result);
+        }
+
         public override ModuleType ModuleType => ModuleType.Debug;
     }
 }

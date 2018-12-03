@@ -17,6 +17,7 @@
  */
 
 using System.Threading.Tasks;
+using Nethermind.Core.Model;
 using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner
@@ -34,7 +35,7 @@ namespace Nethermind.Runner
             return Task.CompletedTask;
         }
 
-        public Task StopAsync()
+        public Task StopAsync(ExitType exitType)
         {
             return Task.CompletedTask;
         }

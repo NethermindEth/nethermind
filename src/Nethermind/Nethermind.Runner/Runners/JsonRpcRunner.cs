@@ -28,6 +28,7 @@ using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.Runner.Config;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core.Model;
 using Nethermind.JsonRpc.Module;
 using Nethermind.Runner.LogBridge;
 
@@ -83,7 +84,7 @@ namespace Nethermind.Runner.Runners
             return Task.CompletedTask;
         }
 
-        public async Task StopAsync()
+        public async Task StopAsync(ExitType exitType)
         {
             try
             {

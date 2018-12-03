@@ -16,20 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm.Tracing;
-
-namespace Nethermind.JsonRpc.Module
+namespace Nethermind.Core.Model
 {
-    public interface IDebugBridge
+    public enum ExitType
     {
-        GethLikeTxTrace GetTransactionTrace(Keccak transactionHash);
-        GethLikeTxTrace GetTransactionTrace(UInt256 blockNumber, int index);
-        GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index);
-        GethLikeTxTrace[] GetBlockTrace(Keccak blockHash);
-        GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber);
-        byte[] GetDbValue(string dbName, byte[] key);
-        bool LogPeerConnectionDetails();
+        LightExit,
+        DetailLogExit
     }
 }
