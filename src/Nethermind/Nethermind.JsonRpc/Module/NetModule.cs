@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
@@ -43,9 +44,9 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<bool>.Success(false);
         }
 
-        public ResultWrapper<Quantity> net_peerCount()
+        public ResultWrapper<BigInteger> net_peerCount()
         {
-            return ResultWrapper<Quantity>.Success(new Quantity(_netBridge.PeerCount));
+            return ResultWrapper<BigInteger>.Success(_netBridge.PeerCount);
         }
 
         public override ModuleType ModuleType => ModuleType.Net;

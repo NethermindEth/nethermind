@@ -17,36 +17,22 @@
  */
 
 using System;
-using System.Globalization;
-using System.Reflection.PortableExecutable;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.DataModel.Converters
 {
-    public class UInt256Converter : JsonConverter<UInt256>
+    public class Bytes32Converter : JsonConverter<byte[]>
     {
-        private readonly bool _useX64;
-
-        public UInt256Converter()
-            : this(false)
+        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
         {
+            writer.WriteValue(string.Concat("0x", value.ToHexString(false).PadLeft(64, '0')));
         }
 
-        public UInt256Converter(bool useX64)
-        {
-            _useX64 = useX64;
-        }
-
-        public override void WriteJson(JsonWriter writer, UInt256 value, JsonSerializer serializer)
-        {
-            writer.WriteValue(string.Concat("0x", value.ToString(_useX64 ? "x64" : "x")));
-        }
-
-        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             string s = (string) reader.Value;
-            return UInt256.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
+            return Bytes.FromHexString(s);
         }
     }
 }

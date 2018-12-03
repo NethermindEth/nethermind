@@ -31,9 +31,9 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<BlockTraceItem[]> debug_traceBlockFromFile(string fileName);
         ResultWrapper<State> debug_dumpBlock(BlockParameter blockParameter);
         ResultWrapper<GcStats> debug_gcStats();
-        ResultWrapper<Data> debug_getBlockRlp(BlockParameter blockParameter);
+        ResultWrapper<byte[]> debug_getBlockRlp(BlockParameter blockParameter);
         ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);
-        ResultWrapper<Data> debug_seedHash(BlockParameter blockParameter);
+        ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
         ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
         ResultWrapper<byte[]> debug_getFromDb(string dbName, Data key);
         ResultWrapper<bool> debug_dumpPeerConnectionDetails();

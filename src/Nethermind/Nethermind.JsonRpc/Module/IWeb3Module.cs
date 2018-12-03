@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
@@ -23,6 +24,6 @@ namespace Nethermind.JsonRpc.Module
     public interface IWeb3Module : IModule
     {
         ResultWrapper<string> web3_clientVersion();
-        ResultWrapper<Data> web3_sha3(Data data);
+        ResultWrapper<Keccak> web3_sha3(Data data);
     }
 }

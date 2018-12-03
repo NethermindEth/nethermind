@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
@@ -83,50 +84,50 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<bool>.Success(false);
         }
 
-        public ResultWrapper<Quantity> eth_hashrate()
+        public ResultWrapper<BigInteger> eth_hashrate()
         {
-            return ResultWrapper<Quantity>.Success(new Quantity(0));
+            return ResultWrapper<BigInteger>.Success(0);
         }
 
         [Todo("Gas pricer to be implemented")]
-        public ResultWrapper<Quantity> eth_gasPrice()
+        public ResultWrapper<BigInteger> eth_gasPrice()
         {
-            return ResultWrapper<Quantity>.Success(new Quantity(20.Wei()));
+            return ResultWrapper<BigInteger>.Success((BigInteger)20.GWei());
         }
 
-        public ResultWrapper<IEnumerable<Data>> eth_accounts()
+        public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
             try
             {
                 var result = _blockchainBridge.GetWalletAccounts();
-                Data[] data = result.Select(x => new Data(x.Bytes)).ToArray();
-                if (Logger.IsTrace) Logger.Trace($"eth_accounts request, result: {string.Join(", ", data.Select(x => x.Value.ToString()))}");
-                return ResultWrapper<IEnumerable<Data>>.Success(data.ToArray());
+                Address[] data = result.ToArray();
+                if (Logger.IsTrace) Logger.Trace($"eth_accounts request, result: {string.Join(", ", data.Select(x => x.ToString()))}");
+                return ResultWrapper<IEnumerable<Address>>.Success(data.ToArray());
             }
             catch (Exception e)
             {
                 if (Logger.IsError) Logger.Error($"Failed to server eth_accounts request", e);
-                return ResultWrapper<IEnumerable<Data>>.Fail("Error while getting key addresses from wallet.");
+                return ResultWrapper<IEnumerable<Address>>.Fail("Error while getting key addresses from wallet.");
             }
         }
 
-        public ResultWrapper<Quantity> eth_blockNumber()
+        public ResultWrapper<BigInteger> eth_blockNumber()
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<BigInteger>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var number = _blockchainBridge.Head.Number;
             if (Logger.IsTrace) Logger.Trace($"eth_blockNumber request, result: {number}");
-            return ResultWrapper<Quantity>.Success(new Quantity(number));
+            return ResultWrapper<BigInteger>.Success(number);
         }
 
-        public ResultWrapper<Quantity> eth_getBalance(Data address, BlockParameter blockParameter)
+        public ResultWrapper<BigInteger> eth_getBalance(Data address, BlockParameter blockParameter)
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<BigInteger>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetAccountBalance(new Address(address.Value), blockParameter);
@@ -135,7 +136,7 @@ namespace Nethermind.JsonRpc.Module
                 return result;
             }
 
-            if (Logger.IsTrace) Logger.Trace($"eth_getBalance request {address.ToJson()}, {blockParameter}, result: {result.Data.AsNumber()}");
+            if (Logger.IsTrace) Logger.Trace($"eth_getBalance request {address.ToJson()}, {blockParameter}, result: {result.Data}");
             return result;
         }
 
@@ -144,11 +145,11 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<Data>.Fail("eth_getStorageAt not supported");
         }
 
-        public ResultWrapper<Quantity> eth_getTransactionCount(Data address, BlockParameter blockParameter)
+        public ResultWrapper<BigInteger> eth_getTransactionCount(Data address, BlockParameter blockParameter)
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<BigInteger>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetAccountNonce(new Address(address.Value), blockParameter);
@@ -157,73 +158,73 @@ namespace Nethermind.JsonRpc.Module
                 return result;
             }
 
-            if (Logger.IsTrace) Logger.Trace($"eth_getTransactionCount request {address.ToJson()}, {blockParameter}, result: {result.Data.AsNumber()}");
+            if (Logger.IsTrace) Logger.Trace($"eth_getTransactionCount request {address.ToJson()}, {blockParameter}, result: {result.Data}");
             return result;
         }
 
-        public ResultWrapper<Quantity> eth_getBlockTransactionCountByHash(Data blockHash)
+        public ResultWrapper<BigInteger> eth_getBlockTransactionCountByHash(Data blockHash)
         {
             var block = _blockchainBridge.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
+                return ResultWrapper<BigInteger>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
             }
 
             if (Logger.IsTrace) Logger.Trace($"eth_getBlockTransactionCountByHash request {blockHash.ToJson()}, result: {block.Transactions.Length}");
-            return ResultWrapper<Quantity>.Success(new Quantity(block.Transactions.Length));
+            return ResultWrapper<BigInteger>.Success(block.Transactions.Length);
         }
 
-        public ResultWrapper<Quantity> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter)
+        public ResultWrapper<BigInteger> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter)
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<BigInteger>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var transactionCount = GetTransactionCount(blockParameter);
             if (transactionCount.Result.ResultType == ResultType.Failure)
             {
-                return ResultWrapper<Quantity>.Fail(transactionCount.Result.Error, transactionCount.ErrorType);
+                return ResultWrapper<BigInteger>.Fail(transactionCount.Result.Error, transactionCount.ErrorType);
             }
 
-            if (Logger.IsTrace) Logger.Trace($"eth_getBlockTransactionCountByNumber request {blockParameter}, result: {transactionCount.Data.AsNumber()}");
+            if (Logger.IsTrace) Logger.Trace($"eth_getBlockTransactionCountByNumber request {blockParameter}, result: {transactionCount.Data}");
             return transactionCount;
         }
 
-        public ResultWrapper<Quantity> eth_getUncleCountByBlockHash(Data blockHash)
+        public ResultWrapper<BigInteger> eth_getUncleCountByBlockHash(Data blockHash)
         {
             var block = _blockchainBridge.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
+                return ResultWrapper<BigInteger>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
             }
 
             if (Logger.IsTrace) Logger.Trace($"eth_getUncleCountByBlockHash request {blockHash.ToJson()}, result: {block.Transactions.Length}");
-            return ResultWrapper<Quantity>.Success(new Quantity(block.Ommers.Length));
+            return ResultWrapper<BigInteger>.Success(block.Ommers.Length);
         }
 
-        public ResultWrapper<Quantity> eth_getUncleCountByBlockNumber(BlockParameter blockParameter)
+        public ResultWrapper<BigInteger> eth_getUncleCountByBlockNumber(BlockParameter blockParameter)
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<BigInteger>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var ommersCount = GetOmmersCount(blockParameter);
             if (ommersCount.Result.ResultType == ResultType.Failure)
             {
-                return ResultWrapper<Quantity>.Fail(ommersCount.Result.Error, ommersCount.ErrorType);
+                return ResultWrapper<BigInteger>.Fail(ommersCount.Result.Error, ommersCount.ErrorType);
             }
 
-            if (Logger.IsTrace) Logger.Trace($"eth_getUncleCountByBlockNumber request {blockParameter}, result: {ommersCount.Data.AsNumber()}");
+            if (Logger.IsTrace) Logger.Trace($"eth_getUncleCountByBlockNumber request {blockParameter}, result: {ommersCount.Data}");
             return ommersCount;
         }
 
-        public ResultWrapper<Data> eth_getCode(Data address, BlockParameter blockParameter)
+        public ResultWrapper<byte[]> eth_getCode(Data address, BlockParameter blockParameter)
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<Data>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<byte[]>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetAccountCode(new Address(address.Value), blockParameter);
@@ -232,11 +233,11 @@ namespace Nethermind.JsonRpc.Module
                 return result;
             }
 
-            if (Logger.IsTrace) Logger.Trace($"eth_getCode request {address.ToJson()}, {blockParameter}, result: {result.Data.ToJson()}");
+            if (Logger.IsTrace) Logger.Trace($"eth_getCode request {address.ToJson()}, {blockParameter}, result: {result.Data.ToHexString(true)}");
             return result;
         }
 
-        public ResultWrapper<Data> eth_sign(Data addressData, Data message)
+        public ResultWrapper<byte[]> eth_sign(Data addressData, Data message)
         {
             Signature sig;
             try
@@ -248,35 +249,35 @@ namespace Nethermind.JsonRpc.Module
             }
             catch (Exception)
             {
-                return ResultWrapper<Data>.Fail($"Unable to sign as {addressData}");
+                return ResultWrapper<byte[]>.Fail($"Unable to sign as {addressData}");
             }
 
             if (Logger.IsTrace) Logger.Trace($"eth_sign request {addressData.ToJson()}, {message.ToJson()}, result: {sig}");
-            return ResultWrapper<Data>.Success(new Data(sig.Bytes));
+            return ResultWrapper<byte[]>.Success(sig.Bytes);
         }
 
-        public ResultWrapper<Data> eth_sendTransaction(Transaction transaction)
+        public ResultWrapper<Keccak> eth_sendTransaction(Transaction transaction)
         {
             Core.Transaction tx = _modelMapper.MapTransaction(transaction);
             Keccak txHash = _blockchainBridge.SendTransaction(tx);
-            return ResultWrapper<Data>.Success(new Data(txHash));
+            return ResultWrapper<Keccak>.Success(txHash);
         }
 
-        public ResultWrapper<Data> eth_sendRawTransaction(Data transaction)
+        public ResultWrapper<Keccak> eth_sendRawTransaction(Data transaction)
         {
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<Data> eth_call(Transaction transactionCall, BlockParameter blockParameter)
+        public ResultWrapper<byte[]> eth_call(Transaction transactionCall, BlockParameter blockParameter)
         {
             Core.Block block = GetBlock(blockParameter).Data;
             byte[] result = _blockchainBridge.Call(block, _modelMapper.MapTransaction(transactionCall));
-            return ResultWrapper<Data>.Success(new Data(result));
+            return ResultWrapper<byte[]>.Success(result);
         }
 
-        public ResultWrapper<Quantity> eth_estimateGas(Transaction transactionCall, BlockParameter blockParameter)
+        public ResultWrapper<BigInteger> eth_estimateGas(Transaction transactionCall, BlockParameter blockParameter)
         {
-            return ResultWrapper<Quantity>.Fail("eth_estimateGas not supported");
+            return ResultWrapper<BigInteger>.Fail("eth_estimateGas not supported");
         }
 
         public ResultWrapper<Block> eth_getBlockByHash(Data blockHash, bool returnFullTransactionObjects)
@@ -473,27 +474,27 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<IEnumerable<string>>.Fail("eth_getCompilers is DEPRECATED");
         }
 
-        public ResultWrapper<Data> eth_compileLLL(string code)
+        public ResultWrapper<byte[]> eth_compileLLL(string code)
         {
-            return ResultWrapper<Data>.Fail("eth_compileLLL is DEPRECATED");
+            return ResultWrapper<byte[]>.Fail("eth_compileLLL is DEPRECATED");
         }
 
-        public ResultWrapper<Data> eth_compileSolidity(string code)
+        public ResultWrapper<byte[]> eth_compileSolidity(string code)
         {
-            return ResultWrapper<Data>.Fail("eth_compileSolidity is DEPRECATED");
+            return ResultWrapper<byte[]>.Fail("eth_compileSolidity is DEPRECATED");
         }
 
-        public ResultWrapper<Data> eth_compileSerpent(string code)
+        public ResultWrapper<byte[]> eth_compileSerpent(string code)
         {
-            return ResultWrapper<Data>.Fail("eth_compileSerpent is DEPRECATED");
+            return ResultWrapper<byte[]>.Fail("eth_compileSerpent is DEPRECATED");
         }
 
-        public ResultWrapper<Quantity> eth_newFilter(Filter filter)
+        public ResultWrapper<BigInteger> eth_newFilter(Filter filter)
         {
             var fromBlock = MapFilterBlock(filter.FromBlock);
             var toBlock = MapFilterBlock(filter.ToBlock);
             int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
-            return ResultWrapper<Quantity>.Success(new Quantity(filterId));
+            return ResultWrapper<BigInteger>.Success(filterId);
         }
 
         private FilterBlock MapFilterBlock(BlockParameter parameter)
@@ -513,16 +514,16 @@ namespace Nethermind.JsonRpc.Module
             }
         }
 
-        public ResultWrapper<Quantity> eth_newBlockFilter()
+        public ResultWrapper<BigInteger> eth_newBlockFilter()
         {
             int filterId = _blockchainBridge.NewBlockFilter();
-            return ResultWrapper<Quantity>.Success(new Quantity(filterId));
+            return ResultWrapper<BigInteger>.Success(filterId);
         }
 
-        public ResultWrapper<Quantity> eth_newPendingTransactionFilter()
+        public ResultWrapper<BigInteger> eth_newPendingTransactionFilter()
         {
             int filterId = _blockchainBridge.NewPendingTransactionFilter();
-            return ResultWrapper<Quantity>.Success(new Quantity(filterId));
+            return ResultWrapper<BigInteger>.Success(filterId);
         }
 
         public ResultWrapper<bool> eth_uninstallFilter(Quantity filterId)
@@ -590,9 +591,9 @@ namespace Nethermind.JsonRpc.Module
                     Topics = l.Topics.Select(t => new Data(t)).ToArray()
                 });
 
-        public ResultWrapper<IEnumerable<Data>> eth_getWork()
+        public ResultWrapper<IEnumerable<byte[]>> eth_getWork()
         {
-            return ResultWrapper<IEnumerable<Data>>.Fail("eth_getWork not supported");
+            return ResultWrapper<IEnumerable<byte[]>>.Fail("eth_getWork not supported");
         }
 
         public ResultWrapper<bool> eth_submitWork(Data nonce, Data headerPowHash, Data mixDigest)
@@ -605,88 +606,88 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<bool>.Fail("eth_submitHashrate not supported");
         }
 
-        private ResultWrapper<Quantity> GetOmmersCount(BlockParameter blockParameter)
+        private ResultWrapper<BigInteger> GetOmmersCount(BlockParameter blockParameter)
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
                 var headBlock = _blockchainBridge.FindBlock(_blockchainBridge.BestSuggested.Hash, false);
                 var count = headBlock.Ommers.Length;
-                return ResultWrapper<Quantity>.Success(new Quantity(count));
+                return ResultWrapper<BigInteger>.Success(count);
             }
 
             var block = GetBlock(blockParameter);
             if (block.Result.ResultType == ResultType.Failure)
             {
-                return ResultWrapper<Quantity>.Fail(block.Result.Error);
+                return ResultWrapper<BigInteger>.Fail(block.Result.Error);
             }
 
-            return ResultWrapper<Quantity>.Success(new Quantity(block.Data.Ommers.Length));
+            return ResultWrapper<BigInteger>.Success(block.Data.Ommers.Length);
         }
 
-        private ResultWrapper<Quantity> GetTransactionCount(BlockParameter blockParameter)
+        private ResultWrapper<BigInteger> GetTransactionCount(BlockParameter blockParameter)
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
                 var headBlock = _blockchainBridge.FindBlock(_blockchainBridge.BestSuggested.Hash, false);
                 var count = headBlock.Transactions.Length;
-                return ResultWrapper<Quantity>.Success(new Quantity(count));
+                return ResultWrapper<BigInteger>.Success(count);
             }
 
             var block = GetBlock(blockParameter);
             if (block.Result.ResultType == ResultType.Failure)
             {
-                return ResultWrapper<Quantity>.Fail(block.Result.Error);
+                return ResultWrapper<BigInteger>.Fail(block.Result.Error);
             }
 
-            return ResultWrapper<Quantity>.Success(new Quantity(block.Data.Transactions.Length));
+            return ResultWrapper<BigInteger>.Success(block.Data.Transactions.Length);
         }
 
-        private ResultWrapper<Data> GetAccountCode(Address address, BlockParameter blockParameter)
+        private ResultWrapper<byte[]> GetAccountCode(Address address, BlockParameter blockParameter)
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
                 var code = _blockchainBridge.GetCode(address);
-                return ResultWrapper<Data>.Success(new Data(code));
+                return ResultWrapper<byte[]>.Success(code);
             }
 
             var block = GetBlock(blockParameter);
             if (block.Result.ResultType == ResultType.Failure)
             {
-                return ResultWrapper<Data>.Fail(block.Result.Error);
+                return ResultWrapper<byte[]>.Fail(block.Result.Error);
             }
 
             return GetAccountCode(address, block.Data.Header.StateRoot);
         }
 
-        private ResultWrapper<Quantity> GetAccountNonce(Address address, BlockParameter blockParameter)
+        private ResultWrapper<BigInteger> GetAccountNonce(Address address, BlockParameter blockParameter)
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
                 var nonce = _blockchainBridge.GetNonce(address);
-                return ResultWrapper<Quantity>.Success(new Quantity(nonce));
+                return ResultWrapper<BigInteger>.Success(nonce);
             }
 
             var block = GetBlock(blockParameter);
             if (block.Result.ResultType == ResultType.Failure)
             {
-                return ResultWrapper<Quantity>.Fail(block.Result.Error);
+                return ResultWrapper<BigInteger>.Fail(block.Result.Error);
             }
 
             return GetAccountNonce(address, block.Data.Header.StateRoot);
         }
 
-        private ResultWrapper<Quantity> GetAccountBalance(Address address, BlockParameter blockParameter)
+        private ResultWrapper<BigInteger> GetAccountBalance(Address address, BlockParameter blockParameter)
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
                 var balance = _blockchainBridge.GetBalance(address);
-                return ResultWrapper<Quantity>.Success(new Quantity(balance));
+                return ResultWrapper<BigInteger>.Success(balance);
             }
 
             var block = GetBlock(blockParameter);
             if (block.Result.ResultType == ResultType.Failure)
             {
-                return ResultWrapper<Quantity>.Fail(block.Result.Error);
+                return ResultWrapper<BigInteger>.Fail(block.Result.Error);
             }
 
             return GetAccountBalance(address, block.Data.Header.StateRoot);
@@ -729,38 +730,38 @@ namespace Nethermind.JsonRpc.Module
             }
         }
 
-        private ResultWrapper<Quantity> GetAccountBalance(Address address, Keccak stateRoot)
+        private ResultWrapper<BigInteger> GetAccountBalance(Address address, Keccak stateRoot)
         {
             var account = _blockchainBridge.GetAccount(address, stateRoot);
             if (account == null)
             {
-                return ResultWrapper<Quantity>.Fail("Cannot find account", ErrorType.NotFound);
+                return ResultWrapper<BigInteger>.Fail("Cannot find account", ErrorType.NotFound);
             }
 
-            return ResultWrapper<Quantity>.Success(new Quantity(account.Balance));
+            return ResultWrapper<BigInteger>.Success(account.Balance);
         }
 
-        private ResultWrapper<Quantity> GetAccountNonce(Address address, Keccak stateRoot)
+        private ResultWrapper<BigInteger> GetAccountNonce(Address address, Keccak stateRoot)
         {
             var account = _blockchainBridge.GetAccount(address, stateRoot);
             if (account == null)
             {
-                return ResultWrapper<Quantity>.Fail("Cannot find account", ErrorType.NotFound);
+                return ResultWrapper<BigInteger>.Fail("Cannot find account", ErrorType.NotFound);
             }
 
-            return ResultWrapper<Quantity>.Success(new Quantity(account.Nonce));
+            return ResultWrapper<BigInteger>.Success(account.Nonce);
         }
 
-        private ResultWrapper<Data> GetAccountCode(Address address, Keccak stateRoot)
+        private ResultWrapper<byte[]> GetAccountCode(Address address, Keccak stateRoot)
         {
             var account = _blockchainBridge.GetAccount(address, stateRoot);
             if (account == null)
             {
-                return ResultWrapper<Data>.Fail("Cannot find account", ErrorType.NotFound);
+                return ResultWrapper<byte[]>.Fail("Cannot find account", ErrorType.NotFound);
             }
 
             var code = _blockchainBridge.GetCode(account.CodeHash);
-            return ResultWrapper<Data>.Success(new Data(code));
+            return ResultWrapper<byte[]>.Success(code);
         }
     }
 }

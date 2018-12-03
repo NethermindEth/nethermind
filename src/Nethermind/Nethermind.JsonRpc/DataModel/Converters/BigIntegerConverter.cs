@@ -18,35 +18,35 @@
 
 using System;
 using System.Globalization;
-using System.Reflection.PortableExecutable;
-using Nethermind.Dirichlet.Numerics;
+using System.Numerics;
 using Newtonsoft.Json;
+using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Nethermind.JsonRpc.DataModel.Converters
 {
-    public class UInt256Converter : JsonConverter<UInt256>
+    public class BigIntegerConverter : JsonConverter<BigInteger>
     {
         private readonly bool _useX64;
 
-        public UInt256Converter()
+        public BigIntegerConverter()
             : this(false)
         {
         }
 
-        public UInt256Converter(bool useX64)
+        public BigIntegerConverter(bool useX64)
         {
             _useX64 = useX64;
         }
 
-        public override void WriteJson(JsonWriter writer, UInt256 value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, BigInteger value, JsonSerializer serializer)
         {
             writer.WriteValue(string.Concat("0x", value.ToString(_useX64 ? "x64" : "x")));
         }
 
-        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override BigInteger ReadJson(JsonReader reader, Type objectType, BigInteger existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             string s = (string) reader.Value;
-            return UInt256.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
+            return BigInteger.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
         }
     }
 }

@@ -37,11 +37,11 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<string>.Success(clientVersion);
         }
 
-        public ResultWrapper<Data> web3_sha3(Data data)
+        public ResultWrapper<Keccak> web3_sha3(Data data)
         {
             Keccak keccak = Keccak.Compute(data.Value);
             if(Logger.IsDebug) Logger.Debug($"web3_sha3 request, result: {keccak}");
-            return ResultWrapper<Data>.Success(new Data(keccak));
+            return ResultWrapper<Keccak>.Success(keccak);
         }
         
         public override ModuleType ModuleType => ModuleType.Web3;

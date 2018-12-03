@@ -17,7 +17,13 @@
  */
 
 using System.Collections.Generic;
+using System.Numerics;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.DataModel;
+using Block = Nethermind.JsonRpc.DataModel.Block;
+using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
+using TransactionReceipt = Nethermind.JsonRpc.DataModel.TransactionReceipt;
 
 namespace Nethermind.JsonRpc.Module
 {
@@ -27,23 +33,23 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<SynchingResult> eth_syncing();
         ResultWrapper<Data> eth_coinbase();
         ResultWrapper<bool> eth_mining();
-        ResultWrapper<Quantity> eth_hashrate();
-        ResultWrapper<Quantity> eth_gasPrice();
-        ResultWrapper<IEnumerable<Data>> eth_accounts();
-        ResultWrapper<Quantity> eth_blockNumber();
-        ResultWrapper<Quantity> eth_getBalance(Data address, BlockParameter blockParameter);
+        ResultWrapper<BigInteger> eth_hashrate();
+        ResultWrapper<BigInteger> eth_gasPrice();
+        ResultWrapper<IEnumerable<Address>> eth_accounts();
+        ResultWrapper<BigInteger> eth_blockNumber();
+        ResultWrapper<BigInteger> eth_getBalance(Data address, BlockParameter blockParameter);
         ResultWrapper<Data> eth_getStorageAt(Data address, Quantity positionIndex, BlockParameter blockParameter);
-        ResultWrapper<Quantity> eth_getTransactionCount(Data address, BlockParameter blockParameter);
-        ResultWrapper<Quantity> eth_getBlockTransactionCountByHash(Data blockHash);
-        ResultWrapper<Quantity> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter);
-        ResultWrapper<Quantity> eth_getUncleCountByBlockHash(Data blockHash);
-        ResultWrapper<Quantity> eth_getUncleCountByBlockNumber(BlockParameter blockParameter);
-        ResultWrapper<Data> eth_getCode(Data address, BlockParameter blockParameter);
-        ResultWrapper<Data> eth_sign(Data addressData, Data message);
-        ResultWrapper<Data> eth_sendTransaction(Transaction transaction);
-        ResultWrapper<Data> eth_sendRawTransaction(Data transaction);
-        ResultWrapper<Data> eth_call(Transaction transactionCall, BlockParameter blockParameter);
-        ResultWrapper<Quantity> eth_estimateGas(Transaction transactionCall, BlockParameter blockParameter);
+        ResultWrapper<BigInteger> eth_getTransactionCount(Data address, BlockParameter blockParameter);
+        ResultWrapper<BigInteger> eth_getBlockTransactionCountByHash(Data blockHash);
+        ResultWrapper<BigInteger> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter);
+        ResultWrapper<BigInteger> eth_getUncleCountByBlockHash(Data blockHash);
+        ResultWrapper<BigInteger> eth_getUncleCountByBlockNumber(BlockParameter blockParameter);
+        ResultWrapper<byte[]> eth_getCode(Data address, BlockParameter blockParameter);
+        ResultWrapper<byte[]> eth_sign(Data addressData, Data message);
+        ResultWrapper<Keccak> eth_sendTransaction(Transaction transaction);
+        ResultWrapper<Keccak> eth_sendRawTransaction(Data transaction);
+        ResultWrapper<byte[]> eth_call(Transaction transactionCall, BlockParameter blockParameter);
+        ResultWrapper<BigInteger> eth_estimateGas(Transaction transactionCall, BlockParameter blockParameter);
         ResultWrapper<Block> eth_getBlockByHash(Data blockHash, bool returnFullTransactionObjects);
         ResultWrapper<Block> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects);
         ResultWrapper<Transaction> eth_getTransactionByHash(Data transactionHash);
@@ -53,17 +59,17 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<Block> eth_getUncleByBlockHashAndIndex(Data blockHashData, Quantity positionIndex);
         ResultWrapper<Block> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, Quantity positionIndex);
         ResultWrapper<IEnumerable<string>> eth_getCompilers();
-        ResultWrapper<Data> eth_compileLLL(string code);
-        ResultWrapper<Data> eth_compileSolidity(string code);
-        ResultWrapper<Data> eth_compileSerpent(string code);
-        ResultWrapper<Quantity> eth_newFilter(Filter filter);
-        ResultWrapper<Quantity> eth_newBlockFilter();
-        ResultWrapper<Quantity> eth_newPendingTransactionFilter();
+        ResultWrapper<byte[]> eth_compileLLL(string code);
+        ResultWrapper<byte[]> eth_compileSolidity(string code);
+        ResultWrapper<byte[]> eth_compileSerpent(string code);
+        ResultWrapper<BigInteger> eth_newFilter(Filter filter);
+        ResultWrapper<BigInteger> eth_newBlockFilter();
+        ResultWrapper<BigInteger> eth_newPendingTransactionFilter();
         ResultWrapper<bool> eth_uninstallFilter(Quantity filterId);
         ResultWrapper<IEnumerable<object>> eth_getFilterChanges(Quantity filterId);
         ResultWrapper<IEnumerable<Log>> eth_getFilterLogs(Quantity filterId);
         ResultWrapper<IEnumerable<Log>> eth_getLogs(Filter filter);
-        ResultWrapper<IEnumerable<Data>> eth_getWork();
+        ResultWrapper<IEnumerable<byte[]>> eth_getWork();
         ResultWrapper<bool> eth_submitWork(Data nonce, Data headerPowHash, Data mixDigest);
         ResultWrapper<bool> eth_submitHashrate(string hashRate, string id);
     }

@@ -47,8 +47,10 @@ namespace Nethermind.JsonRpc
             {
                 new AddressConverter(),
                 new KeccakConverter(),
+                new BloomConverter(),
                 new ByteArrayConverter(),
                 new UInt256Converter(),
+                new BigIntegerConverter(),
             };
         }
 
@@ -166,46 +168,7 @@ namespace Nethermind.JsonRpc
             }
 
             return GetSuccessResponse(resultWrapper.GetData(), request.Id);
-            //process response
-//            var data = resultWrapper.GetData();
-//            if (data is byte[] bytes)
-//            {
-//                return GetSuccessResponse(bytes.ToHexString(), request.Id);
-//            }
-//
-//            if (!(data is IEnumerable collection) || data is string)
-//            {
-//                var json = GetDataObject(data);
-//                return GetSuccessResponse(json, request.Id);
-//            }
-//
-//            var items = new List<object>();
-//            foreach (var item in collection)
-//            {
-//                var jsonItem = GetDataObject(item);
-//                items.Add(jsonItem);
-//            }
-//
-//            return GetSuccessResponse(items, request.Id);
         }
-
-//        private object GetDataObject(object data)
-//        {
-//            if (data == null)
-//            {
-//                return null;
-//            }
-//            
-//            if (_converterLookup.ContainsKey(data.GetType()))
-//            {
-//                StringBuilder builder = new StringBuilder();
-//                TextWriter writer = new StringWriter(builder);
-//                _converterLookup[data.GetType()].WriteJson(new JsonTextWriter(writer), data, _serializer);
-//                return builder.ToString();
-//            }
-//
-//            return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data is bool ? data : data?.ToString();
-//        }
 
         private object[] GetParameters(ParameterInfo[] expectedParameters, string[] providedParameters)
         {
@@ -244,7 +207,7 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private JsonRpcResponse GetSuccessResponse(object result, BigInteger id)
+        private JsonRpcResponse GetSuccessResponse(object result, ulong id)
         {
             var response = new JsonRpcResponse
             {
@@ -263,7 +226,7 @@ namespace Nethermind.JsonRpc
 
         public IList<JsonConverter> Converters { get; } = new List<JsonConverter>();
 
-        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, BigInteger id, string methodName)
+        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, ulong id, string methodName)
         {
             if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
             var response = new JsonRpcResponse

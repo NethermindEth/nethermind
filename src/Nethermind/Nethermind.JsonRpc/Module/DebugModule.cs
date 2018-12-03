@@ -145,7 +145,7 @@ namespace Nethermind.JsonRpc.Module
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<Data> debug_getBlockRlp(BlockParameter blockParameter)
+        public ResultWrapper<byte[]> debug_getBlockRlp(BlockParameter blockParameter)
         {
             throw new NotImplementedException();
         }
@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Module
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<Data> debug_seedHash(BlockParameter blockParameter)
+        public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter)
         {
             throw new NotImplementedException();
         }

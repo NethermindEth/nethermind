@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Numerics;
 
 namespace Nethermind.JsonRpc.DataModel
 {
@@ -25,6 +26,15 @@ namespace Nethermind.JsonRpc.DataModel
         public BlockParameterType Type { get; set; }
         public Quantity BlockId { get; set; }
 
+        public BlockParameter()
+        {
+        }
+
+        public BlockParameter(BigInteger blockNumber)
+        {
+            BlockId = new Quantity(blockNumber);
+        }
+        
         public void FromJson(string jsonValue)
         {
             if (string.IsNullOrEmpty(jsonValue))

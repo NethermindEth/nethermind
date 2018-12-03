@@ -68,12 +68,12 @@ namespace Nethermind.JsonRpc.Module
                 : ResultWrapper<string>.Success(result); //returning the entire compiler output instead of just the bytecode
         }
         
-        public ResultWrapper<Data> nethm_compileLLL(string code)
+        public ResultWrapper<byte[]> nethm_compileLLL(string code)
         {
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<Data> nethm_compileSerpent(string code)
+        public ResultWrapper<byte[]> nethm_compileSerpent(string code)
         {
             throw new NotImplementedException();
         }

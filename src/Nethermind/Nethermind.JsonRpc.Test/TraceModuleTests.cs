@@ -62,11 +62,9 @@ namespace Nethermind.JsonRpc.Test
             
             ITraceModule module = new TraceModule(Substitute.For<IConfigProvider>(), NullLogManager.Instance, new UnforgivingJsonSerializer(), tracer);
             
-            JsonRpcResponse response = RpcTest.TestRequest(module, "trace_replayTransaction", TestObject.KeccakC.ToString(true), types);
+            string serialized = RpcTest.TestSerializedRequest(module, "trace_replayTransaction", TestObject.KeccakC.ToString(true), types);
             
-            Assert.IsNull(response.Error, "error");
-            Assert.NotNull(response.Result, "result");
-//            Assert.False(response.Result is string s && s.Contains("\""));
+            Assert.False(serialized.Contains("\\"));
         }
     }
 }

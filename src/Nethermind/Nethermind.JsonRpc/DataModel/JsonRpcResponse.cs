@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.DataModel
@@ -30,7 +29,7 @@ namespace Nethermind.JsonRpc.DataModel
         [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
         public Error Error { get; set; }
         [JsonProperty(PropertyName = "id", Order = 0)]
-        public BigInteger Id { get; set; }
+        public ulong Id { get; set; }
     }
     
     public class JsonRpcResponse<T>
@@ -42,6 +41,6 @@ namespace Nethermind.JsonRpc.DataModel
         [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
         public Error Error { get; set; }
         [JsonProperty(PropertyName = "id", Order = 0)]
-        public BigInteger Id { get; set; }
+        public ulong Id { get; set; }
     }
 }

@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Numerics;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
@@ -35,7 +36,7 @@ namespace Nethermind.JsonRpc.Module
             throw new System.NotImplementedException();
         }
 
-        public ResultWrapper<Data> shh_newIdentity()
+        public ResultWrapper<byte[]> shh_newIdentity()
         {
             throw new System.NotImplementedException();
         }
@@ -45,7 +46,7 @@ namespace Nethermind.JsonRpc.Module
             throw new System.NotImplementedException();
         }
 
-        public ResultWrapper<Quantity> shh_newFilter(WhisperFilter filter)
+        public ResultWrapper<BigInteger> shh_newFilter(WhisperFilter filter)
         {
             throw new System.NotImplementedException();
         }

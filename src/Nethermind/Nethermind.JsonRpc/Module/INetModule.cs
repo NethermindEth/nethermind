@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
@@ -24,6 +25,6 @@ namespace Nethermind.JsonRpc.Module
     {
         ResultWrapper<string> net_version();
         ResultWrapper<bool> net_listening();
-        ResultWrapper<Quantity> net_peerCount();
+        ResultWrapper<BigInteger> net_peerCount();
     }
 }

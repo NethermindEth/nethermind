@@ -21,7 +21,9 @@ using Nethermind.Config;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.JsonRpc.Module;
+using Newtonsoft.Json;
 using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test
 {
@@ -34,11 +36,19 @@ namespace Nethermind.JsonRpc.Test
             return service.SendRequest(request);
         }
         
+        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
+        {
+            IJsonRpcService service = BuildRpcService<T>(module);
+            JsonRpcRequest request = GetJsonRequest(method, parameters);
+            string serialized = JsonConvert.SerializeObject(service.SendRequest(request), service.Converters.ToArray());
+            TestContext.WriteLine(serialized.Replace("\"", "\\\""));
+            return serialized;
+        }
+        
         public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IModule
         {
             var moduleProvider = new TestRpcModuleProvider<T>(module);
             moduleProvider.Register<T>(module);
-            Newtonsoft.Json.JsonSerializer rpcSerializer = new Newtonsoft.Json.JsonSerializer();
             IJsonRpcService service = new JsonRpcService(moduleProvider, Substitute.For<IConfigProvider>(), NullLogManager.Instance);
             return service;
         }

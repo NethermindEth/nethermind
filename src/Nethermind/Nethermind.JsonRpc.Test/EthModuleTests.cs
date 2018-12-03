@@ -16,8 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.JsonRpc.Module;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test
@@ -25,19 +32,37 @@ namespace Nethermind.JsonRpc.Test
     [TestFixture]
     public class EthModuleTests
     {
-//        private IEthModule _ethModule;
-
         [SetUp]
         public void Initialize()
         {
-            var logger = NullLogger.Instance;
-            //_ethModule = new EthModule(logger, new JsonSerializer(logger), new BlockchainProcessor(), new StateProvider() );
         }
 
         [Test]
-        public void GetBalanceSuccessTest()
+        public void Eth_get_balance()
         {
-            var hex = 1024.ToBigEndianByteArray().ToHexString(true, true);
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.FindBlock(Arg.Any<UInt256>()).Returns(Build.A.Block.TestObject);
+            bridge.GetAccount(Arg.Any<Address>(), Arg.Any<Keccak>()).Returns(Build.A.Account.WithBalance(1.Ether()).TestObject);
+            bridge.Head.Returns(Build.A.BlockHeader.TestObject);
+            
+            IEthModule module = new EthModule(new UnforgivingJsonSerializer(), Substitute.For<IConfigProvider>(), new JsonRpcModelMapper(), NullLogManager.Instance, bridge);
+            
+            string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.AddressA.Bytes.ToHexString(true), "0x01");
+            
+            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"\",\"result\":\"0x0de0b6b3a7640000\"}");
+        }
+        
+        [Test]
+        public void Eth_get_failure()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.Head.Returns((BlockHeader)null);
+            
+            IEthModule module = new EthModule(new UnforgivingJsonSerializer(), Substitute.For<IConfigProvider>(), new JsonRpcModelMapper(), NullLogManager.Instance, bridge);
+            
+            string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.AddressA.Bytes.ToHexString(true), "0x01");
+            
+            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"\",\"result\":null,\"error\":{\"code\":0,\"message\":\"Internal error\",\"data\":null}}");
         }
     }
 }
