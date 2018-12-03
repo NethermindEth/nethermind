@@ -192,7 +192,8 @@ namespace Nethermind.JsonRpc
                     }
                     else
                     {
-                        executionParam = Convert.ChangeType(providedParameter, paramType);
+
+                        executionParam = JsonConvert.DeserializeObject($"\"{providedParameter}\"", paramType, Converters.ToArray());
                     }
 
                     executionParameters.Add(executionParam);

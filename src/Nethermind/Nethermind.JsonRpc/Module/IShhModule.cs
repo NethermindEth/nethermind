@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
@@ -26,10 +27,10 @@ namespace Nethermind.JsonRpc.Module
     {
         ResultWrapper<bool> shh_post(WhisperPostMessage message);
         ResultWrapper<byte[]> shh_newIdentity();
-        ResultWrapper<bool> shh_hasIdentity(Data address);
+        ResultWrapper<bool> shh_hasIdentity(Address address);
         ResultWrapper<BigInteger> shh_newFilter(WhisperFilter filter);
-        ResultWrapper<bool> shh_uninstallFilter(Quantity filterId);
-        ResultWrapper<IEnumerable<WhisperMessage>> shh_getFilterChanges(Quantity filterId);
-        ResultWrapper<IEnumerable<WhisperMessage>> shh_getMessages(Quantity filterId);
+        ResultWrapper<bool> shh_uninstallFilter(BigInteger filterId);
+        ResultWrapper<IEnumerable<WhisperMessage>> shh_getFilterChanges(BigInteger filterId);
+        ResultWrapper<IEnumerable<WhisperMessage>> shh_getMessages(BigInteger filterId);
     }
 }

@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Test
         public void CompileSolidityTest()
         {
             INethmModule nethmModule = Substitute.For<INethmModule>();
-            nethmModule.nethm_compileSolidity(Arg.Any<string>()).ReturnsForAnyArgs(r => ResultWrapper<string>.Success(
+            nethmModule.nethm_compileSolidity(Arg.Any<CompilerParameters>()).ReturnsForAnyArgs(r => ResultWrapper<string>.Success(
                 "608060405234801561001057600080fd5b5060bb8061001f6000396000f300608060405260043610603f576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063c6888fa1146044575b600080fd5b348015604f57600080fd5b50606c600480360381019080803590602001909291905050506082565b6040518082815260200191505060405180910390f35b60006007820290509190505600a165627a7a72305820cb09d883ac888f0961fd8d82f8dae501d09d54f4bda397e8ca0fb9c05e2ec72a0029"));
 
             CompilerParameters parameters = new CompilerParameters
@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc.Test
 
             TestContext.Write(response.Result);
             Assert.IsNotNull(response);
-            Assert.IsNull(response.Error);
+            Assert.IsNull(response.Error, response.Error?.Message);
         }
 
         [Test]
@@ -166,7 +166,7 @@ namespace Nethermind.JsonRpc.Test
         public void Web3ShaTest()
         {
             IWeb3Module web3Module = Substitute.For<IWeb3Module>();
-            web3Module.web3_sha3(Arg.Any<Data>()).ReturnsForAnyArgs(x => ResultWrapper<Keccak>.Success(TestObject.KeccakA));
+            web3Module.web3_sha3(Arg.Any<byte[]>()).ReturnsForAnyArgs(x => ResultWrapper<Keccak>.Success(TestObject.KeccakA));
             JsonRpcResponse response = TestRequest<IWeb3Module>(web3Module, "web3_sha3", "0x68656c6c6f20776f726c64");
             Assert.AreEqual(TestObject.KeccakA, response.Result);
         }

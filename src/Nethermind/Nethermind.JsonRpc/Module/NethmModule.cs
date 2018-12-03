@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Module
         /// <summary>
         /// Compiles Solidity code
         /// </summary>
-        /// <param name="parameters"> A JSON string containing the contract to compile and extra parameters to feed
+        /// <param name="compilerParameters"> A JSON string containing the contract to compile and extra parameters to feed
         /// to the compiler
         /// </param>
         /// <returns>Returns the raw compiler output containing the bytecode and metadata; or errors encountered by the
@@ -49,11 +49,8 @@ namespace Nethermind.JsonRpc.Module
         /// </code>
         /// </example>
         
-        public ResultWrapper<string> nethm_compileSolidity(string parameters)
+        public ResultWrapper<string> nethm_compileSolidity(CompilerParameters compilerParameters)
         {            
-            CompilerParameters compilerParameters = new CompilerParameters();
-            compilerParameters.FromJson(parameters);
-            
             Match match = Regex.Match(compilerParameters.Contract,@"contract (.*?) ");
             string contractName = match.Groups[1].Value;
 
@@ -68,12 +65,12 @@ namespace Nethermind.JsonRpc.Module
                 : ResultWrapper<string>.Success(result); //returning the entire compiler output instead of just the bytecode
         }
         
-        public ResultWrapper<byte[]> nethm_compileLLL(string code)
+        public ResultWrapper<string> nethm_compileLLL(CompilerParameters compilerParameters)
         {
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<byte[]> nethm_compileSerpent(string code)
+        public ResultWrapper<string> nethm_compileSerpent(CompilerParameters compilerParameters)
         {
             throw new NotImplementedException();
         }

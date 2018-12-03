@@ -24,6 +24,6 @@ namespace Nethermind.JsonRpc.Module
     public interface IWeb3Module : IModule
     {
         ResultWrapper<string> web3_clientVersion();
-        ResultWrapper<Keccak> web3_sha3(Data data);
+        ResultWrapper<Keccak> web3_sha3(byte[] data);
     }
 }

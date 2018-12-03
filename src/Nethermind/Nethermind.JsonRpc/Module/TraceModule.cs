@@ -59,14 +59,14 @@ namespace Nethermind.JsonRpc.Module
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<ParityLikeTxTrace> trace_rawTransaction(Data data, string[] traceTypes)
+        public ResultWrapper<ParityLikeTxTrace> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<ParityLikeTxTrace> trace_replayTransaction(Data hash, string[] traceTypes)
+        public ResultWrapper<ParityLikeTxTrace> trace_replayTransaction(Keccak hash, string[] traceTypes)
         {
-            return ResultWrapper<ParityLikeTxTrace>.Success(_tracer.ParityTrace(new Keccak(hash.Value), GetParityTypes(traceTypes)));
+            return ResultWrapper<ParityLikeTxTrace>.Success(_tracer.ParityTrace(hash, GetParityTypes(traceTypes)));
         }
 
         public ResultWrapper<ParityLikeTxTrace[]> trace_replayBlockTransactions(BlockParameter numberOrTag, string[] traceTypes)
@@ -85,12 +85,12 @@ namespace Nethermind.JsonRpc.Module
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<ParityLikeTxTrace> trace_get(Data txHash, int[] positions)
+        public ResultWrapper<ParityLikeTxTrace> trace_get(Keccak txHash, int[] positions)
         {
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<ParityLikeTxTrace> trace_transaction(Data transactionHash)
+        public ResultWrapper<ParityLikeTxTrace> trace_transaction(Keccak transactionHash)
         {
             throw new NotImplementedException();
         }

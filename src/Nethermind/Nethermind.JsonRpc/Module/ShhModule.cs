@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Module
             throw new System.NotImplementedException();
         }
 
-        public ResultWrapper<bool> shh_hasIdentity(Data address)
+        public ResultWrapper<bool> shh_hasIdentity(Address address)
         {
             throw new System.NotImplementedException();
         }
@@ -51,17 +51,17 @@ namespace Nethermind.JsonRpc.Module
             throw new System.NotImplementedException();
         }
 
-        public ResultWrapper<bool> shh_uninstallFilter(Quantity filterId)
+        public ResultWrapper<bool> shh_uninstallFilter(BigInteger filterId)
         {
             throw new System.NotImplementedException();
         }
 
-        public ResultWrapper<IEnumerable<WhisperMessage>> shh_getFilterChanges(Quantity filterId)
+        public ResultWrapper<IEnumerable<WhisperMessage>> shh_getFilterChanges(BigInteger filterId)
         {
             throw new System.NotImplementedException();
         }
 
-        public ResultWrapper<IEnumerable<WhisperMessage>> shh_getMessages(Quantity filterId)
+        public ResultWrapper<IEnumerable<WhisperMessage>> shh_getMessages(BigInteger filterId)
         {
             throw new System.NotImplementedException();
         }

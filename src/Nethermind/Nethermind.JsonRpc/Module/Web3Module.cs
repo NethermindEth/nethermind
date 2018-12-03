@@ -37,9 +37,9 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<string>.Success(clientVersion);
         }
 
-        public ResultWrapper<Keccak> web3_sha3(Data data)
+        public ResultWrapper<Keccak> web3_sha3(byte[] data)
         {
-            Keccak keccak = Keccak.Compute(data.Value);
+            Keccak keccak = Keccak.Compute(data);
             if(Logger.IsDebug) Logger.Debug($"web3_sha3 request, result: {keccak}");
             return ResultWrapper<Keccak>.Success(keccak);
         }

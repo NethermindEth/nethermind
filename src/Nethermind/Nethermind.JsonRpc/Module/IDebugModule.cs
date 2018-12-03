@@ -16,18 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
 {
     public interface IDebugModule : IModule
     {
-        ResultWrapper<TransactionTrace> debug_traceTransaction(Data transactionHash);
+        ResultWrapper<TransactionTrace> debug_traceTransaction(Keccak transactionHash);
         ResultWrapper<TransactionTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex);
-        ResultWrapper<TransactionTrace> debug_traceTransactionByBlockhashAndIndex(Data blockHash, int txIndex);
-        ResultWrapper<BlockTraceItem[]> debug_traceBlock(Data blockRlp);
-        ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(Quantity number);
-        ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Data blockHash);
+        ResultWrapper<TransactionTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockHash, int txIndex);
+        ResultWrapper<BlockTraceItem[]> debug_traceBlock(byte[] blockRlp);
+        ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(BigInteger number);
+        ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Keccak blockHash);
         ResultWrapper<BlockTraceItem[]> debug_traceBlockFromFile(string fileName);
         ResultWrapper<State> debug_dumpBlock(BlockParameter blockParameter);
         ResultWrapper<GcStats> debug_gcStats();
@@ -35,7 +37,11 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);
         ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
         ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
+<<<<<<< HEAD
         ResultWrapper<byte[]> debug_getFromDb(string dbName, Data key);
         ResultWrapper<bool> debug_dumpPeerConnectionDetails();
+=======
+        ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key);
+>>>>>>> #310 removing intermediary objects, work in progress
     }
 }

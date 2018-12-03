@@ -43,26 +43,26 @@ namespace Nethermind.Clique
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<bool> clique_getSnapshotAtHash(Data hash)
+        public ResultWrapper<bool> clique_getSnapshotAtHash(Keccak hash)
         {
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<Data[]> clique_getSigners()
+        public ResultWrapper<Address[]> clique_getSigners()
         {
-            return ResultWrapper<Data[]>.Success(_cliqueBridge.GetSigners().Select(s => new Data(s)).ToArray());
+            return ResultWrapper<Address[]>.Success(_cliqueBridge.GetSigners().ToArray());
         }
 
-        public ResultWrapper<Data[]> clique_getSignersAtHash(Data hash)
+        public ResultWrapper<Address[]> clique_getSignersAtHash(Keccak hash)
         {
-            return ResultWrapper<Data[]>.Success(_cliqueBridge.GetSigners(new Keccak(hash.Value)).Select(s => new Data(s)).ToArray());
+            return ResultWrapper<Address[]>.Success(_cliqueBridge.GetSigners(hash).ToArray());
         }
 
-        public ResultWrapper<bool> clique_propose(Data signer, bool vote)
+        public ResultWrapper<bool> clique_propose(Address signer, bool vote)
         {
             try
             {
-                _cliqueBridge.CastVote(new Address(signer.Value), vote);
+                _cliqueBridge.CastVote(signer, vote);
             }
             catch (Exception)
             {
@@ -72,11 +72,11 @@ namespace Nethermind.Clique
             return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<bool> clique_discard(Data signer)
+        public ResultWrapper<bool> clique_discard(Address signer)
         {
             try
             {
-                _cliqueBridge.UncastVote(new Address(signer.Value));
+                _cliqueBridge.UncastVote(signer);
             }
             catch (Exception)
             {

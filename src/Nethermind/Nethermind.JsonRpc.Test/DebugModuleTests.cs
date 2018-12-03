@@ -41,10 +41,10 @@ namespace Nethermind.JsonRpc.Test
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper();
             DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, modelMapper, new UnforgivingJsonSerializer());
-            JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString());
+            JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString(true));
             
             byte[] result = response.Result as byte[];
-            Assert.AreEqual(value, result);
+            Assert.AreEqual(value, result, response.Error?.Message);
         }
 
         [Test]
@@ -57,9 +57,9 @@ namespace Nethermind.JsonRpc.Test
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper();
             DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, modelMapper, new UnforgivingJsonSerializer());
-            JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString());
+            JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString(true));
             
-            Assert.IsNull(response.Error, "error");
+            Assert.IsNull(response.Error, response.Error?.Message);
             Assert.IsNull(response.Result, "result");
         }
     }

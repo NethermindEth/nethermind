@@ -24,9 +24,9 @@ namespace Nethermind.JsonRpc.Module
     public interface INethmModule : IModule
     {
         ResultWrapper<IEnumerable<string>> nethm_getCompilers();
-        ResultWrapper<byte[]> nethm_compileLLL(string code);
-        ResultWrapper<string> nethm_compileSolidity(string parameters);
-        ResultWrapper<byte[]> nethm_compileSerpent(string code);
+        ResultWrapper<string> nethm_compileLLL(CompilerParameters parameters);
+        ResultWrapper<string> nethm_compileSolidity(CompilerParameters parameters);
+        ResultWrapper<string> nethm_compileSerpent(CompilerParameters parameters);
         ResultWrapper<string> enode_info();
     }
 }
