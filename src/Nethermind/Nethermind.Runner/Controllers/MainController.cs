@@ -27,6 +27,7 @@ using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Runner.Controllers
 {
@@ -45,6 +46,8 @@ namespace Nethermind.Runner.Controllers
             _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _jsonSettings = new JsonSerializerSettings();
+            _jsonSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();
+            
             for (int i = 0; i < _jsonRpcService.Converters.Count; i++)
             {
                 _jsonSettings.Converters.Add(_jsonRpcService.Converters[i]);    
