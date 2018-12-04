@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
@@ -29,7 +28,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_do_roundtrip()
         {
-            Func<int[], int[], bool> comparer = (a, b) =>
+            bool Comparer(int[] a, int[] b)
             {
                 if (a.Length != b.Length)
                 {
@@ -45,9 +44,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 }
 
                 return true;
-            }; 
-            
-            TestConverter(new int[] {1, 2, 3, 1000, 10000}, comparer, new ParityTraceAddressConverter());
+            }
+
+            TestConverter(new[] {1, 2, 3, 1000, 10000}, Comparer, new ParityTraceAddressConverter());
         }
     }
 }
