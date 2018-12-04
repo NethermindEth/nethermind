@@ -36,8 +36,8 @@ namespace Nethermind.Blockchain.TransactionPools
         public TransactionPoolInfo GetInfo(Transaction[] transactions)
         {
             var groupedTransactions = transactions.GroupBy(t => t.SenderAddress);
-            var pendingTransactions = new Dictionary<Address, IDictionary<UInt256, Transaction[]>>();
-            var queuedTransactions = new Dictionary<Address, IDictionary<UInt256, Transaction[]>>();
+            var pendingTransactions = new Dictionary<Address, IDictionary<ulong, Transaction[]>>();
+            var queuedTransactions = new Dictionary<Address, IDictionary<ulong, Transaction[]>>();
             foreach (var group in groupedTransactions)
             {
                 var address = group.Key;
@@ -48,9 +48,9 @@ namespace Nethermind.Blockchain.TransactionPools
 
                 var accountNonce = _stateProvider.GetNonce(address);
                 var expectedNonce = accountNonce;
-                var pending = new Dictionary<UInt256, Transaction[]>();
-                var queued = new Dictionary<UInt256, Transaction[]>();
-                var transactionsGroupedByNonce = group.OrderBy(t => t.Nonce).GroupBy(t => t.Nonce);
+                var pending = new Dictionary<ulong, Transaction[]>();
+                var queued = new Dictionary<ulong, Transaction[]>();
+                var transactionsGroupedByNonce = group.OrderBy(t => t.Nonce).GroupBy(t => (ulong)t.Nonce);
 
                 foreach (var nonceGroup in transactionsGroupedByNonce)
                 {

@@ -16,27 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
-{
-    public class TransactionPoolContent : IJsonRpcResult
+{   
+    public class TransactionPoolContent
     {
-        public IDictionary<Data.Data, Dictionary<Quantity, TransactionForRpc[]>> Pending { get; set; }
-        public IDictionary<Data.Data, Dictionary<Quantity, TransactionForRpc[]>> Queued { get; set; }
+        public TransactionPoolContent(TransactionPoolInfo info)
+        {
+            Pending = info.Pending.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => v.Value.Select(tx => new TransactionForRpc(null, null, null, tx)).ToArray()));
+            Queued = info.Queued.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => v.Value.Select(tx => new TransactionForRpc(null, null, null, tx)).ToArray()));            
+        }
 
-        public object ToJson()
-            => new
-            {
-//                pending = Pending.ToDictionary(k => k.Key.ToJson(),
-//                    k => k.Value.ToDictionary(v => v.Key.ToJson(),
-//                        v => v.Value.Select(t => t.ToJson()).ToArray())),
-//                queued = Queued.ToDictionary(k => k.Key.ToJson(),
-//                    k => k.Value.ToDictionary(v => v.Key.ToJson(),
-//                        v => v.Value.Select(t => t.ToJson()).ToArray())),
-            };
+        public IDictionary<Address, Dictionary<ulong, TransactionForRpc[]>> Pending { get; set; }
+        public IDictionary<Address, Dictionary<ulong, TransactionForRpc[]>> Queued { get; set; }
     }
 }

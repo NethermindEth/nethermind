@@ -73,8 +73,8 @@ namespace Nethermind.Blockchain.Test
             VerifyNonceAndTransactions(queued.Value.ElementAt(3), 9, 1);
         }
 
-        private void VerifyNonceAndTransactions(KeyValuePair<UInt256, Transaction[]> nonceAndTransaction,
-            UInt256 nonce, int transactionsCount)
+        private void VerifyNonceAndTransactions(KeyValuePair<ulong, Transaction[]> nonceAndTransaction,
+            ulong nonce, int transactionsCount)
         {
             nonceAndTransaction.Key.Should().Be(nonce);
             nonceAndTransaction.Value.Length.Should().Be(transactionsCount);

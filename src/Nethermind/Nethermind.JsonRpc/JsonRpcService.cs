@@ -61,6 +61,7 @@ namespace Nethermind.JsonRpc
                 new ByteArrayConverter(),
                 new UInt256Converter(),
                 new BigIntegerConverter(),
+                new NullableBigIntegerConverter()
             };
         }
 

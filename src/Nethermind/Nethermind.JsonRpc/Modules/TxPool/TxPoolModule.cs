@@ -19,33 +19,38 @@
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {
     public class TxPoolModule : ModuleBase, ITxPoolModule
     {
-        private readonly IBlockchainBridge _blockchainBridge;
-        private readonly IJsonRpcModelMapper _modelMapper;
+        private readonly IBlockchainBridge _blockchainBridge;        
 
         public TxPoolModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer,
             IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager, jsonSerializer)
         {
             _blockchainBridge = blockchainBridge;
-            _modelMapper = new JsonRpcModelMapper();
         }
-        
+
         public ResultWrapper<TransactionPoolStatus> txpool_status()
-            => ResultWrapper<TransactionPoolStatus>.Success(
-                _modelMapper.MapTransactionPoolStatus(_blockchainBridge.GetTransactionPoolInfo()));
+        {
+            var poolInfo = _blockchainBridge.GetTransactionPoolInfo();
+            var poolStatus = new TransactionPoolStatus(poolInfo);
+         
+            return ResultWrapper<TransactionPoolStatus>.Success(poolStatus);
+        }
 
         public ResultWrapper<TransactionPoolContent> txpool_content()
-            => ResultWrapper<TransactionPoolContent>.Success(
-                _modelMapper.MapTransactionPoolContent(_blockchainBridge.GetTransactionPoolInfo()));
+        {
+            var poolInfo = _blockchainBridge.GetTransactionPoolInfo();
+            return ResultWrapper<TransactionPoolContent>.Success(new TransactionPoolContent(poolInfo));
+        }
 
         public ResultWrapper<TransactionPoolInspection> txpool_inspect()
-            => ResultWrapper<TransactionPoolInspection>.Success(
-                _modelMapper.MapTransactionPoolInspection(_blockchainBridge.GetTransactionPoolInfo()));
+        {
+            var poolInfo = _blockchainBridge.GetTransactionPoolInfo();
+            return ResultWrapper<TransactionPoolInspection>.Success(new TransactionPoolInspection(poolInfo));
+        }
         
         public override ModuleType ModuleType => ModuleType.TxPool;
     }

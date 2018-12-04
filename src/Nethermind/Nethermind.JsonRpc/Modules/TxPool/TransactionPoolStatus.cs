@@ -16,18 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
+using Nethermind.Blockchain.TransactionPools;
+
 namespace Nethermind.JsonRpc.Modules.TxPool
 {
-    public class TransactionPoolStatus : IJsonRpcResult
+    public class TransactionPoolStatus
     {
+        public TransactionPoolStatus(TransactionPoolInfo info)
+        {
+            Pending = info.Pending.Sum(t => t.Value.Count);
+            Queued = info.Queued.Sum(t => t.Value.Count);
+        }
+        
         public int Pending { get; set; }
         public int Queued { get; set; }
-
-        public object ToJson()
-            => new
-            {
-                pending = Pending,
-                queued = Queued
-            };
     }
 }

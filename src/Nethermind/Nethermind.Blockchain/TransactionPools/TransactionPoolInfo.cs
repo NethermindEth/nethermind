@@ -24,11 +24,11 @@ namespace Nethermind.Blockchain.TransactionPools
 {
     public class TransactionPoolInfo
     {
-        public IDictionary<Address, IDictionary<UInt256, Transaction[]>> Pending { get; }
-        public IDictionary<Address, IDictionary<UInt256, Transaction[]>> Queued { get; }
+        public IDictionary<Address, IDictionary<ulong, Transaction[]>> Pending { get; }
+        public IDictionary<Address, IDictionary<ulong, Transaction[]>> Queued { get; }
 
-        public TransactionPoolInfo(IDictionary<Address, IDictionary<UInt256, Transaction[]>> pending,
-            IDictionary<Address, IDictionary<UInt256, Transaction[]>> queued)
+        public TransactionPoolInfo(IDictionary<Address, IDictionary<ulong, Transaction[]>> pending,
+            IDictionary<Address, IDictionary<ulong, Transaction[]>> queued)
         {
             Pending = pending;
             Queued = queued;

@@ -19,27 +19,24 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {
-    public class TransactionPoolInspection : IJsonRpcResult
+    public class TransactionPoolInspection
     {
-        public IDictionary<Data.Data, Dictionary<Quantity, TransactionForRpc[]>> Pending { get; set; }
-        public IDictionary<Data.Data, Dictionary<Quantity, TransactionForRpc[]>> Queued { get; set; }
-
-        public object ToJson()
-            => new
-            {
-                pending = Pending.ToDictionary(k => k.Key.ToJson(),
-                    k => k.Value.ToDictionary(v => v.Key.ToJson(),
-                        v => v.Value.Select(GetTransactionSummary).ToArray())),
-                queued = Queued.ToDictionary(k => k.Key.ToJson(),
-                    k => k.Value.ToDictionary(v => v.Key.ToJson(),
-                        v => v.Value.Select(GetTransactionSummary).ToArray())),
-            };
-
-        private static string GetTransactionSummary(TransactionForRpc transactionForRpc)
-            => $"{transactionForRpc.From}: {transactionForRpc.Value} wei + {transactionForRpc.Gas} × {transactionForRpc.GasPrice} gas";
+        public TransactionPoolInspection(TransactionPoolInfo info)
+        {
+            Pending = info.Pending.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => v.Value.Select(GetTransactionSummary).ToArray()));
+            Queued = info.Queued.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => v.Value.Select(GetTransactionSummary).ToArray()));
+        }
+        
+        public IDictionary<Address, Dictionary<ulong, string[]>> Pending { get; set; }
+        public IDictionary<Address, Dictionary<ulong, string[]>> Queued { get; set; }
+        
+        private static string GetTransactionSummary(Transaction tx)
+            => $"{tx.SenderAddress}: {tx.Value} wei + {tx.GasLimit} × {tx.GasPrice} gas";
     }
 }

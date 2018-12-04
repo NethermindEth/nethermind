@@ -55,4 +55,40 @@ namespace Nethermind.JsonRpc.Data.Converters
             return BigInteger.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
         }
     }
+    
+    public class NullableBigIntegerConverter : JsonConverter<BigInteger?>
+    {
+        private BigIntegerConverter _bigIntegerConverter;
+        
+        public NullableBigIntegerConverter()
+            : this(false)
+        {
+        }
+
+        public NullableBigIntegerConverter(bool useX64)
+        {
+            _bigIntegerConverter = new BigIntegerConverter(useX64);
+        }
+
+        public override void WriteJson(JsonWriter writer, BigInteger? value, JsonSerializer serializer)
+        {
+            if (!value.HasValue)
+            {
+                writer.WriteNull();
+                return;
+            }
+            
+            _bigIntegerConverter.WriteJson(writer, value.Value, serializer);
+        }
+
+        public override BigInteger? ReadJson(JsonReader reader, Type objectType, BigInteger? existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            if (reader.TokenType == JsonToken.Null)
+            {
+                return null;
+            }
+            
+            return _bigIntegerConverter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
+        }
+    }
 }
