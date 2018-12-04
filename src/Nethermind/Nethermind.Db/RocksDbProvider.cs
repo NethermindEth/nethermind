@@ -70,6 +70,7 @@ namespace Nethermind.Db
             BlocksDb?.Dispose();
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
+            TraceDb?.Dispose();
         }
     }
 }
