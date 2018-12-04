@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Numerics;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -28,19 +29,16 @@ namespace Nethermind.Evm.Tracing
         public GethLikeTxTrace()
         {
             Entries = new List<GethTxTraceEntry>();
-            GethStorageTrace = new GethStorageTrace();
         }
-
-        public GethStorageTrace GethStorageTrace { get; set; }
         
         public BigInteger Gas { get; set; }
 
         public bool Failed { get; set; }
 
-        public string ReturnValue { get; set; }
+        public byte[] ReturnValue { get; set; }
         
         public List<GethTxTraceEntry> Entries { get; set; }
 
-        public static GethLikeTxTrace QuickFail { get; } = new GethLikeTxTrace {Failed = true, ReturnValue = string.Empty};
+        public static GethLikeTxTrace QuickFail { get; } = new GethLikeTxTrace {Failed = true, ReturnValue = Bytes.Empty};
     }
 }

@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
-            Receipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs);
+            TransactionReceipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs);
             if (_currentTxTracer.IsTracingReceipt)
             {
                 _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs);
@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsFailed(Address recipient, long gasSpent)
         {
-            Receipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent);
+            TransactionReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent);
             if (_currentTxTracer.IsTracingReceipt)
             {
                 _currentTxTracer.MarkAsFailed(recipient, gasSpent);
@@ -110,9 +110,9 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.SetOperationMemorySize(newSize);
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
-            _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue, cost, refund);
+            _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
         }
 
         public void ReportBalanceChange(Address address, UInt256 before, UInt256 after)
@@ -157,7 +157,7 @@ namespace Nethermind.Evm.Tracing
 
         private ITxTracer _currentTxTracer;
         private int _currentIndex;
-        public TransactionReceipt[] Receipts { get; private set; }
+        public TransactionReceipt[] TransactionReceipts { get; private set; }
 
         public bool IsTracingRewards => _otherTracer.IsTracingRewards;
 
@@ -175,7 +175,7 @@ namespace Nethermind.Evm.Tracing
             
             _block = block;
             _currentIndex = 0;
-            Receipts = new TransactionReceipt[_block.Transactions.Length];
+            TransactionReceipts = new TransactionReceipt[_block.Transactions.Length];
             _otherTracer.StartNewBlockTrace(block);
         }
 

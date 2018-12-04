@@ -17,11 +17,15 @@
  */
 
 using System.Linq;
+using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.DataModel;
-using Nethermind.JsonRpc.Module;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Test.Modules;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test
 {
@@ -34,12 +38,24 @@ namespace Nethermind.JsonRpc.Test
             return service.SendRequest(request);
         }
         
+        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
+        {
+            IJsonRpcService service = BuildRpcService<T>(module);
+            JsonRpcRequest request = GetJsonRequest(method, parameters);
+            JsonRpcResponse response = service.SendRequest(request);
+            JsonSerializerSettings settings = new JsonSerializerSettings();
+            settings.ContractResolver = new CamelCasePropertyNamesContractResolver();
+            settings.Converters = service.Converters.ToArray();
+            string serialized = JsonConvert.SerializeObject(response, settings);
+            TestContext.WriteLine(serialized.Replace("\"", "\\\""));
+            return serialized;
+        }
+        
         public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IModule
         {
             var moduleProvider = new TestRpcModuleProvider<T>(module);
             moduleProvider.Register<T>(module);
-            Newtonsoft.Json.JsonSerializer rpcSerializer = new Newtonsoft.Json.JsonSerializer();
-            IJsonRpcService service = new JsonRpcService(moduleProvider, Substitute.For<IConfigProvider>(), NullLogManager.Instance);
+            IJsonRpcService service = new JsonRpcService(moduleProvider, NullLogManager.Instance);
             return service;
         }
         
@@ -53,7 +69,7 @@ namespace Nethermind.JsonRpc.Test
         {
             var request = new JsonRpcRequest()
             {
-                Jsonrpc = "2.0",
+                JsonRpc = "2.0",
                 Method = method,
                 Params = parameters?.ToArray() ?? new string[0],
                 Id = 67

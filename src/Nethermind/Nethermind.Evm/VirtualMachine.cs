@@ -1781,7 +1781,7 @@ namespace Nethermind.Evm
                         
                         if (_txTracer.IsTracingOpLevelStorage)
                         {
-                            _txTracer.SetOperationStorage(storageAddress.Address, storageIndex, newValue, currentValue, cost, refund);
+                            _txTracer.SetOperationStorage(storageAddress.Address, storageIndex, newValue, currentValue);
                         }
 
                         break;

@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Receipts
             return transaction;
         }
 
-        public void Add(TransactionReceipt receipt)
-            => _receipts.TryAdd(receipt.TransactionHash, receipt);
+        public void Add(TransactionReceipt transactionReceipt)
+            => _receipts.TryAdd(transactionReceipt.TransactionHash, transactionReceipt);
     }
 }

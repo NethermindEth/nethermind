@@ -38,14 +38,20 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
-using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Module;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Admin;
+using Nethermind.JsonRpc.Modules.Debug;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Nethm;
+using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.KeyStore;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
@@ -66,6 +72,7 @@ using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
 using Nethermind.Wallet;
+using Block = Nethermind.Core.Block;
 using PingMessageSerializer = Nethermind.Network.P2P.PingMessageSerializer;
 using PongMessageSerializer = Nethermind.Network.P2P.PongMessageSerializer;
 
@@ -234,12 +241,10 @@ namespace Nethermind.Runner.Runners
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             var debugBridge = new DebugBridge(debugDbProvider, tracer, debugChain.Processor, _peerManager);
 
-            JsonRpcModelMapper mapper = new JsonRpcModelMapper();
-
-            EthModule module = new EthModule(_jsonSerializer, _configProvider, mapper, _logManager, blockchainBridge);
+            EthModule module = new EthModule(_jsonSerializer, _configProvider, _logManager, blockchainBridge);
             _rpcModuleProvider.Register<IEthModule>(module);
 
-            DebugModule debugModule = new DebugModule(_configProvider, _logManager, debugBridge, mapper, _jsonSerializer);
+            DebugModule debugModule = new DebugModule(_configProvider, _logManager, debugBridge, _jsonSerializer);
             _rpcModuleProvider.Register<IDebugModule>(debugModule);
 
             if (_sealEngine is CliqueSealEngine)
@@ -251,7 +256,7 @@ namespace Nethermind.Runner.Runners
             AdminModule adminModule = new AdminModule(_configProvider, _logManager, _jsonSerializer);
             _rpcModuleProvider.Register<IAdminModule>(adminModule);
 
-            TxPoolModule txPoolModule = new TxPoolModule(_configProvider, _logManager, _jsonSerializer, blockchainBridge, mapper);
+            TxPoolModule txPoolModule = new TxPoolModule(_configProvider, _logManager, _jsonSerializer, blockchainBridge);
             _rpcModuleProvider.Register<ITxPoolModule>(txPoolModule);
 
             if (_initConfig.NetworkEnabled && _initConfig.SynchronizationEnabled)

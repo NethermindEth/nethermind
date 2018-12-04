@@ -77,7 +77,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
             throw new NotSupportedException();
         }

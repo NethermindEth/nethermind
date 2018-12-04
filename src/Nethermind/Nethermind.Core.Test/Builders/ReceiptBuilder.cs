@@ -40,6 +40,7 @@ namespace Nethermind.Core.Test.Builders
             .WithState(Builders.TestObject.KeccakB)
             .WithBlockHash(Builders.TestObject.KeccakC)
             .WithBlockNumber(2)
+            .WithBloom(Bloom.Empty)
             .WithGasUsedTotal(1000);
 
         public ReceiptBuilder WithState(Keccak state)

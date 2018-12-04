@@ -144,34 +144,34 @@ namespace Nethermind.Blockchain
 
                 if ((processingOptions & ProcessingOptions.ReadOnlyChain) == 0)
                 {
-                    TransactionProcessed?.Invoke(this, new TransactionProcessedEventArgs(_receiptsTracer.Receipts[i]));
+                    TransactionProcessed?.Invoke(this, new TransactionProcessedEventArgs(_receiptsTracer.TransactionReceipts[i]));
                 }
             }
 
-            return _receiptsTracer.Receipts;
+            return _receiptsTracer.TransactionReceipts;
         }
 
-        private void SetReceiptsRootAndBloom(Block block, TransactionReceipt[] receipts)
+        private void SetReceiptsRootAndBloom(Block block, TransactionReceipt[] transactionReceipts)
         {
-            PatriciaTree receiptTree = receipts.Length > 0 ? new PatriciaTree(NullDb.Instance, Keccak.EmptyTreeHash, false) : null;
-            for (int i = 0; i < receipts.Length; i++)
+            PatriciaTree receiptTree = transactionReceipts.Length > 0 ? new PatriciaTree(NullDb.Instance, Keccak.EmptyTreeHash, false) : null;
+            for (int i = 0; i < transactionReceipts.Length; i++)
             {
-                Rlp receiptRlp = Rlp.Encode(receipts[i], _specProvider.GetSpec(block.Header.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                Rlp receiptRlp = Rlp.Encode(transactionReceipts[i], _specProvider.GetSpec(block.Header.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 receiptTree?.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 
             receiptTree?.UpdateRootHash();
 
             block.Header.ReceiptsRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
-            block.Header.Bloom = receipts.Length > 0 ? BuildBloom(receipts) : Bloom.Empty;
+            block.Header.Bloom = transactionReceipts.Length > 0 ? BuildBloom(transactionReceipts) : Bloom.Empty;
         }
 
-        public Bloom BuildBloom(TransactionReceipt[] receipts)
+        public Bloom BuildBloom(TransactionReceipt[] transactionReceipts)
         {
             Bloom bloom = new Bloom();
-            for (int i = 0; i < receipts.Length; i++)
+            for (int i = 0; i < transactionReceipts.Length; i++)
             {
-                bloom.Add(receipts[i].Logs);
+                bloom.Add(transactionReceipts[i].Logs);
             }
 
             return bloom;
@@ -226,13 +226,13 @@ namespace Nethermind.Blockchain
             return block;
         }
 
-        private void StoreTxReceipts(Block block, TransactionReceipt[] receipts)
+        private void StoreTxReceipts(Block block, TransactionReceipt[] transactionReceipts)
         {
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                receipts[i].BlockHash = block.Hash;
-                _receiptStorage.Add(receipts[i]);
-                _transactionPool.RemoveTransaction(receipts[i].TransactionHash);
+                transactionReceipts[i].BlockHash = block.Hash;
+                _receiptStorage.Add(transactionReceipts[i]);
+                _transactionPool.RemoveTransaction(transactionReceipts[i].TransactionHash);
             }
         }
         

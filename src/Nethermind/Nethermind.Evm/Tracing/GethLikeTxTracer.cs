@@ -40,24 +40,14 @@ namespace Nethermind.Evm.Tracing
         
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
-            _trace.ReturnValue = output?.ToHexString();
+            _trace.ReturnValue = output;
             _trace.Gas = gasSpent;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent)
         {
             _trace.Failed = true;
-            _trace.ReturnValue = string.Empty;
-        }
-
-        public void SetReturnValue(byte[] returnValue)
-        {
-            _trace.ReturnValue = returnValue?.ToHexString();
-        }
-
-        public void SetGasSpent(long gasSpent)
-        {
-            _trace.Gas = gasSpent;
+            _trace.ReturnValue = Bytes.Empty;
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
@@ -110,17 +100,8 @@ namespace Nethermind.Evm.Tracing
             _traceEntry.UpdateMemorySize(newSize);
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
-            GethStorageTraceEntry gethStorageTraceEntry = new GethStorageTraceEntry();
-            gethStorageTraceEntry.Address = address.ToString();
-            gethStorageTraceEntry.Index = storageIndex;
-            gethStorageTraceEntry.Cost = cost;
-            gethStorageTraceEntry.Refund = refund;
-            gethStorageTraceEntry.NewValue = newValue.ToHexString();
-            gethStorageTraceEntry.OldValue = currentValue.ToHexString();
-            
-            _trace.GethStorageTrace.Entries.Add(gethStorageTraceEntry);
             byte[] bigEndian = new byte[32];
             storageIndex.ToBigEndian(bigEndian);
             _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);

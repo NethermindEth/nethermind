@@ -31,54 +31,54 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip_storage()
         {
-            TransactionReceipt receipt = Build.A.Receipt.TestObject;
-            receipt.BlockNumber = 1;
-            receipt.BlockHash = TestObject.KeccakA;
-            receipt.Bloom = new Bloom();
-            receipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
-            receipt.ContractAddress = TestObject.AddressA;
-            receipt.Sender = TestObject.AddressB;
-            receipt.Recipient = TestObject.AddressC;
-            receipt.GasUsed = 100;
-            receipt.GasUsedTotal = 1000;
-            receipt.Index = 2;
-            receipt.PostTransactionState = TestObject.KeccakH;
+            TransactionReceipt transactionReceipt = Build.A.Receipt.TestObject;
+            transactionReceipt.BlockNumber = 1;
+            transactionReceipt.BlockHash = TestObject.KeccakA;
+            transactionReceipt.Bloom = new Bloom();
+            transactionReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
+            transactionReceipt.ContractAddress = TestObject.AddressA;
+            transactionReceipt.Sender = TestObject.AddressB;
+            transactionReceipt.Recipient = TestObject.AddressC;
+            transactionReceipt.GasUsed = 100;
+            transactionReceipt.GasUsedTotal = 1000;
+            transactionReceipt.Index = 2;
+            transactionReceipt.PostTransactionState = TestObject.KeccakH;
             
             TransactionReceiptDecoder decoder = new TransactionReceiptDecoder();
-            Rlp rlp = decoder.Encode(receipt, RlpBehaviors.Storage);
+            Rlp rlp = decoder.Encode(transactionReceipt, RlpBehaviors.Storage);
             TransactionReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpContext(), RlpBehaviors.Storage);
 
-            Assert.AreEqual(receipt.BlockHash, deserialized.BlockHash, "block hash");
-            Assert.AreEqual(receipt.BlockNumber, deserialized.BlockNumber, "block number");
-            Assert.AreEqual(receipt.Index, deserialized.Index, "index");
-            Assert.AreEqual(receipt.ContractAddress, deserialized.ContractAddress, "contract");
-            Assert.AreEqual(receipt.Sender, deserialized.Sender, "sender");
-            Assert.AreEqual(receipt.GasUsed, deserialized.GasUsed, "gas used");
-            Assert.AreEqual(receipt.GasUsedTotal, deserialized.GasUsedTotal, "gas used total");
-            Assert.AreEqual(receipt.Bloom, deserialized.Bloom, "bloom");
-            Assert.AreEqual(receipt.PostTransactionState, deserialized.PostTransactionState, "post transaction state");
-            Assert.AreEqual(receipt.Recipient, deserialized.Recipient, "recipient");
-            Assert.AreEqual(receipt.StatusCode, deserialized.StatusCode, "status");
+            Assert.AreEqual(transactionReceipt.BlockHash, deserialized.BlockHash, "block hash");
+            Assert.AreEqual(transactionReceipt.BlockNumber, deserialized.BlockNumber, "block number");
+            Assert.AreEqual(transactionReceipt.Index, deserialized.Index, "index");
+            Assert.AreEqual(transactionReceipt.ContractAddress, deserialized.ContractAddress, "contract");
+            Assert.AreEqual(transactionReceipt.Sender, deserialized.Sender, "sender");
+            Assert.AreEqual(transactionReceipt.GasUsed, deserialized.GasUsed, "gas used");
+            Assert.AreEqual(transactionReceipt.GasUsedTotal, deserialized.GasUsedTotal, "gas used total");
+            Assert.AreEqual(transactionReceipt.Bloom, deserialized.Bloom, "bloom");
+            Assert.AreEqual(transactionReceipt.PostTransactionState, deserialized.PostTransactionState, "post transaction state");
+            Assert.AreEqual(transactionReceipt.Recipient, deserialized.Recipient, "recipient");
+            Assert.AreEqual(transactionReceipt.StatusCode, deserialized.StatusCode, "status");
         }
         
         [Test]
         public void Can_do_roundtrip_root()
         {
-            TransactionReceipt receipt = Build.A.Receipt.TestObject;
-            receipt.BlockNumber = 1;
-            receipt.BlockHash = TestObject.KeccakA;
-            receipt.Bloom = new Bloom();
-            receipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
-            receipt.ContractAddress = TestObject.AddressA;
-            receipt.Sender = TestObject.AddressB;
-            receipt.Recipient = TestObject.AddressC;
-            receipt.GasUsed = 100;
-            receipt.GasUsedTotal = 1000;
-            receipt.Index = 2;
-            receipt.PostTransactionState = TestObject.KeccakH;
+            TransactionReceipt transactionReceipt = Build.A.Receipt.TestObject;
+            transactionReceipt.BlockNumber = 1;
+            transactionReceipt.BlockHash = TestObject.KeccakA;
+            transactionReceipt.Bloom = new Bloom();
+            transactionReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
+            transactionReceipt.ContractAddress = TestObject.AddressA;
+            transactionReceipt.Sender = TestObject.AddressB;
+            transactionReceipt.Recipient = TestObject.AddressC;
+            transactionReceipt.GasUsed = 100;
+            transactionReceipt.GasUsedTotal = 1000;
+            transactionReceipt.Index = 2;
+            transactionReceipt.PostTransactionState = TestObject.KeccakH;
             
             TransactionReceiptDecoder decoder = new TransactionReceiptDecoder();
-            Rlp rlp = decoder.Encode(receipt);
+            Rlp rlp = decoder.Encode(transactionReceipt);
             TransactionReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpContext());
 
             Assert.AreEqual(null, deserialized.BlockHash, "block hash");
@@ -88,10 +88,10 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(null, deserialized.Sender, "sender");
             Assert.AreEqual(0L, deserialized.GasUsed, "gas used");
             Assert.AreEqual(1000L, deserialized.GasUsedTotal, "gas used total");
-            Assert.AreEqual(receipt.Bloom, deserialized.Bloom, "bloom");
-            Assert.AreEqual(receipt.PostTransactionState, deserialized.PostTransactionState, "post transaction state");
+            Assert.AreEqual(transactionReceipt.Bloom, deserialized.Bloom, "bloom");
+            Assert.AreEqual(transactionReceipt.PostTransactionState, deserialized.PostTransactionState, "post transaction state");
             Assert.AreEqual(null, deserialized.Recipient, "recipient");
-            Assert.AreEqual(receipt.StatusCode, deserialized.StatusCode, "status");
+            Assert.AreEqual(transactionReceipt.StatusCode, deserialized.StatusCode, "status");
         }
     }
 }

@@ -5,11 +5,11 @@ namespace Nethermind.Blockchain
 {
     public class TransactionProcessedEventArgs : EventArgs
     {
-        public TransactionReceipt Receipt { get; }
+        public TransactionReceipt TransactionReceipt { get; }
 
-        public TransactionProcessedEventArgs(TransactionReceipt receipt)
+        public TransactionProcessedEventArgs(TransactionReceipt transactionReceipt)
         {
-            Receipt = receipt;
+            TransactionReceipt = transactionReceipt;
         }
     }
 }

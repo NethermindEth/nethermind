@@ -26,27 +26,27 @@ namespace Nethermind.Core.Encoding
         public TransactionReceipt Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
-            TransactionReceipt receipt = new TransactionReceipt();
+            TransactionReceipt transactionReceipt = new TransactionReceipt();
             context.ReadSequenceLength();
             byte[] firstItem = context.DecodeByteArray();
             if (firstItem.Length == 1)
             {
-                receipt.StatusCode = firstItem[0];
+                transactionReceipt.StatusCode = firstItem[0];
             }
             else
             {
-                receipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
+                transactionReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
             }
 
-            if(isStorage) receipt.BlockHash = context.DecodeKeccak();
-            if(isStorage) receipt.BlockNumber = context.DecodeUInt256();
-            if(isStorage) receipt.Index = context.DecodeInt();
-            if(isStorage) receipt.Sender = context.DecodeAddress();
-            if(isStorage) receipt.Recipient = context.DecodeAddress();
-            if(isStorage) receipt.ContractAddress = context.DecodeAddress();
-            if(isStorage) receipt.GasUsed = (long) context.DecodeUBigInt();
-            receipt.GasUsedTotal = (long) context.DecodeUBigInt();
-            receipt.Bloom = context.DecodeBloom();
+            if(isStorage) transactionReceipt.BlockHash = context.DecodeKeccak();
+            if(isStorage) transactionReceipt.BlockNumber = context.DecodeUInt256();
+            if(isStorage) transactionReceipt.Index = context.DecodeInt();
+            if(isStorage) transactionReceipt.Sender = context.DecodeAddress();
+            if(isStorage) transactionReceipt.Recipient = context.DecodeAddress();
+            if(isStorage) transactionReceipt.ContractAddress = context.DecodeAddress();
+            if(isStorage) transactionReceipt.GasUsed = (long) context.DecodeUBigInt();
+            transactionReceipt.GasUsedTotal = (long) context.DecodeUBigInt();
+            transactionReceipt.Bloom = context.DecodeBloom();
 
             int lastCheck = context.ReadSequenceLength() + context.Position;
             List<LogEntry> logEntries = new List<LogEntry>();
@@ -65,11 +65,11 @@ namespace Nethermind.Core.Encoding
             // since error was added later we can only rely on it in cases where we read receipt only and no data follows
             if (isStorage && !allowExtraData && context.Position != context.Length)
             {
-                receipt.Error = context.DecodeString();
+                transactionReceipt.Error = context.DecodeString();
             }
 
-            receipt.Logs = logEntries.ToArray();
-            return receipt;
+            transactionReceipt.Logs = logEntries.ToArray();
+            return transactionReceipt;
         }
 
         public Rlp Encode(TransactionReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

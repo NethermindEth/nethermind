@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Receipts
         
         public static NullReceiptStorage Instance { get; } = new NullReceiptStorage();
 
-        public void Add(TransactionReceipt receipt)
+        public void Add(TransactionReceipt transactionReceipt)
         {
         }
     }

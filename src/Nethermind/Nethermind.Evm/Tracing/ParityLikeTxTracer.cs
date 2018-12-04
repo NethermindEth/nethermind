@@ -148,7 +148,7 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund) => throw new NotSupportedException();
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new NotSupportedException();
 
         public void ReportBalanceChange(Address address, UInt256 before, UInt256 after)
         {

@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
-using Nethermind.JsonRpc.DataModel;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.EvmPlayground
 {
@@ -73,7 +73,7 @@ namespace Nethermind.EvmPlayground
         public async Task<string> GetTrace(string txHash)
         {
             string responseJson = await _jsonRpcClient.Post("debug_traceTransaction", txHash);
-            JsonRpcResponse<TransactionTrace> response = _serializer.Deserialize<JsonRpcResponse<TransactionTrace>>(responseJson);
+            JsonRpcResponse<GethLikeTxTrace> response = _serializer.Deserialize<JsonRpcResponse<GethLikeTxTrace>>(responseJson);
             return _serializer.Serialize(response.Result, true);
         }
 

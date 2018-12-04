@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.DataModel;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.DiagTools
 {
@@ -28,18 +28,18 @@ namespace Nethermind.DiagTools
     {
         private ILogger _logger = new SimpleConsoleLogger();
 
-        public void Compare(TransactionTrace gethTrace, TransactionTrace nethTrace)
+        public void Compare(GethLikeTxTrace gethTrace, GethLikeTxTrace nethTrace)
         {
             if (gethTrace.Gas != nethTrace.Gas)
             {
                 _logger.Warn($"  gas geth {gethTrace.Gas} != neth {nethTrace.Gas} (diff: {gethTrace.Gas - nethTrace.Gas})");
             }
 
-            string gethReturnValue = gethTrace.ReturnValue;
-            string nethReturnValue = nethTrace.ReturnValue;
-            if (gethReturnValue != nethReturnValue)
+            byte[] gethReturnValue = gethTrace.ReturnValue;
+            byte[] nethReturnValue = nethTrace.ReturnValue;
+            if (!Bytes.AreEqual(gethReturnValue, nethReturnValue))
             {
-                _logger.Warn($"  return value geth {gethReturnValue} != neth {nethReturnValue}");
+                _logger.Warn($"  return value geth {gethReturnValue.ToHexString()} != neth {nethReturnValue.ToHexString()}");
             }
             
             if (gethTrace.Failed != nethTrace.Failed)
@@ -47,8 +47,8 @@ namespace Nethermind.DiagTools
                 _logger.Warn($"  failed diff geth {gethTrace.Failed} != neth {nethTrace.Failed}");
             }
 
-            var gethEntries = gethTrace.StructLogs.ToList();
-            var nethEntries = nethTrace.StructLogs.ToList();
+            var gethEntries = gethTrace.Entries.ToList();
+            var nethEntries = nethTrace.Entries.ToList();
             
             int ixDiff = 0;
             for (int i = 0; i < gethEntries.Count; i++)
@@ -63,7 +63,7 @@ namespace Nethermind.DiagTools
 
                 int nethIx = i - ixDiff;
                 
-                string entryDesc = $"ix {i}/{nethIx} pc {gethEntries[i].Pc} op {gethEntries[i].Op} gas {gethEntries[i].Gas} | ";
+                string entryDesc = $"ix {i}/{nethIx} pc {gethEntries[i].Pc} op {gethEntries[i].Operation} gas {gethEntries[i].Gas} | ";
                 if (nethEntries.Count < nethIx + 1)
                 {
                     _logger.Warn($"    neth entry missing");        
@@ -74,11 +74,11 @@ namespace Nethermind.DiagTools
             }
         }
 
-        private bool CompareEntry(TransactionTraceEntry gethEntry, TransactionTraceEntry nethEntry, string entryDesc)
+        private bool CompareEntry(GethTxTraceEntry gethEntry, GethTxTraceEntry nethEntry, string entryDesc)
         {
-            if (gethEntry.Op != nethEntry.Op)
+            if (gethEntry.Operation != nethEntry.Operation)
             {
-                _logger.Warn($"    {entryDesc} operation geth {gethEntry.Op} neth {nethEntry.Op}");
+                _logger.Warn($"    {entryDesc} operation geth {gethEntry.Operation} neth {nethEntry.Operation}");
                 return false;
             }
 
@@ -126,7 +126,7 @@ namespace Nethermind.DiagTools
             return true;
         }
 
-        private bool CompareStorage(TransactionTraceEntry gethEntry, TransactionTraceEntry nethEntry, string entryDesc)
+        private bool CompareStorage(GethTxTraceEntry gethEntry, GethTxTraceEntry nethEntry, string entryDesc)
         {
             foreach (KeyValuePair<string,string> keyValuePair in gethEntry.Storage)
             {

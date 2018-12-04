@@ -1,12 +1,26 @@
-﻿using System;
-using System.IO;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 using System.Linq;
-using Castle.Core.Logging;
-using Nethermind.JsonRpc.Config;
-using Nethermind.JsonRpc.DataModel;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
-using Nethermind.Network.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
@@ -41,11 +55,9 @@ namespace Nethermind.Config.Test
 
             Assert.AreEqual(100, keystoreConfig.KdfparamsDklen);
             Assert.AreEqual("test", keystoreConfig.Cipher);
-
-            Assert.AreEqual("test", jsonRpcConfig.JsonRpcVersion);           
-            Assert.AreEqual("UTF7", jsonRpcConfig.MessageEncoding);
+          
             Assert.AreEqual(2, jsonRpcConfig.EnabledModules.Count());
-            new[] { ModuleType.Eth, ModuleType.Shh }.ToList().ForEach(x =>
+            new[] { ModuleType.Eth }.ToList().ForEach(x =>
             {
                 Assert.IsTrue(jsonRpcConfig.EnabledModules.Contains(x));
             });
