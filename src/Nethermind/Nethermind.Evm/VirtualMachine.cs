@@ -1671,8 +1671,6 @@ namespace Nethermind.Evm
                         bool currentIsZero = currentValue.IsZero();
                         
                         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
-                        long cost = GasCostOf.SReset;
-                        long refund = 0;
 
                         if (!spec.IsEip1283Enabled) // note that for this case we already deducted 5000
                         {
@@ -1681,7 +1679,6 @@ namespace Nethermind.Evm
                                 if (!newSameAsCurrent)
                                 {
                                     evmState.Refund += RefundOf.SClear;
-                                    refund = (int)RefundOf.SClear;
                                 }
                             }
                             else if (currentIsZero)
@@ -1691,8 +1688,6 @@ namespace Nethermind.Evm
                                     EndInstructionTraceError(OutOfGasErrorText);
                                     return CallResult.OutOfGasException;    
                                 }
-                                
-                                cost = (int)GasCostOf.SSet;
                             }
                         }
                         else // eip1283enabled
