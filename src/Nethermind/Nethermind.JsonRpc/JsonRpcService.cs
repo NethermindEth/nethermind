@@ -142,11 +142,9 @@ namespace Nethermind.JsonRpc
             return GetErrorResponse(ErrorType.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id, methodName);
         }
 
-        private ConcurrentDictionary<RuntimeMethodHandle, ParameterInfo[]> _cachedParameters = new ConcurrentDictionary<RuntimeMethodHandle, ParameterInfo[]>();
-        
         private JsonRpcResponse Execute(JsonRpcRequest request, string methodName, MethodInfo method, object module)
         {
-            var expectedParameters = _cachedParameters.GetOrAdd(method.MethodHandle, handle => method.GetParameters());
+            var expectedParameters = method.GetParameters();
             var providedParameters = request.Params;
             if (expectedParameters.Length != (providedParameters?.Length ?? 0))
             {
@@ -204,7 +202,6 @@ namespace Nethermind.JsonRpc
                     }
                     else
                     {
-
                         executionParam = JsonConvert.DeserializeObject($"\"{providedParameter}\"", paramType, Converters.ToArray());
                     }
 

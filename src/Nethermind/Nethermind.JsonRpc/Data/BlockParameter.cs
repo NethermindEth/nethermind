@@ -37,9 +37,11 @@ namespace Nethermind.JsonRpc.Data
         
         public void FromJson(string jsonValue)
         {
+            // TODO: (peculiar problem with ethstats now?)
             if (string.IsNullOrEmpty(jsonValue))
             {
-                throw new Exception("Empty parameter");
+                Type = BlockParameterType.Latest;
+                return;
             }
             
             if (Enum.TryParse(jsonValue, true, out BlockParameterType type))
