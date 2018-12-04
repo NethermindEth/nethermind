@@ -17,7 +17,6 @@
  */
 
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.DataModel;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test

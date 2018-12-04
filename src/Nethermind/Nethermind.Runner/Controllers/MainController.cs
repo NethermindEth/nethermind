@@ -26,7 +26,6 @@ using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.DataModel;
 using Newtonsoft.Json;
 
 namespace Nethermind.Runner.Controllers

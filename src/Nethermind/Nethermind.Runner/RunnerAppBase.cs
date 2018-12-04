@@ -42,7 +42,6 @@ using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Evm;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.Module;
 using Nethermind.KeyStore;
 using Nethermind.Mining;
@@ -197,7 +196,7 @@ namespace Nethermind.Runner
                 var serializer = new UnforgivingJsonSerializer();
                 rpcModuleProvider.Register<IWeb3Module>(new Web3Module(configProvider, logManager, serializer));
 
-                Bootstrap.Instance.JsonRpcService = new JsonRpcService(rpcModuleProvider, configProvider, logManager);
+                Bootstrap.Instance.JsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
                 Bootstrap.Instance.LogManager = logManager;
                 Bootstrap.Instance.JsonSerializer = serializer;
                 _jsonRpcRunner = new JsonRpcRunner(configProvider, rpcModuleProvider, logManager);

@@ -25,8 +25,8 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
-using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.DiagTools
 {

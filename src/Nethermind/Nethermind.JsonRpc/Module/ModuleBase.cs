@@ -21,8 +21,6 @@ using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.Config;
-using Nethermind.JsonRpc.DataModel;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Module

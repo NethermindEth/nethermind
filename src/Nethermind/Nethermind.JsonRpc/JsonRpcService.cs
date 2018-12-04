@@ -30,9 +30,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
-using Nethermind.JsonRpc.Config;
-using Nethermind.JsonRpc.DataModel;
-using Nethermind.JsonRpc.DataModel.Converters;
+using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Module;
 using Newtonsoft.Json;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
@@ -67,16 +65,14 @@ namespace Nethermind.JsonRpc
         }
 
         private readonly ILogger _logger;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IRpcModuleProvider _rpcModuleProvider;
         private readonly JsonSerializer _serializer;
 
         private Dictionary<Type, JsonConverter> _converterLookup = new Dictionary<Type, JsonConverter>();
 
-        public JsonRpcService(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider, ILogManager logManager)
+        public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
-            _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _rpcModuleProvider = rpcModuleProvider;
             _serializer = new JsonSerializer();
 

@@ -26,13 +26,14 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Config;
-using Nethermind.JsonRpc.DataModel;
+using Nethermind.JsonRpc.Eth;
 using Nethermind.JsonRpc.Module;
+using Nethermind.JsonRpc.Net;
+using Nethermind.JsonRpc.Nethm;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
-using Block = Nethermind.JsonRpc.DataModel.Block;
+using Block = Nethermind.JsonRpc.Eth.Block;
 
 namespace Nethermind.JsonRpc.Test
 {
@@ -55,7 +56,7 @@ namespace Nethermind.JsonRpc.Test
         {
             RpcModuleProvider moduleProvider = new RpcModuleProvider(_configurationProvider.GetConfig<IJsonRpcConfig>());
             moduleProvider.Register<T>(ethModule);
-            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
+            _jsonRpcService = new JsonRpcService(moduleProvider, _logManager);
             JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
             JsonRpcResponse response = _jsonRpcService.SendRequest(request);
             Assert.AreEqual(request.Id, response.Id);

@@ -24,11 +24,10 @@ using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Nethermind.Config;
 using Log = Nethermind.Core.Logging;
-using Nethermind.JsonRpc.Config;
-using Nethermind.JsonRpc.DataModel;
 using Nethermind.Runner.Config;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core.Model;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Module;
 using Nethermind.Runner.LogBridge;
 

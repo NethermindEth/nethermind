@@ -17,7 +17,6 @@
  */
 
 using System.Collections.Generic;
-using Nethermind.JsonRpc.DataModel;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc

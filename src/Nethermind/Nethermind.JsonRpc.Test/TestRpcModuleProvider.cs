@@ -18,8 +18,11 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.JsonRpc.DataModel;
+using Nethermind.JsonRpc.Debug;
+using Nethermind.JsonRpc.Eth;
 using Nethermind.JsonRpc.Module;
+using Nethermind.JsonRpc.Net;
+using Nethermind.JsonRpc.Trace;
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test

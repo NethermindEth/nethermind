@@ -22,7 +22,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.DataModel;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Module;
 
 namespace Nethermind.Clique

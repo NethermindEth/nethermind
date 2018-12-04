@@ -20,7 +20,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Nethermind.JsonRpc.DataModel;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Module

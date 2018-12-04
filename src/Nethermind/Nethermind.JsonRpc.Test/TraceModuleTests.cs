@@ -26,6 +26,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Module;
+using Nethermind.JsonRpc.Trace;
 using NSubstitute;
 using NUnit.Framework;
 

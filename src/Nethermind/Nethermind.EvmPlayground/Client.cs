@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
 using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.EvmPlayground
 {

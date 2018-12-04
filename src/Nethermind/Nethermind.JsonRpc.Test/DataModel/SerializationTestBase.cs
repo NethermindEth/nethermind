@@ -25,6 +25,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Module;
+using Nethermind.JsonRpc.Trace;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;

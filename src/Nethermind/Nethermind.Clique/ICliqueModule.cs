@@ -18,7 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc.DataModel;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Module;
 
 namespace Nethermind.Clique

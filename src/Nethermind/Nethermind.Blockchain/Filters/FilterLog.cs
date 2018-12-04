@@ -28,14 +28,15 @@ namespace Nethermind.Blockchain.Filters
         public UInt256 LogIndex { get; }
         public UInt256 BlockNumber { get; }
         public Keccak BlockHash { get; }
-        public int TransactionIndex { get; }
         public Keccak TransactionHash { get; }
+        public UInt256 TransactionIndex { get; }
         public Address Address { get; }
         public byte[] Data { get; }
         public Keccak[] Topics { get; }
 
-        public FilterLog(UInt256 logIndex, UInt256 blockNumber, Keccak blockHash, int transactionIndex, Keccak transactionHash, Address address, byte[] data, Keccak[] topics)
+        public FilterLog(UInt256 logIndex, UInt256 blockNumber, Keccak blockHash, UInt256 transactionIndex, Keccak transactionHash, Address address, byte[] data, Keccak[] topics, bool removed = false)
         {
+            Removed = removed;
             LogIndex = logIndex;
             BlockNumber = blockNumber;
             BlockHash = blockHash;

@@ -19,7 +19,7 @@
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc.DataModel;
+using Nethermind.JsonRpc.Modules.Debug;
 
 namespace Nethermind.JsonRpc.Module
 {
@@ -38,11 +38,8 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);
         ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
         ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
-<<<<<<< HEAD
         ResultWrapper<byte[]> debug_getFromDb(string dbName, Data key);
         ResultWrapper<bool> debug_dumpPeerConnectionDetails();
-=======
         ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key);
->>>>>>> #310 removing intermediary objects, work in progress
     }
 }

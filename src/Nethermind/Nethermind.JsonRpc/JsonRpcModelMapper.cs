@@ -24,10 +24,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.DataModel;
-using Block = Nethermind.JsonRpc.DataModel.Block;
-using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
-using TransactionReceipt = Nethermind.JsonRpc.DataModel.TransactionReceipt;
+using Nethermind.JsonRpc.TxPool;
+using Block = Nethermind.JsonRpc.Eth.Block;
+using Transaction = Nethermind.JsonRpc.Transaction;
+using TransactionReceipt = Nethermind.JsonRpc.TransactionReceipt;
 
 namespace Nethermind.JsonRpc
 {
@@ -168,25 +168,25 @@ namespace Nethermind.JsonRpc
                 From = new Data(receipt.Sender),
                 To = new Data(receipt.Recipient),
                 ContractAddress = new Data(receipt.ContractAddress),
-                Logs = receipt.Logs?.Select(MapLog).ToArray() ?? Array.Empty<Log>(),
+                Logs = receipt.Logs?.Select(MapLog).ToArray() ?? Array.Empty<LogEntryForRpc>(),
                 LogsBloom = new Data(receipt.Bloom?.Bytes),
                 Status = new Quantity(receipt.StatusCode)
             };
 
-            for (int i = 0; i < mapped.Logs.Length; i++)
-            {
-                mapped.Logs[i].BlockHash = mapped.BlockHash;
-                mapped.Logs[i].BlockNumber = mapped.BlockNumber;
-                mapped.Logs[i].LogIndex = new Quantity(i);
-                mapped.Logs[i].TransactionHash = mapped.TransactionHash;
-                mapped.Logs[i].TransactionIndex = mapped.TransactionIndex;
-            }
+//            for (int i = 0; i < mapped.Logs.Length; i++)
+//            {
+//                mapped.Logs[i].BlockHash = mapped.BlockHash;
+//                mapped.Logs[i].BlockNumber = mapped.BlockNumber;
+//                mapped.Logs[i].LogIndex = new Quantity(i);
+//                mapped.Logs[i].TransactionHash = mapped.TransactionHash;
+//                mapped.Logs[i].TransactionIndex = mapped.TransactionIndex;
+//            }
 
             return mapped;
         }
 
-        public Log MapLog(LogEntry logEntry)
-            => new Log
+        public LogEntryForRpc MapLog(LogEntry logEntry)
+            => new LogEntryForRpc
             {
                 Data = new Data(logEntry.Data),
                 Address = new Data(logEntry.LoggersAddress),

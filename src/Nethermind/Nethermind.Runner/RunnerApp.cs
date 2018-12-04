@@ -24,7 +24,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Db.Config;
-using Nethermind.JsonRpc.Config;
+using Nethermind.JsonRpc;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Config;

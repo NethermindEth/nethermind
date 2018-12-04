@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.DataModel;
+using Nethermind.JsonRpc.Nethm;
 using Nethermind.LibSolc;
 using Nethermind.Network;
 using Newtonsoft.Json.Linq;
