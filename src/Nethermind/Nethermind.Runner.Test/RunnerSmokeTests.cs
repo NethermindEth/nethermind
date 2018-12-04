@@ -19,7 +19,7 @@
 using Nethermind.Config;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Module;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Runner.Runners;
 using NUnit.Framework;
 

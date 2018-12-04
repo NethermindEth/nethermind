@@ -26,14 +26,16 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Eth;
-using Nethermind.JsonRpc.Module;
-using Nethermind.JsonRpc.Net;
-using Nethermind.JsonRpc.Nethm;
+using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Nethm;
+using Nethermind.JsonRpc.Modules.Web3;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
-using Block = Nethermind.JsonRpc.Eth.Block;
+using Block = Nethermind.JsonRpc.Modules.Eth.Block;
 
 namespace Nethermind.JsonRpc.Test
 {

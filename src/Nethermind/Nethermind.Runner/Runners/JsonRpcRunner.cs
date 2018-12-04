@@ -28,7 +28,7 @@ using Nethermind.Runner.Config;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core.Model;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Module;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Runner.LogBridge;
 
 namespace Nethermind.Runner.Runners

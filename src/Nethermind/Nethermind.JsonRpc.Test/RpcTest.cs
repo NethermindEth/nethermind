@@ -20,7 +20,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.Module;
+using Nethermind.JsonRpc.Modules;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using NSubstitute;
@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Test
         {
             var request = new JsonRpcRequest()
             {
-                Jsonrpc = "2.0",
+                JsonRpc = "2.0",
                 Method = method,
                 Params = parameters?.ToArray() ?? new string[0],
                 Id = 67

@@ -18,6 +18,7 @@
 
 using System.Linq;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
 using Nethermind.Stats;

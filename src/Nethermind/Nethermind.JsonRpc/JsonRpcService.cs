@@ -30,8 +30,8 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
-using Nethermind.JsonRpc.Converters;
-using Nethermind.JsonRpc.Module;
+using Nethermind.JsonRpc.Data.Converters;
+using Nethermind.JsonRpc.Modules;
 using Newtonsoft.Json;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 

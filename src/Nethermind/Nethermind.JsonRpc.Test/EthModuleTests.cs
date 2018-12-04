@@ -24,8 +24,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Eth;
-using Nethermind.JsonRpc.Module;
+using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
 

@@ -20,14 +20,14 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcRequest
     {
-        public string Jsonrpc { get; set; }
+        public string JsonRpc { get; set; }
         public string Method { get; set; }
         public string[] Params { get; set; }
         public ulong Id { get; set; }
 
         public override string ToString()
         {
-            return $"Id: {Id},  JSON RPC: {Jsonrpc}, Method: {Method}, Params: {string.Concat(Params, ", ")}";
+            return $"Id: {Id},  JSON RPC: {JsonRpc}, Method: {Method}, Params: {string.Concat(Params, ", ")}";
         }
     }
 }
