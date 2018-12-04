@@ -138,7 +138,7 @@ namespace Nethermind.Clique
                     extraDelayMilliseconds += (ulong) _cryptoRandom.NextInt(wiggle);
                 }
 
-                if (_scheduledBlock.Timestamp + extraDelayMilliseconds / 1000 < _timestamp.EpochSeconds)
+                if (_scheduledBlock.Timestamp * 1000 + extraDelayMilliseconds < _timestamp.EpochMilliseconds)
                 {
                     if (_scheduledBlock.Number > _blockTree.Head.Number)
                     {
