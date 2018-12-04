@@ -27,6 +27,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
+using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.KeyStore;
@@ -78,7 +79,7 @@ namespace Nethermind.Runner.Runners
             return Task.CompletedTask;
         }
 
-        public async Task StopAsync()
+        public async Task StopAsync(ExitType exitType)
         {
             await Task.CompletedTask;
         }

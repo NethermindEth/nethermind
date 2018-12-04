@@ -17,12 +17,13 @@
  */
 
 using System.Threading.Tasks;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Runner.Runners
 {
     public interface IRunner
     {
         Task Start();
-        Task StopAsync();
+        Task StopAsync(ExitType exitType);
     }
 }

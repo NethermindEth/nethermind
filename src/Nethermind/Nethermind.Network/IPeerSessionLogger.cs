@@ -16,20 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm.Tracing;
+using System.Collections.Generic;
+using Nethermind.Stats;
 
-namespace Nethermind.JsonRpc.Module
+namespace Nethermind.Network
 {
-    public interface IDebugBridge
+    public interface IPeerSessionLogger
     {
-        GethLikeTxTrace GetTransactionTrace(Keccak transactionHash);
-        GethLikeTxTrace GetTransactionTrace(UInt256 blockNumber, int index);
-        GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index);
-        GethLikeTxTrace[] GetBlockTrace(Keccak blockHash);
-        GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber);
-        byte[] GetDbValue(string dbName, byte[] key);
-        bool LogPeerConnectionDetails();
+        void Init(string logsDirectory);
+        void LogSessionStats(IReadOnlyCollection<Peer> activePeers, IReadOnlyCollection<Peer> candidatePeers, bool logEventDetails);
+        string GetEventHistoryLog(INodeStats nodeStats);
     }
 }

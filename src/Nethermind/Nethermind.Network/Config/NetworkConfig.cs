@@ -64,7 +64,6 @@ namespace Nethermind.Network.Config
         public int PeersPersistenceInterval { get; set; } = 1000 * 5;
         public int P2PPingInterval { get; set; } = 1000 * 10;
         public int P2PPingRetryCount { get; set; } = 3;
-        public bool CaptureNodeStatsEventHistory { get; } = true;
         public string DetailedTimeDateFormat { get; } = "yyyy-MM-dd HH:mm:ss.fff";
         public int MaxPersistedPeerCount { get; set; } = 2000;
         public int PersistedPeerCountCleanupThreshold { get; set; } = 2200;

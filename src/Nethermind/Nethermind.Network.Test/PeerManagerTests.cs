@@ -101,9 +101,11 @@ namespace Nethermind.Network.Test
             _blockTree = Substitute.For<IBlockTree>();
             var app = new DiscoveryApp(new NodesLocator(nodeTable, _discoveryManager, _configurationProvider, _logManager), _discoveryManager, _nodeFactory, nodeTable, Substitute.For<IMessageSerializationService>(), new CryptoRandom(), Substitute.For<INetworkStorage>(), _configurationProvider, _logManager, new PerfService(_logManager));
             app.Initialize(key);
-            
+
+            var sessionLogger = new PeerSessionLogger(_logManager, _configurationProvider, new PerfService(_logManager));
+            sessionLogger.Init(Path.GetTempPath());
             var networkStorage = new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager));
-            _peerManager = new PeerManager(_localPeer, app, _synchronizationManager, new NodeStatsProvider(statsConfig, _nodeFactory, _logManager), networkStorage, _nodeFactory, _configurationProvider, new PerfService(_logManager), _transactionPool, _logManager);
+            _peerManager = new PeerManager(_localPeer, app, _synchronizationManager, new NodeStatsProvider(statsConfig, _nodeFactory, _logManager), networkStorage, _nodeFactory, _configurationProvider, new PerfService(_logManager), _transactionPool, _logManager, sessionLogger);
             _peerManager.Init(true);
         }
 

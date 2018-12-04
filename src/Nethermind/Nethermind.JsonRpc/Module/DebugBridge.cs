@@ -23,6 +23,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
+using Nethermind.Network;
 using Nethermind.Store;
 
 namespace Nethermind.JsonRpc.Module
@@ -31,11 +32,13 @@ namespace Nethermind.JsonRpc.Module
     {
         private readonly IBlockchainProcessor _receiptsProcessor;
         private readonly ITracer _tracer;
+        private readonly IPeerManager _peerManager;
         private Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockchainProcessor receiptsProcessor)
+        public DebugBridge(IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockchainProcessor receiptsProcessor, IPeerManager peerManager)
         {
             _receiptsProcessor = receiptsProcessor ?? throw new ArgumentNullException(nameof(receiptsProcessor));
+            _peerManager = peerManager;
             _receiptsProcessor.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -59,7 +62,17 @@ namespace Nethermind.JsonRpc.Module
         {
             return _dbMappings[dbName][key];
         }
-        
+
+        public bool LogPeerConnectionDetails()
+        {
+            if (_peerManager == null)
+            {
+                return false;
+            }
+            _peerManager.LogSessionStats(true);
+            return true;
+        }
+
         public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash)
         {
             return _tracer.Trace(transactionHash);
