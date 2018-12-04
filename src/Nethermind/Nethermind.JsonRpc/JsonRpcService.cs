@@ -160,7 +160,7 @@ namespace Nethermind.JsonRpc
                 parameters = DeserializeParameters(expectedParameters, providedParameters);
                 if (parameters == null)
                 {
-                    if(_logger.IsError) _logger.Error($"Incorrect JSON RPC parameters when calling {methodName}: {string.Join(", ", "providedParameters")}");
+                    if(_logger.IsError) _logger.Error($"Incorrect JSON RPC parameters when calling {methodName}: {string.Join(", ", providedParameters)}");
                     return GetErrorResponse(ErrorType.InvalidParams, "Incorrect parameters", request.Id, methodName);
                 }
             }
