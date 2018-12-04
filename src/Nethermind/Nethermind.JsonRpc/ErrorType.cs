@@ -20,6 +20,7 @@ namespace Nethermind.JsonRpc
 {
     public enum ErrorType
     {
+        None,
         ParseError,
         InvalidRequest,
         MethodNotFound,

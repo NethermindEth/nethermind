@@ -30,8 +30,6 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Data.Converters;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
