@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -41,6 +42,17 @@ namespace Nethermind.JsonRpc
     [Todo(Improve.Refactor, "Use JsonConverters and JSON serialization everywhere")]
     public class JsonRpcService : IJsonRpcService
     {
+        public static IDictionary<ErrorType, int> ErrorCodes => new Dictionary<ErrorType, int>
+        {
+            { ErrorType.ParseError, -32700 },
+            { ErrorType.InvalidRequest, -32600 },
+            { ErrorType.MethodNotFound, -32601 },
+            { ErrorType.InvalidParams, -32602 },
+            { ErrorType.InternalError, -32603 }
+        };
+        
+        public const string JsonRpcVersion = "2.0";
+        
         public static IReadOnlyCollection<JsonConverter> GetStandardConverters()
         {
             return new JsonConverter[]
@@ -133,9 +145,11 @@ namespace Nethermind.JsonRpc
             return GetErrorResponse(ErrorType.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id, methodName);
         }
 
+        private ConcurrentDictionary<RuntimeMethodHandle, ParameterInfo[]> _cachedParameters = new ConcurrentDictionary<RuntimeMethodHandle, ParameterInfo[]>();
+        
         private JsonRpcResponse Execute(JsonRpcRequest request, string methodName, MethodInfo method, object module)
         {
-            var expectedParameters = method.GetParameters();
+            var expectedParameters = _cachedParameters.GetOrAdd(method.MethodHandle, handle => method.GetParameters());
             var providedParameters = request.Params;
             if (expectedParameters.Length != (providedParameters?.Length ?? 0))
             {
@@ -146,7 +160,7 @@ namespace Nethermind.JsonRpc
             object[] parameters = null;
             if (expectedParameters.Length > 0)
             {
-                parameters = GetParameters(expectedParameters, providedParameters);
+                parameters = DeserializeParameters(expectedParameters, providedParameters);
                 if (parameters == null)
                 {
                     return GetErrorResponse(ErrorType.InvalidParams, "Incorrect parameters", request.Id, methodName);
@@ -170,7 +184,7 @@ namespace Nethermind.JsonRpc
             return GetSuccessResponse(resultWrapper.GetData(), request.Id);
         }
 
-        private object[] GetParameters(ParameterInfo[] expectedParameters, string[] providedParameters)
+        private object[] DeserializeParameters(ParameterInfo[] expectedParameters, string[] providedParameters)
         {
             try
             {
@@ -213,7 +227,7 @@ namespace Nethermind.JsonRpc
             var response = new JsonRpcResponse
             {
                 Id = id,
-                JsonRpc = _jsonRpcConfig.JsonRpcVersion,
+                JsonRpc = JsonRpcVersion,
                 Result = result,
             };
 
@@ -232,11 +246,11 @@ namespace Nethermind.JsonRpc
             if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
             var response = new JsonRpcResponse
             {
-                JsonRpc = _jsonRpcConfig.JsonRpcVersion,
+                JsonRpc = JsonRpcVersion,
                 Id = id,
                 Error = new Error
                 {
-                    Code = _jsonRpcConfig.ErrorCodes[errorType],
+                    Code = ErrorCodes[errorType],
                     Message = message
                 }
             };

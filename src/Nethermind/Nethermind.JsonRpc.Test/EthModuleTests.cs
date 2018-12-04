@@ -49,11 +49,11 @@ namespace Nethermind.JsonRpc.Test
             
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.AddressA.Bytes.ToHexString(true), "0x01");
             
-            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"\",\"result\":\"0x0de0b6b3a7640000\"}");
+            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x0de0b6b3a7640000\"}");
         }
         
         [Test]
-        public void Eth_get_failure()
+        public void Eth_get_balance_internal_error()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.Head.Returns((BlockHeader)null);
@@ -62,7 +62,33 @@ namespace Nethermind.JsonRpc.Test
             
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.AddressA.Bytes.ToHexString(true), "0x01");
             
-            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"\",\"result\":null,\"error\":{\"code\":0,\"message\":\"Internal error\",\"data\":null}}");
+            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32603,\"message\":\"Internal error\",\"data\":null}}");
+        }
+        
+        [Test]
+        public void Eth_get_balance_incorrect_number_of_params()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.Head.Returns((BlockHeader)null);
+            
+            IEthModule module = new EthModule(new UnforgivingJsonSerializer(), Substitute.For<IConfigProvider>(), new JsonRpcModelMapper(), NullLogManager.Instance, bridge);
+            
+            string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.AddressA.Bytes.ToHexString(true));
+            
+            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters count, expected: 2, actual: 1\",\"data\":null}}");
+        }
+        
+        [Test]
+        public void Eth_get_balance_incorrect_parameters()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.Head.Returns((BlockHeader)null);
+            
+            IEthModule module = new EthModule(new UnforgivingJsonSerializer(), Substitute.For<IConfigProvider>(), new JsonRpcModelMapper(), NullLogManager.Instance, bridge);
+            
+            string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.KeccakA.Bytes.ToHexString(true), "0x01");
+            
+            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters\",\"data\":null}}");
         }
     }
 }

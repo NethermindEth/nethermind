@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.DataModel.Trace
             jsonWriter.WriteValue(propertyValue);
         }
         
-        public static void SerializeProperty<T>(this JsonWriter jsonWriter, string propertyName, T propertyValue, JsonSerializer serializer)
+        public static void WriteProperty<T>(this JsonWriter jsonWriter, string propertyName, T propertyValue, JsonSerializer serializer)
         {
             jsonWriter.WritePropertyName(propertyName);
             serializer.Serialize(jsonWriter, propertyValue);

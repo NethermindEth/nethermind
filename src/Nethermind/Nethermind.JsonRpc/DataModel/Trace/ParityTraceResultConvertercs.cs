@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.DataModel.Trace
         {
             writer.WriteStartObject();
             writer.WriteProperty("gasUsed", string.Concat("0x", value.GasUsed.ToString("x")));
-            writer.SerializeProperty("output", value.Output, serializer);
+            writer.WriteProperty("output", value.Output, serializer);
             writer.WriteEndObject();
         }
 

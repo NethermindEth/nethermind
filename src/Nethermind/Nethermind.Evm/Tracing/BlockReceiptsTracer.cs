@@ -110,9 +110,9 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.SetOperationMemorySize(newSize);
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
-            _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue, cost, refund);
+            _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
         }
 
         public void ReportBalanceChange(Address address, UInt256 before, UInt256 after)

@@ -65,14 +65,14 @@ namespace Nethermind.JsonRpc.DataModel.Trace
         private void WriteJson(JsonWriter writer, ParityLikeTxTrace value, ParityTraceAction traceAction, JsonSerializer serializer)
         {
             writer.WriteStartObject();
-            writer.SerializeProperty("action", traceAction, serializer);
-            writer.SerializeProperty("blockHash", value.BlockHash, serializer);
-            writer.SerializeProperty("blockNumber", value.BlockNumber, serializer);
-            writer.SerializeProperty("result", traceAction.Result, serializer);
+            writer.WriteProperty("action", traceAction, serializer);
+            writer.WriteProperty("blockHash", value.BlockHash, serializer);
+            writer.WriteProperty("blockNumber", value.BlockNumber, serializer);
+            writer.WriteProperty("result", traceAction.Result, serializer);
             writer.WriteProperty("subtraces", traceAction.Subtraces.Count);
             writer.WritePropertyName("traceAddress");
             _traceAddressConverter.WriteJson(writer, traceAction.TraceAddress, serializer);
-            writer.SerializeProperty("transactionHash", value.TransactionHash, serializer);
+            writer.WriteProperty("transactionHash", value.TransactionHash, serializer);
             writer.WriteProperty("transactionPosition", value.TransactionPosition);
             writer.WriteProperty("type", traceAction.CallType);
             writer.WriteEndObject();
@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.DataModel.Trace
                 writer.WriteStartObject();
                 foreach ((Address address, ParityAccountStateChange stateChange) in value.StateChanges)
                 {
-                    writer.SerializeProperty(address.ToString(), stateChange, serializer);
+                    writer.WriteProperty(address.ToString(), stateChange, serializer);
                 }
 
                 writer.WriteEndObject();

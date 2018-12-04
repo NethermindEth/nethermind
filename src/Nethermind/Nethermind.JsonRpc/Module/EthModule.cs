@@ -39,7 +39,12 @@ namespace Nethermind.JsonRpc.Module
 {
     public class EthModule : ModuleBase, IEthModule
     {
+        private Encoding _messageEncoding = Encoding.UTF8;
+        
+        private const string SignatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
+        
         private readonly IBlockchainBridge _blockchainBridge;
+        
         private readonly IJsonRpcModelMapper _modelMapper;
 
         public EthModule(IJsonSerializer jsonSerializer, IConfigProvider configurationProvider, IJsonRpcModelMapper modelMapper, ILogManager logManager, IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager, jsonSerializer)
@@ -243,8 +248,8 @@ namespace Nethermind.JsonRpc.Module
             try
             {
                 Address address = addressData;
-                var messageText = Encoding.GetEncoding(JsonRpcConfig.MessageEncoding).GetString(message);
-                var signatureText = string.Format(JsonRpcConfig.SignatureTemplate, messageText.Length, messageText);
+                var messageText = _messageEncoding.GetString(message);
+                var signatureText = string.Format(SignatureTemplate, messageText.Length, messageText);
                 sig = _blockchainBridge.Sign(address, Keccak.Compute(signatureText));
             }
             catch (Exception)

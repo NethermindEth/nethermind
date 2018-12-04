@@ -40,7 +40,8 @@ namespace Nethermind.JsonRpc.Test
         {
             IJsonRpcService service = BuildRpcService<T>(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
-            string serialized = JsonConvert.SerializeObject(service.SendRequest(request), service.Converters.ToArray());
+            JsonRpcResponse response = service.SendRequest(request);
+            string serialized = JsonConvert.SerializeObject(response, service.Converters.ToArray());
             TestContext.WriteLine(serialized.Replace("\"", "\\\""));
             return serialized;
         }

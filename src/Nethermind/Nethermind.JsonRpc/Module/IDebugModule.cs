@@ -18,15 +18,16 @@
 
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
 {
     public interface IDebugModule : IModule
     {
-        ResultWrapper<TransactionTrace> debug_traceTransaction(Keccak transactionHash);
-        ResultWrapper<TransactionTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex);
-        ResultWrapper<TransactionTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockHash, int txIndex);
+        ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash);
+        ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex);
+        ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockHash, int txIndex);
         ResultWrapper<BlockTraceItem[]> debug_traceBlock(byte[] blockRlp);
         ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(BigInteger number);
         ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Keccak blockHash);

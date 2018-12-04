@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Tracing
         void SetOperationStack(List<string> stackTrace);
         void SetOperationMemory(List<string> memoryTrace);
         void SetOperationMemorySize(ulong newSize);
-        void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund);
+        void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue);
         
         void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType);
         void ReportCallEnd(long gas, byte[] output);

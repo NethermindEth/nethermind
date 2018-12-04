@@ -28,11 +28,11 @@ namespace Nethermind.JsonRpc.DataModel.Trace
         {
             writer.WriteStartObject();
             writer.WriteProperty("callType", value.CallType);
-            writer.SerializeProperty("from", value.From, serializer);
-            writer.SerializeProperty("gas", value.Gas, serializer);
-            writer.SerializeProperty("input", value.Input, serializer);
-            writer.SerializeProperty("to", value.To, serializer);
-            writer.SerializeProperty("value", value.Value, serializer);
+            writer.WriteProperty("from", value.From, serializer);
+            writer.WriteProperty("gas", value.Gas, serializer);
+            writer.WriteProperty("input", value.Input, serializer);
+            writer.WriteProperty("to", value.To, serializer);
+            writer.WriteProperty("value", value.Value, serializer);
             writer.WriteEndObject();
         }
 

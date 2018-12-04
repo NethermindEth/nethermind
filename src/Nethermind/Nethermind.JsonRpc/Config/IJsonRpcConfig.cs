@@ -24,10 +24,6 @@ namespace Nethermind.JsonRpc.Config
 {
     public interface IJsonRpcConfig : IConfig
     {
-        IDictionary<ErrorType, int> ErrorCodes { get; }
-        string JsonRpcVersion { get; }
         IEnumerable<ModuleType> EnabledModules { get; set; }
-        string MessageEncoding { get; }
-        string SignatureTemplate { get; }
     }
 }

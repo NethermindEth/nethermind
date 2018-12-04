@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -28,6 +29,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.DataModel;
+using Newtonsoft.Json;
 using TransactionTrace = Nethermind.JsonRpc.DataModel.TransactionTrace;
 
 namespace Nethermind.JsonRpc.Module
@@ -44,35 +46,36 @@ namespace Nethermind.JsonRpc.Module
             _modelMapper = modelMapper;
         }
 
-        public ResultWrapper<TransactionTrace> debug_traceTransaction(Keccak transactionHash)
+        public override IReadOnlyCollection<JsonConverter> GetConverters()
+        {
+            return new[] {new GethLikeTxTraceConverter()};
+        }
+
+        public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash)
         {
             var transactionTrace = _debugBridge.GetTransactionTrace(transactionHash);
             if (transactionTrace == null)
             {
-                return ResultWrapper<TransactionTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorType.NotFound);
+                return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorType.NotFound);
             }
 
-            var transactionModel = _modelMapper.MapTransactionTrace(transactionTrace);
-
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransaction)} request {transactionHash}, result: {GetJsonLog(transactionModel.ToJson())}");
-            return ResultWrapper<TransactionTrace>.Success(transactionModel);
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransaction)} request {transactionHash}, result: trace");
+            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
-        public ResultWrapper<TransactionTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockhash, int index)
+        public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockhash, int index)
         {
             var transactionTrace = _debugBridge.GetTransactionTrace(blockhash, index);
             if (transactionTrace == null)
             {
-                return ResultWrapper<TransactionTrace>.Fail($"Cannot find transactionTrace {blockhash}", ErrorType.NotFound);
+                return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockhash}", ErrorType.NotFound);
             }
 
-            var transactionModel = _modelMapper.MapTransactionTrace(transactionTrace);
-
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockhashAndIndex)} request {blockhash}, result: {GetJsonLog(transactionModel.ToJson())}");
-            return ResultWrapper<TransactionTrace>.Success(transactionModel);
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockhashAndIndex)} request {blockhash}, result: trace");
+            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
-        public ResultWrapper<TransactionTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index)
+        public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index)
         {
             UInt256? blockNo = blockParameter.BlockId.AsNumber();
             if (!blockNo.HasValue)
@@ -83,13 +86,11 @@ namespace Nethermind.JsonRpc.Module
             var transactionTrace = _debugBridge.GetTransactionTrace(blockNo.Value, index);
             if (transactionTrace == null)
             {
-                return ResultWrapper<TransactionTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorType.NotFound);
+                return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorType.NotFound);
             }
 
-            var transactionModel = _modelMapper.MapTransactionTrace(transactionTrace);
-
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: {GetJsonLog(transactionModel.ToJson())}");
-            return ResultWrapper<TransactionTrace>.Success(transactionModel);
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: trace");
+            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
         public ResultWrapper<BlockTraceItem[]> debug_traceBlock(byte[] blockRlp)
@@ -99,7 +100,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(BigInteger blockNumber)
         {
-            var blockTrace = _debugBridge.GetBlockTrace((UInt256)blockNumber);
+            var blockTrace = _debugBridge.GetBlockTrace((UInt256) blockNumber);
             if (blockTrace == null)
             {
                 return ResultWrapper<BlockTraceItem[]>.Fail($"Trace is null for block {blockNumber}", ErrorType.NotFound);

@@ -29,7 +29,6 @@ namespace Nethermind.JsonRpc.DataModel
         public bool Failed { get; set; }
         public string ReturnValue { get; set; }
         public IEnumerable<TransactionTraceEntry> StructLogs { get; set; }
-        public StorageTrace StorageTrace { get; set; }
         
         public object ToJson()
         {
@@ -39,7 +38,6 @@ namespace Nethermind.JsonRpc.DataModel
                 failed = Failed,
                 returnValue = ReturnValue,
                 structLogs = StructLogs?.Select(x => x.ToJson()).ToArray(),
-                storageTrace = StorageTrace.ToJson()
             };
         }
     }

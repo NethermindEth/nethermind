@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemory(List<string> memoryTrace) => throw new InvalidOperationException(ErrorMessage);
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund) => throw new InvalidOperationException(ErrorMessage);
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new InvalidOperationException(ErrorMessage);
         
         public void ReportBalanceChange(Address address, UInt256 before, UInt256 after) => throw new InvalidOperationException(ErrorMessage);
 

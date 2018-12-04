@@ -80,7 +80,7 @@ namespace Nethermind.Evm.Test
             throw new NotImplementedException();
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue, long cost, long refund)
+        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
             throw new NotImplementedException();
         }

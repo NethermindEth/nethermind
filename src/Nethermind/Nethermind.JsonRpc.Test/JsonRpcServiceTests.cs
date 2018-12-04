@@ -135,9 +135,9 @@ namespace Nethermind.JsonRpc.Test
         public void IncorrectMethodNameTest()
         {
             JsonRpcResponse response = TestRequest<IEthModule>(Substitute.For<IEthModule>(), "incorrect_method");
-            Assert.AreEqual(response.Error.Code, _configurationProvider.GetConfig<IJsonRpcConfig>().ErrorCodes[ErrorType.MethodNotFound]);
+            Assert.AreEqual(response.Error.Code, JsonRpcService.ErrorCodes[ErrorType.MethodNotFound]);
             Assert.IsNull(response.Result);
-            Assert.AreEqual(response.JsonRpc, _configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion);
+            Assert.AreEqual(response.JsonRpc, "2.0");
         }
 
         [Test]
@@ -159,7 +159,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcResponse response = TestRequest<INetModule>(netModule, "net_version");
             Assert.AreEqual(response.Result, "1");
             Assert.IsNull(response.Error);
-            Assert.AreEqual(_configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion, response.JsonRpc);
+            Assert.AreEqual("2.0", response.JsonRpc);
         }
 
         [Test]
