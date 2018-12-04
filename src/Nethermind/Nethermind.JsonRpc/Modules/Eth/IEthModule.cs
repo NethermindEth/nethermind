@@ -22,8 +22,6 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Data;
-using Transaction = Nethermind.JsonRpc.Data.Transaction;
-using TransactionReceipt = Nethermind.JsonRpc.Data.TransactionReceipt;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -47,18 +45,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<BigInteger> eth_getUncleCountByBlockNumber(BlockParameter blockParameter);
         ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter blockParameter);
         ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message);
-        ResultWrapper<Keccak> eth_sendTransaction(Transaction transaction);
+        ResultWrapper<Keccak> eth_sendTransaction(TransactionForRpc transactionForRpc);
         ResultWrapper<Keccak> eth_sendRawTransaction(byte[] transaction);
-        ResultWrapper<byte[]> eth_call(Transaction transactionCall, BlockParameter blockParameter);
-        ResultWrapper<BigInteger> eth_estimateGas(Transaction transactionCall, BlockParameter blockParameter);
-        ResultWrapper<Block> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects);
-        ResultWrapper<Block> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects);
-        ResultWrapper<Transaction> eth_getTransactionByHash(Keccak transactionHash);
-        ResultWrapper<Transaction> eth_getTransactionByBlockHashAndIndex(Keccak blockHash, BigInteger positionIndex);
-        ResultWrapper<Transaction> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter, BigInteger positionIndex);
-        ResultWrapper<TransactionReceipt> eth_getTransactionReceipt(Keccak txHashData);
-        ResultWrapper<Block> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, BigInteger positionIndex);
-        ResultWrapper<Block> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, BigInteger positionIndex);
+        ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter);
+        ResultWrapper<BigInteger> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter);
+        ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects);
+        ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects);
+        ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash);
+        ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Keccak blockHash, BigInteger positionIndex);
+        ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter, BigInteger positionIndex);
+        ResultWrapper<ReceiptForRpc> eth_getTransactionReceipt(Keccak txHashData);
+        ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, BigInteger positionIndex);
+        ResultWrapper<BlockForRpc> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, BigInteger positionIndex);
         ResultWrapper<IEnumerable<string>> eth_getCompilers();
         ResultWrapper<byte[]> eth_compileLLL(string code);
         ResultWrapper<byte[]> eth_compileSolidity(string code);

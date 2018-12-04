@@ -29,10 +29,10 @@ namespace Nethermind.JsonRpc.Modules.TxPool
         private readonly IJsonRpcModelMapper _modelMapper;
 
         public TxPoolModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer,
-            IBlockchainBridge blockchainBridge, IJsonRpcModelMapper modelMapper) : base(configurationProvider, logManager, jsonSerializer)
+            IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager, jsonSerializer)
         {
             _blockchainBridge = blockchainBridge;
-            _modelMapper = modelMapper;
+            _modelMapper = new JsonRpcModelMapper();
         }
         
         public ResultWrapper<TransactionPoolStatus> txpool_status()

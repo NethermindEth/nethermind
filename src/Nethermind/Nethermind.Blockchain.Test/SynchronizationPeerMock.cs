@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain.Test
             throw new NotImplementedException();
         }
 
-        public void SendReceipts(TransactionReceipt[][] receipts)
+        public void SendReceipts(TransactionReceipt[][] transactionReceipts)
         {
             throw new NotImplementedException();
         }

@@ -333,12 +333,12 @@ namespace Nethermind.Blockchain.Test
             Block block0 = _blockTree.FindBlock(0);
             Block block1 = _blockTree.FindBlock(1);
 
-            TransactionReceipt[][] receipts = _manager.GetReceipts(new[] {block0.Hash, block1.Hash, TestObject.KeccakA});
+            TransactionReceipt[][] transactionReceipts = _manager.GetReceipts(new[] {block0.Hash, block1.Hash, TestObject.KeccakA});
 
-            Assert.AreEqual(3, receipts.Length, "data.Length");
-            Assert.AreEqual(0, receipts[0].Length, "data[0]");
-            Assert.AreEqual(0, receipts[1].Length, "data[1]");
-            Assert.AreEqual(0, receipts[2].Length, "data[2]");
+            Assert.AreEqual(3, transactionReceipts.Length, "data.Length");
+            Assert.AreEqual(0, transactionReceipts[0].Length, "data[0]");
+            Assert.AreEqual(0, transactionReceipts[1].Length, "data[1]");
+            Assert.AreEqual(0, transactionReceipts[2].Length, "data[2]");
         }
     }
 }

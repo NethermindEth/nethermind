@@ -94,18 +94,18 @@ namespace Nethermind.JsonRpc.Modules
         public Block RetrieveHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, false);
         public Block RetrieveGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, true);
 
-        public (Nethermind.Core.TransactionReceipt Receipt, Nethermind.Core.Transaction Transaction) GetTransaction(Keccak transactionHash)
+        public (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
-            Nethermind.Core.TransactionReceipt receipt = _receiptStorage.Get(transactionHash);
-            if (receipt.BlockHash == null) return (null, null);
+            TransactionReceipt transactionReceipt = _receiptStorage.Get(transactionHash);
+            if (transactionReceipt.BlockHash == null) return (null, null);
 
-            Block block = _blockTree.FindBlock(receipt.BlockHash, true);
-            return (receipt, block.Transactions[receipt.Index]);
+            Block block = _blockTree.FindBlock(transactionReceipt.BlockHash, true);
+            return (transactionReceipt, block.Transactions[transactionReceipt.Index]);
         }
 
         public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Get(transactionHash).BlockHash;
 
-        public Keccak SendTransaction(Nethermind.Core.Transaction transaction)
+        public Keccak SendTransaction(Transaction transaction)
         {
             try
             {
@@ -116,7 +116,7 @@ namespace Nethermind.JsonRpc.Modules
 
                 transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
                 _wallet.Sign(transaction, _blockTree.ChainId);
-                transaction.Hash = Nethermind.Core.Transaction.CalculateHash(transaction);
+                transaction.Hash = Transaction.CalculateHash(transaction);
 
                 if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce)
                     throw new InvalidOperationException("Invalid nonce");
@@ -132,9 +132,9 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        public Nethermind.Core.TransactionReceipt GetTransactionReceipt(Keccak txHash) => _receiptStorage.Get(txHash);
+        public TransactionReceipt GetTransactionReceipt(Keccak txHash) => _receiptStorage.Get(txHash);
 
-        public byte[] Call(Block block, Nethermind.Core.Transaction transaction)
+        public byte[] Call(Block block, Transaction transaction)
         {
             try
             {

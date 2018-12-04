@@ -45,16 +45,16 @@ namespace Nethermind.Blockchain.Receipts
                 : Rlp.Decode<TransactionReceipt>(new Rlp(receiptData), RlpBehaviors.Storage);
         }
 
-        public void Add(TransactionReceipt receipt)
+        public void Add(TransactionReceipt transactionReceipt)
         {
-            if (receipt == null)
+            if (transactionReceipt == null)
             {
-                throw new ArgumentNullException(nameof(receipt));
+                throw new ArgumentNullException(nameof(transactionReceipt));
             }
 
-            var spec = _specProvider.GetSpec(receipt.BlockNumber);
-            _database.Set(receipt.TransactionHash,
-                Rlp.Encode(receipt, spec.IsEip658Enabled
+            var spec = _specProvider.GetSpec(transactionReceipt.BlockNumber);
+            _database.Set(transactionReceipt.TransactionHash,
+                Rlp.Encode(transactionReceipt, spec.IsEip658Enabled
                     ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage
                     : RlpBehaviors.Storage).Bytes);
         }

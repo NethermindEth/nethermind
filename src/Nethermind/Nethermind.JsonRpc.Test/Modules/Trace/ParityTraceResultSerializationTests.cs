@@ -16,18 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test.DataModel
+namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
     [TestFixture]
-    public class KeccakSerializationTests : SerializationTestBase
+    public class ParityTraceResultSerializationTests : SerializationTestBase
     {
         [Test]
-        public void Can_do_roundtrip()
+        public void Can_serialize()
         {
-            TestSerialization(TestObject.KeccakA, (a, b) => a.Equals(b));
+            ParityTraceResult result = new ParityTraceResult();
+            result.GasUsed = 12345;
+            result.Output = new byte[] {6, 7, 8, 9, 0};
+
+            TestOneWaySerialization(result, "{\"gasUsed\":\"0x3039\",\"output\":\"0x0607080900\"}");
+        }
+        
+        [Test]
+        public void Can_serialize_nulls()
+        {
+            ParityTraceResult result = new ParityTraceResult();
+
+            TestOneWaySerialization(result, "{\"gasUsed\":\"0x0\",\"output\":null}");
         }
     }
 }

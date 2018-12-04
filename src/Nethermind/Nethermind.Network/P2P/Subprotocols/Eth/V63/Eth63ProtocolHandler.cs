@@ -76,8 +76,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         
         private void Handle(GetReceiptsMessage msg)
         {
-            TransactionReceipt[][] receipts = SyncManager.GetReceipts(msg.BlockHashes);
-            Send(new ReceiptsMessage(receipts));
+            TransactionReceipt[][] transactionReceipts = SyncManager.GetReceipts(msg.BlockHashes);
+            Send(new ReceiptsMessage(transactionReceipts));
         }
 
         private void Handle(ReceiptsMessage msg)
@@ -85,7 +85,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             var request = _receiptsRequests.Take();
             if (IsRequestMatched(request, msg))
             {
-                request.CompletionSource.SetResult(msg.Receipts);
+                request.CompletionSource.SetResult(msg.TransactionReceipts);
             }
         }
 
@@ -114,8 +114,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         public override async Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHashes, CancellationToken token)
         {
             var msg = new GetReceiptsMessage(blockHashes);
-            TransactionReceipt[][] receipts = await SendRequest(msg, token);
-            return receipts;
+            TransactionReceipt[][] transactionReceipts = await SendRequest(msg, token);
+            return transactionReceipts;
         }
 
         [Todo(Improve.Refactor, "Generic approach to requests")]

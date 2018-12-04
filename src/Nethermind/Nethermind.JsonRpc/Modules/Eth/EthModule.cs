@@ -30,8 +30,8 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Data;
-using Transaction = Nethermind.JsonRpc.Data.Transaction;
-using TransactionReceipt = Nethermind.JsonRpc.Data.TransactionReceipt;
+using Nethermind.JsonRpc.Data.Converters;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -42,13 +42,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private const string SignatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
         
         private readonly IBlockchainBridge _blockchainBridge;
-        
-        private readonly IJsonRpcModelMapper _modelMapper;
 
-        public EthModule(IJsonSerializer jsonSerializer, IConfigProvider configurationProvider, IJsonRpcModelMapper modelMapper, ILogManager logManager, IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager, jsonSerializer)
+        public EthModule(IJsonSerializer jsonSerializer, IConfigProvider configurationProvider, ILogManager logManager, IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager, jsonSerializer)
         {
             _blockchainBridge = blockchainBridge;
-            _modelMapper = modelMapper;
         }
         
         public override ModuleType ModuleType => ModuleType.Eth;
@@ -258,9 +255,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<byte[]>.Success(sig.Bytes);
         }
 
-        public ResultWrapper<Keccak> eth_sendTransaction(Transaction transaction)
+        public ResultWrapper<Keccak> eth_sendTransaction(TransactionForRpc transactionForRpc)
         {
-            Core.Transaction tx = _modelMapper.MapTransaction(transaction);
+            Transaction tx = transactionForRpc.ToTransaction();
             Keccak txHash = _blockchainBridge.SendTransaction(tx);
             return ResultWrapper<Keccak>.Success(txHash);
         }
@@ -270,180 +267,173 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<byte[]> eth_call(Transaction transactionCall, BlockParameter blockParameter)
+        public ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter)
         {
-            Core.Block block = GetBlock(blockParameter).Data;
-            byte[] result = _blockchainBridge.Call(block, _modelMapper.MapTransaction(transactionCall));
+            Block block = GetBlock(blockParameter).Data;
+            byte[] result = _blockchainBridge.Call(block, transactionCall.ToTransaction());
             return ResultWrapper<byte[]>.Success(result);
         }
 
-        public ResultWrapper<BigInteger> eth_estimateGas(Transaction transactionCall, BlockParameter blockParameter)
+        public ResultWrapper<BigInteger> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter)
         {
             return ResultWrapper<BigInteger>.Fail("eth_estimateGas not supported");
         }
 
-        public ResultWrapper<Block> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
+        public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
         {
             var block = _blockchainBridge.FindBlock(blockHash, false);
             if (block == null)
             {
-                return ResultWrapper<Block>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
+                return ResultWrapper<BlockForRpc>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
             }
 
-            var blockModel = _modelMapper.MapBlock(block, returnFullTransactionObjects);
 
-            if (Logger.IsDebug) Logger.Debug($"eth_getBlockByHash request {blockHash}, result: {GetJsonLog(blockModel.ToJson())}");
-            return ResultWrapper<Block>.Success(blockModel);
+            if (Logger.IsDebug) Logger.Debug($"eth_getBlockByHash request {blockHash}, result: {block}");
+            return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(block, returnFullTransactionObjects));
         }
 
-        public ResultWrapper<Block> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects)
+        public ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects)
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<Block>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<BlockForRpc>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetBlock(blockParameter);
             if (result.Result.ResultType == ResultType.Failure)
             {
                 if (Logger.IsTrace) Logger.Trace($"eth_getBlockByNumber request {blockParameter}, result: {result.ErrorType}");
-                return ResultWrapper<Block>.Fail(result.Result.Error, result.ErrorType);
+                return ResultWrapper<BlockForRpc>.Fail(result.Result.Error, result.ErrorType);
             }
 
-            var blockModel = _modelMapper.MapBlock(result.Data, returnFullTransactionObjects);
-
-            if (Logger.IsTrace) Logger.Trace($"eth_getBlockByNumber request {blockParameter}, result: {GetJsonLog(blockModel.ToJson())}");
-            return ResultWrapper<Block>.Success(blockModel);
+            if (Logger.IsTrace) Logger.Trace($"eth_getBlockByNumber request {blockParameter}, result: {result.Data}");
+            return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(result.Data, returnFullTransactionObjects));
         }
 
-        public ResultWrapper<Transaction> eth_getTransactionByHash(Keccak transactionHash)
+        public ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash)
         {
-            (Core.TransactionReceipt receipt, Core.Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
+            (Core.TransactionReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
             if (transaction == null)
             {
-                return ResultWrapper<Transaction>.Fail($"Cannot find transaction for hash: {transactionHash}", ErrorType.NotFound);
+                return ResultWrapper<TransactionForRpc>.Fail($"Cannot find transaction for hash: {transactionHash}", ErrorType.NotFound);
             }
 
-            var transactionModel = _modelMapper.MapTransaction(receipt, transaction);
-            if (Logger.IsTrace) Logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {GetJsonLog(transactionModel.ToJson())}");
-            return ResultWrapper<Transaction>.Success(transactionModel);
+            var transactionModel = new TransactionForRpc(receipt.BlockHash, receipt.BlockNumber, receipt.Index, transaction) ;
+            if (Logger.IsTrace) Logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
+            return ResultWrapper<TransactionForRpc>.Success(transactionModel);
         }
 
-        public ResultWrapper<Transaction> eth_getTransactionByBlockHashAndIndex(Keccak blockHash, BigInteger positionIndex)
+        public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Keccak blockHash, BigInteger positionIndex)
         {
             var block = _blockchainBridge.FindBlock(blockHash, false);
             if (block == null)
             {
-                return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
+                return ResultWrapper<TransactionForRpc>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
             }
 
             if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
             {
-                return ResultWrapper<Transaction>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
+                return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
             }
 
             var transaction = block.Transactions[(int) positionIndex];
-            var transactionModel = _modelMapper.MapTransaction(block.Hash, block.Number, (int) positionIndex, transaction);
+            var transactionModel = new TransactionForRpc(block.Hash, block.Number, (int) positionIndex, transaction);
 
-            if(Logger.IsDebug) Logger.Debug($"eth_getTransactionByBlockHashAndIndex request {blockHash}, index: {positionIndex}, result: {GetJsonLog(transactionModel.ToJson())}");
-            return ResultWrapper<Transaction>.Success(transactionModel);
+            if(Logger.IsDebug) Logger.Debug($"eth_getTransactionByBlockHashAndIndex request {blockHash}, index: {positionIndex}, result: {transactionModel.Hash}");
+            return ResultWrapper<TransactionForRpc>.Success(transactionModel);
         }
 
-        public ResultWrapper<Transaction> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter, BigInteger positionIndex)
+        public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter, BigInteger positionIndex)
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<Transaction>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<TransactionForRpc>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetBlock(blockParameter);
             if (result.Result.ResultType == ResultType.Failure)
             {
-                return ResultWrapper<Transaction>.Fail(result.Result.Error, result.ErrorType);
+                return ResultWrapper<TransactionForRpc>.Fail(result.Result.Error, result.ErrorType);
             }
 
             if (positionIndex < 0 || positionIndex > result.Data.Transactions.Length - 1)
             {
-                return ResultWrapper<Transaction>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
+                return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
             }
 
-            Core.Block block = result.Data;
+            Block block = result.Data;
             var transaction = block.Transactions[(int) positionIndex];
-            var transactionModel = _modelMapper.MapTransaction(block.Hash, block.Number, (int) positionIndex, transaction);
+            var transactionModel = new TransactionForRpc(block.Hash, block.Number, (int) positionIndex, transaction);
 
-            if(Logger.IsDebug) Logger.Debug($"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {GetJsonLog(transactionModel.ToJson())}");
-            return ResultWrapper<Transaction>.Success(transactionModel);
+            if(Logger.IsDebug) Logger.Debug($"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
+            return ResultWrapper<TransactionForRpc>.Success(transactionModel);
         }
 
-        public ResultWrapper<TransactionReceipt> eth_getTransactionReceipt(Keccak txHash)
+        public ResultWrapper<ReceiptForRpc> eth_getTransactionReceipt(Keccak txHash)
         {
             var transactionReceipt = _blockchainBridge.GetTransactionReceipt(txHash);
             if (transactionReceipt == null)
             {
-                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find transactionReceipt for transaction hash: {txHash}", ErrorType.NotFound);
+                return ResultWrapper<ReceiptForRpc>.Fail($"Cannot find transactionReceipt for transaction hash: {txHash}", ErrorType.NotFound);
             }
 
-            var transactionReceiptModel = _modelMapper.MapTransactionReceipt(txHash, transactionReceipt);
-            if (Logger.IsTrace) Logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {GetJsonLog(transactionReceiptModel.ToJson())}");
-            return ResultWrapper<TransactionReceipt>.Success(transactionReceiptModel);
+            var transactionReceiptModel = new ReceiptForRpc(txHash, transactionReceipt);
+            if (Logger.IsTrace) Logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
+            return ResultWrapper<ReceiptForRpc>.Success(transactionReceiptModel);
         }
 
-        public ResultWrapper<Block> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, BigInteger positionIndex)
+        public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, BigInteger positionIndex)
         {
             Keccak blockHash = blockHashData;
             var block = _blockchainBridge.FindBlock(blockHash, false);
             if (block == null)
             {
-                return ResultWrapper<Block>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
+                return ResultWrapper<BlockForRpc>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
             }
 
             if (positionIndex < 0 || positionIndex > block.Ommers.Length - 1)
             {
-                return ResultWrapper<Block>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
+                return ResultWrapper<BlockForRpc>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
             }
 
             var ommerHeader = block.Ommers[(int) positionIndex];
             var ommer = _blockchainBridge.FindBlock(ommerHeader.Hash, false);
             if (ommer == null)
             {
-                return ResultWrapper<Block>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
+                return ResultWrapper<BlockForRpc>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
             }
 
-            var blockModel = _modelMapper.MapBlock(ommer, false);
-
-            if (Logger.IsTrace) Logger.Trace($"eth_getUncleByBlockHashAndIndex request {blockHashData}, index: {positionIndex}, result: {GetJsonLog(blockModel.ToJson())}");
-            return ResultWrapper<Block>.Success(blockModel);
+            if (Logger.IsTrace) Logger.Trace($"eth_getUncleByBlockHashAndIndex request {blockHashData}, index: {positionIndex}, result: {block}");
+            return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(block, false));
         }
 
-        public ResultWrapper<Block> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, BigInteger positionIndex)
+        public ResultWrapper<BlockForRpc> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, BigInteger positionIndex)
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<Block>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<BlockForRpc>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetBlock(blockParameter);
             if (result.Result.ResultType == ResultType.Failure)
             {
-                return ResultWrapper<Block>.Fail(result.Result.Error, result.ErrorType);
+                return ResultWrapper<BlockForRpc>.Fail(result.Result.Error, result.ErrorType);
             }
 
             if (positionIndex < 0 || positionIndex > result.Data.Ommers.Length - 1)
             {
-                return ResultWrapper<Block>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
+                return ResultWrapper<BlockForRpc>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
             }
 
             var ommerHeader = result.Data.Ommers[(int) positionIndex];
             var ommer = _blockchainBridge.FindBlock(ommerHeader.Hash, false);
             if (ommer == null)
             {
-                return ResultWrapper<Block>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
+                return ResultWrapper<BlockForRpc>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
             }
 
-            var blockModel = _modelMapper.MapBlock(ommer, false);
-
-            if(Logger.IsDebug) Logger.Debug($"eth_getUncleByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {GetJsonLog(blockModel.ToJson())}");
-            return ResultWrapper<Block>.Success(blockModel);
+            if(Logger.IsDebug) Logger.Debug($"eth_getUncleByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {result}");
+            return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(result.Data, false));
         }
 
         public ResultWrapper<IEnumerable<string>> eth_getCompilers()

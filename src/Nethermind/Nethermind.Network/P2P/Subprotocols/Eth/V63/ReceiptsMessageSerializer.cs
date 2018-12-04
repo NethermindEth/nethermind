@@ -28,8 +28,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         [Todo(Improve.MissingFunctionality, "When serializing receipts we need either to just get raw receipts from storage that were stored in the bare format or recognize the block number from spec provider")]
         public byte[] Serialize(ReceiptsMessage message)
         {
-            if (message.Receipts == null) return Rlp.OfEmptySequence.Bytes;
-            return Rlp.Encode(message.Receipts.Select(b => b == null ? Rlp.OfEmptySequence : Rlp.Encode(b.Select(n => n == null ? Rlp.OfEmptySequence : Rlp.Encode(n)).ToArray())).ToArray()).Bytes;
+            if (message.TransactionReceipts == null) return Rlp.OfEmptySequence.Bytes;
+            return Rlp.Encode(message.TransactionReceipts.Select(b => b == null ? Rlp.OfEmptySequence : Rlp.Encode(b.Select(n => n == null ? Rlp.OfEmptySequence : Rlp.Encode(n)).ToArray())).ToArray()).Bytes;
         }
 
         public ReceiptsMessage Deserialize(byte[] bytes)

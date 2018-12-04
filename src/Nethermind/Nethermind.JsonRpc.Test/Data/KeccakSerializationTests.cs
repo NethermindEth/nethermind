@@ -16,28 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Data;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test
+namespace Nethermind.JsonRpc.Test.Data
 {
     [TestFixture]
-    public class BlockParameterTests
+    public class KeccakSerializationTests : SerializationTestBase
     {
-        [TestCase("0x0", 0)]
-        [TestCase("0x00", 0)]
-        [TestCase("0x1", 1)]
-        [TestCase("0x01", 1)]
-        [TestCase("0x8180", 33152)]
-        public void As_number_returns_correct_value(string input, int output)
+        [Test]
+        public void Can_do_roundtrip()
         {
-            BlockParameter blockParameter = new BlockParameter();
-            blockParameter.BlockId = new Quantity(input);
-            Assert.AreEqual((UInt256)output, blockParameter.BlockId.AsNumber() ?? 0, "hex string");
-            
-            blockParameter.BlockId = new Quantity(output);
-            Assert.AreEqual((UInt256)output, blockParameter.BlockId.AsNumber() ?? 0, "big integer");
+            TestSerialization(TestObject.KeccakA, (a, b) => a.Equals(b));
         }
     }
 }

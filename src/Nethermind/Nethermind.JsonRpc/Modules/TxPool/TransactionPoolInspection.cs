@@ -25,8 +25,8 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 {
     public class TransactionPoolInspection : IJsonRpcResult
     {
-        public IDictionary<Data.Data, Dictionary<Quantity, Transaction[]>> Pending { get; set; }
-        public IDictionary<Data.Data, Dictionary<Quantity, Transaction[]>> Queued { get; set; }
+        public IDictionary<Data.Data, Dictionary<Quantity, TransactionForRpc[]>> Pending { get; set; }
+        public IDictionary<Data.Data, Dictionary<Quantity, TransactionForRpc[]>> Queued { get; set; }
 
         public object ToJson()
             => new
@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.TxPool
                         v => v.Value.Select(GetTransactionSummary).ToArray())),
             };
 
-        private static string GetTransactionSummary(Transaction transaction)
-            => $"{transaction.From}: {transaction.Value} wei + {transaction.Gas} × {transaction.GasPrice} gas";
+        private static string GetTransactionSummary(TransactionForRpc transactionForRpc)
+            => $"{transactionForRpc.From}: {transactionForRpc.Value} wei + {transactionForRpc.Gas} × {transactionForRpc.GasPrice} gas";
     }
 }

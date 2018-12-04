@@ -28,7 +28,7 @@ using Nethermind.JsonRpc.Modules.Debug;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test
+namespace Nethermind.JsonRpc.Test.Modules
 {
     [TestFixture]
     public class DebugModuleTests

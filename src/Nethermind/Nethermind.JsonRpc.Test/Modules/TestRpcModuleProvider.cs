@@ -27,7 +27,7 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using NSubstitute;
 
-namespace Nethermind.JsonRpc.Test
+namespace Nethermind.JsonRpc.Test.Modules
 {
     internal class TestRpcModuleProvider<T> : IRpcModuleProvider where T : class, IModule
     {

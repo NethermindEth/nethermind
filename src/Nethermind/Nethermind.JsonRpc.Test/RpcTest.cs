@@ -21,6 +21,7 @@ using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Test.Modules;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using NSubstitute;

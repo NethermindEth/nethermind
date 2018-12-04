@@ -25,18 +25,18 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 {
     public class TransactionPoolContent : IJsonRpcResult
     {
-        public IDictionary<Data.Data, Dictionary<Quantity, Transaction[]>> Pending { get; set; }
-        public IDictionary<Data.Data, Dictionary<Quantity, Transaction[]>> Queued { get; set; }
+        public IDictionary<Data.Data, Dictionary<Quantity, TransactionForRpc[]>> Pending { get; set; }
+        public IDictionary<Data.Data, Dictionary<Quantity, TransactionForRpc[]>> Queued { get; set; }
 
         public object ToJson()
             => new
             {
-                pending = Pending.ToDictionary(k => k.Key.ToJson(),
-                    k => k.Value.ToDictionary(v => v.Key.ToJson(),
-                        v => v.Value.Select(t => t.ToJson()).ToArray())),
-                queued = Queued.ToDictionary(k => k.Key.ToJson(),
-                    k => k.Value.ToDictionary(v => v.Key.ToJson(),
-                        v => v.Value.Select(t => t.ToJson()).ToArray())),
+//                pending = Pending.ToDictionary(k => k.Key.ToJson(),
+//                    k => k.Value.ToDictionary(v => v.Key.ToJson(),
+//                        v => v.Value.Select(t => t.ToJson()).ToArray())),
+//                queued = Queued.ToDictionary(k => k.Key.ToJson(),
+//                    k => k.Value.ToDictionary(v => v.Key.ToJson(),
+//                        v => v.Value.Select(t => t.ToJson()).ToArray())),
             };
     }
 }

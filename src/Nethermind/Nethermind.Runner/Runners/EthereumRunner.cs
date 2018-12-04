@@ -243,9 +243,7 @@ namespace Nethermind.Runner.Runners
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             var debugBridge = new DebugBridge(debugDbProvider, tracer, debugChain.Processor, _peerManager);
 
-            JsonRpcModelMapper mapper = new JsonRpcModelMapper();
-
-            EthModule module = new EthModule(_jsonSerializer, _configProvider, mapper, _logManager, blockchainBridge);
+            EthModule module = new EthModule(_jsonSerializer, _configProvider, _logManager, blockchainBridge);
             _rpcModuleProvider.Register<IEthModule>(module);
 
             DebugModule debugModule = new DebugModule(_configProvider, _logManager, debugBridge, _jsonSerializer);
@@ -260,7 +258,7 @@ namespace Nethermind.Runner.Runners
             AdminModule adminModule = new AdminModule(_configProvider, _logManager, _jsonSerializer);
             _rpcModuleProvider.Register<IAdminModule>(adminModule);
 
-            TxPoolModule txPoolModule = new TxPoolModule(_configProvider, _logManager, _jsonSerializer, blockchainBridge, mapper);
+            TxPoolModule txPoolModule = new TxPoolModule(_configProvider, _logManager, _jsonSerializer, blockchainBridge);
             _rpcModuleProvider.Register<ITxPoolModule>(txPoolModule);
 
             if (_initConfig.NetworkEnabled && _initConfig.SynchronizationEnabled)

@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Globalization;
 using System.Numerics;
 using System.Security.Cryptography;
 
@@ -26,6 +27,11 @@ namespace Nethermind.Core.Extensions
     {
         private static readonly RandomNumberGenerator Random = RandomNumberGenerator.Create();
 
+        public static BigInteger ParseEthHex(string hexValue)
+        {
+            return BigInteger.Parse(hexValue.StartsWith("0x") ? hexValue.AsSpan(2) : hexValue, NumberStyles.AllowHexSpecifier);
+        }
+        
         public static BigInteger Abs(this BigInteger @this)
         {
             return BigInteger.Abs(@this);

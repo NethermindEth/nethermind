@@ -30,7 +30,7 @@ using NSubstitute;
 using NUnit.Framework;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
-namespace Nethermind.JsonRpc.Test.DataModel
+namespace Nethermind.JsonRpc.Test.Data
 {
     public class SerializationTestBase
     {

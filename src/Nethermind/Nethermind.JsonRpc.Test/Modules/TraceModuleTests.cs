@@ -29,7 +29,7 @@ using Nethermind.JsonRpc.Modules.Trace;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test
+namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TraceModuleTests
     {

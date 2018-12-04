@@ -17,22 +17,11 @@
  */
 
 using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Modules.TxPool;
-using Block = Nethermind.JsonRpc.Modules.Eth.Block;
 
-namespace Nethermind.JsonRpc.Data
+namespace Nethermind.JsonRpc.Modules.TxPool
 {
     public interface IJsonRpcModelMapper
     {
-        Block MapBlock(Core.Block block, bool returnFullTransactionObjects);
-        Transaction MapTransaction(Keccak blockHash, UInt256 blockNumber, int index, Core.Transaction transaction);
-        Transaction MapTransaction(Core.TransactionReceipt receipt, Core.Transaction transaction);
-        Core.Transaction MapTransaction(Transaction transaction);
-        TransactionReceipt MapTransactionReceipt(Keccak txHash, Core.TransactionReceipt receipt);
-        LogEntryForRpc MapLog(LogEntry logEntry);
         TransactionPoolStatus MapTransactionPoolStatus(TransactionPoolInfo transactionPoolInfo);
         TransactionPoolContent MapTransactionPoolContent(TransactionPoolInfo transactionPoolInfo);
         TransactionPoolInspection MapTransactionPoolInspection(TransactionPoolInfo transactionPoolInfo);

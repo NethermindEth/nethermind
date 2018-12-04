@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,31 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.Modules.Net;
-using NSubstitute;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test
+namespace Nethermind.JsonRpc.Test.Data
 {
     [TestFixture]
-    public class NetModuleTests
+    public class UInt256SerializationTests : SerializationTestBase
     {
-        private INetModule _netModule;
-
-        [SetUp]
-        public void Initialize()
-        {
-            _netModule = new NetModule(new JsonConfigProvider(), NullLogManager.Instance, new JsonSerializer(NullLogManager.Instance), Substitute.For<INetBridge>());
-        }
-
         [Test]
-        public void NetVersionSuccessTest()
+        public void Can_do_roundtrip()
         {
-            var result = _netModule.net_version();
-            Assert.AreEqual(result.Data, "0");
+            TestSerialization((UInt256) 123456789, (a, b) => a.Equals(b));
         }
     }
 }

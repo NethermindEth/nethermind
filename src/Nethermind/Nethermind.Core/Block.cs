@@ -65,6 +65,36 @@ namespace Nethermind.Core
             set => Header.ParentHash = value;
         }
         
+        public ulong Nonce
+        {
+            get => Header.Nonce;
+            set => Header.Nonce = value;
+        }
+        
+        public Keccak MixHash
+        {
+            get => Header.MixHash;
+            set => Header.MixHash = value;
+        }
+        
+        public byte[] ExtraData
+        {
+            get => Header.ExtraData;
+            set => Header.ExtraData = value;
+        }
+        
+        public Bloom Bloom
+        {
+            get => Header.Bloom;
+            set => Header.Bloom = value;
+        }
+
+        public Keccak OmmersHash
+        {
+            get => Header.OmmersHash;
+            set => Header.OmmersHash = value;
+        }
+        
         public Address Beneficiary
         {
             get => Header.Beneficiary;
@@ -87,6 +117,12 @@ namespace Nethermind.Core
         {
             get => Header.TransactionsRoot;
             set => Header.TransactionsRoot = value;
+        }
+        
+        public Keccak ReceiptsRoot
+        {
+            get => Header.ReceiptsRoot;
+            set => Header.ReceiptsRoot = value;
         }
 
         public long GasLimit

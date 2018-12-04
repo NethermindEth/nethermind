@@ -16,30 +16,28 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Evm.Tracing;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.JsonRpc.Data;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test.DataModel
+namespace Nethermind.JsonRpc.Test.Data
 {
     [TestFixture]
-    public class ParityTraceResultSerializationTests : SerializationTestBase
+    public class BlockParameterTests
     {
-        [Test]
-        public void Can_serialize()
+        [TestCase("0x0", 0)]
+        [TestCase("0x00", 0)]
+        [TestCase("0x1", 1)]
+        [TestCase("0x01", 1)]
+        [TestCase("0x8180", 33152)]
+        public void As_number_returns_correct_value(string input, int output)
         {
-            ParityTraceResult result = new ParityTraceResult();
-            result.GasUsed = 12345;
-            result.Output = new byte[] {6, 7, 8, 9, 0};
-
-            TestOneWaySerialization(result, "{\"gasUsed\":\"0x3039\",\"output\":\"0x0607080900\"}");
-        }
-        
-        [Test]
-        public void Can_serialize_nulls()
-        {
-            ParityTraceResult result = new ParityTraceResult();
-
-            TestOneWaySerialization(result, "{\"gasUsed\":\"0x0\",\"output\":null}");
+            BlockParameter blockParameter = new BlockParameter();
+            blockParameter.BlockId = new Quantity(input);
+            Assert.AreEqual((UInt256)output, blockParameter.BlockId.AsNumber() ?? 0, "hex string");
+            
+            blockParameter.BlockId = new Quantity(output);
+            Assert.AreEqual((UInt256)output, blockParameter.BlockId.AsNumber() ?? 0, "big integer");
         }
     }
 }

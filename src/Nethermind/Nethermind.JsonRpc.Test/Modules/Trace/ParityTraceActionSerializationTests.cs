@@ -18,9 +18,10 @@
 
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test.DataModel
+namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
     [TestFixture]
     public class ParityTraceActionSerializationTests : SerializationTestBase

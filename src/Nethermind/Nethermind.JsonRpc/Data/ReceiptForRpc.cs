@@ -16,43 +16,43 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Data
 {
-    public class LogEntryForRpc
+    public class ReceiptForRpc
     {
-        public LogEntryForRpc(LogEntry logEntry)
+        public ReceiptForRpc(Keccak txHash, TransactionReceipt receipt)
         {
-            Removed = false;
-            Address = logEntry.LoggersAddress;
-            Data = logEntry.Data;
-            Topics = logEntry.Topics;
-        }
-        
-        public LogEntryForRpc(TransactionReceipt receipt, LogEntry logEntry, int index)
-        {
-            Removed = false;
-            LogIndex = index;
+            TransactionHash = txHash;
             TransactionIndex = receipt.Index;
-            TransactionHash = receipt.BlockHash;
             BlockHash = receipt.BlockHash;
             BlockNumber = receipt.BlockNumber;
-            Address = logEntry.LoggersAddress;
-            Data = logEntry.Data;
-            Topics = logEntry.Topics;
+            CumulativeGasUsed = receipt.GasUsedTotal;
+            GasUsed = receipt.GasUsed;
+            From = receipt.Sender;
+            To = receipt.Recipient;
+            Logs = receipt.Logs.Select((l, idx) => new LogEntryForRpc(receipt, l, idx)).ToArray();
+            LogsBloom = receipt.Bloom;
+            Root = receipt.PostTransactionState;
+            Status = receipt.StatusCode;
         }
         
-        public bool? Removed { get; set; }
-        public BigInteger? LogIndex { get; set; }
-        public BigInteger? TransactionIndex { get; set; }
         public Keccak TransactionHash { get; set; }
+        public BigInteger TransactionIndex { get; set; }
         public Keccak BlockHash { get; set; }
-        public BigInteger? BlockNumber { get; set; }
-        public Address Address { get; set; }
-        public byte[] Data { get; set; }
-        public Keccak[] Topics { get; set; }
+        public BigInteger BlockNumber { get; set; }
+        public BigInteger CumulativeGasUsed { get; set; }
+        public BigInteger GasUsed { get; set; }
+        public Address From { get; set; }
+        public Address To { get; set; }
+        public Address ContractAddress { get; set; }
+        public LogEntryForRpc[] Logs { get; set; }
+        public Bloom LogsBloom { get; set; }
+        public Keccak Root { get; set; }
+        public BigInteger Status { get; set; }
     }
 }

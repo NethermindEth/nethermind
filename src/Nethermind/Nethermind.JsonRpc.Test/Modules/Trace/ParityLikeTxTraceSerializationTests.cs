@@ -25,10 +25,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 using Block = Nethermind.Core.Block;
 
-namespace Nethermind.JsonRpc.Test.DataModel
+namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
     [TestFixture]
     public class ParityLikeTxTraceSerializationTests : SerializationTestBase

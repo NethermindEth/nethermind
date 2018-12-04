@@ -115,11 +115,11 @@ namespace Nethermind.Blockchain
 
         public TransactionReceipt[][] GetReceipts(Keccak[] blockHashes)
         {
-            TransactionReceipt[][] receipts = new TransactionReceipt[blockHashes.Length][];
+            TransactionReceipt[][] transactionReceipts = new TransactionReceipt[blockHashes.Length][];
             for (int blockIndex = 0; blockIndex < blockHashes.Length; blockIndex++)
             {
                 Block block = Find(blockHashes[blockIndex]);
-                TransactionReceipt[] blockReceipts = new TransactionReceipt[block?.Transactions.Length ?? 0];
+                TransactionReceipt[] blockTransactionReceipts = new TransactionReceipt[block?.Transactions.Length ?? 0];
                 for (int receiptIndex = 0; receiptIndex < (block?.Transactions.Length ?? 0); receiptIndex++)
                 {
                     if (block == null)
@@ -127,13 +127,13 @@ namespace Nethermind.Blockchain
                         continue;
                     }
 
-                    blockReceipts[receiptIndex] = _receiptStorage.Get(block.Transactions[receiptIndex].Hash);
+                    blockTransactionReceipts[receiptIndex] = _receiptStorage.Get(block.Transactions[receiptIndex].Hash);
                 }
 
-                receipts[blockIndex] = blockReceipts;
+                transactionReceipts[blockIndex] = blockTransactionReceipts;
             }
 
-            return receipts;
+            return transactionReceipts;
         }
 
         public Block Find(Keccak hash)
@@ -924,7 +924,7 @@ namespace Nethermind.Blockchain
             if (blocksWithTransactions.Length != 0)
             {
                 Task<TransactionReceipt[][]> receiptsTask = peer.GetReceipts(blocksWithTransactions.Select(b => b.Hash).ToArray(), _peerSyncCancellationTokenSource.Token);
-                TransactionReceipt[][] receipts = await receiptsTask;
+                TransactionReceipt[][] transactionReceipts = await receiptsTask;
                 if (receiptsTask.IsCanceled)
                 {
                     return true;
@@ -950,26 +950,26 @@ namespace Nethermind.Blockchain
                     long gasUsedTotal = 0;
                     for (int txIndex = 0; txIndex < blocksWithTransactions[blockIndex].Transactions.Length; txIndex++)
                     {
-                        TransactionReceipt receipt = receipts[blockIndex][txIndex];
-                        if (receipt == null)
+                        TransactionReceipt transactionReceipt = transactionReceipts[blockIndex][txIndex];
+                        if (transactionReceipt == null)
                         {
                             throw new DataException($"Missing receipt for {blocksWithTransactions[blockIndex].Hash}->{txIndex}");
                         }
 
-                        receipt.Index = txIndex;
-                        receipt.BlockHash = blocksWithTransactions[blockIndex].Hash;
-                        receipt.BlockNumber = blocksWithTransactions[blockIndex].Number;
-                        receipt.TransactionHash = blocksWithTransactions[blockIndex].Transactions[txIndex].Hash;
-                        gasUsedTotal += receipt.GasUsed;
-                        receipt.GasUsedTotal = gasUsedTotal;
-                        receipt.Recipient = blocksWithTransactions[blockIndex].Transactions[txIndex].To;
+                        transactionReceipt.Index = txIndex;
+                        transactionReceipt.BlockHash = blocksWithTransactions[blockIndex].Hash;
+                        transactionReceipt.BlockNumber = blocksWithTransactions[blockIndex].Number;
+                        transactionReceipt.TransactionHash = blocksWithTransactions[blockIndex].Transactions[txIndex].Hash;
+                        gasUsedTotal += transactionReceipt.GasUsed;
+                        transactionReceipt.GasUsedTotal = gasUsedTotal;
+                        transactionReceipt.Recipient = blocksWithTransactions[blockIndex].Transactions[txIndex].To;
 
                         // only after execution
                         // receipt.Sender = blocksWithTransactions[blockIndex].Transactions[txIndex].SenderAddress; 
                         // receipt.Error = ...
                         // receipt.ContractAddress = ...
 
-                        _receiptStorage.Add(receipt);
+                        _receiptStorage.Add(transactionReceipt);
                     }
                 }
             }

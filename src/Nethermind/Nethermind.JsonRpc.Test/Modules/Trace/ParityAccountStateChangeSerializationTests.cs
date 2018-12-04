@@ -19,9 +19,10 @@
 using System.Collections.Generic;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test.DataModel
+namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
     [TestFixture]
     public class ParityAccountStateChangeSerializationTests : SerializationTestBase

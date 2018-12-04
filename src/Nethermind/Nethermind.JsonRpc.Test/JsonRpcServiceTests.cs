@@ -35,7 +35,6 @@ using Nethermind.JsonRpc.Modules.Web3;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
-using Block = Nethermind.JsonRpc.Modules.Eth.Block;
 
 namespace Nethermind.JsonRpc.Test
 {
@@ -92,9 +91,9 @@ namespace Nethermind.JsonRpc.Test
         public void GetBlockByNumberTest()
         {
             IEthModule ethModule = Substitute.For<IEthModule>();
-            ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<Block>.Success(new Block {Number = new Quantity(2)}));
+            ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true)));
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_getBlockByNumber", "0x1b4", "true");
-            Assert.AreEqual((UInt256)2, (response.Result as Block)?.Number?.AsNumber());
+            Assert.AreEqual((BigInteger)2, (response.Result as BlockForRpc)?.Number);
         }
 
         [Test]

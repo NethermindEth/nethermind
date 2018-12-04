@@ -29,7 +29,6 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
 using Newtonsoft.Json;
-using Transaction = Nethermind.JsonRpc.Data.Transaction;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -48,12 +47,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return types.Select(s => (ParityTraceTypes) Enum.Parse(typeof(ParityTraceTypes), s, true)).Aggregate((t1, t2) => t1 | t2);
         }
 
-        public ResultWrapper<ParityLikeTxTrace> trace_call(Transaction message, string[] traceTypes, BlockParameter quantity)
+        public ResultWrapper<ParityLikeTxTrace> trace_call(TransactionForRpc message, string[] traceTypes, BlockParameter quantity)
         {
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<ParityLikeTxTrace[]> trace_callMany((Transaction message, string[] traceTypes, BlockParameter numberOrTag)[] a)
+        public ResultWrapper<ParityLikeTxTrace[]> trace_callMany((TransactionForRpc message, string[] traceTypes, BlockParameter numberOrTag)[] a)
         {
             throw new NotImplementedException();
         }

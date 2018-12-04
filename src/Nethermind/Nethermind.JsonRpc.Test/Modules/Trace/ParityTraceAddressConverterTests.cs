@@ -16,18 +16,38 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
+using System;
+using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test.DataModel
+namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
     [TestFixture]
-    public class UInt256SerializationTests : SerializationTestBase
+    public class ParityTraceAddressConverterTests : SerializationTestBase
     {
         [Test]
         public void Can_do_roundtrip()
         {
-            TestSerialization((UInt256) 123456789, (a, b) => a.Equals(b));
+            Func<int[], int[], bool> comparer = (a, b) =>
+            {
+                if (a.Length != b.Length)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < a.Length; i++)
+                {
+                    if (a[i] != b[i])
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }; 
+            
+            TestConverter(new int[] {1, 2, 3, 1000, 10000}, comparer, new ParityTraceAddressConverter());
         }
     }
 }
