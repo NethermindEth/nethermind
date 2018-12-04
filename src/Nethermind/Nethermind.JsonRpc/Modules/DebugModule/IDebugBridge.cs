@@ -20,7 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 
-namespace Nethermind.JsonRpc.Modules.Debug
+namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     public interface IDebugBridge
     {
@@ -30,6 +30,5 @@ namespace Nethermind.JsonRpc.Modules.Debug
         GethLikeTxTrace[] GetBlockTrace(Keccak blockHash);
         GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber);
         byte[] GetDbValue(string dbName, byte[] key);
-        bool LogPeerConnectionDetails();
     }
 }

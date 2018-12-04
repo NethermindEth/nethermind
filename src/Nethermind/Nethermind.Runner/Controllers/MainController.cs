@@ -83,7 +83,8 @@ namespace Nethermind.Runner.Controllers
 
                 if (rpcRequest.Model != null)
                 {
-                    return new JsonResult(_jsonRpcService.SendRequest(rpcRequest.Model), _jsonSettings);
+                    var result = _jsonRpcService.SendRequest(rpcRequest.Model);
+                    return new JsonResult(result, _jsonSettings);
                 }
 
                 if (rpcRequest.Collection != null)

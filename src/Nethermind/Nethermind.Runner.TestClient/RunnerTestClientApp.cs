@@ -54,7 +54,7 @@ namespace Nethermind.Runner.TestClient
                 new Option("clique_discard", ("Signer", p => p)),
                 new Option("trace_replayTransaction", ("Hash", p => p), ("Type", p => $"[\"{p}\"]")),
                 new Option("trace_replayBlockTransactions", ("Block Number", ToBlockNumberHex), ("Type", p => $"[\"{p}\"]")),
-                new Option("debug_dumpPeerConnectionDetails"),
+                new Option("net_dumpPeerConnectionDetails"),
             };
 
             StringBuilder prompt = new StringBuilder("Options:");

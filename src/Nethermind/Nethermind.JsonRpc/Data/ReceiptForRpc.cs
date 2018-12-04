@@ -35,6 +35,7 @@ namespace Nethermind.JsonRpc.Data
             GasUsed = receipt.GasUsed;
             From = receipt.Sender;
             To = receipt.Recipient;
+            ContractAddress = receipt.ContractAddress;
             Logs = receipt.Logs.Select((l, idx) => new LogEntryForRpc(receipt, l, idx)).ToArray();
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;

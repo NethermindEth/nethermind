@@ -22,5 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Net
     {
         int NetworkId { get; }
         int PeerCount { get; }
+        
+        bool LogPeerConnectionDetails();
     }
 }

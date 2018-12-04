@@ -22,7 +22,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.Trace;
 using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc.Modules.Debug
+namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
     {

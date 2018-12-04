@@ -28,11 +28,10 @@ using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc.Modules.Debug
+namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     public class DebugModule : ModuleBase, IDebugModule
     {
@@ -160,12 +159,6 @@ namespace Nethermind.JsonRpc.Modules.Debug
             var dbValue = _debugBridge.GetDbValue(dbName, key);
             if (Logger.IsTrace) Logger.Trace($"{nameof(debug_getFromDb)} request [{dbName}, {key.ToHexString()}], result: {dbValue.ToHexString()}");
             return ResultWrapper<byte[]>.Success(dbValue);
-        }
-
-        public ResultWrapper<bool> debug_dumpPeerConnectionDetails()
-        {
-            var result = _debugBridge.LogPeerConnectionDetails();
-            return ResultWrapper<bool>.Success(result);
         }
         
         public override ModuleType ModuleType => ModuleType.Debug;

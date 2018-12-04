@@ -18,19 +18,32 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Net
 {
     public class NetBridge : INetBridge
     {
         private readonly ISynchronizationManager _syncManager;
-
-        public NetBridge(ISynchronizationManager syncManager)
+        private readonly IPeerManager _peerManager;
+        
+        public NetBridge(ISynchronizationManager syncManager, IPeerManager peerManager)
         {
             _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
+            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(syncManager));
         }
 
         public int NetworkId => _syncManager.ChainId;
         public int PeerCount => _syncManager.GetPeerCount();
+        
+        public bool LogPeerConnectionDetails()
+        {
+            if (_peerManager == null)
+            {
+                return false;
+            }
+            _peerManager.LogSessionStats(true);
+            return true;
+        }
     }
 }

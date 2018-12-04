@@ -19,7 +19,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Debug;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;

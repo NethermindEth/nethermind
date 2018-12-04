@@ -20,7 +20,6 @@ using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Debug;
 using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
@@ -35,7 +34,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash);
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName);
         ResultWrapper<State> debug_dumpBlock(BlockParameter blockParameter);
-        ResultWrapper<bool> debug_dumpPeerConnectionDetails();
         ResultWrapper<GcStats> debug_gcStats();
         ResultWrapper<byte[]> debug_getBlockRlp(BlockParameter blockParameter);
         ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);

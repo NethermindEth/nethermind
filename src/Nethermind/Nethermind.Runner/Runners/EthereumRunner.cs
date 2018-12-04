@@ -45,7 +45,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
-using Nethermind.JsonRpc.Modules.Debug;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
@@ -239,7 +238,7 @@ namespace Nethermind.Runner.Runners
             var debugReceiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
             AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, debugTransactionPool, debugReceiptStorage);
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            var debugBridge = new DebugBridge(debugDbProvider, tracer, debugChain.Processor, _peerManager);
+            var debugBridge = new DebugBridge(debugDbProvider, tracer, debugChain.Processor);
 
             EthModule module = new EthModule(_jsonSerializer, _configProvider, _logManager, blockchainBridge);
             _rpcModuleProvider.Register<IEthModule>(module);
@@ -261,7 +260,7 @@ namespace Nethermind.Runner.Runners
 
             if (_initConfig.NetworkEnabled && _initConfig.SynchronizationEnabled)
             {
-                NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_syncManager));
+                NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_syncManager, _peerManager));
                 _rpcModuleProvider.Register<INetModule>(netModule);
             }
 

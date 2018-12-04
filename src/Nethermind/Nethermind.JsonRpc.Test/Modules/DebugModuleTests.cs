@@ -24,7 +24,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc.Modules.Debug;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using NSubstitute;
 using NUnit.Framework;

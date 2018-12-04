@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.JsonRpc.Modules.Debug
+namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     public class MemStats
     {

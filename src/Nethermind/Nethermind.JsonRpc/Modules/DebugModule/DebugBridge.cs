@@ -26,19 +26,17 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Network;
 using Nethermind.Store;
 
-namespace Nethermind.JsonRpc.Modules.Debug
+namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     public class DebugBridge : IDebugBridge
-    {
-        private readonly IPeerManager _peerManager;
+    {        
         private readonly ITracer _tracer;
         private Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockchainProcessor receiptsProcessor, IPeerManager peerManager)
+        public DebugBridge(IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockchainProcessor receiptsProcessor)
         {
             IBlockchainProcessor receiptsProcessor1 = receiptsProcessor ?? throw new ArgumentNullException(nameof(receiptsProcessor));
             receiptsProcessor1.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
-            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
@@ -85,16 +83,6 @@ namespace Nethermind.JsonRpc.Modules.Debug
         public GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber)
         {
             return _tracer.TraceBlock(blockNumber);
-        }
-        
-        public bool LogPeerConnectionDetails()
-        {
-            if (_peerManager == null)
-            {
-                return false;
-            }
-            _peerManager.LogSessionStats(true);
-            return true;
         }
         
         private AutoResetEvent _receiptProcessedEvent = new AutoResetEvent(false);

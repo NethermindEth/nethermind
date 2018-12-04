@@ -25,5 +25,6 @@ namespace Nethermind.JsonRpc.Modules.Net
         ResultWrapper<string> net_version();
         ResultWrapper<bool> net_listening();
         ResultWrapper<BigInteger> net_peerCount();
+        ResultWrapper<bool> net_dumpPeerConnectionDetails();
     }
 }
