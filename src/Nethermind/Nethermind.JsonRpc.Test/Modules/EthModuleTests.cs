@@ -129,7 +129,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_filter_logs()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.GetFilterLogs(Arg.Any<int>()).Returns(new [] {new FilterLog(1, 1, TestObject.KeccakA, 1, TestObject.KeccakB, TestObject.AddressA, new byte[] {1, 2, 3}, new [] {TestObject.KeccakC, TestObject.KeccakD})});
+            bridge.GetFilterLogs(Arg.Any<int>()).Returns(new[] {new FilterLog(1, 1, TestObject.KeccakA, 1, TestObject.KeccakB, TestObject.AddressA, new byte[] {1, 2, 3}, new[] {TestObject.KeccakC, TestObject.KeccakD})});
             bridge.FilterExists(1).Returns(true);
 
             IEthModule module = new EthModule(new UnforgivingJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
@@ -138,7 +138,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":[{\"removed\":false,\"logIndex\":\"0x1\",\"blockNumber\":\"0x1\",\"blockHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"transactionIndex\":\"0x1\",\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"data\":\"0x010203\",\"topics\":[\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"]}]}", serialized);
         }
-        
+
         [Test]
         public void Eth_get_block_by_hash()
         {
@@ -151,7 +151,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"number\":\"0x0\",\"hash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"nonce\":\"0x3e8\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"totalDifficulty\":\"0x0\",\"extraData\":\"0x010203\",\"size\":\"0x0\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[{\"hash\":null,\"nonce\":\"0x0\",\"blockHash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"blockNumber\":\"0x0\",\"transactionIndex\":\"0x0\",\"from\":null,\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\"}],\"transactionHashes\":null,\"uncles\":[]}}", serialized);
         }
-        
+
         [Test]
         public void Eth_get_block_by_number()
         {
@@ -166,8 +166,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"number\":\"0x0\",\"hash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"nonce\":\"0x3e8\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"totalDifficulty\":\"0x0\",\"extraData\":\"0x010203\",\"size\":\"0x0\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[{\"hash\":null,\"nonce\":\"0x0\",\"blockHash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"blockNumber\":\"0x0\",\"transactionIndex\":\"0x0\",\"from\":null,\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\"}],\"transactionHashes\":null,\"uncles\":[]}}", serialized);
         }
-        
-                [Test]
+
+        [Test]
         public void Eth_get_block_by_number_empty_param()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
@@ -181,7 +181,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"number\":\"0x0\",\"hash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"nonce\":\"0x3e8\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"totalDifficulty\":\"0x0\",\"extraData\":\"0x010203\",\"size\":\"0x0\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[{\"hash\":null,\"nonce\":\"0x0\",\"blockHash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"blockNumber\":\"0x0\",\"transactionIndex\":\"0x0\",\"from\":null,\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\"}],\"transactionHashes\":null,\"uncles\":[]}}", serialized);
         }
-        
+
         [Test]
         public void Eth_get_transaction_receipt()
         {
@@ -198,6 +198,20 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getTransactionReceipt", TestObject.KeccakA.ToString());
 
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x0\",\"blockHash\":null,\"blockNumber\":\"0x0\",\"cumulativeGasUsed\":\"0x0\",\"gasUsed\":\"0x0\",\"from\":null,\"to\":null,\"contractAddress\":null,\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x0\",\"transactionHash\":null,\"blockHash\":null,\"blockNumber\":\"0x0\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x0\",\"transactionHash\":null,\"blockHash\":null,\"blockNumber\":\"0x0\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":null,\"status\":\"0x0\"}}", serialized);
+        }
+
+        [Test]
+        public void Eth_syncing()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.BestKnown.Returns((UInt256) 6178000);
+            bridge.Head.Returns(Build.A.BlockHeader.WithNumber((UInt256) 6170000).TestObject);
+
+            IEthModule module = new EthModule(new UnforgivingJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+
+            string serialized = RpcTest.TestSerializedRequest(module, "eth_syncing");
+
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x5e2590\",\"highestBlock\":\"0x5e44d0\"}}", serialized);
         }
     }
 }
