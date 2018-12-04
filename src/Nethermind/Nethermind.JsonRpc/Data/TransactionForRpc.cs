@@ -41,9 +41,6 @@ namespace Nethermind.JsonRpc.Data
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
             Data = transaction.Data;
-            
-            Hash = transaction.Hash;
-            Hash = transaction.Hash;
         }
         
         // ReSharper disable once UnusedMember.Global
