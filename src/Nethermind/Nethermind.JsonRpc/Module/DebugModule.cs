@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Numerics;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -30,20 +29,17 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.DataModel;
 using Newtonsoft.Json;
-using TransactionTrace = Nethermind.JsonRpc.DataModel.TransactionTrace;
 
 namespace Nethermind.JsonRpc.Module
 {
     public class DebugModule : ModuleBase, IDebugModule
     {
         private readonly IDebugBridge _debugBridge;
-        private readonly IJsonRpcModelMapper _modelMapper;
 
-        public DebugModule(IConfigProvider configurationProvider, ILogManager logManager, IDebugBridge debugBridge, IJsonRpcModelMapper modelMapper, IJsonSerializer jsonSerializer)
+        public DebugModule(IConfigProvider configurationProvider, ILogManager logManager, IDebugBridge debugBridge, IJsonSerializer jsonSerializer)
             : base(configurationProvider, logManager, jsonSerializer)
         {
             _debugBridge = debugBridge;
-            _modelMapper = modelMapper;
         }
 
         public override IReadOnlyCollection<JsonConverter> GetConverters()
@@ -93,40 +89,36 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
-        public ResultWrapper<BlockTraceItem[]> debug_traceBlock(byte[] blockRlp)
+        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp)
         {
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(BigInteger blockNumber)
+        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BigInteger blockNumber)
         {
             var blockTrace = _debugBridge.GetBlockTrace((UInt256) blockNumber);
             if (blockTrace == null)
             {
-                return ResultWrapper<BlockTraceItem[]>.Fail($"Trace is null for block {blockNumber}", ErrorType.NotFound);
+                return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockNumber}", ErrorType.NotFound);
             }
 
-            var blockTraceModel = _modelMapper.MapBlockTrace(blockTrace);
-
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {GetJsonLog(blockTraceModel.Select(btm => btm.ToJson()))}");
-            return ResultWrapper<BlockTraceItem[]>.Success(blockTraceModel);
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: blockTrace");
+            return ResultWrapper<GethLikeTxTrace[]>.Success(blockTrace);
         }
 
-        public ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Keccak blockHash)
+        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash)
         {
             GethLikeTxTrace[] gethLikeBlockTrace = _debugBridge.GetBlockTrace(blockHash);
             if (gethLikeBlockTrace == null)
             {
-                return ResultWrapper<BlockTraceItem[]>.Fail($"Trace is null for block {blockHash}", ErrorType.NotFound);
+                return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockHash}", ErrorType.NotFound);
             }
 
-            var blockTraceModel = _modelMapper.MapBlockTrace(gethLikeBlockTrace);
-
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: {GetJsonLog(blockTraceModel.Select(btm => btm.ToJson()))}");
-            return ResultWrapper<BlockTraceItem[]>.Success(blockTraceModel);
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: blockTrace");
+            return ResultWrapper<GethLikeTxTrace[]>.Success(gethLikeBlockTrace);
         }
 
-        public ResultWrapper<BlockTraceItem[]> debug_traceBlockFromFile(string fileName)
+        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName)
         {
             throw new NotImplementedException();
         }

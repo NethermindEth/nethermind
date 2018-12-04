@@ -28,10 +28,10 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash);
         ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex);
         ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockHash, int txIndex);
-        ResultWrapper<BlockTraceItem[]> debug_traceBlock(byte[] blockRlp);
-        ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(BigInteger number);
-        ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Keccak blockHash);
-        ResultWrapper<BlockTraceItem[]> debug_traceBlockFromFile(string fileName);
+        ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp);
+        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BigInteger number);
+        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash);
+        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName);
         ResultWrapper<State> debug_dumpBlock(BlockParameter blockParameter);
         ResultWrapper<GcStats> debug_gcStats();
         ResultWrapper<byte[]> debug_getBlockRlp(BlockParameter blockParameter);

@@ -43,8 +43,7 @@ namespace Nethermind.JsonRpc.Test
             debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
             
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper();
-            DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, modelMapper, new UnforgivingJsonSerializer());
+            DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, new UnforgivingJsonSerializer());
             JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString(true));
             
             byte[] result = response.Result as byte[];
@@ -59,8 +58,7 @@ namespace Nethermind.JsonRpc.Test
             debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[])null);
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper();
-            DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, modelMapper, new UnforgivingJsonSerializer());
+            DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, new UnforgivingJsonSerializer());
             JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString(true));
             
             Assert.IsNull(response.Error, response.Error?.Message);
@@ -102,8 +100,7 @@ namespace Nethermind.JsonRpc.Test
             debugBridge.GetTransactionTrace(Arg.Any<Keccak>()).Returns(trace);
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper();
-            DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, modelMapper, new UnforgivingJsonSerializer());
+            DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, new UnforgivingJsonSerializer());
             string response = RpcTest.TestSerializedRequest<IDebugModule>(module, "debug_traceTransaction", TestObject.KeccakA.ToString(true));
             
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[\"0000000000000000000000000000000000000000000000000000000000000007\",\"0000000000000000000000000000000000000000000000000000000000000008\"],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]}}", response);

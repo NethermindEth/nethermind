@@ -20,12 +20,10 @@ using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.JsonRpc.DataModel.Block;
 using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
 using TransactionReceipt = Nethermind.JsonRpc.DataModel.TransactionReceipt;
-using TransactionTrace = Nethermind.JsonRpc.DataModel.TransactionTrace;
 
 namespace Nethermind.JsonRpc
 {
@@ -36,8 +34,6 @@ namespace Nethermind.JsonRpc
         Transaction MapTransaction(Core.TransactionReceipt receipt, Core.Transaction transaction);
         Core.Transaction MapTransaction(Transaction transaction);
         TransactionReceipt MapTransactionReceipt(Keccak txHash, Core.TransactionReceipt receipt);
-        TransactionTrace MapTransactionTrace(Evm.Tracing.GethLikeTxTrace gethLikeTxTrace);
-        BlockTraceItem[] MapBlockTrace(GethLikeTxTrace[] gethLikeBlockTrace);
         Log MapLog(LogEntry logEntry);
         TransactionPoolStatus MapTransactionPoolStatus(TransactionPoolInfo transactionPoolInfo);
         TransactionPoolContent MapTransactionPoolContent(TransactionPoolInfo transactionPoolInfo);

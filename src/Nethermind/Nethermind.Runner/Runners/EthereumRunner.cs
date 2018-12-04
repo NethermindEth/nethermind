@@ -239,7 +239,7 @@ namespace Nethermind.Runner.Runners
             EthModule module = new EthModule(_jsonSerializer, _configProvider, mapper, _logManager, blockchainBridge);
             _rpcModuleProvider.Register<IEthModule>(module);
 
-            DebugModule debugModule = new DebugModule(_configProvider, _logManager, debugBridge, mapper, _jsonSerializer);
+            DebugModule debugModule = new DebugModule(_configProvider, _logManager, debugBridge, _jsonSerializer);
             _rpcModuleProvider.Register<IDebugModule>(debugModule);
 
             if (_sealEngine is CliqueSealEngine)

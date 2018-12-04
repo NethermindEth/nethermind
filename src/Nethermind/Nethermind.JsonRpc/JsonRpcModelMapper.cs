@@ -19,21 +19,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.JsonRpc.DataModel.Block;
-using StorageTrace = Nethermind.JsonRpc.DataModel.StorageTrace;
 using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
 using TransactionReceipt = Nethermind.JsonRpc.DataModel.TransactionReceipt;
-using TransactionTrace = Nethermind.JsonRpc.DataModel.TransactionTrace;
-using TransactionTraceEntry = Nethermind.JsonRpc.DataModel.TransactionTraceEntry;
-using StorageTraceEntry = Nethermind.JsonRpc.DataModel.StorageTraceEntry;
 
 namespace Nethermind.JsonRpc
 {
@@ -189,38 +183,6 @@ namespace Nethermind.JsonRpc
             }
 
             return mapped;
-        }
-
-        public TransactionTrace MapTransactionTrace(Evm.Tracing.GethLikeTxTrace gethLikeTxTrace)
-        {
-            if (gethLikeTxTrace == null)
-            {
-                return null;
-            }
-
-            return new TransactionTrace
-            {
-                Gas = gethLikeTxTrace.Gas,
-                Failed = gethLikeTxTrace.Failed,
-                ReturnValue = gethLikeTxTrace.ReturnValue.ToHexString(),
-                StructLogs = gethLikeTxTrace.Entries?.Select(x => new TransactionTraceEntry
-                {
-                    Pc = x.Pc,
-                    Op = x.Operation,
-                    Gas = x.Gas,
-                    GasCost = x.GasCost,
-                    Error = x.Error,
-                    Depth = x.Depth,
-                    Stack = x.Stack,
-                    Memory = x.Memory,
-                    Storage = x.Storage
-                }).ToArray()
-            };
-        }
-
-        public BlockTraceItem[] MapBlockTrace(GethLikeTxTrace[] gethLikeBlockTrace)
-        {
-            return gethLikeBlockTrace.Select(t => new BlockTraceItem(MapTransactionTrace(t))).ToArray();
         }
 
         public Log MapLog(LogEntry logEntry)
