@@ -9,9 +9,7 @@
   {
     "ConfigModule": "JsonRpcConfig",
     "ConfigItems": {
-      "JsonRpcVersion": "test",
-      "EnabledModules": "Eth,Shh",
-      "MessageEncoding": "UTF7"
+      "EnabledModules": "Eth,Debug"
     }    
   },
   {
