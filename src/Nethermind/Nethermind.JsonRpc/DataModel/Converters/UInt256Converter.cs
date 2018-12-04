@@ -40,7 +40,13 @@ namespace Nethermind.JsonRpc.DataModel.Converters
 
         public override void WriteJson(JsonWriter writer, UInt256 value, JsonSerializer serializer)
         {
-            writer.WriteValue(string.Concat("0x", value.ToString(_useX64 ? "x64" : "x")));
+            if (value.IsZero)
+            {
+                writer.WriteValue("0x0");
+                return;
+            }
+            
+            writer.WriteValue(string.Concat("0x", value.ToString(_useX64 ? "x64" : "x").TrimStart('0')));
         }
 
         public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer)

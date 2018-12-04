@@ -30,7 +30,7 @@ namespace Nethermind.JsonRpc.Module
     public interface IEthModule : IModule
     {
         ResultWrapper<string> eth_protocolVersion();
-        ResultWrapper<SynchingResult> eth_syncing();
+        ResultWrapper<SyncingResult> eth_syncing();
         ResultWrapper<Address> eth_coinbase();
         ResultWrapper<bool> eth_mining();
         ResultWrapper<byte[]> eth_snapshot();

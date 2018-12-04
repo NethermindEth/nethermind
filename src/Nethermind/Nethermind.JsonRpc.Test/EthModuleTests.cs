@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Test
             
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.AddressA.Bytes.ToHexString(true), "0x01");
             
-            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x0de0b6b3a7640000\"}");
+            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0xde0b6b3a7640000\"}");
         }
         
         [Test]
@@ -89,6 +89,39 @@ namespace Nethermind.JsonRpc.Test
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.KeccakA.Bytes.ToHexString(true), "0x01");
             
             Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters\",\"data\":null}}");
+        }
+        
+        [Test]
+        public void Eth_syncing_true()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.IsSyncing.Returns(false);
+            bridge.Head.Returns(Build.A.BlockHeader.WithNumber(900).TestObject);
+            bridge.BestKnown.Returns((UInt256)1000);
+            
+            IEthModule module = new EthModule(new UnforgivingJsonSerializer(), Substitute.For<IConfigProvider>(), new JsonRpcModelMapper(), NullLogManager.Instance, bridge);
+            
+            string serialized = RpcTest.TestSerializedRequest(module, "eth_syncing");
+            
+            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x384\",\"highestBlock\":\"0x3e8\"}}");
+            
+        }
+        
+        [Test]
+        [Ignore("We always return true")]
+        [Todo(Improve.MissingFunctionality, "Add correct reporting of not syncing")]
+        public void Eth_syncing_false()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.IsSyncing.Returns(true);
+            bridge.Head.Returns(Build.A.BlockHeader.WithNumber(900).TestObject);
+            bridge.BestKnown.Returns((UInt256)1000);
+            
+            IEthModule module = new EthModule(new UnforgivingJsonSerializer(), Substitute.For<IConfigProvider>(), new JsonRpcModelMapper(), NullLogManager.Instance, bridge);
+            
+            string serialized = RpcTest.TestSerializedRequest(module, "eth_syncing");
+            
+            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":false}");
         }
     }
 }

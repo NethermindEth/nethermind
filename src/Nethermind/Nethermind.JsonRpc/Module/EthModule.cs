@@ -60,18 +60,17 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<string>.Success("62");
         }
 
-        public ResultWrapper<SynchingResult> eth_syncing()
+        public ResultWrapper<SyncingResult> eth_syncing()
         {
-            var result = new SynchingResult
+            var result = new SyncingResult
             {
-                IsSynching = true,
-                CurrentBlock = new Quantity(_blockchainBridge.Head.Number),
-                HighestBlock = new Quantity(_blockchainBridge.BestKnown),
-                StartingBlock = new Quantity(0)
+                CurrentBlock = _blockchainBridge.Head.Number,
+                HighestBlock = _blockchainBridge.BestKnown,
+                StartingBlock = UInt256.Zero
             };
             
-            if (Logger.IsTrace) Logger.Trace($"eth_syncing request, result: {result.ToJson()}");
-            return ResultWrapper<SynchingResult>.Success(result);
+            if (Logger.IsTrace) Logger.Trace($"eth_syncing request, result: {_blockchainBridge.Head.Number}/{_blockchainBridge.BestKnown}");
+            return ResultWrapper<SyncingResult>.Success(result);
         }
 
         public ResultWrapper<byte[]> eth_snapshot()

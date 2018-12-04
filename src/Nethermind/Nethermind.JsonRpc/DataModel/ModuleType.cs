@@ -29,7 +29,6 @@ namespace Nethermind.JsonRpc.DataModel
         Net,
         Web3,
         Db,
-        Shh,
         Nethm,
         Debug,
         TxPool,

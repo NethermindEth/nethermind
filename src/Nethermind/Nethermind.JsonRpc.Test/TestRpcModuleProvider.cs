@@ -35,7 +35,6 @@ namespace Nethermind.JsonRpc.Test
                 new ModuleInfo(ModuleType.Net, typeof(INetModule), typeof(INetModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Eth, typeof(IEthModule), typeof(IEthModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Web3, typeof(IWeb3Module), typeof(IWeb3Module).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
-                new ModuleInfo(ModuleType.Shh, typeof(IShhModule), typeof(ShhModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Nethm, typeof(INethmModule), typeof(INethmModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Debug, typeof(IDebugModule), typeof(IDebugModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Trace, typeof(ITraceModule), typeof(ITraceModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>())

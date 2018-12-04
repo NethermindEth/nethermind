@@ -57,7 +57,7 @@ namespace Nethermind.Config.Test
             Assert.AreEqual("test", keystoreConfig.Cipher);
           
             Assert.AreEqual(2, jsonRpcConfig.EnabledModules.Count());
-            new[] { ModuleType.Eth, ModuleType.Shh }.ToList().ForEach(x =>
+            new[] { ModuleType.Eth }.ToList().ForEach(x =>
             {
                 Assert.IsTrue(jsonRpcConfig.EnabledModules.Contains(x));
             });

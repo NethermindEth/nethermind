@@ -16,23 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Collections.Generic;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.JsonRpc.DataModel.Converters;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.DataModel
 {
-    public class WhisperPostMessage : IJsonRpcRequest
+    public class SyncingResult
     {
-        public Data From { get; set; }
-        public Data To { get; set; }
-        public IEnumerable<Data> Topics { get; set; }
-        public Data Payload { get; set; }
-        public Quantity Priority { get; set; }
-        public Quantity Ttl { get; set; }
-
-        public virtual void FromJson(string jsonValue)
-        {
-            throw new NotImplementedException();
-        }
+        [JsonProperty("startingBlock", ItemConverterType = typeof(UInt256Converter))]
+        public UInt256 StartingBlock { get; set; }
+        
+        [JsonProperty("currentBlock", ItemConverterType = typeof(UInt256Converter))]
+        public UInt256 CurrentBlock { get; set; }
+        
+        [JsonProperty("highestBlock", ItemConverterType = typeof(UInt256Converter))]
+        public UInt256 HighestBlock { get; set; }
     }
 }
