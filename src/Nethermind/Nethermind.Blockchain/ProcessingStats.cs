@@ -29,13 +29,10 @@ namespace Nethermind.Blockchain
     {
         private readonly ILogger _logger;
         private readonly Stopwatch _processingStopwatch = new Stopwatch();
-        private UInt256 _lastBlockNumber;
+        private long _lastBlockNumber;
         private long _lastElapsedTicks;
         private decimal _lastTotalMGas;
         private long _lastTotalTx;
-        private decimal _currentTotalMGas;
-        private long _currentTotalTx;
-        private UInt256 _currentTotalBlocks;
         private long _lastStateDbReads;
         private long _lastStateDbWrites;
         private long _lastGen0;
@@ -56,18 +53,20 @@ namespace Nethermind.Blockchain
         {
             _wasQueueEmptied = blockQueueSize == 0;
 
-            if (_lastBlockNumber.IsZero)
+            if (_lastBlockNumber == 0)
             {
-                _lastBlockNumber = block.Number;
+                _lastBlockNumber = (long)block.Number;
             }
 
-            _currentTotalMGas += block.GasUsed / 1_000_000m;
-            _currentTotalTx += block.Transactions.Length;
-            //            
+            Metrics.Mgas += block.GasUsed / 1_000_000m;
+            Metrics.Transactions += block.Transactions.Length;
+            Metrics.Blocks = (long)block.Number;
+            Metrics.RecoveryQueueSize = recoveryQueueSize;
+            Metrics.ProcessingQueueSize = blockQueueSize;
+                       
             long currentTicks = _processingStopwatch.ElapsedTicks;
             decimal totalMicroseconds = _processingStopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
             decimal chunkMicroseconds = (_processingStopwatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
-
 
             if (chunkMicroseconds > 10 * 1000 * 1000 || (_wasQueueEmptied && chunkMicroseconds > 1 * 1000 * 1000)) // 10s
             {
@@ -77,31 +76,30 @@ namespace Nethermind.Blockchain
                 long currentGen2 = GC.CollectionCount(2);
                 long currentMemory = GC.GetTotalMemory(false);
                 _maxMemory = Math.Max(_maxMemory, currentMemory);
-                long currentStateDbReads = Metrics.StateDbReads;
-                long currentStateDbWrites = Metrics.StateDbWrites;
-                long currentTreeNodeRlp = Metrics.TreeNodeRlpEncodings + Metrics.TreeNodeRlpDecodings;
-                long evmExceptions = Metrics.EvmExceptions;
-                long currentSelfDestructs = Metrics.SelfDestructs;
+                long currentStateDbReads = Store.Metrics.StateDbReads;
+                long currentStateDbWrites = Store.Metrics.StateDbWrites;
+                long currentTreeNodeRlp = Store.Metrics.TreeNodeRlpEncodings + Store.Metrics.TreeNodeRlpDecodings;
+                long evmExceptions = Evm.Metrics.EvmExceptions;
+                long currentSelfDestructs = Evm.Metrics.SelfDestructs;
 
-                long chunkTx = _currentTotalTx - _lastTotalTx;
-                UInt256 chunkBlocks = block.Number - _lastBlockNumber;
-                _lastBlockNumber = block.Number;
-                _currentTotalBlocks += chunkBlocks;
-
-                decimal chunkMGas = _currentTotalMGas - _lastTotalMGas;
+                long chunkTx = Metrics.Transactions - _lastTotalTx;
+                long chunkBlocks = Metrics.Blocks - _lastBlockNumber;
+                decimal chunkMGas = Metrics.Mgas - _lastTotalMGas;
+                
                 decimal mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1000 * 1000;
-                decimal totalMgasPerSecond = totalMicroseconds == 0 ? -1 : _currentTotalMGas / totalMicroseconds * 1000 * 1000;
-                decimal totalTxPerSecond = totalMicroseconds == 0 ? -1 : _currentTotalTx / totalMicroseconds * 1000 * 1000;
-                decimal totalBlocksPerSecond = totalMicroseconds == 0 ? -1 : (decimal) _currentTotalBlocks / totalMicroseconds * 1000 * 1000;
+                decimal totalMgasPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Mgas / totalMicroseconds * 1000 * 1000;
+                decimal totalTxPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Transactions / totalMicroseconds * 1000 * 1000;
+                decimal totalBlocksPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Blocks / totalMicroseconds * 1000 * 1000;
                 decimal txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1000m * 1000m;
-                decimal bps = chunkMicroseconds == 0 ? -1 : (decimal) chunkBlocks / chunkMicroseconds * 1000m * 1000m;
+                decimal bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1000m * 1000m;
 
                 if (_logger.IsInfo) _logger.Info($"Processed blocks up to {block.Number,9} in {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms, mgasps {mgasPerSecond,7:F2} total {totalMgasPerSecond,7:F2}, tps {txps,7:F2} total {totalTxPerSecond,7:F2}, bps {bps,7:F2} total {totalBlocksPerSecond,7:F2}, recv queue {recoveryQueueSize}, proc queue {blockQueueSize}");
                 if (_logger.IsDebug) _logger.Trace($"Gen0 {currentGen0 - _lastGen0,6}, Gen1 {currentGen1 - _lastGen1,6}, Gen2 {currentGen2 - _lastGen2,6}, maxmem {_maxMemory / 1000000,5}, mem {currentMemory / 1000000,5}, reads {currentStateDbReads - _lastStateDbReads,9}, writes {currentStateDbWrites - _lastStateDbWrites,9}, rlp {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions {evmExceptions - _lastEvmExceptions}, selfdstrcs {currentSelfDestructs - _lastSelfDestructs}");
 
-                _lastTotalMGas = _currentTotalMGas;
+                _lastBlockNumber = Metrics.Blocks;
+                _lastTotalMGas = Metrics.Mgas;
                 _lastElapsedTicks = currentTicks;
-                _lastTotalTx = _currentTotalTx;
+                _lastTotalTx = Metrics.Transactions;
                 _lastGen0 = currentGen0;
                 _lastGen1 = currentGen1;
                 _lastGen2 = currentGen2;

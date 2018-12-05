@@ -170,6 +170,15 @@ namespace Nethermind.Network.Rlpx
         
         private void InitializeChannel(IChannel channel, ConnectionDirection connectionDirection, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
         {
+            if (connectionDirection == ConnectionDirection.In)
+            {
+                Metrics.IncomingConnections++;
+            }
+            else
+            {
+                Metrics.OutgoingConnections++;    
+            }
+            
             P2PSession session = new P2PSession(
                 LocalNodeId,
                 remoteId,

@@ -91,6 +91,7 @@ namespace Nethermind.Network.P2P
             if (msg.PacketType == P2PMessageCode.Hello)
             {
                 HandleHello(Deserialize<HelloMessage>(msg.Data));
+                Metrics.HellosReceived++;
 
                 foreach (Capability capability in AgreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()))
                 {
@@ -251,6 +252,7 @@ namespace Nethermind.Network.P2P
 
             _sentHello = true;
             Send(helloMessage);
+            Metrics.HellosSent++;
         }
 
         private void HandlePing()

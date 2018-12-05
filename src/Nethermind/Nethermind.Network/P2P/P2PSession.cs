@@ -178,7 +178,8 @@ namespace Nethermind.Network.P2P
                 ObsoleteRemoteNodeId = RemoteNodeId;
                 RemoteNodeId = handshakeRemoteNodeId;
             }
-            
+           
+            Metrics.Handshakes++;
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 

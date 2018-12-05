@@ -395,29 +395,25 @@ namespace Nethermind.PerfTest
                     _logger.Warn($"Is server GC at {number}      : {System.Runtime.GCSettings.IsServerGC}");
                     _logger.Warn($"GC latency mode at {number}   : {System.Runtime.GCSettings.LatencyMode}");
 
-                    _logger.Warn($"TOTAL after {number} blocks DB reads      : {Metrics.BlocksDbReads}");
-                    _logger.Warn($"TOTAL after {number} blocks DB writes     : {Metrics.BlocksDbWrites}");
-                    _logger.Warn($"TOTAL after {number} infos DB reads       : {Metrics.BlockInfosDbReads}");
-                    _logger.Warn($"TOTAL after {number} infos DB writes      : {Metrics.BlockInfosDbWrites}");
-                    _logger.Warn($"TOTAL after {number} state tree reads     : {Metrics.StateTreeReads}");
-                    _logger.Warn($"TOTAL after {number} state tree writes    : {Metrics.StateTreeWrites}");
-                    _logger.Warn($"TOTAL after {number} state DB reads       : {Metrics.StateDbReads}");
-                    _logger.Warn($"TOTAL after {number} state DB writes      : {Metrics.StateDbWrites}");
-                    _logger.Warn($"TOTAL after {number} storage tree reads   : {Metrics.StorageTreeReads}");
-                    _logger.Warn($"TOTAL after {number} storage tree writes  : {Metrics.StorageTreeWrites}");
-                    _logger.Warn($"TOTAL after {number} storage DB reads     : {Metrics.StorageDbReads}");
-                    _logger.Warn($"TOTAL after {number} storage DB writes    : {Metrics.StorageDbWrites}");
-                    _logger.Warn($"TOTAL after {number} tree node hash       : {Metrics.TreeNodeHashCalculations}");
-                    _logger.Warn($"TOTAL after {number} tree node RLP decode : {Metrics.TreeNodeRlpDecodings}");
-                    _logger.Warn($"TOTAL after {number} tree node RLP encode : {Metrics.TreeNodeRlpEncodings}");
-                    _logger.Warn($"TOTAL after {number} code DB reads        : {Metrics.CodeDbReads}");
-                    _logger.Warn($"TOTAL after {number} code DB writes       : {Metrics.CodeDbWrites}");
-                    _logger.Warn($"TOTAL after {number} receipts DB reads    : {Metrics.ReceiptsDbReads}");
-                    _logger.Warn($"TOTAL after {number} receipts DB writes   : {Metrics.ReceiptsDbWrites}");
-                    _logger.Warn($"TOTAL after {number} other DB reads       : {Metrics.OtherDbReads}");
-                    _logger.Warn($"TOTAL after {number} other DB writes      : {Metrics.OtherDbWrites}");
-                    _logger.Warn($"TOTAL after {number} empty account saves  : {Metrics.EmptyAccountSaves}");
-
+                    _logger.Warn($"TOTAL after {number} blocks DB reads      : {Store.Metrics.BlocksDbReads}");
+                    _logger.Warn($"TOTAL after {number} blocks DB writes     : {Store.Metrics.BlocksDbWrites}");
+                    _logger.Warn($"TOTAL after {number} infos DB reads       : {Store.Metrics.BlockInfosDbReads}");
+                    _logger.Warn($"TOTAL after {number} infos DB writes      : {Store.Metrics.BlockInfosDbWrites}");
+                    _logger.Warn($"TOTAL after {number} state tree reads     : {Store.Metrics.StateTreeReads}");
+                    _logger.Warn($"TOTAL after {number} state tree writes    : {Store.Metrics.StateTreeWrites}");
+                    _logger.Warn($"TOTAL after {number} state DB reads       : {Store.Metrics.StateDbReads}");
+                    _logger.Warn($"TOTAL after {number} state DB writes      : {Store.Metrics.StateDbWrites}");
+                    _logger.Warn($"TOTAL after {number} storage tree reads   : {Store.Metrics.StorageTreeReads}");
+                    _logger.Warn($"TOTAL after {number} storage tree writes  : {Store.Metrics.StorageTreeWrites}");
+                    _logger.Warn($"TOTAL after {number} tree node hash       : {Store.Metrics.TreeNodeHashCalculations}");
+                    _logger.Warn($"TOTAL after {number} tree node RLP decode : {Store.Metrics.TreeNodeRlpDecodings}");
+                    _logger.Warn($"TOTAL after {number} tree node RLP encode : {Store.Metrics.TreeNodeRlpEncodings}");
+                    _logger.Warn($"TOTAL after {number} code DB reads        : {Store.Metrics.CodeDbReads}");
+                    _logger.Warn($"TOTAL after {number} code DB writes       : {Store.Metrics.CodeDbWrites}");
+                    _logger.Warn($"TOTAL after {number} receipts DB reads    : {Store.Metrics.ReceiptsDbReads}");
+                    _logger.Warn($"TOTAL after {number} receipts DB writes   : {Store.Metrics.ReceiptsDbWrites}");
+                    _logger.Warn($"TOTAL after {number} other DB reads       : {Store.Metrics.OtherDbReads}");
+                    _logger.Warn($"TOTAL after {number} other DB writes      : {Store.Metrics.OtherDbWrites}");
                     // disk space
                     stopwatch.Start();
                 }

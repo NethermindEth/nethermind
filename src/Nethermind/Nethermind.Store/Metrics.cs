@@ -34,8 +34,6 @@ namespace Nethermind.Store
         public static long StateDbWrites { get; set; }
         public static long StorageTreeReads { get; set; }
         public static long StorageTreeWrites { get; set; }
-        public static long StorageDbReads { get; set; }
-        public static long StorageDbWrites { get; set; }
         public static long PendingTxsDbReads { get; set; }
         public static long PendingTxsDbWrites { get; set; }
         public static long OtherDbReads { get; set; }
@@ -43,9 +41,5 @@ namespace Nethermind.Store
         public static long TreeNodeHashCalculations { get; set; }
         public static long TreeNodeRlpEncodings { get; set; }
         public static long TreeNodeRlpDecodings { get; set; }
-
-        public static long EvmExceptions { get; set; }
-        public static long SelfDestructs { get; set; }
-        public static long EmptyAccountSaves { get; set; }
     }
 } 
