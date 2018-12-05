@@ -210,6 +210,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(StatusMessage status)
         {
+            Metrics.StatusesReceived++;
+            
             if (_statusReceived)
             {
                 throw new SubprotocolException($"{nameof(StatusMessage)} has already been received in the past");

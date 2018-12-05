@@ -92,6 +92,7 @@ namespace Nethermind.Blockchain
             if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
             {
                 /* discarding the other branch data - chain reorganization */
+                Metrics.Reorganizations++;
                 _storageProvider.Reset();
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = branchStateRoot;

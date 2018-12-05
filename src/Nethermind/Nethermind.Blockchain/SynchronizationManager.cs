@@ -252,6 +252,7 @@ namespace Nethermind.Blockchain
 
             var peerInfo = new PeerInfo(synchronizationPeer);
             _peers.TryAdd(synchronizationPeer.NodeId, peerInfo);
+            Metrics.SyncPeers = _peers.Count;
 
             var initCancelSource = _initCancelTokens[synchronizationPeer.NodeId] = new CancellationTokenSource();
             var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _aggregateSyncCancellationTokenSource.Token);
@@ -300,6 +301,8 @@ namespace Nethermind.Blockchain
                 return;
             }
 
+            Metrics.SyncPeers = _peers.Count;
+            
             if (_currentSyncingPeerInfo?.Peer.NodeId.Equals(synchronizationPeer.NodeId) ?? false)
             {
                 if (_logger.IsTrace) _logger.Trace($"Requesting peer cancel with: {synchronizationPeer.NodeId}");
