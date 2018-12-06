@@ -122,6 +122,7 @@ namespace Nethermind.Blockchain.TransactionPools
             
             if (!_pendingTransactions.TryAdd(transaction.Hash, transaction))
             {
+                Metrics.PendingTransactionsKnown++;
                 return;
             }
 

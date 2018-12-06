@@ -30,5 +30,6 @@ namespace Nethermind.Blockchain
         public static long PendingTransactionsSent { get; set; }
         public static long PendingTransactionsReceived { get; set; }
         public static long PendingTransactionsDiscarded { get; set; }
+        public static long PendingTransactionsKnown { get; set; }
     }
 }
