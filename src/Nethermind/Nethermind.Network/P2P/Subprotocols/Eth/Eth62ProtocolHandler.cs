@@ -75,6 +75,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             System.Timers.Timer txFloodCheckTimer = new System.Timers.Timer(TxFloodCheckInterval);
             txFloodCheckTimer.Elapsed += CheckTxFlooding;
+            txFloodCheckTimer.Start();
         }
 
         private const int TxFloodCheckInterval = 1000;
@@ -85,6 +86,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 if (Logger.IsDebug) Logger.Debug($"Disconnecting {NodeId} due to tx flooding");
                 Disconnect(DisconnectReason.UselessPeer);
+                
             }
 
             _txsSentSinceLastCheck = 0;
