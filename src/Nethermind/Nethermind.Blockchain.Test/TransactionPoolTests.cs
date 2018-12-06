@@ -258,7 +258,7 @@ namespace Nethermind.Blockchain.Test
                 .WithData(data)
                 .To(to)
                 .DeliveredBy(privateKey.PublicKey)
-                .SignedAndResolved(_ethereumSigner, privateKey, 1)
+                .SignedAndResolved(_ethereumSigner, privateKey, RopstenSpecProvider.ByzantiumBlockNumber)
                 .TestObject;
 
         private class Transactions
