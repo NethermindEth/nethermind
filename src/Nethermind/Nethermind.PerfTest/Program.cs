@@ -158,7 +158,7 @@ namespace Nethermind.PerfTest
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance,
                 new TransactionPool(NullTransactionStorage.Instance,
                     new PendingTransactionThresholdValidator(), new Timestamp(),
-                    NullEthereumSigner.Instance, logManager), logManager);
+                    NullEthereumSigner.Instance, RopstenSpecProvider.Instance, logManager), logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
 
             Stopwatch stopwatch = new Stopwatch();
@@ -320,7 +320,7 @@ namespace Nethermind.PerfTest
             /* store & validation */
             var transactionPool = new TransactionPool(NullTransactionStorage.Instance,
                 new PendingTransactionThresholdValidator(), new Timestamp(),
-                NullEthereumSigner.Instance, _logManager);
+                NullEthereumSigner.Instance, RopstenSpecProvider.Instance, _logManager);
             var receiptStorage = new InMemoryReceiptStorage();
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, transactionPool, _logManager));
             var headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, _logManager);
