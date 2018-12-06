@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Test
             MemDb receiptsDb = new MemDb();
             MemDb traceDb = new MemDb();
             TransactionPool transactionPool = new TransactionPool(new NullTransactionStorage(),
-                new PendingTransactionThresholdValidator(), new Timestamp(), ethereumSigner, logManager);
+                new PendingTransactionThresholdValidator(), new Timestamp(), ethereumSigner, specProvider, logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider);
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, logManager);
             Timestamp timestamp = new Timestamp();

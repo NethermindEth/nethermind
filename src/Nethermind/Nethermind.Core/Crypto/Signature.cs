@@ -18,6 +18,7 @@
 
 using System;
 using System.Numerics;
+using System.Reflection.Metadata.Ecma335;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto
@@ -93,8 +94,9 @@ namespace Nethermind.Core.Crypto
 
         public byte[] Bytes { get; } = new byte[64];
         public int V { get; set; }
+
+        public int? GetChainId => V < 35 ? null : (int?)(V + (V % 2) - 36) / 2;  
         
-        /* is it correct for Goerli? */
         public byte RecoveryId
         {
             get
