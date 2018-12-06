@@ -116,15 +116,21 @@ namespace Nethermind.Blockchain.TransactionPools
                 Metrics.PendingTransactionsDiscarded++;
                 return;
             }
-                
-            transaction.SenderAddress = _signer.RecoverAddress(transaction, blockNumber);
-            // check nonce
             
             if (!_pendingTransactions.TryAdd(transaction.Hash, transaction))
             {
                 Metrics.PendingTransactionsKnown++;
                 return;
             }
+            
+            transaction.SenderAddress = _signer.RecoverAddress(transaction, blockNumber);
+            if (_transactionStorage.Get(transaction.Hash) != null)
+            {
+                Metrics.PendingTransactionsKnown++;
+                return;
+            }
+            
+            // check nonce
 
             NewPending?.Invoke(this, new TransactionEventArgs(transaction));
             NotifyPeers(SelectPeers(transaction), transaction);
