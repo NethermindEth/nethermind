@@ -19,10 +19,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
@@ -70,6 +72,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _blockTree = blockTree;
             _transactionPool = transactionPool;
             _timestamp = timestamp;
+
+            System.Timers.Timer txFloodCheckTimer = new System.Timers.Timer(TxFloodCheckInterval);
+            txFloodCheckTimer.Elapsed += CheckTxFlooding;
+        }
+
+        private const int TxFloodCheckInterval = 1000;
+
+        private void CheckTxFlooding(object sender, ElapsedEventArgs e)
+        {
+            if (_txsSentSinceLastCheck * 1000 / TxFloodCheckInterval > 20)
+            {
+                if (Logger.IsDebug) Logger.Debug($"Disconnecting {NodeId} due to tx flooding");
+                Disconnect(DisconnectReason.UselessPeer);
+            }
+
+            _txsSentSinceLastCheck = 0;
         }
 
         public virtual byte ProtocolVersion => 62;
@@ -80,14 +98,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public INodeStats NodeStats => P2PSession.NodeStats;
         public string ClientId { get; set; }
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+
         event EventHandler<ProtocolEventArgs> IProtocolHandler.SubprotocolRequested
         {
-            add
-            {
-            }
-            remove
-            {
-            }
+            add { }
+            remove { }
         }
 
         public void Init()
@@ -100,7 +115,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             BlockHeader head = SyncManager.Head;
             StatusMessage statusMessage = new StatusMessage();
-            statusMessage.ChainId = (UInt256)SyncManager.ChainId;
+            statusMessage.ChainId = (UInt256) SyncManager.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.Difficulty;
             statusMessage.BestHash = head.Hash;
@@ -167,6 +182,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Disconnect(DisconnectReason disconnectReason)
         {
+            P2PSession.DisconnectAsync(disconnectReason, DisconnectType.Local);
         }
 
         public void SendNewBlock(Block block)
@@ -211,7 +227,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private void Handle(StatusMessage status)
         {
             Metrics.StatusesReceived++;
-            
+
             if (_statusReceived)
             {
                 throw new SubprotocolException($"{nameof(StatusMessage)} has already been received in the past");
@@ -238,7 +254,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             var eventArgs = new EthProtocolInitializedEventArgs(this)
             {
-                ChainId = (long)status.ChainId,
+                ChainId = (long) status.ChainId,
                 BestHash = status.BestHash,
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
@@ -249,10 +265,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
+        private long _txsSentSinceLastCheck;
+
         private void Handle(TransactionsMessage msg)
         {
             for (int i = 0; i < msg.Transactions.Length; i++)
             {
+                _txsSentSinceLastCheck++;
                 var transaction = msg.Transactions[i];
                 transaction.DeliveredBy = NodeId.PublicKey;
                 transaction.Timestamp = _timestamp.EpochSeconds;
@@ -403,6 +422,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 {
                     P2PSession?.NodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, latency.Value);
                 }
+
                 return task.Result;
             }
 
@@ -438,6 +458,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 {
                     P2PSession?.NodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockBodies, latency.Value);
                 }
+
                 return task.Result;
             }
 
@@ -492,7 +513,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers[0]?.Number ?? 0;
         }
-        
+
         async Task<UInt256> ISynchronizationPeer.GetHeadDifficulty(CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();

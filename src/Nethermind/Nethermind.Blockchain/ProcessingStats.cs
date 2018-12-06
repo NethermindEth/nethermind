@@ -20,8 +20,6 @@ using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
@@ -43,6 +41,7 @@ namespace Nethermind.Blockchain
         private long _lastSelfDestructs;
         private long _maxMemory;
         private bool _wasQueueEmptied;
+        private long _totalBlocks;
 
         public ProcessingStats(ILogger logger)
         {
@@ -81,15 +80,17 @@ namespace Nethermind.Blockchain
                 long currentTreeNodeRlp = Store.Metrics.TreeNodeRlpEncodings + Store.Metrics.TreeNodeRlpDecodings;
                 long evmExceptions = Evm.Metrics.EvmExceptions;
                 long currentSelfDestructs = Evm.Metrics.SelfDestructs;
-
+                
                 long chunkTx = Metrics.Transactions - _lastTotalTx;
                 long chunkBlocks = Metrics.Blocks - _lastBlockNumber;
                 decimal chunkMGas = Metrics.Mgas - _lastTotalMGas;
                 
+                _totalBlocks += chunkBlocks;
+                
                 decimal mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1000 * 1000;
                 decimal totalMgasPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Mgas / totalMicroseconds * 1000 * 1000;
                 decimal totalTxPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Transactions / totalMicroseconds * 1000 * 1000;
-                decimal totalBlocksPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Blocks / totalMicroseconds * 1000 * 1000;
+                decimal totalBlocksPerSecond = totalMicroseconds == 0 ? -1 : _totalBlocks / totalMicroseconds * 1000 * 1000;
                 decimal txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1000m * 1000m;
                 decimal bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1000m * 1000m;
 
