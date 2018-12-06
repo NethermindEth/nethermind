@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Test
         {
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
-            _logManager = NullLogManager.Instance;
+            _logManager = LimboLogs.Instance;
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
             _noTransactionStorage = NullTransactionStorage.Instance;
@@ -86,6 +86,26 @@ namespace Nethermind.Blockchain.Test
             {
                 _transactionPool.RemovePeer(peer.NodeId);
             }
+        }
+
+        [Test]
+        public void should_ignore_transactions_with_different_chain_id()
+        {
+            _transactionPool = CreatePool(_noTransactionStorage);
+            EthereumSigner signer = new EthereumSigner(MainNetSpecProvider.Instance, _logManager);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(signer, TestObject.PrivateKeyA, MainNetSpecProvider.ByzantiumBlockNumber).TestObject;
+            _transactionPool.AddTransaction(tx, 1);
+            _transactionPool.GetPendingTransactions().Length.Should().Be(0);
+        }
+        
+        [Test]
+        public void should_ignore_old_scheme_signatures()
+        {
+            _transactionPool = CreatePool(_noTransactionStorage);
+            EthereumSigner signer = new EthereumSigner(OlympicSpecProvider.Instance, _logManager);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(signer, TestObject.PrivateKeyA, 1).TestObject;
+            _transactionPool.AddTransaction(tx, 1);
+            _transactionPool.GetPendingTransactions().Length.Should().Be(0);
         }
 
         [Test]
@@ -183,7 +203,7 @@ namespace Nethermind.Blockchain.Test
 
         private TransactionPool CreatePool(ITransactionStorage transactionStorage)
             => new TransactionPool(transactionStorage, new PendingTransactionThresholdValidator(),
-                new Timestamp(), _ethereumSigner, _logManager);
+                new Timestamp(), _ethereumSigner, _specProvider, _logManager);
 
         private ISynchronizationPeer GetPeer(PublicKey publicKey)
             => new SynchronizationPeerMock(_remoteBlockTree, publicKey);

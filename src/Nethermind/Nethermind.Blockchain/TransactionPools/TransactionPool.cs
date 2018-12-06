@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Timer = System.Timers.Timer;
 
@@ -52,21 +53,23 @@ namespace Nethermind.Blockchain.TransactionPools
             new ConcurrentDictionary<PublicKey, ISynchronizationPeer>();
 
         private readonly IEthereumSigner _signer;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
         private readonly int _peerNotificationThreshold;
 
         public TransactionPool(ITransactionStorage transactionStorage,
             IPendingTransactionThresholdValidator pendingTransactionThresholdValidator,
-            ITimestamp timestamp, IEthereumSigner signer, ILogManager logManager,
+            ITimestamp timestamp, IEthereumSigner signer, ISpecProvider specProvider, ILogManager logManager,
             int removePendingTransactionInterval = 600,
             int peerNotificationThreshold = 20)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _transactionStorage = transactionStorage;
+            _transactionStorage = transactionStorage ?? throw new ArgumentNullException(nameof(transactionStorage));
             _pendingTransactionThresholdValidator = pendingTransactionThresholdValidator;
-            _timestamp = timestamp;
-            _signer = signer;
+            _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _peerNotificationThreshold = peerNotificationThreshold;
             if (removePendingTransactionInterval <= 0)
             {
@@ -105,6 +108,18 @@ namespace Nethermind.Blockchain.TransactionPools
 
         public void AddTransaction(Transaction transaction, UInt256 blockNumber)
         {
+            Metrics.PendingTransactionsReceived++;
+            
+            // beware we are discarding here the old signature scheme without ChainId
+            if (transaction.Signature.GetChainId != _specProvider.ChainId)
+            {
+                Metrics.PendingTransactionsDiscarded++;
+                return;
+            }
+                
+            transaction.SenderAddress = _signer.RecoverAddress(transaction, blockNumber);
+            // check nonce
+            
             if (!_pendingTransactions.TryAdd(transaction.Hash, transaction))
             {
                 return;
@@ -123,7 +138,6 @@ namespace Nethermind.Blockchain.TransactionPools
                 return;
             }
 
-            transaction.SenderAddress = _signer.RecoverAddress(transaction, blockNumber);
             _transactionStorage.Add(transaction, blockNumber);
             if (_logger.IsTrace) _logger.Trace($"Added a transaction: {transaction.Hash}");
         }
@@ -191,6 +205,7 @@ namespace Nethermind.Blockchain.TransactionPools
             for (var i = 0; i < peers.Count; i++)
             {
                 var peer = peers[i];
+                Metrics.PendingTransactionsSent++;
                 peer.SendNewTransaction(transaction);
             }
 

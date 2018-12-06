@@ -231,6 +231,7 @@ namespace Nethermind.Runner.Runners
                 new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval, _initConfig.RemovePendingTransactionInterval),
                 _timestamp,
                 _ethereumSigner,
+                _specProvider,
                 _logManager,
                 _initConfig.RemovePendingTransactionInterval,
                 _initConfig.PeerNotificationThreshold);
@@ -431,7 +432,7 @@ namespace Nethermind.Runner.Runners
                 new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
                 new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
                     _initConfig.RemovePendingTransactionInterval), new Timestamp(),
-                _ethereumSigner, _logManager, _initConfig.RemovePendingTransactionInterval,
+                _ethereumSigner, _specProvider, _logManager, _initConfig.RemovePendingTransactionInterval,
                 _initConfig.PeerNotificationThreshold);
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
 

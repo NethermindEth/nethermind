@@ -73,7 +73,7 @@ namespace Nethermind.Clique.Test
                 MemDb blocksDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
 
-                TransactionPool transactionPool = new TransactionPool(new InMemoryTransactionStorage(), new PendingTransactionThresholdValidator(), _timestamp, _ethereumSigner, NullLogManager.Instance);
+                TransactionPool transactionPool = new TransactionPool(new InMemoryTransactionStorage(), new PendingTransactionThresholdValidator(), _timestamp, _ethereumSigner, GoerliSpecProvider.Instance, NullLogManager.Instance);
                 _pools[privateKey] = transactionPool; 
 
                 BlockTree blockTree = new BlockTree(blocksDb, blockInfoDb, GoerliSpecProvider.Instance, transactionPool, NullLogManager.Instance);

@@ -16,19 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain
+using Nethermind.Core.Crypto;
+using NUnit.Framework;
+
+namespace Nethermind.Core.Test.Crypto
 {
-    public class Metrics
+    [TestFixture]
+    public class SignatureTests
     {
-        public static decimal Mgas { get; set; }
-        public static long Transactions { get; set; }
-        public static long Blocks { get; set; }
-        public static long Reorganizations { get; set; }
-        public static long RecoveryQueueSize { get; set; }
-        public static long ProcessingQueueSize { get; set; }
-        public static long SyncPeers { get; set; }
-        public static long PendingTransactionsSent { get; set; }
-        public static long PendingTransactionsReceived { get; set; }
-        public static long PendingTransactionsDiscarded { get; set; }
+        [TestCase(27, null)]
+        [TestCase(28, null)]
+        [TestCase(35, 0)]
+        [TestCase(36, 0)]
+        [TestCase(37, 1)]
+        [TestCase(38, 1)]
+        [TestCase(35 + 2 * 314158, 314158)]
+        [TestCase(36 + 2 * 314158, 314158)]
+        public void Test(int v, int? chainId)
+        {
+            Signature signature = new Signature(0, 0, v);
+            Assert.AreEqual(chainId, signature.GetChainId);
+        }
     }
 }
