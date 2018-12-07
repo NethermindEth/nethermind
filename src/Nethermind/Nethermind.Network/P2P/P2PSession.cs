@@ -165,8 +165,8 @@ namespace Nethermind.Network.P2P
 
         public void Handshake(NodeId handshakeRemoteNodeId)
         {
-            //For IN connections we dont have NodeId until that moment, so we need to set it in Session
-            //For OUT connections it is possible remote id is diffent than what we had persisted or received from Discovery
+            //For IN connections we don't have NodeId until that moment, so we need to set it in Session
+            //For OUT connections it is possible remote id is different than what we had persisted or received from Discovery
             //If that is the case we need to set it in the session
             if (RemoteNodeId == null)
             {

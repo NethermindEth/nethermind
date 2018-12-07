@@ -23,9 +23,20 @@ namespace Nethermind.Network
         public static long IncomingConnections { get; set; }
         public static long OutgoingConnections { get; set; }
         public static long Handshakes { get; set; }
+        public static long HandshakeTimeouts { get; set; }
         public static long HellosReceived { get; set; }
         public static long HellosSent { get; set; }
         public static long StatusesReceived { get; set; }
         public static long StatusesSent { get; set; }
+        public static long BreachOfProtocolDisconnects { get; set; }
+        public static long UselessPeerDisconnects { get; set; }
+        public static long TooManyPeersDisconnects { get; set; }
+        public static long AlreadyConnectedDisconnects { get; set; }
+        public static long IncompatibleP2PDisconnects { get; set; }
+        public static long ReceiveMessageTimeoutDisconnects { get; set; }
+        public static long UnexpectedIdentityDisconnects { get; set; }
+        public static long NullNodeIdentityDisconnects { get; set; }
+        public static long ClientQuittingDisconnects { get; set; }
+        public static long OtherDisconnects { get; set; }
     }
 }

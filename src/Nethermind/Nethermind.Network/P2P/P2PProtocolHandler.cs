@@ -100,6 +100,7 @@ namespace Nethermind.Network.P2P
             }
             else if (msg.PacketType == P2PMessageCode.Disconnect)
             {
+                
                 DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
                 if(Logger.IsTrace) Logger.Trace($"|NetworkTrace| {P2PSession.RemoteNodeId} Received disconnect ({(Enum.IsDefined(typeof(DisconnectReason), (byte)disconnectMessage.Reason) ? ((DisconnectReason)disconnectMessage.Reason).ToString() : disconnectMessage.Reason.ToString())}) on {P2PSession.RemotePort}");
                 Close(disconnectMessage.Reason);
@@ -260,11 +261,48 @@ namespace Nethermind.Network.P2P
             Send(PongMessage.Instance);
         }
 
-        private void Close(int disconnectReason)
+        private void Close(int disconnectReasonId)
         {
-            if(Logger.IsTrace) Logger.Trace($"{P2PSession.RemoteNodeId} P2P received disconnect on {P2PSession.RemotePort} ({RemoteClientId}) [{disconnectReason}]");
+            DisconnectReason disconnectReason = (DisconnectReason) disconnectReasonId;
+            
+            if(Logger.IsDebug) Logger.Debug($"{P2PSession.RemoteNodeId} P2P received disconnect on {P2PSession.RemotePort} ({RemoteClientId}) [{disconnectReason}]");
+
+            switch (disconnectReason)
+            {
+                case DisconnectReason.BreachOfProtocol:
+                    Metrics.BreachOfProtocolDisconnects++;
+                    break;
+                case DisconnectReason.UselessPeer:
+                    Metrics.UselessPeerDisconnects++;
+                    break;
+                case DisconnectReason.TooManyPeers:
+                    Metrics.TooManyPeersDisconnects++;
+                    break;
+                case DisconnectReason.AlreadyConnected:
+                    Metrics.AlreadyConnectedDisconnects++;
+                    break;
+                case DisconnectReason.IncompatibleP2PVersion:
+                    Metrics.IncompatibleP2PDisconnects++;
+                    break;
+                case DisconnectReason.NullNodeIdentityReceived:
+                    Metrics.NullNodeIdentityDisconnects++;
+                    break;
+                case DisconnectReason.ClientQuitting:
+                    Metrics.ClientQuittingDisconnects++;
+                    break;
+                case DisconnectReason.UnexpectedIdentity:
+                    Metrics.UnexpectedIdentityDisconnects++;
+                    break;
+                case DisconnectReason.ReceiveMessageTimeout:
+                    Metrics.ReceiveMessageTimeoutDisconnects++;
+                    break;
+                default:
+                    Metrics.OtherDisconnects++;
+                    break;
+            }
+            
             // Received disconnect message, triggering direct TCP disconnection
-            P2PSession.DisconnectAsync((DisconnectReason) disconnectReason, DisconnectType.Remote);
+            P2PSession.DisconnectAsync(disconnectReason, DisconnectType.Remote);
         }
 
         private void HandlePong(Packet msg)

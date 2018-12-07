@@ -210,6 +210,7 @@ namespace Nethermind.Network.Rlpx
 
             if (firstTask != receivedInitMsgTask)
             {
+                Metrics.HandshakeTimeouts++;
                 if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_p2PSession.RemoteNodeId}@{_p2PSession.RemoteHost}:{_p2PSession.RemotePort}");
                 //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
                 await _channel.DisconnectAsync();
