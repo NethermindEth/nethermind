@@ -47,10 +47,10 @@ namespace Nethermind.Runner.Controllers
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _jsonSettings = new JsonSerializerSettings();
             _jsonSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();
-            
+
             for (int i = 0; i < _jsonRpcService.Converters.Count; i++)
             {
-                _jsonSettings.Converters.Add(_jsonRpcService.Converters[i]);    
+                _jsonSettings.Converters.Add(_jsonRpcService.Converters[i]);
             }
         }
 
@@ -66,7 +66,7 @@ namespace Nethermind.Runner.Controllers
             using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
             {
                 var body = await reader.ReadToEndAsync();
-                if(_logger.IsTrace) _logger.Trace($"Received request: {body}");
+                if (_logger.IsTrace) _logger.Trace($"Received request: {body}");
 
 
                 (JsonRpcRequest Model, IEnumerable<JsonRpcRequest> Collection) rpcRequest;
@@ -76,15 +76,26 @@ namespace Nethermind.Runner.Controllers
                 }
                 catch (Exception ex)
                 {
-                    if(_logger.IsError) _logger.Error($"Error during parsing/validation, request: {body}", ex);
+                    Metrics.JsonRpcRequestDeserializationFailures++;
+                    if (_logger.IsError) _logger.Error($"Error during parsing/validation, request: {body}", ex);
                     var response = _jsonRpcService.GetErrorResponse(ErrorType.ParseError, "Incorrect message");
                     return new JsonResult(response);
                 }
 
                 if (rpcRequest.Model != null)
                 {
-                    var result = _jsonRpcService.SendRequest(rpcRequest.Model);
-                    return new JsonResult(result, _jsonSettings);
+                    Metrics.JsonRpcRequests++;
+                    var response = _jsonRpcService.SendRequest(rpcRequest.Model);
+                    if (response.Error != null)
+                    {
+                        Metrics.JsonRpcErrors++;   
+                    }
+                    else
+                    {
+                        Metrics.JsonRpcSuccesses++;
+                    }
+                    
+                    return new JsonResult(response, _jsonSettings);
                 }
 
                 if (rpcRequest.Collection != null)
@@ -92,14 +103,26 @@ namespace Nethermind.Runner.Controllers
                     List<JsonRpcResponse> responses = new List<JsonRpcResponse>();
                     foreach (JsonRpcRequest jsonRpcRequest in rpcRequest.Collection)
                     {
-                        responses.Add(_jsonRpcService.SendRequest(jsonRpcRequest));
+                        Metrics.JsonRpcRequests++;
+                        JsonRpcResponse response = _jsonRpcService.SendRequest(jsonRpcRequest);
+                        if (response.Error != null)
+                        {
+                            Metrics.JsonRpcErrors++; 
+                        }
+                        else
+                        {
+                            Metrics.JsonRpcSuccesses++;
+                        }
+                        
+                        responses.Add(response);
                     }
 
                     return new JsonResult(responses, _jsonSettings);
                 }
 
                 {
-                    var response = _jsonRpcService.GetErrorResponse(ErrorType.InvalidRequest, "Incorrect request");
+                    Metrics.JsonRpcInvalidRequests++;
+                    var response = _jsonRpcService.GetErrorResponse(ErrorType.InvalidRequest, "Invalid request");
                     return new JsonResult(response, _jsonSettings);
                 }
             }

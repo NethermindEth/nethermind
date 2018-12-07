@@ -296,6 +296,15 @@ namespace Nethermind.Network.P2P
                 case DisconnectReason.ReceiveMessageTimeout:
                     Metrics.ReceiveMessageTimeoutDisconnects++;
                     break;
+                case DisconnectReason.DisconnectRequested:
+                    Metrics.DiconnectRequestedDisconnects++;
+                    break;
+                case DisconnectReason.IdentitySameAsSelf:
+                    Metrics.SameAsSelfDisconnects++;
+                    break;
+                case DisconnectReason.TcpSubSystemError:
+                    Metrics.TcpSubsystemErrorDisconnects++;
+                    break;
                 default:
                     Metrics.OtherDisconnects++;
                     break;

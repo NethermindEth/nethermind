@@ -38,5 +38,8 @@ namespace Nethermind.Network
         public static long NullNodeIdentityDisconnects { get; set; }
         public static long ClientQuittingDisconnects { get; set; }
         public static long OtherDisconnects { get; set; }
+        public static long DiconnectRequestedDisconnects { get; set; }
+        public static long SameAsSelfDisconnects { get; set; }
+        public static long TcpSubsystemErrorDisconnects { get; set; }
     }
 }
