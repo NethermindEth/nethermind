@@ -237,7 +237,7 @@ namespace Nethermind.Blockchain.TransactionPools
                     continue;
                 }
 
-                if (_peerNotificationThreshold > Random.Value.Next(0, 99))
+                if (_peerNotificationThreshold < Random.Value.Next(1, 100))
                 {
                     continue;
                 }
