@@ -524,7 +524,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"Adding persisted peer to New collection {node.Id}@{node.Host}:{node.Port}");
+                if (_logger.IsTrace) _logger.Trace($"Adding persisted peer to New collection {node.Id}@{node.Host}:{node.Port}");
             }
         }
 
