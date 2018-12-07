@@ -125,7 +125,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             Send(statusMessage);
 
-            //We are expecting receiving Status message anytime from the p2p completion, irrespectful from sedning Status from our side
+            //We are expecting receiving Status message anytime from the p2p completion, irrespective of sending Status from our side
             CheckProtocolInitTimeout().ContinueWith(x =>
             {
                 if (x.IsFaulted && Logger.IsError)
@@ -272,7 +272,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 transaction.DeliveredBy = NodeId.PublicKey;
                 transaction.Timestamp = _timestamp.EpochSeconds;
                 AddTransactionResult result = _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
-                if (result != AddTransactionResult.Added)
+                if (result == AddTransactionResult.AlreadyKnown)
                 {
                     _notAcceptedTxsSinceLastCheck++;
                 }
