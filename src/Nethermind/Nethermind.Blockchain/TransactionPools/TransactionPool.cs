@@ -106,35 +106,43 @@ namespace Nethermind.Blockchain.TransactionPools
             if (_logger.IsTrace) _logger.Trace($"Removed a peer: {nodeId}");
         }
 
-        public void AddTransaction(Transaction transaction, UInt256 blockNumber)
+        public AddTransactionResult AddTransaction(Transaction transaction, UInt256 blockNumber)
         {
             Metrics.PendingTransactionsReceived++;
-            
+
             // beware we are discarding here the old signature scheme without ChainId
+            if (transaction.Signature.GetChainId == null)
+            {
+                Metrics.PendingTransactionsDiscarded++;
+                return AddTransactionResult.OldScheme;
+            }
+            
             if (transaction.Signature.GetChainId != _specProvider.ChainId)
             {
                 Metrics.PendingTransactionsDiscarded++;
-                return;
+                return AddTransactionResult.InvalidChainId;
             }
-            
+
             if (!_pendingTransactions.TryAdd(transaction.Hash, transaction))
             {
                 Metrics.PendingTransactionsKnown++;
-                return;
+                return AddTransactionResult.AlreadyKnown;
             }
-            
-            transaction.SenderAddress = _signer.RecoverAddress(transaction, blockNumber);
+
             if (_transactionStorage.Get(transaction.Hash) != null)
             {
                 Metrics.PendingTransactionsKnown++;
-                return;
+                return AddTransactionResult.AlreadyKnown;
             }
             
+            transaction.SenderAddress = _signer.RecoverAddress(transaction, blockNumber);
+
             // check nonce
 
             NewPending?.Invoke(this, new TransactionEventArgs(transaction));
             NotifyPeers(SelectPeers(transaction), transaction);
             FilterAndStoreTransaction(transaction, blockNumber);
+            return AddTransactionResult.Added;
         }
 
         private void FilterAndStoreTransaction(Transaction transaction, UInt256 blockNumber)
@@ -229,7 +237,7 @@ namespace Nethermind.Blockchain.TransactionPools
                     continue;
                 }
 
-                if (_peerNotificationThreshold < Random.Value.Next(1, 100))
+                if (_peerNotificationThreshold > Random.Value.Next(0, 99))
                 {
                     continue;
                 }

@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.TransactionPools
         void AddFilter<T>(T filter) where T : ITransactionFilter;
         void AddPeer(ISynchronizationPeer peer);
         void RemovePeer(NodeId nodeId);
-        void AddTransaction(Transaction transaction, UInt256 blockNumber);
+        AddTransactionResult AddTransaction(Transaction transaction, UInt256 blockNumber);
         void RemoveTransaction(Keccak hash);
         bool TryGetSender(Keccak hash, out Address sender);
         event EventHandler<TransactionEventArgs> NewPending;

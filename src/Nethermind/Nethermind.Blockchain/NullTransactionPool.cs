@@ -47,8 +47,9 @@ namespace Nethermind.Blockchain
         {
         }
 
-        public void AddTransaction(Transaction transaction, UInt256 blockNumber)
+        public AddTransactionResult AddTransaction(Transaction transaction, UInt256 blockNumber)
         {
+            return AddTransactionResult.Added;
         }
 
         public void RemoveTransaction(Keccak hash)

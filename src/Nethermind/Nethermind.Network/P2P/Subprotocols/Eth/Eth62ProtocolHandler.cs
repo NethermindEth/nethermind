@@ -82,14 +82,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void CheckTxFlooding(object sender, ElapsedEventArgs e)
         {
-            if (_txsSentSinceLastCheck * 1000 / TxFloodCheckInterval > 20)
+            if (_notAcceptedTxsSinceLastCheck * 1000 / TxFloodCheckInterval > 100)
             {
                 if (Logger.IsDebug) Logger.Debug($"Disconnecting {NodeId} due to tx flooding");
                 Disconnect(DisconnectReason.UselessPeer);
                 
             }
 
-            _txsSentSinceLastCheck = 0;
+            _notAcceptedTxsSinceLastCheck = 0;
         }
 
         public virtual byte ProtocolVersion => 62;
@@ -247,11 +247,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _remoteHeadBlockHash = status.BestHash;
             _remoteHeadBlockDifficulty = status.TotalDifficulty;
 
-            //if (!_statusSent)
-            //{
-            //    throw new InvalidOperationException($"Received status from {P2PSession.RemoteNodeId} before calling Init");
-            //}
-
             ReceivedProtocolInitMsg(status);
 
             var eventArgs = new EthProtocolInitializedEventArgs(this)
@@ -267,17 +262,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
-        private long _txsSentSinceLastCheck;
+        private long _notAcceptedTxsSinceLastCheck;
 
         private void Handle(TransactionsMessage msg)
         {
             for (int i = 0; i < msg.Transactions.Length; i++)
             {
-                _txsSentSinceLastCheck++;
                 var transaction = msg.Transactions[i];
                 transaction.DeliveredBy = NodeId.PublicKey;
                 transaction.Timestamp = _timestamp.EpochSeconds;
-                _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
+                AddTransactionResult result = _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
+                if (result != AddTransactionResult.Added)
+                {
+                    _notAcceptedTxsSinceLastCheck++;
+                }
+                
+                if(Logger.IsTrace) Logger.Trace($"{NodeId} sent {transaction.Hash} and it was {result} (chain ID = {transaction.Signature.GetChainId})");
             }
         }
 
