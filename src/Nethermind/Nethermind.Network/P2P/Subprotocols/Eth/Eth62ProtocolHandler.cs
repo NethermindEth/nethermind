@@ -135,6 +135,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 }
             });
         }
+        
+        private Random _random = new Random();
 
         public virtual void HandleMessage(Packet message)
         {
@@ -157,7 +159,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Handle(Deserialize<NewBlockHashesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.Transactions:
-                    Handle(Deserialize<TransactionsMessage>(message.Data));
+                    if (10 > _random.Next(0, 99)) // TODO: disable that when IsMining is set to true
+                    {
+                        Handle(Deserialize<TransactionsMessage>(message.Data));    
+                    }
+                    
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     Handle(Deserialize<GetBlockHeadersMessage>(message.Data));

@@ -112,19 +112,20 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
+            string clientId = _p2PSession.NodeStats?.P2PNodeDetails?.ClientId ?? $"unknown {_p2PSession?.RemoteHost}";
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Exception when processing encryption handshake (SocketException): {exception}");
+                    _logger.Trace($"Handshake failure in communication with {clientId} (SocketException): {exception}");
                 }
             }
             else
             {
                 if (_logger.IsDebug)
                 {
-                    _logger.Debug($"Exception when processing encryption handshake: {exception}");
+                    _logger.Debug($"Handshake failure in communication with {clientId}: {exception}");
                 }
             }
             
