@@ -55,7 +55,7 @@ namespace Nethermind.Network.P2P
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
             //In case of SocketException we log it as debug to avoid noise
-            string clientId = _ip2PSession?.NodeStats?.P2PNodeDetails?.ClientId ?? "unknown";
+            string clientId = _ip2PSession?.NodeStats?.P2PNodeDetails?.ClientId ?? $"unknown {_ip2PSession?.RemoteHost}";
             if (exception is SocketException)
             {
                 
