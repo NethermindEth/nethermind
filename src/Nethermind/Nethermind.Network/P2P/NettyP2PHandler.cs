@@ -55,13 +55,15 @@ namespace Nethermind.Network.P2P
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
             //In case of SocketException we log it as debug to avoid noise
+            string clientId = _ip2PSession?.NodeStats?.P2PNodeDetails?.ClientId ?? "unknown";
             if (exception is SocketException)
             {
-                if (_logger.IsTrace) _logger.Trace($"NettyP2PHandler error in p2p netty handler (SocketException): {exception}");
+                
+                if (_logger.IsTrace) _logger.Trace($"Error in commmunication with {clientId} (SocketException): {exception}");
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"{GetType().Name} error in p2p netty handler: {exception}");
+                if (_logger.IsDebug) _logger.Debug($"Error in commmunication with {clientId}: {exception}");
             } 
 
             base.ExceptionCaught(context, exception);
