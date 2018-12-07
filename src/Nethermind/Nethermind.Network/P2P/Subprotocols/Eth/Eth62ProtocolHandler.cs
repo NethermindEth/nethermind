@@ -73,16 +73,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _transactionPool = transactionPool;
             _timestamp = timestamp;
 
-            System.Timers.Timer txFloodCheckTimer = new System.Timers.Timer(TxFloodCheckInterval);
+            System.Timers.Timer txFloodCheckTimer = new System.Timers.Timer(_txFloodCheckInterval.TotalMilliseconds);
             txFloodCheckTimer.Elapsed += CheckTxFlooding;
             txFloodCheckTimer.Start();
         }
 
-        private const int TxFloodCheckInterval = 1000;
+        private TimeSpan _txFloodCheckInterval = TimeSpan.FromSeconds(60);
 
         private void CheckTxFlooding(object sender, ElapsedEventArgs e)
         {
-            if (_notAcceptedTxsSinceLastCheck * 1000 / TxFloodCheckInterval > 100)
+            if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 100)
             {
                 if (Logger.IsDebug) Logger.Debug($"Disconnecting {NodeId} due to tx flooding");
                 Disconnect(DisconnectReason.UselessPeer);
