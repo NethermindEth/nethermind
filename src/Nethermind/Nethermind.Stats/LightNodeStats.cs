@@ -32,51 +32,46 @@ namespace Nethermind.Stats
     public class LightNodeStats : INodeStats
     {
         private readonly IStatsConfig _statsConfig;
-        private readonly ILogger _logger;
-        private ConcurrentDictionary<NodeLatencyStatType, ConcurrentBag<NodeLatencyStatsEvent>> _latencyStatsLog;
-        private ConcurrentDictionary<NodeLatencyStatType, (long EventCount, decimal? Latency)> _latencyStats;
-        private ConcurrentDictionary<NodeLatencyStatType, object> _latencyStatsLocks;
-        private ConcurrentDictionary<NodeStatsEventType, AtomicLong> _statCounters;
+
+        private long _pingPongLatencyEventCount = 0;
+        private decimal? _pingPongAverageLatency = 0;
+        private long _headersLatencyEventCount = 0;
+        private decimal? _headersAverageLatency = 0;
+        private long _bodiesLatencyEventCount = 0;
+        private decimal? _bodiesAverageLatency = 0;
+        
+        private ConcurrentDictionary<NodeStatsEventType, AtomicLong> _statCounters; // change to array
 
         private DisconnectReason? _lastLocalDisconnect;
         private DisconnectReason? _lastRemoteDisconnect;
                 
-        private ConcurrentBag<NodeStatsEvent> _eventHistory;
         private DateTime? _lastDisconnectTime;
         private DateTime? _lastFailedConnectionTime;
         private static readonly Random Random = new Random();
         
         public LightNodeStats(Node node, IStatsConfig statsConfig, ILogManager logManager)
         {
-            Node = node;
             _statsConfig = statsConfig;
-            _logger = logManager.GetClassLogger<NodeStats>();
+            Node = node;
             Initialize();
         }
 
-        public IEnumerable<NodeStatsEvent> EventHistory => _eventHistory.ToArray();
-        public IEnumerable<NodeLatencyStatsEvent> LatencyHistory => _latencyStatsLog.SelectMany(x => x.Value).ToArray();
+        public IEnumerable<NodeStatsEvent> EventHistory => Enumerable.Empty<NodeStatsEvent>();
+        public IEnumerable<NodeLatencyStatsEvent> LatencyHistory => Enumerable.Empty<NodeLatencyStatsEvent>();
         
         public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
         {
-//            if (nodeStatsEventType == NodeStatsEventType.ConnectionEstablished)
-//            {
-//                //reset failed connection counter in case connection was established
-//                _statCounters[NodeStatsEventType.ConnectionFailed] = new AtomicLong();
-//            }
-
             if (nodeStatsEventType == NodeStatsEventType.ConnectionFailed)
             {
                 _lastFailedConnectionTime = DateTime.Now;
             }
+            
             _statCounters[nodeStatsEventType].Increment();
-            CaptureEvent(nodeStatsEventType);
         }
 
         public void AddNodeStatsHandshakeEvent(ConnectionDirection connectionDirection)
         {
             _statCounters[NodeStatsEventType.HandshakeCompleted].Increment();
-            CaptureEvent(NodeStatsEventType.HandshakeCompleted, null, null, null, connectionDirection);
         }
 
         public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
@@ -92,31 +87,23 @@ namespace Nethermind.Stats
             }
             
             _statCounters[NodeStatsEventType.Disconnect].Increment();
-            CaptureEvent(NodeStatsEventType.Disconnect, null, null, new DisconnectDetails
-            {
-                DisconnectReason = disconnectReason,
-                DisconnectType = disconnectType
-            });
         }
 
         public void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails)
         {
             P2PNodeDetails = nodeDetails;
             _statCounters[NodeStatsEventType.P2PInitialized].Increment();
-            CaptureEvent(NodeStatsEventType.P2PInitialized, nodeDetails);
         }
 
         public void AddNodeStatsEth62InitializedEvent(EthNodeDetails nodeDetails)
         {
             EthNodeDetails = nodeDetails;
             _statCounters[NodeStatsEventType.Eth62Initialized].Increment();
-            CaptureEvent(NodeStatsEventType.Eth62Initialized, null, nodeDetails);
         }
 
         public void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType, SyncNodeDetails syncDetails)
         {
             _statCounters[nodeStatsEventType].Increment();
-            CaptureEvent(nodeStatsEventType, null, null, null, null, syncDetails);
         }
 
         public bool DidEventHappen(NodeStatsEventType nodeStatsEventType)
@@ -126,31 +113,34 @@ namespace Nethermind.Stats
 
         public void AddLatencyCaptureEvent(NodeLatencyStatType latencyType, long milliseconds)
         {
-            lock (_latencyStatsLocks[latencyType])
+            switch (latencyType)
             {
-                if (_statsConfig.CaptureNodeLatencyStatsEventHistory)
-                {
-                    var collection = _latencyStatsLog[latencyType];
-                    collection.Add(new NodeLatencyStatsEvent
-                    {
-                        StatType = latencyType,
-                        CaptureTime = DateTime.Now,
-                        Latency = milliseconds
-                    });
-                }
-
-                var latencyInfo = _latencyStats[latencyType];
-                var latency = ((latencyInfo.EventCount * (latencyInfo.Latency ?? 0)) + milliseconds) / (latencyInfo.EventCount + 1);
-                _latencyStats[latencyType] = (latencyInfo.EventCount + 1, latency);
+                case NodeLatencyStatType.P2PPingPong:
+                    _pingPongAverageLatency = ((_pingPongLatencyEventCount * (_pingPongAverageLatency ?? 0)) + milliseconds) / (_pingPongLatencyEventCount + 1);
+                    break;
+                case NodeLatencyStatType.BlockHeaders:
+                    _headersAverageLatency = ((_headersLatencyEventCount * (_headersAverageLatency ?? 0)) + milliseconds) / (_headersLatencyEventCount + 1);
+                    break;
+                case NodeLatencyStatType.BlockBodies:
+                    _bodiesAverageLatency = ((_bodiesLatencyEventCount * (_bodiesAverageLatency ?? 0)) + milliseconds) / (_bodiesLatencyEventCount + 1);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(latencyType), latencyType, null);
             }
         }
 
         public long? GetAverageLatency(NodeLatencyStatType latencyType)
         {
-            lock (_latencyStatsLocks[latencyType])
+            switch (latencyType)
             {
-                var lat = _latencyStats[latencyType].Latency;
-                return lat != null ? (long)lat : (long?)null;
+                case NodeLatencyStatType.P2PPingPong:
+                    return (long?)_pingPongAverageLatency;
+                case NodeLatencyStatType.BlockHeaders:
+                    return (long?)_headersAverageLatency;
+                case NodeLatencyStatType.BlockBodies:
+                    return (long?)_bodiesAverageLatency;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(latencyType), latencyType, null);
             }
         }
 
@@ -252,30 +242,7 @@ namespace Nethermind.Stats
 
             return _statsConfig.DisconnectDelays[disconnectCount - 1];
         }
-        
-        private void CaptureEvent(NodeStatsEventType eventType, P2PNodeDetails p2PNodeDetails = null, EthNodeDetails ethNodeDetails = null, DisconnectDetails disconnectDetails = null, ConnectionDirection? connectionDirection = null, SyncNodeDetails syncNodeDetails = null)
-        {
-            if (!_statsConfig.CaptureNodeStatsEventHistory)
-            {
-                return;
-            }
 
-            if (eventType.ToString().Contains("Discovery") || new []{NodeStatsEventType.P2PPingIn, NodeStatsEventType.P2PPingOut}.Contains(eventType))
-            {
-                return;
-            }
-
-            _eventHistory.Add(new NodeStatsEvent
-            {
-                EventType = eventType,
-                EventDate = DateTime.Now,
-                P2PNodeDetails = p2PNodeDetails,
-                EthNodeDetails = ethNodeDetails,
-                DisconnectDetails = disconnectDetails,
-                ConnectionDirection = connectionDirection,
-                SyncNodeDetails = syncNodeDetails
-            });
-        }
 
         private long CalculateCurrentReputation()
         {
@@ -372,24 +339,11 @@ namespace Nethermind.Stats
         }
 
         private void Initialize()
-        {
-            _eventHistory = new ConcurrentBag<NodeStatsEvent>();
-            
-            IsTrustedPeer = false;
+        {            
             _statCounters = new ConcurrentDictionary<NodeStatsEventType, AtomicLong>();
             foreach (NodeStatsEventType statType in Enum.GetValues(typeof(NodeStatsEventType)))
             {
                 _statCounters[statType] = new AtomicLong();
-            }
-
-            _latencyStatsLog = new ConcurrentDictionary<NodeLatencyStatType, ConcurrentBag<NodeLatencyStatsEvent>>();
-            _latencyStats = new ConcurrentDictionary<NodeLatencyStatType, (long EventCount, decimal? Latency)>();
-            _latencyStatsLocks = new ConcurrentDictionary<NodeLatencyStatType, object>();
-            foreach (NodeLatencyStatType statType in Enum.GetValues(typeof(NodeLatencyStatType)))
-            {
-                _latencyStatsLog[statType] = new ConcurrentBag<NodeLatencyStatsEvent>();
-                _latencyStats[statType] = (0, null);
-                _latencyStatsLocks[statType] = new object();
             }
         }
     }
