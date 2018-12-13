@@ -264,9 +264,16 @@ namespace Nethermind.Network.P2P
         private void Close(int disconnectReasonId)
         {
             DisconnectReason disconnectReason = (DisconnectReason) disconnectReasonId;
-            
-            if(Logger.IsDebug) Logger.Debug($"{P2PSession.RemoteNodeId} P2P received disconnect on {P2PSession.RemotePort} ({RemoteClientId}) [{disconnectReason}]");
 
+            if (disconnectReason != DisconnectReason.TooManyPeers && disconnectReason != DisconnectReason.Other && disconnectReason != DisconnectReason.DisconnectRequested)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{P2PSession.RemoteNodeId} P2P received disconnect on {P2PSession.RemotePort} ({RemoteClientId}) [{disconnectReason}]");
+            }
+            else
+            {
+                if (Logger.IsTrace) Logger.Trace($"{P2PSession.RemoteNodeId} P2P received disconnect on {P2PSession.RemotePort} ({RemoteClientId}) [{disconnectReason}]");
+            }
+                
             switch (disconnectReason)
             {
                 case DisconnectReason.BreachOfProtocol:

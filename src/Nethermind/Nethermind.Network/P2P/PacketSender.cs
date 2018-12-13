@@ -58,9 +58,9 @@ namespace Nethermind.Network.P2P
                 {
                     if (_context.Channel != null && !_context.Channel.Active)
                     {
-                        if (_logger.IsTrace) _logger.Error($"{nameof(NettyP2PHandler)} error in packet sender, channel is not active", t.Exception);
+                        if (_logger.IsTrace) _logger.Trace($"Channel is not active - {t.Exception.Message}");
                     }
-                    else if (_logger.IsError) _logger.Error($"{nameof(NettyP2PHandler)} error in packet sender, channel is active", t.Exception);
+                    else if (_logger.IsError) _logger.Error("Channel is active", t.Exception);
                 }
                 else if (t.IsCompleted)
                 {
