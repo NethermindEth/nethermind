@@ -267,7 +267,6 @@ namespace Nethermind.Blockchain
         [Todo("Introduce priority queue and create a SuggestWithPriority that waits for block execution to return a block, then make this private")]
         public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            if (_logger.IsTrace) _logger.Trace($"processing {suggestedBlock.ToString(Block.Format.HashAndNumber)}");
             if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
             {
                 return null;
@@ -365,6 +364,10 @@ namespace Nethermind.Blockchain
                 {
                     _blockTree.UpdateMainChain(blocksToBeAddedToMain.ToArray());
                 }
+            }
+            else
+            {
+                if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.HashAndNumber)}, Head = {_blockTree.Head?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
             }
 
             Block lastProcessed = null;
