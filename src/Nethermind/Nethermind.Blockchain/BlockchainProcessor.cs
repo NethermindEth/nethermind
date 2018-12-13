@@ -267,6 +267,7 @@ namespace Nethermind.Blockchain
         [Todo("Introduce priority queue and create a SuggestWithPriority that waits for block execution to return a block, then make this private")]
         public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
+            if (_logger.IsTrace) _logger.Trace($"processing {suggestedBlock.ToString(Block.Format.HashAndNumber)}");
             if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
             {
                 return null;
@@ -354,6 +355,7 @@ namespace Nethermind.Blockchain
                         if (blocks[i].Hash == ex.InvalidBlockHash)
                         {
                             _blockTree.DeleteInvalidBlock(blocks[i]);
+                            if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.HashAndNumber)} because of {blocks[i].ToString(Block.Format.HashAndNumber)} is invalid");
                             return null;
                         }
                     }
@@ -373,7 +375,11 @@ namespace Nethermind.Blockchain
                 lastProcessed.TotalDifficulty = suggestedBlock.TotalDifficulty;
                 lastProcessed.TotalTransactions = suggestedBlock.TotalTransactions;
             }
-
+            else
+            {
+                if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.HashAndNumber)}, last processed is null: {lastProcessed == null}, processedBlocks.Length: {processedBlocks?.Length}");
+            }
+            
             return lastProcessed;
         }
 
@@ -383,16 +389,19 @@ namespace Nethermind.Blockchain
             /* a bit hacky way to get the invalid branch out of the processing loop */
             if (suggestedBlock.Number != 0 && _blockTree.FindParent(suggestedBlock) == null)
             {
+                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.HashAndNumber)} with unknown parent");
                 return false;
             }
 
             if (suggestedBlock.Header.TotalDifficulty == null)
             {
+                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.HashAndNumber)} without total difficulty");
                 throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
             }
 
             if ((options & ProcessingOptions.ReadOnlyChain) == 0 && suggestedBlock.Hash == null)
             {
+                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.HashAndNumber)} without calculated hash");
                 throw new InvalidOperationException("Block hash should be known at this stage if the block is not read only");
             }
 
@@ -400,6 +409,7 @@ namespace Nethermind.Blockchain
             {
                 if (suggestedBlock.Ommers[i].Hash == null)
                 {
+                    if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.HashAndNumber)} with null ommer hash ar {i}");
                     throw new InvalidOperationException($"Ommer's {i} hash is null when processing block");
                 }
             }

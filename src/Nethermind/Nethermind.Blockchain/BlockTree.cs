@@ -415,6 +415,8 @@ namespace Nethermind.Blockchain
 
         public void DeleteInvalidBlock(Block invalidBlock)
         {
+            if(_logger.IsDebug) _logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.HashAndNumber)}");
+            
             _invalidBlocks.AddOrUpdate(
                 invalidBlock.Number,
                 number => new HashSet<Keccak> {invalidBlock.Hash},
