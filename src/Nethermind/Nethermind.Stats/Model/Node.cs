@@ -41,7 +41,7 @@ namespace Nethermind.Stats.Model
         public string Host { get; private set; }
         public int Port { get; set; }
         public IPEndPoint Address { get; private set; }
-        public bool IsDicoveryNode { get; set; }
+        public bool IsDiscoveryNode { get; set; }
         public string Description { get; set; }
 
         public void InitializeAddress(IPEndPoint address)
@@ -80,7 +80,7 @@ namespace Nethermind.Stats.Model
 
         public override string ToString()
         {
-            return $"Id: {Id}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {IsDicoveryNode}";
+            return $"Id: {Id}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {IsDiscoveryNode}";
         }
     }
 }
