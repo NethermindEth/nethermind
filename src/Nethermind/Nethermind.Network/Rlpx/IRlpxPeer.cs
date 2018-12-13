@@ -29,5 +29,6 @@ namespace Nethermind.Network.Rlpx
         Task ConnectAsync(NodeId remoteId, string host, int port, INodeStats nodeStats);
         Task Shutdown();
         event EventHandler<SessionEventArgs> SessionCreated;
+        event EventHandler<SessionEventArgs> SessionClosing;
     }
 }

@@ -320,5 +320,9 @@ namespace Nethermind.Network.P2P
             P2PSession?.NodeStats.AddNodeStatsEvent(NodeStatsEventType.P2PPingIn);
             _pongCompletionSource?.TrySetResult(msg);
         }
+
+        public void Dispose()
+        {
+        }
     }
 }

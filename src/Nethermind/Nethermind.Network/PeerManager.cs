@@ -123,13 +123,23 @@ namespace Nethermind.Network
                 var session = args.Session;
                 session.PeerDisconnected += OnPeerDisconnected;
                 session.ProtocolInitialized += OnProtocolInitialized;
-                session.HandshakeComplete += (s, e) => OnHandshakeComplete((IP2PSession) s);
+                session.HandshakeComplete += OnHandshakeComplete;
 
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Session created: {session.RemoteNodeId}, {session.ConnectionDirection.ToString()}");
                 if (session.ConnectionDirection == ConnectionDirection.Out)
                 {
                     ProcessOutgoingConnection(session);
                 }
+            };
+            
+            _rlpxPeer.SessionClosing += (sender, args) =>
+            {
+                var session = args.Session;
+                session.PeerDisconnected -= OnPeerDisconnected;
+                session.ProtocolInitialized -= OnProtocolInitialized;
+                session.HandshakeComplete -= OnHandshakeComplete;
+
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Session closing: {session.RemoteNodeId}, {session.ConnectionDirection.ToString()}");
             };
         }
 
@@ -887,9 +897,10 @@ namespace Nethermind.Network
             }
         }
 
-        private void OnHandshakeComplete(IP2PSession session)
+        private void OnHandshakeComplete(object sender, EventArgs args)
         {
-            //In case of OUT connections and different RemodeNodeId we need to replace existing Active Peer with new peer 
+            IP2PSession session = sender as IP2PSession;
+            //In case of OUT connections and different RemoteNodeId we need to replace existing Active Peer with new peer 
             ManageNewRemoteNodeId(session);
 
             //Fire and forget

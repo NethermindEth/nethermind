@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -303,8 +304,7 @@ namespace Nethermind.Network.P2P
             (string ProtocolCode, int SpaceSize)[] alphabetically = new (string, int)[_protocols.Count];
             alphabetically[0] = (Protocol.P2P, _protocols[Protocol.P2P].MessageIdSpaceSize);
             int i = 1;
-            foreach (KeyValuePair<string, IProtocolHandler> protocolSession in _protocols.Where(kv => kv.Key != "p2p")
-                .OrderBy(kv => kv.Key))
+            foreach (KeyValuePair<string, IProtocolHandler> protocolSession in _protocols.Where(kv => kv.Key != "p2p").OrderBy(kv => kv.Key))
             {
                 alphabetically[i++] = (protocolSession.Key, protocolSession.Value.MessageIdSpaceSize);
             }
@@ -344,6 +344,14 @@ namespace Nethermind.Network.P2P
             };
 
             protocolHandler.Init();
+        }
+
+        public void Dispose()
+        {
+            foreach ((_, IProtocolHandler handler) in _protocols)
+            {
+                handler.Dispose();
+            }
         }
     }
 }

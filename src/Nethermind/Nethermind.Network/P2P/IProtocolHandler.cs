@@ -22,7 +22,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    public interface IProtocolHandler
+    public interface IProtocolHandler : IDisposable
     {
         byte ProtocolVersion { get; }
         string ProtocolCode { get; }
@@ -30,8 +30,6 @@ namespace Nethermind.Network.P2P
         
         void Init();
         void HandleMessage(Packet message);
-        //TODO is close needed if we have disconnect?
-        void Close();
         void Disconnect(DisconnectReason disconnectReason);
 
         event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;

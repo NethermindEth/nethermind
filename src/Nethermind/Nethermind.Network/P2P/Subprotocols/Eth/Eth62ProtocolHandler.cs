@@ -40,6 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler, ISynchronizationPeer
     {
+        private System.Timers.Timer _txFloodCheckTimer;
         protected ISynchronizationManager SyncManager { get; }
 
         private readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests
@@ -73,9 +74,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _transactionPool = transactionPool;
             _timestamp = timestamp;
 
-            System.Timers.Timer txFloodCheckTimer = new System.Timers.Timer(_txFloodCheckInterval.TotalMilliseconds);
-            txFloodCheckTimer.Elapsed += CheckTxFlooding;
-            txFloodCheckTimer.Start();
+            _txFloodCheckTimer = new System.Timers.Timer(_txFloodCheckInterval.TotalMilliseconds);
+            _txFloodCheckTimer.Elapsed += CheckTxFlooding;
+            _txFloodCheckTimer.Start();
         }
 
         private TimeSpan _txFloodCheckInterval = TimeSpan.FromSeconds(60);
@@ -85,8 +86,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 100)
             {
                 if (Logger.IsDebug) Logger.Debug($"Disconnecting {NodeId} due to tx flooding");
-                Disconnect(DisconnectReason.UselessPeer);
-                
+                Disconnect(DisconnectReason.UselessPeer);   
             }
 
             _notAcceptedTxsSinceLastCheck = 0;
@@ -99,8 +99,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public NodeId NodeId => P2PSession.RemoteNodeId;
         public INodeStats NodeStats => P2PSession.NodeStats;
         public string ClientId { get; set; }
+        
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
-
         event EventHandler<ProtocolEventArgs> IProtocolHandler.SubprotocolRequested
         {
             add { }
@@ -183,14 +183,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        public void Close()
+        public void Disconnect(DisconnectReason disconnectReason)
         {
             _headersRequests.CompleteAdding();
             _bodiesRequests.CompleteAdding();
-        }
-
-        public void Disconnect(DisconnectReason disconnectReason)
-        {
             P2PSession.DisconnectAsync(disconnectReason, DisconnectType.Local);
         }
 
@@ -533,6 +529,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers[0]?.Difficulty ?? 0;
+        }
+
+        public void Dispose()
+        {
+            _headersRequests?.Dispose();
+            _bodiesRequests?.Dispose();
+            _txFloodCheckTimer?.Dispose();
         }
     }
 }

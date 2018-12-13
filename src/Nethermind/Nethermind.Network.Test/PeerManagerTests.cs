@@ -60,7 +60,7 @@ namespace Nethermind.Network.Test
         private IBlockTree _blockTree;
         private ITimestamp _timestamp;
         private ILogManager _logManager;
-        
+
         [SetUp]
         public void Initialize()
         {
@@ -68,7 +68,7 @@ namespace Nethermind.Network.Test
             _timestamp = new Timestamp();
             _logManager = new OneLoggerLogManager(new SimpleConsoleLogger());
             _configurationProvider = new JsonConfigProvider();
-            var config = ((NetworkConfig)_configurationProvider.GetConfig<INetworkConfig>());
+            var config = ((NetworkConfig) _configurationProvider.GetConfig<INetworkConfig>());
             config.DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
             config.IsActivePeerTimerEnabled = false;
             config.IsDiscoveryNodesPersistenceOn = false;
@@ -78,12 +78,12 @@ namespace Nethermind.Network.Test
             {
                 Directory.CreateDirectory(_configurationProvider.GetConfig<INetworkConfig>().DbBasePath);
             }
-            
+
             var syncManager = Substitute.For<ISynchronizationManager>();
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            
+
             _nodeFactory = new NodeFactory(LimboLogs.Instance);
             _localPeer = new TestRlpxPeer();
             var keyProvider = new PrivateKeyGenerator(new CryptoRandom());
@@ -170,7 +170,7 @@ namespace Nethermind.Network.Test
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 4,
-                Capabilities = new[] { new Capability(Protocol.Eth, 62), new Capability(Protocol.Eth, 63) }.ToList()
+                Capabilities = new[] {new Capability(Protocol.Eth, 62), new Capability(Protocol.Eth, 63)}.ToList()
             };
             p2pSession.TriggerProtocolInitialized(p2pArgs);
             AssertTrue(() => _peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized), 5000);
@@ -210,11 +210,11 @@ namespace Nethermind.Network.Test
             var p2pSession = InitializeNode();
 
             //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort??0, _logManager, new PerfService(_logManager));
+            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager, new PerfService(_logManager));
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 1,
-                Capabilities = new[] { new Capability(Protocol.Eth, 62), new Capability(Protocol.Eth, 63) }.ToList()
+                Capabilities = new[] {new Capability(Protocol.Eth, 62), new Capability(Protocol.Eth, 63)}.ToList()
             };
             p2pSession.TriggerProtocolInitialized(p2pArgs);
             AssertTrue(() => p2pSession.Disconected, 5000);
@@ -232,7 +232,7 @@ namespace Nethermind.Network.Test
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 5,
-                Capabilities = new[] { new Capability(Protocol.Eth, 60),new Capability(Protocol.Eth, 61) }.ToList()
+                Capabilities = new[] {new Capability(Protocol.Eth, 60), new Capability(Protocol.Eth, 61)}.ToList()
             };
             p2pSession.TriggerProtocolInitialized(p2pArgs);
             AssertTrue(() => p2pSession.Disconected, 5000);
@@ -271,7 +271,7 @@ namespace Nethermind.Network.Test
         public void DisconnectOnTooManyPeersTest()
         {
             var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
-            ((NetworkConfig)_configurationProvider.GetConfig<INetworkConfig>()).ActivePeersMaxCount = 0;
+            ((NetworkConfig) _configurationProvider.GetConfig<INetworkConfig>()).ActivePeersMaxCount = 0;
 
             //trigger connection initialized
             var p2pSession = new TestP2PSession();
@@ -342,6 +342,7 @@ namespace Nethermind.Network.Test
                 var task = Task.Delay(checkThreshold);
                 task.Wait();
             }
+
             Assert.IsTrue(check.Invoke());
         }
     }
@@ -367,7 +368,6 @@ namespace Nethermind.Network.Test
 
         public void ReceiveMessage(Packet packet)
         {
-
         }
 
         public void TriggerProtocolInitialized(ProtocolInitializedEventArgs eventArgs)
@@ -414,7 +414,7 @@ namespace Nethermind.Network.Test
         public event EventHandler<DisconnectEventArgs> PeerDisconnected;
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public event EventHandler<EventArgs> HandshakeComplete;
-        
+
         public void TriggerPeerDisconnected(DisconnectReason reason, DisconnectType disconnectType)
         {
             PeerDisconnected?.Invoke(this, new DisconnectEventArgs(reason, disconnectType));
@@ -427,6 +427,10 @@ namespace Nethermind.Network.Test
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
             var task = Task.Delay(1000);
             task.Wait();
+        }
+
+        public void Dispose()
+        {
         }
     }
 
@@ -454,7 +458,13 @@ namespace Nethermind.Network.Test
         {
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
         }
-        
+
         public event EventHandler<SessionEventArgs> SessionCreated;
+
+        public event EventHandler<SessionEventArgs> SessionClosing
+        {
+            add { }
+            remove { }
+        }
     }
 }

@@ -166,7 +166,8 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connected to {remoteId}@{host}:{port}");
         }
 
-        public event EventHandler<SessionEventArgs> SessionCreated; 
+        public event EventHandler<SessionEventArgs> SessionCreated;
+        public event EventHandler<SessionEventArgs> SessionClosing;
         
         private void InitializeChannel(IChannel channel, ConnectionDirection connectionDirection, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
         {
@@ -221,6 +222,7 @@ namespace Nethermind.Network.Rlpx
                 }
 
                 await session.DisconnectAsync(DisconnectReason.ClientQuitting, DisconnectType.Remote);
+                SessionClosing?.Invoke(this, new SessionEventArgs(session));
             });
         }
         

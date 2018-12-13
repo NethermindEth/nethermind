@@ -26,7 +26,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    public interface IP2PSession
+    public interface IP2PSession : IDisposable
     {
         NodeId RemoteNodeId { get; set; }
         NodeId ObsoleteRemoteNodeId { get; set; }
