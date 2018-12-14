@@ -394,7 +394,7 @@ namespace Nethermind.Blockchain
 
         private void CheckIfSyncingWithFastestPeer()
         {   
-            var bestLatencyPeer = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestKnownNumber + 2).OrderBy(x => x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000).FirstOrDefault();
+            var bestLatencyPeer = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestKnownNumber).OrderBy(x => x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000).FirstOrDefault();
             if (bestLatencyPeer != null && _currentSyncingPeerInfo != null && _currentSyncingPeerInfo.Peer?.NodeId != bestLatencyPeer.Peer?.NodeId)
             {
                 if (_logger.IsTrace) _logger.Trace("Checking if any available peer is faster than current sync peer");
@@ -451,7 +451,7 @@ namespace Nethermind.Blockchain
                 {
                     _logger.Debug($"{comparedPeerType} peer with better latency, requesting cancel for current sync process{Environment.NewLine}" +
                                   $"{comparedPeerType} {peerInfo}, Latency: {newPeerLatency}{Environment.NewLine}" +
-                                  $"Current peer: {_currentSyncingPeerInfo}, Latency: {currentSyncPeerLatency}");
+                                  $"Current peer: {_currentSyncingPeerInfo}, Latency: {currentSyncPeerLatency}, Best Known: {_blockTree.BestKnownNumber}, Available @ Peer: {peerInfo.NumberAvailable}");
                 }
 
                 _requestedSyncCancelDueToBetterPeer = true;
