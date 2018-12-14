@@ -33,7 +33,7 @@ namespace Nethermind.Stats
 
         bool DidEventHappen(NodeStatsEventType nodeStatsEventType);
 
-        void AddLatencyCaptureEvent(NodeLatencyStatType latencyType, long miliseconds);
+        void AddLatencyCaptureEvent(NodeLatencyStatType latencyType, long milliseconds);
         long? GetAverageLatency(NodeLatencyStatType latencyType);
 
         (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed();
@@ -42,7 +42,7 @@ namespace Nethermind.Stats
         long CurrentPersistedNodeReputation { get; set; }
         long NewPersistedNodeReputation { get; }
         bool IsTrustedPeer { get; set; }
-        //DateTime? LastFailedConnectionTime { get; set; }
+        
         P2PNodeDetails P2PNodeDetails { get; }
         EthNodeDetails EthNodeDetails { get; }
         CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
@@ -50,6 +50,5 @@ namespace Nethermind.Stats
 
         IEnumerable<NodeStatsEvent> EventHistory { get; }
         IEnumerable<NodeLatencyStatsEvent> LatencyHistory { get; }
-        IDictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> LastDisconnects { get; }
     }
 }

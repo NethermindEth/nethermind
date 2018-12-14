@@ -105,7 +105,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             {
                 var item = new NodeBucketItem(node);
                 var bucketItem = _items.FirstOrDefault(x => x.Equals(item));
-                bucketItem?.OnContactReveived();
+                bucketItem?.OnContactReceived();
             }
         }
 

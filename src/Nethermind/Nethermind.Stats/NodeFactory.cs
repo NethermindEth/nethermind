@@ -40,7 +40,7 @@ namespace Nethermind.Stats
         {
             var node = new Node(id)
             {
-                IsDicoveryNode = false
+                IsDiscoveryNode = false
             };
             
             node.InitializeAddress(address);
@@ -51,7 +51,7 @@ namespace Nethermind.Stats
         {
             var node = new Node(id)
             {
-                IsDicoveryNode = isDiscovery
+                IsDiscoveryNode = isDiscovery
             };
 
             try
@@ -71,7 +71,7 @@ namespace Nethermind.Stats
             Keccak512 socketHash = Keccak512.Compute($"{host}:{port}"); 
             var node = new Node(new NodeId(new PublicKey(socketHash.Bytes)))
             {
-                IsDicoveryNode = true
+                IsDiscoveryNode = true
             };
             
             node.InitializeAddress(host, port);

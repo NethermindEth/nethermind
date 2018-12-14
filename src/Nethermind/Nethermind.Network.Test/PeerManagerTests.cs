@@ -95,7 +95,7 @@ namespace Nethermind.Network.Test
 
             INetworkConfig networkConfig = _configurationProvider.GetConfig<INetworkConfig>();
             IStatsConfig statsConfig = _configurationProvider.GetConfig<IStatsConfig>();
-            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider, _timestamp), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _nodeFactory, _logManager), _configurationProvider, _logManager), _nodeFactory, nodeTable, new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
+            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider, _timestamp), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _nodeFactory, _logManager, true), _configurationProvider, _logManager), _nodeFactory, nodeTable, new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
             _transactionPool = NullTransactionPool.Instance;
             _blockTree = Substitute.For<IBlockTree>();
@@ -105,7 +105,7 @@ namespace Nethermind.Network.Test
             var sessionLogger = new PeerSessionLogger(_logManager, _configurationProvider, new PerfService(_logManager));
             sessionLogger.Init(Path.GetTempPath());
             var networkStorage = new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager));
-            _peerManager = new PeerManager(_localPeer, app, _synchronizationManager, new NodeStatsProvider(statsConfig, _nodeFactory, _logManager), networkStorage, _nodeFactory, _configurationProvider, new PerfService(_logManager), _transactionPool, _logManager, sessionLogger);
+            _peerManager = new PeerManager(_localPeer, app, _synchronizationManager, new NodeStatsProvider(statsConfig, _nodeFactory, _logManager, true), networkStorage, _nodeFactory, _configurationProvider, new PerfService(_logManager), _transactionPool, _logManager, sessionLogger);
             _peerManager.Init(true);
         }
 

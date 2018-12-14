@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
@@ -28,20 +27,16 @@ namespace Nethermind.Stats.Model
         public Node(NodeId id)
         {
             Id = id;
-            //Bytes or PrefixBytes?
-
             IdHash = Keccak.Compute(id.PublicKey.PrefixedBytes);
-            IdHashText = IdHash.ToString();
         }
 
         //id is bytes without prefix byte - 64 bytes
         public NodeId Id { get; }
         public Keccak IdHash { get; }
-        public string IdHashText { get; }
         public string Host { get; private set; }
         public int Port { get; set; }
         public IPEndPoint Address { get; private set; }
-        public bool IsDicoveryNode { get; set; }
+        public bool IsDiscoveryNode { get; set; }
         public string Description { get; set; }
 
         public void InitializeAddress(IPEndPoint address)
@@ -67,7 +62,7 @@ namespace Nethermind.Stats.Model
             
             if (obj is Node item)
             {
-                return string.Compare(IdHashText, item.IdHashText, StringComparison.InvariantCultureIgnoreCase) == 0;
+                return IdHash.Equals(item.IdHash);
             }
 
             return false;
@@ -75,12 +70,12 @@ namespace Nethermind.Stats.Model
 
         public override int GetHashCode()
         {
-            return IdHashText.GetHashCode();
+            return IdHash.GetHashCode();
         }
 
         public override string ToString()
         {
-            return $"Id: {Id}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {IsDicoveryNode}";
+            return $"Id: {Id}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {IsDiscoveryNode}";
         }
     }
 }

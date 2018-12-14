@@ -208,7 +208,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 _discoveryManager.SendMessage(msg);
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
 
-                var result = await _discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _configurationProvider.PongTimeout);
+                var result = await _discoveryManager.WasMessageReceived(ManagedNode.IdHash, MessageType.Pong, _configurationProvider.PongTimeout);
                 if (!result)
                 {
                     if (counter > 1)

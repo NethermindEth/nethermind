@@ -30,21 +30,24 @@ namespace Nethermind.Network.Test
     public class NodeStatsTests
     {
         private INodeStats _nodeStats;
+        private Node _node;
         private StatsConfig _config;
 
         [SetUp]
         public void Initialize()
         {
             var nodeFactory = new NodeFactory(LimboLogs.Instance);
-            var node = nodeFactory.CreateNode("192.1.1.1", 3333);
+            _node = nodeFactory.CreateNode("192.1.1.1", 3333);
             _config = new StatsConfig();
             _config.CaptureNodeLatencyStatsEventHistory = true;
-            _nodeStats = new NodeStats(node, _config, NullLogManager.Instance);
         }
 
-        [Test]
-        public void LatencyCaptureTest()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void LatencyCaptureTest(bool useLight)
         {
+            _nodeStats = useLight ?  new NodeStatsLight(_node, _config, NullLogManager.Instance) : (INodeStats)new NodeStats(_node, _config, NullLogManager.Instance);
+            
             _nodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, 30);
             _nodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, 51);
             _nodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, 140);
@@ -65,9 +68,12 @@ namespace Nethermind.Network.Test
             Assert.AreEqual(av, avCompare);
         }
 
-        [Test]
-        public void DisconnectDelayTest()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void DisconnectDelayTest(bool useLight)
         {
+            _nodeStats = useLight ?  new NodeStatsLight(_node, _config, NullLogManager.Instance) : (INodeStats)new NodeStats(_node, _config, NullLogManager.Instance);
+            
             var isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result);
             
@@ -81,9 +87,12 @@ namespace Nethermind.Network.Test
             Assert.IsFalse(isConnDelayed.Result);
         }
         
-        [Test]
-        public void FailedConnectionDelayTest()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void FailedConnectionDelayTest(bool useLight)
         {
+            _nodeStats = useLight ? new NodeStatsLight(_node, _config, NullLogManager.Instance) : (INodeStats)new NodeStats(_node, _config, NullLogManager.Instance);
+            
             var isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result);
             

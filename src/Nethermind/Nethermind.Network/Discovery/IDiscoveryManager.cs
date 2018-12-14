@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Stats.Model;
@@ -30,7 +31,7 @@ namespace Nethermind.Network.Discovery
         IMessageSender MessageSender { set; }
         INodeLifecycleManager GetNodeLifecycleManager(Node node, bool isPersisted = false);
         void SendMessage(DiscoveryMessage discoveryMessage);
-        Task<bool> WasMessageReceived(string senderIdHash, MessageType messageType, int timeout);
+        Task<bool> WasMessageReceived(Keccak senderIdHash, MessageType messageType, int timeout);
         event EventHandler<NodeEventArgs> NodeDiscovered;
 
         IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers();

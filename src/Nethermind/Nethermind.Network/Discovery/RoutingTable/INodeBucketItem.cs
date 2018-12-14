@@ -25,6 +25,6 @@ namespace Nethermind.Network.Discovery.RoutingTable
     {
         Node Node { get; }
         DateTime LastContactTime { get; }
-        void OnContactReveived();
+        void OnContactReceived();
     }
 }
