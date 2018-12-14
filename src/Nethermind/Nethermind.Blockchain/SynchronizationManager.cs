@@ -436,10 +436,10 @@ namespace Nethermind.Blockchain
             }
 
             //As we deal with UInt256 if we subtract bigger value from smaller value we get very big value as a result (overflow) which is incorrect (unsigned)
-            var latencyDiff = peerInfo.NumberAvailable > _blockTree.BestKnownNumber ? peerInfo.NumberAvailable - _blockTree.BestKnownNumber : 0;
-            if (latencyDiff < _blockchainConfig.MinAvailableBlockDiffForSyncSwitch)
+            var chainLengthDiff = peerInfo.NumberAvailable > _blockTree.BestKnownNumber ? peerInfo.NumberAvailable - _blockTree.BestKnownNumber : 0;
+            if (chainLengthDiff < _blockchainConfig.MinAvailableBlockDiffForSyncSwitch)
             {
-                if (_logger.IsDebug) _logger.Debug($"Skipping latency switch due to lower latency benefit than threshold - letencyDiff: {latencyDiff}, threshold: {_blockchainConfig.MinAvailableBlockDiffForSyncSwitch}");
+                if (_logger.IsDebug) _logger.Debug($"Skipping latency switch due to lower chain length diff than threshold - chain length diff: {chainLengthDiff}, threshold: {_blockchainConfig.MinAvailableBlockDiffForSyncSwitch}");
                 return;
             }
 

@@ -138,6 +138,7 @@ namespace Nethermind.Network
                 session.PeerDisconnected -= OnPeerDisconnected;
                 session.ProtocolInitialized -= OnProtocolInitialized;
                 session.HandshakeComplete -= OnHandshakeComplete;
+                session.Dispose();
 
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Session closing: {session.RemoteNodeId}, {session.ConnectionDirection.ToString()}");
             };
