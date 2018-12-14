@@ -21,8 +21,41 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
 {
-    public static class IntExtensions
+    public static class ULongExtensions
     {
+        public static ulong GB(this ulong @this)
+        {
+            return @this * 1024UL * 1024UL * 1024UL;
+        }
+        
+        public static ulong MB(this ulong @this)
+        {
+            return @this * 1024UL * 1024UL;
+        }
+        
+        public static ulong KB(this ulong @this)
+        {
+            return @this * 1024UL;
+        }
+    }
+
+    public static class IntExtensions
+    {   
+        public static ulong GB(this int @this)
+        {
+            return (ulong)@this * 1024UL * 1024UL * 1024UL;
+        }
+        
+        public static ulong MB(this int @this)
+        {
+            return (ulong)@this * 1024UL * 1024UL;
+        }
+        
+        public static ulong KB(this int @this)
+        {
+            return (ulong)@this * 1024UL;
+        }
+        
         public static UInt256 Ether(this int @this)
         {
             return (uint)@this * Unit.Ether;

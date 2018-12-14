@@ -20,6 +20,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Nethermind.Core.Logging;
 using Nethermind.Db.Config;
 using Nethermind.Store;
@@ -52,14 +54,11 @@ namespace Nethermind.Db
             {
                 Directory.CreateDirectory(dbPath);
             }
-            
+
             if (logger != null)
             {
                 if (logger.IsInfo) logger.Info($"Using database directory {dbPath}");
             }
-
-            DbOptions options = BuildOptions(dbConfig);
-            _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(options, path));
 
             if (dbPath.EndsWith(StateDbPath))
             {
@@ -67,11 +66,11 @@ namespace Nethermind.Db
             }
             else if (dbPath.EndsWith(BlockInfosDbPath))
             {
-                _dbInstance = DbInstance.BlockInfo;
+                _dbInstance = DbInstance.BlockInfos;
             }
             else if (dbPath.EndsWith(BlocksDbPath))
             {
-                _dbInstance = DbInstance.Block;
+                _dbInstance = DbInstance.Blocks;
             }
             else if (dbPath.EndsWith(CodeDbPath))
             {
@@ -85,23 +84,43 @@ namespace Nethermind.Db
             {
                 _dbInstance = DbInstance.PendingTxs;
             }
+            else if (dbPath.EndsWith(TraceDbPath))
+            {
+                _dbInstance = DbInstance.Trace;
+            }
             else
             {
                 _dbInstance = DbInstance.Other;
             }
+
+            DbOptions options = BuildOptions(dbConfig, _dbInstance);
+            _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(options, path));
         }
 
-        private DbOptions BuildOptions(IDbConfig dbConfig)
+        private static T ReadConfig<T>(IDbConfig dbConfig, DbInstance dbInstance, string propertyName)
+        {
+            string prefixed = string.Concat(dbInstance == DbInstance.State ? string.Empty : string.Concat(dbInstance.ToString(), "Db"), propertyName);
+            try
+            {
+                return (T) typeof(IDbConfig).GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance).GetValue(dbConfig);
+            }
+            catch (Exception e)
+            {
+                throw new InvalidDataException($"Unable to read {prefixed} property from DB config", e);
+            }
+        }
+
+        private DbOptions BuildOptions(IDbConfig dbConfig, DbInstance dbInstance)
         {
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
             tableOptions.SetBlockSize(16 * 1024);
             tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
-            tableOptions.SetCacheIndexAndFilterBlocks(dbConfig.CacheIndexAndFilterBlocks);
+            tableOptions.SetCacheIndexAndFilterBlocks(ReadConfig<bool>(dbConfig, dbInstance, nameof(dbConfig.CacheIndexAndFilterBlocks)));
 
             tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
             tableOptions.SetFormatVersion(2);
 
-            ulong blockCacheSize = dbConfig.BlockCacheSize;
+            ulong blockCacheSize = ReadConfig<ulong>(dbConfig, dbInstance, nameof(dbConfig.BlockCacheSize));
             IntPtr cache = Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
             tableOptions.SetBlockCache(cache);
 
@@ -123,8 +142,8 @@ namespace Nethermind.Db
             options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
 
             //options.SetMaxOpenFiles(32);
-            options.SetWriteBufferSize(dbConfig.WriteBufferSize);
-            options.SetMaxWriteBufferNumber((int) dbConfig.WriteBufferNumber);
+            options.SetWriteBufferSize(ReadConfig<ulong>(dbConfig, dbInstance, nameof(dbConfig.WriteBufferSize)));
+            options.SetMaxWriteBufferNumber((int)ReadConfig<uint>(dbConfig, dbInstance, nameof(dbConfig.WriteBufferNumber)));
             options.SetMinWriteBufferNumberToMerge(2);
             options.SetBlockBasedTableFactory(tableOptions);
             options.IncreaseParallelism(Environment.ProcessorCount);
@@ -141,10 +160,10 @@ namespace Nethermind.Db
                     case DbInstance.State:
                         Metrics.StateDbReads++;
                         break;
-                    case DbInstance.BlockInfo:
+                    case DbInstance.BlockInfos:
                         Metrics.BlockInfosDbReads++;
                         break;
-                    case DbInstance.Block:
+                    case DbInstance.Blocks:
                         Metrics.BlocksDbReads++;
                         break;
                     case DbInstance.Code:
@@ -156,13 +175,16 @@ namespace Nethermind.Db
                     case DbInstance.PendingTxs:
                         Metrics.PendingTxsDbReads++;
                         break;
+                    case DbInstance.Trace:
+                        Metrics.TraceDbReads++;
+                        break;
                     case DbInstance.Other:
                         Metrics.OtherDbReads++;
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
-                
+
                 return _db.Get(key);
             }
             set
@@ -172,10 +194,10 @@ namespace Nethermind.Db
                     case DbInstance.State:
                         Metrics.StateDbWrites++;
                         break;
-                    case DbInstance.BlockInfo:
+                    case DbInstance.BlockInfos:
                         Metrics.BlockInfosDbWrites++;
                         break;
-                    case DbInstance.Block:
+                    case DbInstance.Blocks:
                         Metrics.BlocksDbWrites++;
                         break;
                     case DbInstance.Code:
@@ -186,6 +208,9 @@ namespace Nethermind.Db
                         break;
                     case DbInstance.PendingTxs:
                         Metrics.PendingTxsDbWrites++;
+                        break;
+                    case DbInstance.Trace:
+                        Metrics.TraceDbWrites++;
                         break;
                     case DbInstance.Other:
                         Metrics.OtherDbWrites++;
@@ -255,8 +280,8 @@ namespace Nethermind.Db
         private enum DbInstance
         {
             State,
-            BlockInfo,
-            Block,
+            BlockInfos,
+            Blocks,
             Code,
             Receipts,
             Trace,
