@@ -274,7 +274,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    CheckIfNewPeerIsBetterSyncCandidate(peerInfo);
+                    CheckIfPeerIsBetterSyncCandidate(peerInfo, ComparedPeerType.New);
                     if (peerInfo.NumberAvailable > _blockTree.BestKnownNumber)
                     {
                         RequestSync();
@@ -393,12 +393,12 @@ namespace Nethermind.Blockchain
         }
 
         private void CheckIfSyncingWithFastestPeer()
-        {
+        {   
             var bestLatencyPeer = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestKnownNumber).OrderBy(x => x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000).FirstOrDefault();
             if (bestLatencyPeer != null && _currentSyncingPeerInfo != null && _currentSyncingPeerInfo.Peer?.NodeId != bestLatencyPeer.Peer?.NodeId)
             {
                 if (_logger.IsTrace) _logger.Trace("Checking if any available peer is faster than current sync peer");
-                CheckIfExistingPeerIsBetterSyncCandidate(bestLatencyPeer);
+                CheckIfPeerIsBetterSyncCandidate(bestLatencyPeer, ComparedPeerType.Existing);
             }
             else
             {
@@ -419,17 +419,13 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private void CheckIfNewPeerIsBetterSyncCandidate(PeerInfo peerInfo)
+        public enum ComparedPeerType
         {
-            CheckIfPeerIsBetterSyncCandidate(peerInfo, "New");
+            New,
+            Existing
         }
 
-        private void CheckIfExistingPeerIsBetterSyncCandidate(PeerInfo peerInfo)
-        {
-            CheckIfPeerIsBetterSyncCandidate(peerInfo, "Existing");
-        }
-
-        private void CheckIfPeerIsBetterSyncCandidate(PeerInfo peerInfo, string peerDesc)
+        private void CheckIfPeerIsBetterSyncCandidate(PeerInfo peerInfo, ComparedPeerType comparedPeerType)
         {
             lock (_isSyncingLock)
             {
@@ -439,11 +435,11 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            //As we deal with UInt256 if we substruct bigger value from smaller value we get very big value as a result (overflow) which is incorret (unsigned)
-            var letencyDiff = peerInfo.NumberAvailable > _blockTree.BestKnownNumber ? peerInfo.NumberAvailable - _blockTree.BestKnownNumber : 0;
-            if (letencyDiff < _blockchainConfig.MinAvailableBlockDiffForSyncSwitch)
+            //As we deal with UInt256 if we subtract bigger value from smaller value we get very big value as a result (overflow) which is incorrect (unsigned)
+            var latencyDiff = peerInfo.NumberAvailable > _blockTree.BestKnownNumber ? peerInfo.NumberAvailable - _blockTree.BestKnownNumber : 0;
+            if (latencyDiff < _blockchainConfig.MinAvailableBlockDiffForSyncSwitch)
             {
-                if (_logger.IsDebug) _logger.Debug($"Skipping latency switch due to lower latency benefit than threshold - letencyDiff: {letencyDiff}, threshold: {_blockchainConfig.MinAvailableBlockDiffForSyncSwitch}");
+                if (_logger.IsDebug) _logger.Debug($"Skipping latency switch due to lower latency benefit than threshold - letencyDiff: {latencyDiff}, threshold: {_blockchainConfig.MinAvailableBlockDiffForSyncSwitch}");
                 return;
             }
 
@@ -453,9 +449,9 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsDebug)
                 {
-                    _logger.Debug($"{peerDesc} peer with better latency, requesting cancel for current sync process{Environment.NewLine}" +
-                                  $"{peerDesc} {peerInfo}, Latency: {newPeerLatency}{Environment.NewLine}" +
-                                  $"Current peer: {_currentSyncingPeerInfo}, Latency: {currentSyncPeerLatency}");
+                    _logger.Debug($"{comparedPeerType} peer with better latency, requesting cancel for current sync process{Environment.NewLine}" +
+                                  $"{comparedPeerType} {peerInfo}, Latency: {newPeerLatency}{Environment.NewLine}" +
+                                  $"Current peer: {_currentSyncingPeerInfo}, Latency: {currentSyncPeerLatency}, Best Known: {_blockTree.BestKnownNumber}, Available @ Peer: {peerInfo.NumberAvailable}");
                 }
 
                 _requestedSyncCancelDueToBetterPeer = true;
@@ -465,8 +461,8 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsDebug)
                 {
-                    _logger.Debug($"{peerDesc} peer with worse latency{Environment.NewLine}" +
-                                  $"{peerDesc} {peerInfo}, Latency: {newPeerLatency}{Environment.NewLine}" +
+                    _logger.Debug($"{comparedPeerType} peer with worse latency{Environment.NewLine}" +
+                                  $"{comparedPeerType} {peerInfo}, Latency: {newPeerLatency}{Environment.NewLine}" +
                                   $"Current {_currentSyncingPeerInfo}, Latency: {currentSyncPeerLatency}");
                 }
             }
@@ -484,7 +480,7 @@ namespace Nethermind.Blockchain
             }
 
             Block block = blockEventArgs.Block;
-            foreach ((NodeId nodeId, PeerInfo peerInfo) in _peers)
+            foreach ((_, PeerInfo peerInfo) in _peers)
             {
                 if (peerInfo.NumberAvailable < block.Number) // TODO: total difficulty instead
                 {
