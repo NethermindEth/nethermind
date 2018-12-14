@@ -425,7 +425,7 @@ namespace Nethermind.Runner.Runners
 
             _dbProvider = HiveEnabled
                 ? (IDbProvider) new MemDbProvider()
-                : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager);
+                : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts);
 
             _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
             _transactionPool = new TransactionPool(
@@ -547,8 +547,8 @@ namespace Nethermind.Runner.Runners
                 _blockProcessor,
                 _recoveryStep,
                 _logManager,
-                true,
-                true);
+                _initConfig.StoreReceipts,
+                _initConfig.StoreTraces);
 
             // create shared objects between discovery and peer manager
             _nodeFactory = new NodeFactory(_logManager);

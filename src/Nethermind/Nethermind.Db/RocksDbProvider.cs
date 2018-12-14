@@ -25,7 +25,7 @@ namespace Nethermind.Db
 {
     public class RocksDbProvider : IDbProvider
     {
-        public RocksDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager)
+        public RocksDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager, bool useTraceDb, bool useReceiptsDb)
         {
             BlocksDb = new DbOnTheRocks(
                 Path.Combine(basePath, DbOnTheRocks.BlocksDbPath),
@@ -34,11 +34,18 @@ namespace Nethermind.Db
             BlockInfosDb = new DbOnTheRocks(
                 Path.Combine(basePath, DbOnTheRocks.BlockInfosDbPath),
                 dbConfig, logManager);
-            
-            ReceiptsDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.ReceiptsDbPath),
-                dbConfig, logManager);
-            
+
+            if (useReceiptsDb)
+            {
+                ReceiptsDb = new DbOnTheRocks(
+                    Path.Combine(basePath, DbOnTheRocks.ReceiptsDbPath),
+                    dbConfig, logManager);
+            }
+            else
+            {
+                ReceiptsDb = new ReadOnlyDb(new MemDb(), false);
+            }
+
             StateDb = new StateDb(
                 new DbOnTheRocks(Path.Combine(basePath, DbOnTheRocks.StateDbPath), dbConfig, logManager));
             
@@ -48,10 +55,17 @@ namespace Nethermind.Db
             PendingTxsDb = new DbOnTheRocks(
                 Path.Combine(basePath, DbOnTheRocks.PendingTxsDbPath),
                 dbConfig, logManager);
-            
-            TraceDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.TraceDbPath),
-                dbConfig, logManager);
+
+            if (useTraceDb)
+            {
+                TraceDb = new DbOnTheRocks(
+                    Path.Combine(basePath, DbOnTheRocks.TraceDbPath),
+                    dbConfig, logManager);
+            }
+            else
+            {
+                TraceDb = new ReadOnlyDb(new MemDb(), false);
+            }
         }
         
         public ISnapshotableDb StateDb { get; }

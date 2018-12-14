@@ -24,9 +24,9 @@ namespace Nethermind.Db.Config
     {   
         public static DbConfig Default = new DbConfig();
         
-        public ulong WriteBufferSize { get; set; } = 64.MB();
-        public uint WriteBufferNumber { get; set; } = 6;
-        public ulong BlockCacheSize { get; set; } = 384.MB();
+        public ulong WriteBufferSize { get; set; } = 16.MB();
+        public uint WriteBufferNumber { get; set; } = 4;
+        public ulong BlockCacheSize { get; set; } = 64.MB();
         public bool CacheIndexAndFilterBlocks { get; set; } = true;
         
         public ulong TraceDbWriteBufferSize { get; set; } = 256.MB();
@@ -39,9 +39,9 @@ namespace Nethermind.Db.Config
         public ulong ReceiptsDbBlockCacheSize { get; set; } = 32.MB();
         public bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; } = true;
         
-        public ulong BlocksDbWriteBufferSize { get; set; } = 16.MB();
+        public ulong BlocksDbWriteBufferSize { get; set; } = 8.MB();
         public uint BlocksDbWriteBufferNumber { get; set; } = 4;
-        public ulong BlocksDbBlockCacheSize { get; set; } = 64.MB();
+        public ulong BlocksDbBlockCacheSize { get; set; } = 32.MB();
         public bool BlocksDbCacheIndexAndFilterBlocks { get; set; } = true;
         
         public ulong BlockInfosDbWriteBufferSize { get; set; } = 8.MB();
@@ -54,7 +54,7 @@ namespace Nethermind.Db.Config
         public ulong PendingTxsDbBlockCacheSize { get; set; } = 16.MB();
         public bool PendingTxsDbCacheIndexAndFilterBlocks { get; set; } = true;
         
-        public ulong CodeDbWriteBufferSize { get; set; } = 4.MB();
+        public ulong CodeDbWriteBufferSize { get; set; } = 2.MB();
         public uint CodeDbWriteBufferNumber { get; set; } = 4;
         public ulong CodeDbBlockCacheSize { get; set; } = 8.MB();
         public bool CodeDbCacheIndexAndFilterBlocks { get; set; } = true;

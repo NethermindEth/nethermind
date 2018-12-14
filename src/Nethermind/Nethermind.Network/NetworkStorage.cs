@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -23,6 +24,7 @@ using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Db;
 using Nethermind.Network.Config;
@@ -47,7 +49,20 @@ namespace Nethermind.Network
 
         public NetworkNode[] GetPersistedNodes()
         {
-            return _db.Values.Select(GetNode).ToArray();
+            List<NetworkNode> nodes = new List<NetworkNode>();
+            foreach (byte[] nodeRlp in _db.Values)
+            {
+                try
+                {
+                    nodes.Add(GetNode(nodeRlp));
+                }
+                catch (Exception e)
+                {
+                    if(_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
+                }
+            }
+
+            return nodes.ToArray();
         }
 
         public void UpdateNodes(NetworkNode[] nodes)
@@ -107,7 +122,7 @@ namespace Nethermind.Network
                 var node = GetNode(value);
                 sb.AppendLine($"{node.NodeId}@{node.Host}:{node.Port}, Desc: {node.Description}, Rep: {node.Reputation}");
             }
-            
+
             _logger.Trace(sb.ToString());
         }
     }
