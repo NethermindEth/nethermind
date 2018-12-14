@@ -535,6 +535,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             _headersRequests?.Dispose();
             _bodiesRequests?.Dispose();
+            
+            _txFloodCheckTimer.Elapsed -= CheckTxFlooding;
             _txFloodCheckTimer?.Dispose();
         }
     }
