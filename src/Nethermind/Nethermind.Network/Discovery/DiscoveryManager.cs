@@ -25,6 +25,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
@@ -43,7 +44,7 @@ namespace Nethermind.Network.Discovery
         private readonly ILogger _logger;
         private readonly INodeFactory _nodeFactory;
         private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
-        private readonly ConcurrentDictionary<string, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<string, INodeLifecycleManager>();
+        private readonly ConcurrentDictionary<Keccak, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<Keccak, INodeLifecycleManager>();
         private readonly INodeTable _nodeTable;
         private readonly INetworkStorage _discoveryStorage;
 
@@ -129,7 +130,7 @@ namespace Nethermind.Network.Discovery
                 return null;
             }
 
-            return _nodeLifecycleManagers.GetOrAdd(node.IdHashText, x =>
+            return _nodeLifecycleManagers.GetOrAdd(node.IdHash, x =>
             {
                 var manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
                 if (!isPersisted)
@@ -153,7 +154,7 @@ namespace Nethermind.Network.Discovery
             }
         }
 
-        public async Task<bool> WasMessageReceived(string senderIdHash, MessageType messageType, int timeout)
+        public async Task<bool> WasMessageReceived(Keccak senderIdHash, MessageType messageType, int timeout)
         {
             var completionSource = GetCompletionSource(senderIdHash, (int)messageType);
             var firstTask = await Task.WhenAny(completionSource.Task, Task.Delay(timeout));
@@ -213,18 +214,18 @@ namespace Nethermind.Network.Discovery
 
         private void NotifySubscribersOnMsgReceived(MessageType msgType, Node node, DiscoveryMessage message)
         {
-            var completionSource = RemoveCompletionSource(node.IdHashText, (int)msgType);
+            var completionSource = RemoveCompletionSource(node.IdHash, (int)msgType);
             completionSource?.TrySetResult(message);
         }
 
-        private TaskCompletionSource<DiscoveryMessage> GetCompletionSource(string senderAddressHash, int messageType)
+        private TaskCompletionSource<DiscoveryMessage> GetCompletionSource(Keccak senderAddressHash, int messageType)
         {
             var key = new MessageTypeKey(senderAddressHash, messageType);
             var completionSource = _waitingEvents.GetOrAdd(key, new TaskCompletionSource<DiscoveryMessage>());
             return completionSource;
         }
 
-        private TaskCompletionSource<DiscoveryMessage> RemoveCompletionSource(string senderAddressHash, int messageType)
+        private TaskCompletionSource<DiscoveryMessage> RemoveCompletionSource(Keccak senderAddressHash, int messageType)
         {
             var key = new MessageTypeKey(senderAddressHash, messageType);
             return _waitingEvents.TryRemove(key, out var completionSource) ? completionSource : null;
@@ -252,7 +253,7 @@ namespace Nethermind.Network.Discovery
             if(_logger.IsTrace) _logger.Trace($"Removed: {removeCount} unreachable node lifecycle managers");
         }
 
-        private int RemoveManagers(KeyValuePair<string, INodeLifecycleManager>[] items, int count)
+        private int RemoveManagers(KeyValuePair<Keccak, INodeLifecycleManager>[] items, int count)
         {
             var removeCount = 0;
             for (var i = 0; i < count; i++)
@@ -270,10 +271,10 @@ namespace Nethermind.Network.Discovery
 
         private struct MessageTypeKey : IEquatable<MessageTypeKey>
         {
-            public string SenderAddressHash { get; }
+            public Keccak SenderAddressHash { get; }
             public int MessageType { get; }
 
-            public MessageTypeKey(string senderAddressHash, int messageType)
+            public MessageTypeKey(Keccak senderAddressHash, int messageType)
             {
                 SenderAddressHash = senderAddressHash;
                 MessageType = messageType;
@@ -281,7 +282,7 @@ namespace Nethermind.Network.Discovery
             
             public bool Equals(MessageTypeKey other)
             {
-                return string.Equals(SenderAddressHash, other.SenderAddressHash) && MessageType == other.MessageType;
+                return SenderAddressHash.Equals(other.SenderAddressHash) && MessageType == other.MessageType;
             }
 
             public override bool Equals(object obj)

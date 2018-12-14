@@ -61,7 +61,7 @@ namespace Nethermind.Network.Discovery
 
         public async Task LocateNodesAsync(byte[] searchedNodeId, CancellationToken cancellationToken)
         {
-            var alreadyTriedNodes = new List<string>();
+            var alreadyTriedNodes = new List<Keccak>();
 
             if(_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
             var nodesCountBeforeDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
@@ -74,7 +74,7 @@ namespace Nethermind.Network.Discovery
                 {
                     //if searched node is not specified master node is used
                     var closestNodes = searchedNodeId != null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
-                    tryCandidates = closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHashText)).ToArray();
+                    tryCandidates = closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHash)).ToArray();
                     if (tryCandidates.Any())
                     {
                         break;
@@ -117,7 +117,7 @@ namespace Nethermind.Network.Discovery
                     }
 
                     nodesTriedCount += nodesToSend.Length;
-                    alreadyTriedNodes.AddRange(nodesToSend.Select(x => x.IdHashText));
+                    alreadyTriedNodes.AddRange(nodesToSend.Select(x => x.IdHash));
 
                     var results = await SendFindNode(nodesToSend, searchedNodeId, cancellationToken);
                     
@@ -188,7 +188,7 @@ namespace Nethermind.Network.Discovery
                 var nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
                 nodeManager?.SendFindNode(searchedNodeId ?? _masterNode.Id.Bytes);
 
-                if (await _discoveryManager.WasMessageReceived(destinationNode.IdHashText, MessageType.Neighbors, _configurationProvider.SendNodeTimeout))
+                if (await _discoveryManager.WasMessageReceived(destinationNode.IdHash, MessageType.Neighbors, _configurationProvider.SendNodeTimeout))
                 {
                     return Result.Success();
                 }

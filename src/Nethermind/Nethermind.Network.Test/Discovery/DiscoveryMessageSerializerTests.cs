@@ -160,7 +160,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 Assert.AreEqual(message.Nodes[i].Host, deserializedMessage.Nodes[i].Host);
                 Assert.AreEqual(message.Nodes[i].Port, deserializedMessage.Nodes[i].Port);
-                Assert.AreEqual(message.Nodes[i].IdHashText, deserializedMessage.Nodes[i].IdHashText);
+                Assert.AreEqual(message.Nodes[i].IdHash, deserializedMessage.Nodes[i].IdHash);
                 Assert.AreEqual(message.Nodes[i], deserializedMessage.Nodes[i]);
             }
         }

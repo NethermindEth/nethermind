@@ -552,8 +552,8 @@ namespace Nethermind.Runner.Runners
 
             // create shared objects between discovery and peer manager
             _nodeFactory = new NodeFactory(_logManager);
-            _nodeStatsProvider =
-                new NodeStatsProvider(_configProvider.GetConfig<IStatsConfig>(), _nodeFactory, _logManager);
+            IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
+            _nodeStatsProvider = new NodeStatsProvider(statsConfig, _nodeFactory, _logManager, !statsConfig.CaptureNodeStatsEventHistory);
 
             var jsonSerializer = new JsonSerializer(
                 _logManager);

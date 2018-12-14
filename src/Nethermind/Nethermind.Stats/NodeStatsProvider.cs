@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Concurrent;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
@@ -28,18 +29,20 @@ namespace Nethermind.Stats
         private readonly IStatsConfig _statsConfig;
         private readonly INodeFactory _nodeFactory;
         private readonly ILogManager _logManager;
+        private readonly bool _useLightStats;
         private readonly ConcurrentDictionary<NodeId, INodeStats> _nodeStats = new ConcurrentDictionary<NodeId, INodeStats>();
 
-        public NodeStatsProvider(IStatsConfig statsConfig, INodeFactory nodeFactory, ILogManager logManager)
+        public NodeStatsProvider(IStatsConfig statsConfig, INodeFactory nodeFactory, ILogManager logManager, bool useLightStats)
         {
-            _statsConfig = statsConfig;
-            _nodeFactory = nodeFactory;
-            _logManager = logManager;
+            _statsConfig = statsConfig ?? throw new ArgumentNullException(nameof(statsConfig));
+            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _useLightStats = useLightStats;
         }
 
         public INodeStats GetOrAddNodeStats(Node node)
         {
-            return _nodeStats.GetOrAdd(node.Id, x => new NodeStats(node, _statsConfig, _logManager));
+            return _nodeStats.GetOrAdd(node.Id, x => _useLightStats ? new NodeStatsLight(node, _statsConfig, _logManager) : (INodeStats)new NodeStats(node, _statsConfig, _logManager));
         }
 
         public INodeStats GetOrAddNodeStats(NodeId nodeId, string host, int port)

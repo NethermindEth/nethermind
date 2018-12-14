@@ -27,9 +27,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         Node MasterNode { get; }
         NodeBucket[] Buckets { get; }
         NodeAddResult AddNode(Node node);
-        void DeleteNode(Node node);
         void ReplaceNode(Node nodeToRemove, Node nodeToAdd);
-        Node GetNode(byte[] nodeId);
         void RefreshNode(Node node);
 
         /// <summary>

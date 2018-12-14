@@ -17,10 +17,8 @@
  */
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Stats.Model;
 
@@ -29,18 +27,19 @@ namespace Nethermind.Stats
     /// <summary>
     /// Initial version of Reputation calculation mostly based on EthereumJ impl
     /// </summary>
-    public class LightNodeStats : INodeStats
+    public class NodeStatsLight : INodeStats
     {
         private readonly IStatsConfig _statsConfig;
 
-        private long _pingPongLatencyEventCount = 0;
-        private decimal? _pingPongAverageLatency = 0;
-        private long _headersLatencyEventCount = 0;
-        private decimal? _headersAverageLatency = 0;
-        private long _bodiesLatencyEventCount = 0;
-        private decimal? _bodiesAverageLatency = 0;
-        
-        private ConcurrentDictionary<NodeStatsEventType, AtomicLong> _statCounters; // change to array
+        private long _pingPongLatencyEventCount;
+        private decimal? _pingPongAverageLatency;
+        private long _headersLatencyEventCount;
+        private decimal? _headersAverageLatency;
+        private long _bodiesLatencyEventCount;
+        private decimal? _bodiesAverageLatency;
+
+        private int[] _statCountersArray;
+        private object _latencyLock = new object();
 
         private DisconnectReason? _lastLocalDisconnect;
         private DisconnectReason? _lastRemoteDisconnect;
@@ -48,16 +47,42 @@ namespace Nethermind.Stats
         private DateTime? _lastDisconnectTime;
         private DateTime? _lastFailedConnectionTime;
         private static readonly Random Random = new Random();
+
+        private static int _statsLength = Enum.GetValues(typeof(NodeStatsEventType)).Length;
         
-        public LightNodeStats(Node node, IStatsConfig statsConfig, ILogManager logManager)
+        public NodeStatsLight(Node node, IStatsConfig statsConfig, ILogManager logManager)
         {
+            _statCountersArray = new int[_statsLength];
             _statsConfig = statsConfig;
             Node = node;
-            Initialize();
         }
+        
+        public long CurrentNodeReputation => CalculateCurrentReputation();
+
+        public long CurrentPersistedNodeReputation { get; set; }
+
+        public long NewPersistedNodeReputation => IsReputationPenalized() ? -100 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
+
+        public bool IsTrustedPeer { get; set; }
+
+        public P2PNodeDetails P2PNodeDetails { get; private set; }
+
+        public EthNodeDetails EthNodeDetails { get; private set; }
+
+        public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
+
+        public Node Node { get; }
 
         public IEnumerable<NodeStatsEvent> EventHistory => Enumerable.Empty<NodeStatsEvent>();
         public IEnumerable<NodeLatencyStatsEvent> LatencyHistory => Enumerable.Empty<NodeLatencyStatsEvent>();
+
+        private void Increment(NodeStatsEventType nodeStatsEventType)
+        {
+            lock (_statCountersArray)
+            {
+                _statCountersArray[(int)nodeStatsEventType]++;
+            }
+        }
         
         public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
         {
@@ -65,13 +90,13 @@ namespace Nethermind.Stats
             {
                 _lastFailedConnectionTime = DateTime.Now;
             }
-            
-            _statCounters[nodeStatsEventType].Increment();
+
+            Increment(nodeStatsEventType);
         }
 
         public void AddNodeStatsHandshakeEvent(ConnectionDirection connectionDirection)
         {
-            _statCounters[NodeStatsEventType.HandshakeCompleted].Increment();
+            Increment(NodeStatsEventType.HandshakeCompleted);
         }
 
         public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
@@ -86,46 +111,52 @@ namespace Nethermind.Stats
                 _lastRemoteDisconnect = disconnectReason;
             }
             
-            _statCounters[NodeStatsEventType.Disconnect].Increment();
+            Increment(NodeStatsEventType.Disconnect);
         }
 
         public void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails)
         {
             P2PNodeDetails = nodeDetails;
-            _statCounters[NodeStatsEventType.P2PInitialized].Increment();
+            Increment(NodeStatsEventType.P2PInitialized);
         }
 
         public void AddNodeStatsEth62InitializedEvent(EthNodeDetails nodeDetails)
         {
             EthNodeDetails = nodeDetails;
-            _statCounters[NodeStatsEventType.Eth62Initialized].Increment();
+            Increment(NodeStatsEventType.Eth62Initialized);
         }
 
         public void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType, SyncNodeDetails syncDetails)
         {
-            _statCounters[nodeStatsEventType].Increment();
+            Increment(nodeStatsEventType);
         }
 
         public bool DidEventHappen(NodeStatsEventType nodeStatsEventType)
         {
-            return _statCounters[nodeStatsEventType].Value > 0;
+            lock (_statCountersArray)
+            {
+                return _statCountersArray[(int) nodeStatsEventType] > 0;
+            }
         }
 
         public void AddLatencyCaptureEvent(NodeLatencyStatType latencyType, long milliseconds)
         {
-            switch (latencyType)
+            lock (_latencyLock)
             {
-                case NodeLatencyStatType.P2PPingPong:
-                    _pingPongAverageLatency = ((_pingPongLatencyEventCount * (_pingPongAverageLatency ?? 0)) + milliseconds) / (_pingPongLatencyEventCount + 1);
-                    break;
-                case NodeLatencyStatType.BlockHeaders:
-                    _headersAverageLatency = ((_headersLatencyEventCount * (_headersAverageLatency ?? 0)) + milliseconds) / (_headersLatencyEventCount + 1);
-                    break;
-                case NodeLatencyStatType.BlockBodies:
-                    _bodiesAverageLatency = ((_bodiesLatencyEventCount * (_bodiesAverageLatency ?? 0)) + milliseconds) / (_bodiesLatencyEventCount + 1);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(latencyType), latencyType, null);
+                switch (latencyType)
+                {
+                    case NodeLatencyStatType.P2PPingPong:
+                        _pingPongAverageLatency = ((_pingPongLatencyEventCount * (_pingPongAverageLatency ?? 0)) + milliseconds) / (++_pingPongLatencyEventCount);
+                        break;
+                    case NodeLatencyStatType.BlockHeaders:
+                        _headersAverageLatency = ((_headersLatencyEventCount * (_headersAverageLatency ?? 0)) + milliseconds) / (++_headersLatencyEventCount);
+                        break;
+                    case NodeLatencyStatType.BlockBodies:
+                        _bodiesAverageLatency = ((_bodiesLatencyEventCount * (_bodiesAverageLatency ?? 0)) + milliseconds) / (++_bodiesLatencyEventCount);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(latencyType), latencyType, null);
+                }
             }
         }
 
@@ -158,22 +189,6 @@ namespace Nethermind.Stats
             
             return (false, null);
         }
-
-        public long CurrentNodeReputation => CalculateCurrentReputation();
-
-        public long CurrentPersistedNodeReputation { get; set; }
-
-        public long NewPersistedNodeReputation => IsReputationPenalized() ? -100 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
-
-        public bool IsTrustedPeer { get; set; }
-
-        public P2PNodeDetails P2PNodeDetails { get; private set; }
-
-        public EthNodeDetails EthNodeDetails { get; private set; }
-
-        public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
-
-        public Node Node { get; }
 
         private bool IsDelayedDueToDisconnect()
         {
@@ -213,7 +228,12 @@ namespace Nethermind.Stats
         
         private int GetFailedConnectionDelay()
         {
-            var failedConnectionFailed = _statCounters[NodeStatsEventType.ConnectionFailed].Value;
+            int failedConnectionFailed;
+            lock (_statCountersArray)
+            {
+                failedConnectionFailed = _statCountersArray[(int)NodeStatsEventType.ConnectionFailed];    
+            }
+            
             if (failedConnectionFailed == 0)
             {
                 return 100;
@@ -229,7 +249,12 @@ namespace Nethermind.Stats
         
         private int GetDisconnectDelay()
         {
-            var disconnectCount = _statCounters[NodeStatsEventType.Disconnect].Value;
+            int disconnectCount;
+            lock (_statCountersArray)
+            {
+                disconnectCount = _statCountersArray[(int)NodeStatsEventType.Disconnect];
+            }
+
             if (disconnectCount == 0)
             {
                 return 100;
@@ -257,15 +282,20 @@ namespace Nethermind.Stats
         private long CalculateSessionReputation()
         {
             long discoveryReputation = 0;
-            discoveryReputation += Math.Min(_statCounters[NodeStatsEventType.DiscoveryPingIn].Value, 10) * (_statCounters[NodeStatsEventType.DiscoveryPingIn].Value == _statCounters[NodeStatsEventType.DiscoveryPingOut].Value ? 2 : 1);
-            discoveryReputation += Math.Min(_statCounters[NodeStatsEventType.DiscoveryNeighboursIn].Value, 10) * 2;
-
             long rlpxReputation = 0;
-            rlpxReputation += Math.Min(_statCounters[NodeStatsEventType.P2PPingIn].Value, 10) * (_statCounters[NodeStatsEventType.P2PPingIn].Value == _statCounters[NodeStatsEventType.P2PPingOut].Value ? 2 : 1);
-            rlpxReputation += _statCounters[NodeStatsEventType.HandshakeCompleted].Value > 0 ? 10 : 0;
-            rlpxReputation += _statCounters[NodeStatsEventType.P2PInitialized].Value > 0 ? 10 : 0;
-            rlpxReputation += _statCounters[NodeStatsEventType.Eth62Initialized].Value > 0 ? 20 : 0;
-            rlpxReputation += _statCounters[NodeStatsEventType.SyncStarted].Value > 0 ? 1000 : 0;
+            lock (_statCountersArray)
+            {
+                
+                discoveryReputation += Math.Min(_statCountersArray[(int)NodeStatsEventType.DiscoveryPingIn], 10) * (_statCountersArray[(int)NodeStatsEventType.DiscoveryPingIn] == _statCountersArray[(int)NodeStatsEventType.DiscoveryPingOut] ? 2 : 1);
+                discoveryReputation += Math.Min(_statCountersArray[(int)NodeStatsEventType.DiscoveryNeighboursIn], 10) * 2;
+
+                
+                rlpxReputation += Math.Min(_statCountersArray[(int)NodeStatsEventType.P2PPingIn], 10) * (_statCountersArray[(int)NodeStatsEventType.P2PPingIn] == _statCountersArray[(int)NodeStatsEventType.P2PPingOut] ? 2 : 1);
+                rlpxReputation += _statCountersArray[(int)NodeStatsEventType.HandshakeCompleted] > 0 ? 10 : 0;
+                rlpxReputation += _statCountersArray[(int)NodeStatsEventType.P2PInitialized] > 0 ? 10 : 0;
+                rlpxReputation += _statCountersArray[(int)NodeStatsEventType.Eth62Initialized] > 0 ? 20 : 0;
+                rlpxReputation += _statCountersArray[(int)NodeStatsEventType.SyncStarted] > 0 ? 1000 : 0;
+            }
 
             if (HasDisconnectedOnce)
             {
@@ -336,15 +366,6 @@ namespace Nethermind.Stats
             }
 
             return false;
-        }
-
-        private void Initialize()
-        {            
-            _statCounters = new ConcurrentDictionary<NodeStatsEventType, AtomicLong>();
-            foreach (NodeStatsEventType statType in Enum.GetValues(typeof(NodeStatsEventType)))
-            {
-                _statCounters[statType] = new AtomicLong();
-            }
         }
     }
 }

@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Discovery.RoutingTable;
 
@@ -25,7 +26,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 {
     public class EvictionManager : IEvictionManager
     {
-        private readonly ConcurrentDictionary<string, EvictionPair> _evictionPairs = new ConcurrentDictionary<string, EvictionPair>();
+        private readonly ConcurrentDictionary<Keccak, EvictionPair> _evictionPairs = new ConcurrentDictionary<Keccak, EvictionPair>();
         private readonly INodeTable _nodeTable;
         private readonly ILogger _logger;
 
@@ -45,7 +46,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 ReplacementCandidate = replacementCandidate,
             };
 
-            var pair = _evictionPairs.GetOrAdd(evictionCandidate.ManagedNode.IdHashText, newPair);
+            var pair = _evictionPairs.GetOrAdd(evictionCandidate.ManagedNode.IdHash, newPair);
             if (pair != newPair)
             {
                 //existing eviction in process
@@ -65,7 +66,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 return;
             }
 
-            if (!_evictionPairs.TryGetValue(evictionCandidate.ManagedNode.IdHashText, out EvictionPair evictionPair))
+            if (!_evictionPairs.TryGetValue(evictionCandidate.ManagedNode.IdHash, out EvictionPair evictionPair))
             {
                 return;
             }
@@ -88,7 +89,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         private void CloseEvictionProcess(INodeLifecycleManager evictionCandidate)
         {
-            _evictionPairs.TryRemove(evictionCandidate.ManagedNode.IdHashText, out var _);
+            _evictionPairs.TryRemove(evictionCandidate.ManagedNode.IdHash, out var _);
             evictionCandidate.OnStateChanged -= OnStateChange;
         }
     }

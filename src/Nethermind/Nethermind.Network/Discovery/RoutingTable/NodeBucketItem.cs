@@ -32,7 +32,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public Node Node { get; }
         public DateTime LastContactTime { get; private set; }
 
-        public void OnContactReveived()
+        public void OnContactReceived()
         {
             LastContactTime = DateTime.UtcNow;
         }
@@ -46,7 +46,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             
             if (obj is NodeBucketItem item && Node != null)
             {
-                return Node.IdHashText.Equals(item.Node?.IdHashText);
+                return Node.IdHash.Equals(item.Node?.IdHash);
             }
 
             return false;

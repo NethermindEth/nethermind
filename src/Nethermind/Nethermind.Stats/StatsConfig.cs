@@ -30,7 +30,7 @@ namespace Nethermind.Stats
 //            DisconnectDelays = new []{ 100, 100, 100, 100, 100, 500, 500, 500, 500, 500, 1000, 1000, 1000, 1000, 1000, 5000, 10000, 1000 * 60, 1000 * 60 * 5 };
         }
         
-        public bool CaptureNodeStatsEventHistory { get; } = false;
+        public bool CaptureNodeStatsEventHistory { get; set; } = false;
 
         public bool CaptureNodeLatencyStatsEventHistory { get; set; } = false;
 
