@@ -156,9 +156,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Handle(Deserialize<StatusMessage>(message.Data));
                     break;
                 case Eth62MessageCode.NewBlockHashes:
+                    Metrics.Eth62NewBlockHashesReceived++;
                     Handle(Deserialize<NewBlockHashesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.Transactions:
+                    Metrics.Eth62TransactionsReceived++;
                     if (10 > _random.Next(0, 99)) // TODO: disable that when IsMining is set to true
                     {
                         Handle(Deserialize<TransactionsMessage>(message.Data));    
@@ -166,18 +168,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
+                    Metrics.Eth62GetBlockHeadersReceived++;
                     Handle(Deserialize<GetBlockHeadersMessage>(message.Data));
                     break;
                 case Eth62MessageCode.BlockHeaders:
+                    Metrics.Eth62BlockHeadersReceived++;
                     Handle(Deserialize<BlockHeadersMessage>(message.Data));
                     break;
                 case Eth62MessageCode.GetBlockBodies:
+                    Metrics.Eth62GetBlockBodiesReceived++;
                     Handle(Deserialize<GetBlockBodiesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.BlockBodies:
+                    Metrics.Eth62BlockBodiesReceived++;
                     Handle(Deserialize<BlockBodiesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.NewBlock:
+                    Metrics.Eth62NewBlockReceived++;
                     Handle(Deserialize<NewBlockMessage>(message.Data));
                     break;
             }

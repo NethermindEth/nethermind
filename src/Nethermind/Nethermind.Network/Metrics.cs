@@ -38,8 +38,21 @@ namespace Nethermind.Network
         public static long NullNodeIdentityDisconnects { get; set; }
         public static long ClientQuittingDisconnects { get; set; }
         public static long OtherDisconnects { get; set; }
-        public static long DiconnectRequestedDisconnects { get; set; }
+        public static long DisconnectRequestedDisconnects { get; set; }
         public static long SameAsSelfDisconnects { get; set; }
         public static long TcpSubsystemErrorDisconnects { get; set; }
+        
+        public static long Eth62NewBlockHashesReceived { get; set; }
+        public static long Eth62TransactionsReceived { get; set; }
+        public static long Eth62GetBlockHeadersReceived { get; set; }
+        public static long Eth62BlockHeadersReceived { get; set; }
+        public static long Eth62GetBlockBodiesReceived { get; set; }
+        public static long Eth62BlockBodiesReceived { get; set; }
+        public static long Eth62NewBlockReceived { get; set; }
+        
+        public static long Eth63GetReceiptsReceived { get; set; }
+        public static long Eth63ReceiptsReceived { get; set; }
+        public static long Eth63GetNodeDataReceived { get; set; }
+        public static long Eth63NodeDataReceived { get; set; }
     }
 }

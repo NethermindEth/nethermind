@@ -304,7 +304,7 @@ namespace Nethermind.Network.P2P
                     Metrics.ReceiveMessageTimeoutDisconnects++;
                     break;
                 case DisconnectReason.DisconnectRequested:
-                    Metrics.DiconnectRequestedDisconnects++;
+                    Metrics.DisconnectRequestedDisconnects++;
                     break;
                 case DisconnectReason.IdentitySameAsSelf:
                     Metrics.SameAsSelfDisconnects++;

@@ -60,15 +60,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
+                    Metrics.Eth63GetReceiptsReceived++;
                     Handle(Deserialize<GetReceiptsMessage>(message.Data));
                     break;
                 case Eth63MessageCode.Receipts:
+                    Metrics.Eth63ReceiptsReceived++;
                     Handle(Deserialize<ReceiptsMessage>(message.Data));
                     break;
                 case Eth63MessageCode.GetNodeData:
+                    Metrics.Eth63GetNodeDataReceived++;
                     Handle(Deserialize<GetNodeDataMessage>(message.Data));
                     break;
                 case Eth63MessageCode.NodeData:
+                    Metrics.Eth63NodeDataReceived++;
                     Handle(Deserialize<NodeDataMessage>(message.Data));
                     break;
             }
