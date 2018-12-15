@@ -16,9 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Globalization;
 using System.IO;
-using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs.ChainSpec;
@@ -68,6 +66,70 @@ namespace Nethermind.Core.Test.Specs
                 UInt256.Parse("1000000000000000000000000000000"),
                 chainSpec.Allocations[new Address("874b54a8bd152966d63f706bae1ffeb0411921e5")],
                 "account 874b54a8bd152966d63f706bae1ffeb0411921e5");
+            
+            Assert.AreEqual(SealEngineType.Ethash, chainSpec.SealEngineType, "engine");
+        }
+        
+        [Test]
+        public void Can_load_goerli()
+        {
+            byte[] data = File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/goerli.json"));
+            ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            ChainSpec chainSpec = chainSpecLoader.Load(data);
+            Assert.AreEqual(6284, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual("Görli", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual("goerli", chainSpec.DataDir, $"{nameof(chainSpec.DataDir)}");
+            Assert.AreEqual(SealEngineType.Clique, chainSpec.SealEngineType, "engine");
+            
+            Assert.AreEqual(15, chainSpec.ReadSealEngineParam<ulong>("period"));
+            Assert.AreEqual(30000, chainSpec.ReadSealEngineParam<ulong>("epoch"));
+            Assert.AreEqual(0, chainSpec.ReadSealEngineParam<ulong>("blockReward"));
+        }
+        
+        [Test]
+        public void Can_load_kovan()
+        {
+            byte[] data = File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/kovan.json"));
+            ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            ChainSpec chainSpec = chainSpecLoader.Load(data);
+            Assert.AreEqual(42, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual("Kovan", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
+        }
+        
+        [Test]
+        public void Can_load_rinkeby()
+        {
+            byte[] data = File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/rinkeby.json"));
+            ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            ChainSpec chainSpec = chainSpecLoader.Load(data);
+            Assert.AreEqual(4, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual("Rinkeby", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual(SealEngineType.Clique, chainSpec.SealEngineType, "engine");
+        }
+        
+        [Test]
+        public void Can_load_mainnet()
+        {
+            byte[] data = File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json"));
+            ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            ChainSpec chainSpec = chainSpecLoader.Load(data);
+            Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual("Foundation", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual("ethereum", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual(SealEngineType.Ethash, chainSpec.SealEngineType, "engine");
+        }
+        
+        [Test]
+        public void Can_load_spaceneth()
+        {
+            byte[] data = File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/spaceneth.json"));
+            ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            ChainSpec chainSpec = chainSpecLoader.Load(data);
+            Assert.AreEqual(99, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual("Spaceneth", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual("spaceneth", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual(SealEngineType.NethDev, chainSpec.SealEngineType, "engine");
         }
     }
 }

@@ -46,7 +46,9 @@ namespace Nethermind.Core.Specs.ChainSpec
 
                 chainSpec.ChainId = ToInt(chainSpecJson.Params.NetworkId);
                 chainSpec.Name = chainSpecJson.Name;
+                chainSpec.DataDir = chainSpecJson.DataDir;
                 LoadGenesis(chainSpecJson, chainSpec);
+                LoadEngine(chainSpecJson, chainSpec);
                 LoadAllocations(chainSpec, chainSpecJson);
                 LoadBootnodes(chainSpecJson, chainSpec);
 
@@ -58,6 +60,35 @@ namespace Nethermind.Core.Specs.ChainSpec
             }
         }
 
+        private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+        {
+            if (chainSpecJson.Engine?.AuthorityRound != null)
+            {
+                chainSpec.SealEngineType = SealEngineType.AuRa;
+            }
+            else if (chainSpecJson.Engine?.Clique != null)
+            {
+                chainSpec.SealEngineType = SealEngineType.Clique;
+                chainSpec.SealEngineParams = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
+                foreach (var param in chainSpecJson.Engine.Clique.Params)
+                {
+                    chainSpec.SealEngineParams.Add(param.Key, param.Value);
+                }
+            }
+            else if (chainSpecJson.Engine?.Ethash != null)
+            {
+                chainSpec.SealEngineType = SealEngineType.Ethash;
+            }
+            else if (chainSpecJson.Engine?.NethDev != null)
+            {
+                chainSpec.SealEngineType = SealEngineType.NethDev;
+            }
+            else
+            {
+                throw new NotSupportedException("unknown seal engine in chainspec");
+            }
+        }
+
         private static void LoadGenesis(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
             if (chainSpecJson.Genesis == null)
@@ -65,14 +96,14 @@ namespace Nethermind.Core.Specs.ChainSpec
                 return;
             }
             
-            var nonce = ToULong(chainSpecJson.Genesis.Seal.Ethereum.Nonce);
-            var mixHash = HexToKeccak(chainSpecJson.Genesis.Seal.Ethereum.MixHash);
-            var parentHash = HexToKeccak(chainSpecJson.Genesis.ParentHash);
-            var timestamp = HexToUInt256(chainSpecJson.Genesis.Timestamp);
-            var difficulty = HexToUInt256(chainSpecJson.Genesis.Difficulty);
-            var extraData = Bytes.FromHexString(chainSpecJson.Genesis.ExtraData);
-            var gasLimit = HexToLong(chainSpecJson.Genesis.GasLimit);
-            var beneficiary = new Address(chainSpecJson.Genesis.Author);
+            var nonce = ToULong(chainSpecJson.Genesis.Seal.Ethereum?.Nonce ?? "0x0");
+            var mixHash = HexToKeccak(chainSpecJson.Genesis.Seal.Ethereum?.MixHash ?? Keccak.Zero.ToString(true));
+            var parentHash = HexToKeccak(chainSpecJson.Genesis.ParentHash ?? Keccak.Zero.ToString(true));
+            var timestamp = HexToUInt256(chainSpecJson.Genesis.Timestamp ?? "0x0");
+            var difficulty = HexToUInt256(chainSpecJson.Genesis.Difficulty ?? "0x0");
+            var extraData = Bytes.FromHexString(chainSpecJson.Genesis.ExtraData ?? "0x");
+            var gasLimit = HexToLong(chainSpecJson.Genesis.GasLimit ?? "0x0");
+            var beneficiary = new Address(chainSpecJson.Genesis.Author ?? Address.Zero.ToString());
 
             BlockHeader genesisHeader = new BlockHeader(
                 parentHash,
@@ -129,14 +160,14 @@ namespace Nethermind.Core.Specs.ChainSpec
         {
             if (chainSpecJson.Nodes == null)
             {
-                chainSpec.NetworkNodes = new NetworkNode[0];
+                chainSpec.Bootnodes = new NetworkNode[0];
                 return;
             }
 
-            chainSpec.NetworkNodes = new NetworkNode[chainSpecJson.Nodes.Length];
+            chainSpec.Bootnodes = new NetworkNode[chainSpecJson.Nodes.Length];
             for (int i = 0; i < chainSpecJson.Nodes.Length; i++)
             {
-                chainSpec.NetworkNodes[i] = new NetworkNode(chainSpecJson.Nodes[i], $"bootnode{i}");
+                chainSpec.Bootnodes[i] = new NetworkNode(chainSpecJson.Nodes[i], $"bootnode{i}");
             }
         }
 

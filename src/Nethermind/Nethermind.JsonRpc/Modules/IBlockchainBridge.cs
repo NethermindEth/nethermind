@@ -43,11 +43,11 @@ namespace Nethermind.JsonRpc.Modules
         Block RetrieveHeadBlock();
         Block RetrieveGenesisBlock();
 
-        (Nethermind.Core.TransactionReceipt Receipt, Nethermind.Core.Transaction Transaction) GetTransaction(Keccak transactionHash);
+        (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
-        Keccak SendTransaction(Nethermind.Core.Transaction transaction);
-        Nethermind.Core.TransactionReceipt GetTransactionReceipt(Keccak txHash);
-        byte[] Call(Block block, Nethermind.Core.Transaction transaction);
+        Keccak SendTransaction(Transaction transaction);
+        TransactionReceipt GetTransactionReceipt(Keccak txHash);
+        byte[] Call(Block block, Transaction transaction);
 
         byte[] GetCode(Address address);
         byte[] GetCode(Keccak codeHash);

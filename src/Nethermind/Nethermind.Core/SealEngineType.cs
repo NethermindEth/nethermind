@@ -20,7 +20,10 @@ namespace Nethermind.Core
 {
     public enum SealEngineType
     {
-        Ethash,
-        None
+        None,
+        AuRa,
+        Clique,
+        NethDev,
+        Ethash
     }
 }

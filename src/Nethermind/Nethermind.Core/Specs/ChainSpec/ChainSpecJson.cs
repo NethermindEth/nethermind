@@ -24,9 +24,39 @@ namespace Nethermind.Core.Specs.ChainSpec
     {
         public string Name { get; set; }
         public string DataDir { get; set; }
+        public EngineJson Engine { get; set; }
         public ChainSpecParamsJson Params { get; set; }
         public ChainSpecGenesisJson Genesis { get; set; }
         public string[] Nodes { get; set; }
         public Dictionary<string, ChainSpecAccountJson> Accounts { get; set; }
+        
+        internal class EthashEngineJson
+        {
+        }
+    
+        internal class CliqueEngineJson
+        {
+            public Dictionary<string, string> Params { get; set; }
+        }
+        
+        internal class AuraEngineJson
+        {
+            public Dictionary<string, object> Params { get; set; }
+        }
+        
+        internal class NethDevJson
+        {
+        }
+    
+        internal class EngineJson
+        {
+            public EthashEngineJson Ethash { get; set; }
+        
+            public CliqueEngineJson Clique { get; set; }
+            
+            public AuraEngineJson AuthorityRound { get; set; }
+            
+            public NethDevJson NethDev { get; set; }
+        }
     }
 }

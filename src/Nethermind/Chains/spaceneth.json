@@ -1,6 +1,12 @@
 {
 	"name": "Spaceneth",
 	"dataDir": "spaceneth",
+	"engine": {
+		"NethDev": {
+			"params": {
+			}
+		}
+	},
 	"params": {
 		"gasLimitBoundDivisor": "0x0400",
 		"accountStartNonce": "0x0",

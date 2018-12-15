@@ -277,7 +277,7 @@ namespace Nethermind.Runner.Runners
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             networkConfig.MasterExternalIp = localHost;
             networkConfig.MasterHost = localHost;
-            networkConfig.BootNodes = _chainSpec.NetworkNodes.Select(nn => GetNode(nn, localHost)).ToArray();
+            networkConfig.BootNodes = _chainSpec.Bootnodes.Select(nn => GetNode(nn, localHost)).ToArray();
             networkConfig.DbBasePath = _initConfig.BaseDbPath;
         }
 
@@ -329,7 +329,7 @@ namespace Nethermind.Runner.Runners
             _logger.Info($"Loading chain spec from {_initConfig.ChainSpecPath}");
             ChainSpecLoader loader = new ChainSpecLoader(_jsonSerializer);
             _chainSpec = loader.LoadFromFile(_initConfig.ChainSpecPath);
-            _chainSpec.NetworkNodes = _chainSpec.NetworkNodes.Where(n => !n.NodeId.PublicKey?.Equals(_nodeKey.PublicKey) ?? false).ToArray();
+            _chainSpec.Bootnodes = _chainSpec.Bootnodes.Where(n => !n.NodeId.PublicKey?.Equals(_nodeKey.PublicKey) ?? false).ToArray();
         }
 
         [Todo("This will be replaced with a bigger rewrite of state management so we can create a state at will")]
@@ -442,7 +442,6 @@ namespace Nethermind.Runner.Runners
 //            IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig));
 //            _dbProvider = debugReader;
 
-            /* blockchain */
             _blockTree = new BlockTree(
                 _dbProvider.BlocksDb,
                 _dbProvider.BlockInfosDb,
@@ -450,19 +449,32 @@ namespace Nethermind.Runner.Runners
                 _transactionPool,
                 _logManager);
 
-            var cliqueConfig = new CliqueConfig(15, 30000);
-            var clique = new CliqueSealEngine(cliqueConfig, _ethereumSigner, _nodeKey, _dbProvider.BlocksDb, _blockTree,
-                _logManager);
-            clique.CanSeal = _initConfig.IsMining;
-
-            // TODO: read seal engine from ChainSpec
-            _sealEngine =
-                (_specProvider is MainNetSpecProvider) ? ConfigureSealEngine() :
-                (_specProvider is RopstenSpecProvider) ? ConfigureSealEngine() :
-                (_specProvider is SturebySpecProvider) ? ConfigureSealEngine() :
-                (_specProvider is RinkebySpecProvider) ? clique :
-                (_specProvider is GoerliSpecProvider) ? (ISealEngine) clique :
-                NullSealEngine.Instance;
+            CliqueConfig cliqueConfig = null;
+            CliqueSealEngine clique = null;            
+            switch (_chainSpec.SealEngineType)
+            {
+                case SealEngineType.None:
+                    _sealEngine = NullSealEngine.Instance;
+                    _rewardCalculator = new NoBlockRewards();
+                    break;
+                case SealEngineType.Clique:
+                    _rewardCalculator = new NoBlockRewards();
+                    cliqueConfig = new CliqueConfig(_chainSpec.ReadSealEngineParam<ulong>("period"), _chainSpec.ReadSealEngineParam<ulong>("epoch"));
+                    _sealEngine = clique = new CliqueSealEngine(cliqueConfig, _ethereumSigner, _nodeKey, _dbProvider.BlocksDb, _blockTree, _logManager);
+                    _sealEngine.CanSeal = _initConfig.IsMining;
+                    break;
+                case SealEngineType.NethDev:
+                    _rewardCalculator = new NoBlockRewards();
+                    _sealEngine = NullSealEngine.Instance;
+                    break;
+                case SealEngineType.Ethash:
+                    _rewardCalculator = new RewardCalculator(_specProvider);
+                    var difficultyCalculator = new DifficultyCalculator(_specProvider);
+                    _sealEngine = new EthashSealEngine(new Ethash(_logManager), difficultyCalculator, _logManager);
+                    break;
+                default:
+                    throw new NotSupportedException($"Seal engine type {_chainSpec.SealEngineType} is not supported in Nethermind");
+            }
 
             _rewardCalculator = (_sealEngine is CliqueSealEngine)
                 ? (IRewardCalculator) new NoBlockRewards()
@@ -575,19 +587,26 @@ namespace Nethermind.Runner.Runners
                 AlternativeChain producerChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator,
                     _specProvider, minerDbProvider, _recoveryStep, _logManager, _transactionPool, _receiptStorage);
 
-                if (_sealEngine is CliqueSealEngine engine)
+                switch (_chainSpec.SealEngineType)
                 {
-                    // TODO: need to introduce snapshot provider for clique and pass it here instead of CliqueSealEngine
-                    if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
-                    _blockProducer = new CliqueBlockProducer(_transactionPool, producerChain.Processor, _blockTree,
-                        producerChain.StateProvider, _timestamp, _cryptoRandom, engine, cliqueConfig, _nodeKey.Address,
-                        _logManager);
-                }
-                else
-                {
-                    if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
-                    _blockProducer = new DevBlockProducer(_transactionPool, producerChain.Processor, _blockTree,
-                        _timestamp, _logManager);
+                    case SealEngineType.Clique:
+                    {
+                        // TODO: need to introduce snapshot provider for clique and pass it here instead of CliqueSealEngine
+                        if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
+                        _blockProducer = new CliqueBlockProducer(_transactionPool, producerChain.Processor, _blockTree,
+                            producerChain.StateProvider, _timestamp, _cryptoRandom, (CliqueSealEngine)_sealEngine, cliqueConfig, _nodeKey.Address,
+                            _logManager);
+                        break;
+                    }
+                    case SealEngineType.NethDev:
+                    {
+                        if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
+                        _blockProducer = new DevBlockProducer(_transactionPool, producerChain.Processor, _blockTree,
+                            _timestamp, _logManager);
+                        break;
+                    }
+                    default:
+                        throw new NotSupportedException($"Mining in {_chainSpec.SealEngineType} mode is not supported");
                 }
 
                 _blockProducer.Start();
@@ -700,24 +719,6 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsInfo) _logger.Info($"{ClientVersion.Description}");
             if (_logger.IsInfo) _logger.Info(_enode.Info);
             if (_logger.IsInfo) _logger.Info($"enode address for test purposes: {_enode.Address}");
-        }
-
-        private ISealEngine ConfigureSealEngine()
-        {
-//            var sealEngine = NullSealEngine.Instance;
-            var difficultyCalculator = new DifficultyCalculator(_specProvider);
-            var sealEngine = new EthashSealEngine(new Ethash(_logManager), difficultyCalculator, _logManager);
-
-//            var blockMiningTime = TimeSpan.FromMilliseconds(_initConfig.FakeMiningDelay);
-//            var sealEngine = new FakeSealEngine(blockMiningTime, false);
-//            sealEngine.IsMining = _initConfig.IsMining;
-//            if (sealEngine.IsMining)
-//            {
-//                var transactionDelay = TimeSpan.FromMilliseconds(_initConfig.FakeMiningDelay / 4);
-//                TestTransactionsGenerator testTransactionsGenerator =
-//                    new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, _logManager);
-//                // stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
-            return sealEngine;
         }
 
         private static void LoadGenesisBlock(

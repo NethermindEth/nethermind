@@ -63,9 +63,7 @@ namespace Nethermind.Network.Test
             _nodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, 133);
 
             var av = _nodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders);
-            var events = _nodeStats.LatencyHistory.ToList();
-            var avCompare = events.Sum(x => x.Latency) / events.Count();
-            Assert.AreEqual(av, avCompare);
+            Assert.AreEqual(102, av);
         }
 
         [TestCase(true)]

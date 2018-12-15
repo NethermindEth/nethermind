@@ -16,8 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Numerics;
 using Nethermind.Dirichlet.Numerics;
 
@@ -30,8 +32,33 @@ namespace Nethermind.Core.Specs.ChainSpec
     public class ChainSpec
     {
         public Dictionary<Address, UInt256> Allocations { get; set; }
-        public NetworkNode[] NetworkNodes { get; set; }
+        public NetworkNode[] Bootnodes { get; set; }
         public Block Genesis { get; set; }
+
+        /// <summary>
+        /// Not used in Nethermind
+        /// </summary>
+        public string DataDir { get; set; }
+
+        public SealEngineType SealEngineType { get; set; }
+
+        public Dictionary<string, string> SealEngineParams { get; set; }
+
+        public T ReadSealEngineParam<T>(string name)
+        {
+            if (SealEngineParams.ContainsKey(name))
+            {
+                if (SealEngineParams[name] is string potentiallyHexString)
+                {
+                    if (potentiallyHexString.StartsWith("0x"))
+                    SealEngineParams[name] = UInt256.Parse(potentiallyHexString.Replace("0x", string.Empty), NumberStyles.HexNumber).ToString();
+                }
+                
+                return (T) Convert.ChangeType(SealEngineParams[name], typeof(T));
+            }
+
+            return default;
+        }
 
         public string Name { get; set; }
 
