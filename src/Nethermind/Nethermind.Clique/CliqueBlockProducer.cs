@@ -20,7 +20,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
@@ -33,7 +32,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 
@@ -142,11 +140,12 @@ namespace Nethermind.Clique
                 {
                     if (_scheduledBlock.Number > _blockTree.Head.Number)
                     {
+                        if (_logger.IsInfo) _logger.Info($"Suggesting own block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
                         _blockTree.SuggestBlock(_scheduledBlock);
                     }
                     else
                     {
-                        if (_logger.IsInfo) _logger.Info($"Dropping a losing block {_scheduledBlock.ToString(Block.Format.Short)}");
+                        if (_logger.IsInfo) _logger.Info($"Dropping a losing block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
                     }
 
                     _scheduledBlock = null;
@@ -235,12 +234,12 @@ namespace Nethermind.Clique
                         {
                             if (t.Result != null)
                             {
-                                if (_logger.IsInfo) _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberAndTx)}");
+                                if (_logger.IsInfo) _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                 _scheduledBlock = t.Result;
                             }
                             else
                             {
-                                if (_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberAndTx)} (null seal)");
+                                if (_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
                             }
                         }
                         else if (t.IsFaulted)
