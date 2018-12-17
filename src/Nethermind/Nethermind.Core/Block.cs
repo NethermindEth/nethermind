@@ -33,7 +33,12 @@ namespace Nethermind.Core
             Full,
             HashAndNumber,
             HashNumberAndTx,
+            HashNumberDiffAndTx,
             Short
+        }
+
+        private Block()
+        {
         }
 
         public Block(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers)
@@ -59,7 +64,7 @@ namespace Nethermind.Core
             get => Header.Hash;
             set => Header.Hash = value;
         }
-        
+
         public Keccak ParentHash
         {
             get => Header.ParentHash;
@@ -101,7 +106,7 @@ namespace Nethermind.Core
             get => Header.Beneficiary;
             set => Header.Beneficiary = value;
         }
-        
+
         public Address Author
         {
             get => Header.Author;
@@ -113,7 +118,7 @@ namespace Nethermind.Core
             get => Header.StateRoot;
             set => Header.StateRoot = value;
         }
-        
+
         public Keccak TransactionsRoot
         {
             get => Header.TransactionsRoot;
@@ -174,7 +179,7 @@ namespace Nethermind.Core
             builder.AppendLine($"Block {Number}");
             builder.AppendLine("  Header:");
             builder.Append($"{Header.ToString("    ")}");
-            
+
             builder.AppendLine("  Ommers:");
             foreach (BlockHeader ommer in Ommers)
             {
@@ -190,6 +195,8 @@ namespace Nethermind.Core
             return builder.ToString();
         }
         
+        public bool HasAddressesRecovered => Transactions.Length == 0 || Transactions[0].SenderAddress != null;
+
         public override string ToString()
         {
             return ToString(Format.Short);
@@ -219,10 +226,23 @@ namespace Nethermind.Core
                     {
                         return $"{Number} ({Hash}), tx count: {Transactions.Length}";
                     }
+                case Format.HashNumberDiffAndTx:
+                    if (Hash == null)
+                    {
+                        return $"{Number} null, diff: {Difficulty}, tx count: {Transactions.Length}";
+                    }
+                    else
+                    {
+                        return $"{Number} ({Hash?.ToString().Substring(60, 6)}), diff: {Difficulty}, tx count: {Transactions.Length}";
+                    }
                 default:
                     if (Hash == null)
                     {
                         return $"{Number} null";
+                    }
+                    if (Hash.Bytes == null)
+                    {
+                        return $"{Number} ({Hash})";
                     }
                     else
                     {
