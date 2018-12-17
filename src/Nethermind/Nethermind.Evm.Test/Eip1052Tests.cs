@@ -161,7 +161,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            AssertStorage(0, Keccak.Zero);
+            AssertStorage(0, selfDestructCodeHash);
         }
 
         [Test]
@@ -210,10 +210,8 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            // todo: so far EIP does not define whether it should be zero or empty data
-            AssertStorage(0, Keccak.OfAnEmptyString);
-            Assert.False(TestState.AccountExists(TestObject.AddressC),
-                "did not test the right thing - it was not an empty account + touch scenario");
+            AssertStorage(0, 0);
+            Assert.False(TestState.AccountExists(TestObject.AddressC), "did not test the right thing - it was not an empty account + touch scenario");
         }
 
         [Test]
