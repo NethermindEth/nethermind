@@ -2554,7 +2554,7 @@ namespace Nethermind.Evm
                         }
 
                         Address address = PopAddress(bytesOnStack);
-                        if (!_state.AccountExists(address))
+                        if (!_state.AccountExists(address) || _state.IsDeadAccount(address))
                         {
                             PushZero(bytesOnStack);
                         }
