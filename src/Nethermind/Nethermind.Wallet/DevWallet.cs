@@ -58,7 +58,7 @@ namespace Nethermind.Wallet
             if (_logger.IsDebug) _logger?.Debug($"Signing transaction: {tx.Value} to {tx.To}");
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId));
             tx.Signature = Sign(tx.SenderAddress, hash);
-            tx.Signature.V = (byte) (tx.Signature.V + 8 + 2 * chainId);
+            tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
         }
 
         public Signature Sign(Address address, Keccak message)
