@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -140,6 +141,8 @@ namespace Ethereum.VM.Test
 
         protected void RunTest(VirtualMachineTest test)
         {
+            TestContext.WriteLine($"Running {test.GetType().FullName}");
+            
             VirtualMachine machine = new VirtualMachine(_stateProvider, _storageProvider, _blockhashProvider, _logManager);
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
