@@ -16,10 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
@@ -73,16 +71,16 @@ namespace Nethermind.Network.Test
             _nodeStats = useLight ?  new NodeStatsLight(_node, _config, NullLogManager.Instance) : (INodeStats)new NodeStats(_node, _config, NullLogManager.Instance);
             
             var isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsFalse(isConnDelayed.Result);
+            Assert.IsFalse(isConnDelayed.Result, "before disconnect");
             
             _nodeStats.AddNodeStatsDisconnectEvent(DisconnectType.Remote, DisconnectReason.Other);
             isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsTrue(isConnDelayed.Result);
+            Assert.IsTrue(isConnDelayed.Result, "just after disconnect");
             Assert.AreEqual(NodeStatsEventType.Disconnect, isConnDelayed.DelayReason);
-            var task = Task.Delay(100);
+            var task = Task.Delay(125);
             task.Wait();
             isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsFalse(isConnDelayed.Result);
+            Assert.IsFalse(isConnDelayed.Result, "125ms after disconnect");
         }
         
         [TestCase(true)]
@@ -92,16 +90,16 @@ namespace Nethermind.Network.Test
             _nodeStats = useLight ? new NodeStatsLight(_node, _config, NullLogManager.Instance) : (INodeStats)new NodeStats(_node, _config, NullLogManager.Instance);
             
             var isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsFalse(isConnDelayed.Result);
+            Assert.IsFalse(isConnDelayed.Result, "before failure");
             
             _nodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
             isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsTrue(isConnDelayed.Result);
+            Assert.IsTrue(isConnDelayed.Result, "just after failure");
             Assert.AreEqual(NodeStatsEventType.ConnectionFailed, isConnDelayed.DelayReason);
-            var task = Task.Delay(100);
+            var task = Task.Delay(125);
             task.Wait();
             isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsFalse(isConnDelayed.Result);
+            Assert.IsFalse(isConnDelayed.Result, "125ms after failure");
         }
     }
 }
