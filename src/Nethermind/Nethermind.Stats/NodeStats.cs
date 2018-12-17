@@ -79,8 +79,9 @@ namespace Nethermind.Stats
 
         public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
         {
-            _lastDisconnectTime = DateTime.Now;
-            _lastDisconnects[disconnectType] = (disconnectReason, DateTime.Now);
+            DateTime time = DateTime.Now;
+            _lastDisconnectTime = time;
+            _lastDisconnects[disconnectType] = (disconnectReason, time);
             _statCounters[NodeStatsEventType.Disconnect].Increment();
             CaptureEvent(NodeStatsEventType.Disconnect, null, null, new DisconnectDetails
             {
@@ -164,6 +165,7 @@ namespace Nethermind.Stats
             {
                 return (true, NodeStatsEventType.ConnectionFailed);
             }
+            
             return (false, null);
         }
 
@@ -223,18 +225,13 @@ namespace Nethermind.Stats
         
         private int GetFailedConnectionDelay()
         {
-            var failedConnectionFailed = _statCounters[NodeStatsEventType.ConnectionFailed].Value;
-            if (failedConnectionFailed == 0)
+            var failedConnectionsCount = _statCounters[NodeStatsEventType.ConnectionFailed].Value;
+            if (failedConnectionsCount == 0)
             {
                 return 100;
             }
 
-            if (failedConnectionFailed > _statsConfig.FailedConnectionDelays.Length)
-            {
-                return _statsConfig.FailedConnectionDelays.Last();
-            }
-
-            return _statsConfig.FailedConnectionDelays[failedConnectionFailed - 1];
+            return _statsConfig.FailedConnectionDelays[Math.Min(failedConnectionsCount, _statsConfig.FailedConnectionDelays.Length) - 1];
         }
         
         private int GetDisconnectDelay()
@@ -245,12 +242,7 @@ namespace Nethermind.Stats
                 return 100;
             }
 
-            if (disconnectCount > _statsConfig.DisconnectDelays.Length)
-            {
-                return _statsConfig.DisconnectDelays.Last();
-            }
-
-            return _statsConfig.DisconnectDelays[disconnectCount - 1];
+            return _statsConfig.DisconnectDelays[Math.Min(disconnectCount, _statsConfig.DisconnectDelays.Length) - 1];
         }
         
         private void CaptureEvent(NodeStatsEventType eventType, P2PNodeDetails p2PNodeDetails = null, EthNodeDetails ethNodeDetails = null, DisconnectDetails disconnectDetails = null, ConnectionDirection? connectionDirection = null, SyncNodeDetails syncNodeDetails = null)
