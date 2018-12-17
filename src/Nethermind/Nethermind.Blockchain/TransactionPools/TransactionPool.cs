@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.TransactionPools
             var timer = new Timer(removePendingTransactionInterval * 1000);
             timer.Elapsed += OnTimerElapsed;
             timer.Start();
-            
+
             _ownTimer = new Timer(500);
             _ownTimer.Elapsed += OwnTimerOnElapsed;
             _ownTimer.AutoReset = false;
@@ -87,17 +87,17 @@ namespace Nethermind.Blockchain.TransactionPools
         }
 
         private System.Timers.Timer _ownTimer;
-        
+
         private void OwnTimerOnElapsed(object sender, ElapsedEventArgs e)
-        {            
+        {
             if (_ownTransactions.Count > 0)
             {
-                foreach ((_, Transaction tx)  in _ownTransactions)
+                foreach ((_, Transaction tx) in _ownTransactions)
                 {
                     var peers = SelectPeers(tx);
                     NotifyPeers(peers, tx);
                 }
-                
+
                 _ownTimer.Enabled = true;
             }
         }
@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.TransactionPools
                 Metrics.PendingTransactionsDiscarded++;
                 return AddTransactionResult.OldScheme;
             }
-            
+
             if (transaction.Signature.GetChainId != _specProvider.ChainId)
             {
                 Metrics.PendingTransactionsDiscarded++;
@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain.TransactionPools
                 Metrics.PendingTransactionsKnown++;
                 return AddTransactionResult.AlreadyKnown;
             }
-            
+
             transaction.SenderAddress = _signer.RecoverAddress(transaction, blockNumber);
 
             // check nonce
@@ -163,7 +163,7 @@ namespace Nethermind.Blockchain.TransactionPools
             NewPending?.Invoke(this, new TransactionEventArgs(transaction));
             List<ISynchronizationPeer> selectedPeers = SelectPeers(transaction);
             NotifyPeers(selectedPeers, transaction);
-            
+
             FilterAndStoreTransaction(transaction, blockNumber);
             return AddTransactionResult.Added;
         }
@@ -260,33 +260,32 @@ namespace Nethermind.Blockchain.TransactionPools
         }
 
         private ConcurrentDictionary<Keccak, Transaction> _ownTransactions = new ConcurrentDictionary<Keccak, Transaction>();
-        
+
         private List<ISynchronizationPeer> SelectPeers(Transaction transaction)
         {
             var selectedPeers = new List<ISynchronizationPeer>();
-            
-            foreach (var peer in _peers.Values)
+
+            if (transaction.DeliveredBy == null)
             {
-                /* DeliveredBy == null happens when it is transaction created by our node */
-                if (transaction.DeliveredBy != null)
-                {
-                    if (transaction.DeliveredBy.Equals(peer.NodeId.PublicKey))
-                    {
-                        continue;
-                    }
-
-                    if (_peerNotificationThreshold < Random.Value.Next(1, 100))
-                    {
-                        continue;
-                    }                    
-                }
-                else
-                {
-                    if(_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {transaction.To}");
-                }
-
                 _ownTransactions.TryAdd(transaction.Hash, transaction);
                 _ownTimer.Enabled = true;
+                
+                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+                return _peers.Values.ToList();
+            }
+
+            foreach (var peer in _peers.Values)
+            {
+                if (transaction.DeliveredBy.Equals(peer.NodeId.PublicKey))
+                {
+                    continue;
+                }
+
+                if (_peerNotificationThreshold < Random.Value.Next(1, 100))
+                {
+                    continue;
+                }
+
                 selectedPeers.Add(peer);
             }
 
