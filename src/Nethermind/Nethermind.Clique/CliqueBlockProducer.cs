@@ -404,7 +404,6 @@ namespace Nethermind.Clique
             if (_logger.IsDebug) _logger.Debug($"Collected {selectedTxs.Count} out of {total} pending transactions.");
 
             Block block = new Block(header, selectedTxs, new BlockHeader[0]);
-            block.TotalTransactions = parentBlock.TotalTransactions + (UInt256) selectedTxs.Count;
             header.TransactionsRoot = block.CalculateTransactionsRoot();
             block.Author = _address;
             return block;

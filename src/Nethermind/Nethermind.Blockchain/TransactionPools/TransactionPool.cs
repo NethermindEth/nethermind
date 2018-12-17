@@ -76,9 +76,30 @@ namespace Nethermind.Blockchain.TransactionPools
                 return;
             }
 
-            var timer = new Timer {Interval = removePendingTransactionInterval * 1000};
+            var timer = new Timer(removePendingTransactionInterval * 1000);
             timer.Elapsed += OnTimerElapsed;
             timer.Start();
+            
+            _ownTimer = new Timer(500);
+            _ownTimer.Elapsed += OwnTimerOnElapsed;
+            _ownTimer.AutoReset = false;
+            _ownTimer.Start();
+        }
+
+        private System.Timers.Timer _ownTimer;
+        
+        private void OwnTimerOnElapsed(object sender, ElapsedEventArgs e)
+        {            
+            if (_ownTransactions.Count > 0)
+            {
+                foreach ((_, Transaction tx)  in _ownTransactions)
+                {
+                    var peers = SelectPeers(tx);
+                    NotifyPeers(peers, tx);
+                }
+                
+                _ownTimer.Enabled = true;
+            }
         }
 
         public Transaction[] GetPendingTransactions() => _pendingTransactions.Values.ToArray();
@@ -140,7 +161,9 @@ namespace Nethermind.Blockchain.TransactionPools
             // check nonce
 
             NewPending?.Invoke(this, new TransactionEventArgs(transaction));
-            NotifyPeers(SelectPeers(transaction), transaction);
+            List<ISynchronizationPeer> selectedPeers = SelectPeers(transaction);
+            NotifyPeers(selectedPeers, transaction);
+            
             FilterAndStoreTransaction(transaction, blockNumber);
             return AddTransactionResult.Added;
         }
@@ -190,6 +213,15 @@ namespace Nethermind.Blockchain.TransactionPools
                 RemovedPending?.Invoke(this, new TransactionEventArgs(transaction));
             }
 
+            if (_ownTransactions.Count != 0)
+            {
+                bool ownIncluded = _ownTransactions.TryRemove(hash, out _);
+                if (ownIncluded)
+                {
+                    if (_logger.IsInfo) _logger.Trace($"Transaction {hash} created on this node was included in the block");
+                }
+            }
+
             _transactionStorage.Delete(hash);
             if (_logger.IsTrace) _logger.Trace($"Deleted a transaction: {hash}");
         }
@@ -227,21 +259,34 @@ namespace Nethermind.Blockchain.TransactionPools
             if (_logger.IsTrace) _logger.Trace($"Notified {peers.Count} peers about a transaction: {transaction.Hash}");
         }
 
+        private ConcurrentDictionary<Keccak, Transaction> _ownTransactions = new ConcurrentDictionary<Keccak, Transaction>();
+        
         private List<ISynchronizationPeer> SelectPeers(Transaction transaction)
         {
             var selectedPeers = new List<ISynchronizationPeer>();
+            
             foreach (var peer in _peers.Values)
             {
-                if (transaction.DeliveredBy.Equals(peer.NodeId.PublicKey))
+                /* DeliveredBy == null happens when it is transaction created by our node */
+                if (transaction.DeliveredBy != null)
                 {
-                    continue;
+                    if (transaction.DeliveredBy.Equals(peer.NodeId.PublicKey))
+                    {
+                        continue;
+                    }
+
+                    if (_peerNotificationThreshold < Random.Value.Next(1, 100))
+                    {
+                        continue;
+                    }                    
+                }
+                else
+                {
+                    if(_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {transaction.To}");
                 }
 
-                if (_peerNotificationThreshold < Random.Value.Next(1, 100))
-                {
-                    continue;
-                }
-
+                _ownTransactions.TryAdd(transaction.Hash, transaction);
+                _ownTimer.Enabled = true;
                 selectedPeers.Add(peer);
             }
 

@@ -59,6 +59,13 @@ namespace Nethermind.Evm
             Execute(transaction, block, txTracer, false);
         }
         
+        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool readOnly)
+        {
+            block.GasUsed += (long)tx.GasLimit;
+            Address recipient = tx.To ?? Address.OfContract(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
+            if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)tx.GasLimit);
+        }
+        
         public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
@@ -75,7 +82,7 @@ namespace Nethermind.Evm
             if (sender == null)
             {
                 TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
-                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)transaction.GasLimit);
+                QuickFail(transaction, block, txTracer, readOnly);
                 return;
             }
 
@@ -85,14 +92,14 @@ namespace Nethermind.Evm
             if (gasLimit < intrinsicGas)
             {
                 TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)transaction.GasLimit);
+                QuickFail(transaction, block, txTracer, readOnly);
                 return;
             }
 
             if (gasLimit > block.GasLimit - block.GasUsed)
             {
                 TraceLogInvalidTx(transaction, $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)transaction.GasLimit);
+                QuickFail(transaction, block, txTracer, readOnly);
                 return;
             }
 
@@ -109,14 +116,14 @@ namespace Nethermind.Evm
             if ((ulong) intrinsicGas * gasPrice + value > senderBalance)
             {
                 TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderBalance}");
-                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)transaction.GasLimit);
+                QuickFail(transaction, block, txTracer, readOnly);
                 return;
             }
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
             {
                 TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
-                if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)transaction.GasLimit);
+                QuickFail(transaction, block, txTracer, readOnly);
                 return;
             }
 
