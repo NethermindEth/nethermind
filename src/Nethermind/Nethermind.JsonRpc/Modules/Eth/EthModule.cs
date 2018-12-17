@@ -372,7 +372,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             var transactionReceipt = _blockchainBridge.GetTransactionReceipt(txHash);
             if (transactionReceipt == null)
             {
-                return ResultWrapper<ReceiptForRpc>.Fail($"Cannot find transactionReceipt for transaction hash: {txHash}", ErrorType.NotFound);
+                return ResultWrapper<ReceiptForRpc>.Success(null);
             }
 
             var transactionReceiptModel = new ReceiptForRpc(txHash, transactionReceipt);

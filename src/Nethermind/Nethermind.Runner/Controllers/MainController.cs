@@ -22,7 +22,6 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
@@ -67,8 +66,7 @@ namespace Nethermind.Runner.Controllers
             {
                 var body = await reader.ReadToEndAsync();
                 if (_logger.IsTrace) _logger.Trace($"Received request: {body}");
-
-
+                
                 (JsonRpcRequest Model, IEnumerable<JsonRpcRequest> Collection) rpcRequest;
                 try
                 {
@@ -88,10 +86,12 @@ namespace Nethermind.Runner.Controllers
                     var response = _jsonRpcService.SendRequest(rpcRequest.Model);
                     if (response.Error != null)
                     {
+                        if (_logger.IsError) _logger.Error($"Failed to respond to {rpcRequest.Model.Method} {response.Error.Message}");
                         Metrics.JsonRpcErrors++;   
                     }
                     else
                     {
+                        if (_logger.IsDebug) _logger.Debug($"Responded to {rpcRequest.Model.Method}");
                         Metrics.JsonRpcSuccesses++;
                     }
                     
@@ -107,10 +107,12 @@ namespace Nethermind.Runner.Controllers
                         JsonRpcResponse response = _jsonRpcService.SendRequest(jsonRpcRequest);
                         if (response.Error != null)
                         {
+                            if (_logger.IsError) _logger.Error($"Failed to respond to {jsonRpcRequest.Method} {response.Error.Message}");
                             Metrics.JsonRpcErrors++; 
                         }
                         else
                         {
+                            if (_logger.IsDebug) _logger.Debug($"Responded to {jsonRpcRequest.Method}");
                             Metrics.JsonRpcSuccesses++;
                         }
                         
