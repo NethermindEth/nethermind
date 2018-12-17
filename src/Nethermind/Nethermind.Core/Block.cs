@@ -32,6 +32,7 @@ namespace Nethermind.Core
         {
             Full,
             HashAndNumber,
+            HashNumberAndTx,
             Short
         }
 
@@ -208,6 +209,15 @@ namespace Nethermind.Core
                     else
                     {
                         return $"{Number} ({Hash})";
+                    }
+                case Format.HashNumberAndTx:
+                    if (Hash == null)
+                    {
+                        return $"{Number} null, tx count: {Transactions.Length}";
+                    }
+                    else
+                    {
+                        return $"{Number} ({Hash}), tx count: {Transactions.Length}";
                     }
                 default:
                     if (Hash == null)

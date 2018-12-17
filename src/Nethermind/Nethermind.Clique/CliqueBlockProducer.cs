@@ -221,7 +221,13 @@ namespace Nethermind.Clique
 
                     if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
                     Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullBlockTracer.Instance);
-                    if (_logger.IsInfo) _logger.Info($"Sealing prepared block {processedBlock.Number}");
+                    if (processedBlock == null)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Prepared block has lost the race");
+                        continue;
+                    }
+                    
+                    if (_logger.IsDebug) _logger.Debug($"Sealing prepared block {processedBlock.Number}");
 
                     _sealEngine.SealBlock(processedBlock, _cancellationTokenSource.Token).ContinueWith(t =>
                     {
@@ -229,17 +235,17 @@ namespace Nethermind.Clique
                         {
                             if (t.Result != null)
                             {
-                                if (_logger.IsInfo) _logger.Info($"Sealed block {t.Result.Header.ToString(BlockHeader.Format.Short)}");
+                                if (_logger.IsInfo) _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberAndTx)}");
                                 _scheduledBlock = t.Result;
                             }
                             else
                             {
-                                if (_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.Number} (null seal)");
+                                if (_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberAndTx)} (null seal)");
                             }
                         }
                         else if (t.IsFaulted)
                         {
-                            _logger.Error("Mining failed", t.Exception);
+                            if(_logger.IsError) _logger.Error("Mining failed", t.Exception);
                         }
                         else if (t.IsCanceled)
                         {
@@ -249,7 +255,7 @@ namespace Nethermind.Clique
                 }
                 catch (Exception e)
                 {
-                    if(_logger.IsError) _logger.Error($"Block producer could not process produce block on top of {parentBlock.ToString(Block.Format.Short)}", e);
+                    if(_logger.IsError) _logger.Error($"Block producer could not produce block on top of {parentBlock.ToString(Block.Format.HashAndNumber)}", e);
                 }
             }
         }
@@ -268,7 +274,7 @@ namespace Nethermind.Clique
             BlockHeader parentHeader = parentBlock.Header;
             if (parentHeader == null)
             {
-                if (_logger.IsError) _logger.Error($"Preparing new block on top of {parentBlock.Header.ToString(BlockHeader.Format.Short)} - parent header is null");
+                if (_logger.IsError) _logger.Error($"Preparing new block on top of {parentBlock.ToString(Block.Format.HashAndNumber)} - parent header is null");
                 return null;
             }
 
@@ -284,7 +290,7 @@ namespace Nethermind.Clique
                 return null;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Preparing new block on top of {parentBlock.Header.ToString(BlockHeader.Format.Short)}");
+            if (_logger.IsInfo) _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.HashAndNumber)}");
 
             UInt256 timestamp = _timestamp.EpochSeconds;
 
