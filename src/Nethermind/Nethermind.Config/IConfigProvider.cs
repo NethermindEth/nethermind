@@ -19,7 +19,9 @@
 namespace Nethermind.Config
 {
     public interface IConfigProvider
-    {
+    {    
         T GetConfig<T>() where T : IConfig;
+        
+        void AddSource(IConfigSource configSource);
     }
 }

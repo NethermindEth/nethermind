@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,22 +16,36 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
-using Nethermind.Core.Logging;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Runner.Runners;
-using NUnit.Framework;
+using System;
 
-namespace Nethermind.Runner.Test
+namespace Nethermind.Config
 {
-    [TestFixture]
-    public class RunnerSmokeTests
+    public class ConfigEntry<T> : IConfigEntry
     {
-        [Test]
-        public void SmokeTest()
+        private readonly T _defaultValue;
+
+        private bool _isValueSet;
+
+        private T _value;
+
+        public ConfigEntry(string category, string name, T defaultValue)
         {
-            EthereumRunner runner = new EthereumRunner(new RpcModuleProvider(new JsonRpcConfig()), new JsonConfigSource(), NullLogManager.Instance);
+            _defaultValue = defaultValue;
+            Category = category;
+            Name = name;
+        }
+
+        public T Value => _isValueSet ? _value : _defaultValue;
+
+        public string Category { get; set; }
+
+        public string Name { get; set; }
+        public Type Type { get; } = typeof(T);
+
+        void IConfigEntry.SetValue(object value)
+        {
+            _value = (T) value;
+            _isValueSet = true;
         }
     }
 }

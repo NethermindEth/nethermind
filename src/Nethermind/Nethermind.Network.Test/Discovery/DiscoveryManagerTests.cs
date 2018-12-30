@@ -60,8 +60,8 @@ namespace Nethermind.Network.Test.Discovery
             _publicKey = privateKey.PublicKey;
             var logManager = NullLogManager.Instance;
             //var config = new NetworkConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
-            var config = new JsonConfigProvider();
-            var networkConfig =config.GetConfig<INetworkConfig>(); 
+            var config = new ConfigProvider();
+            var networkConfig = config.GetConfig<INetworkConfig>(); 
             networkConfig.PongTimeout = 100;
 
             var statsConfig = config.GetConfig<IStatsConfig>();

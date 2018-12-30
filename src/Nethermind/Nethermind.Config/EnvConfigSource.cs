@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,22 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
-using Nethermind.Core.Logging;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Runner.Runners;
-using NUnit.Framework;
+using System;
 
-namespace Nethermind.Runner.Test
+namespace Nethermind.Config
 {
-    [TestFixture]
-    public class RunnerSmokeTests
+    public class EnvConfigSource : IConfigSource
     {
-        [Test]
-        public void SmokeTest()
+        public (bool IsSet, object Value) GetValue(Type type, string category, string name)
         {
-            EthereumRunner runner = new EthereumRunner(new RpcModuleProvider(new JsonRpcConfig()), new JsonConfigSource(), NullLogManager.Instance);
+            var variableName = $"NETHERMIND_{category.ToUpperInvariant()}_{name.ToUpperInvariant()}";
+            var variableValueString = Environment.GetEnvironmentVariable(variableName);
+            return string.IsNullOrWhiteSpace(variableValueString) 
+                ? (false, ConfigSourceHelper.GetDefault(type))
+                : (true, ConfigSourceHelper.ParseValue(type, variableValueString));
         }
     }
 }

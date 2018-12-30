@@ -59,7 +59,7 @@ namespace Nethermind.Runner
                 config = typeof(StatsConfig).Assembly;
                 config = typeof(BlockchainConfig).Assembly;
 
-                var configProvider = new JsonConfigProvider();
+                
 
                 string configFilePath = configFile.HasValue() ? configFile.Value() : _defaultConfigFile;
                 var configPathVariable = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
@@ -76,8 +76,7 @@ namespace Nethermind.Runner
                 }
 
                 Console.WriteLine($"Reading config file from {configFilePath}");
-                configProvider.LoadJsonConfig(configFilePath);
-                return configProvider;
+                return new JsonConfigProvider(configFilePath);
             }
 
             string GetBaseDbPath()
