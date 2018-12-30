@@ -67,7 +67,7 @@ namespace Nethermind.Core.Specs
         public static UInt256 TangerineWhistleBlockNumber { get; } = 2463000;
         public static UInt256 SpuriousDragonBlockNumber { get; } = 2675000;
         public static UInt256 ByzantiumBlockNumber { get; } = 4370000;
-        public static UInt256 ConstantinopleBlockNumber { get; } = 100000000; // no constantinople set yet - just for tests
+        public static UInt256 ConstantinopleBlockNumber { get; } = 7080000;
         
         public int ChainId => 1;
         
