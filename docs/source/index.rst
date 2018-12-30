@@ -17,6 +17,7 @@ ToC
    build
    runtime
    networks
+   private_networks
    configuration
    platforms
    jsonrpc
