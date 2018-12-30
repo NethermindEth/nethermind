@@ -45,8 +45,8 @@ jobs:
       name: "Ethereum.Transition.Test"
     - script: dotnet test src/Nethermind/Ethereum.Trie.Test
       name: "Ethereum.Trie.Test"
-    - script: dotnet test src/Nethermind/Ethereum.VM.Test
-      name: "Ethereum.VM.Test"
+    # - script: dotnet test src/Nethermind/Ethereum.VM.Test
+    #  name: "Ethereum.VM.Test"
     - script: dotnet test src/Nethermind/Nethermind.Abi.Test
       name: "Nethermind.Abi.Test"
     - script: dotnet test src/Nethermind/Nethermind.Blockchain.Test
@@ -64,8 +64,8 @@ jobs:
     #- script: dotnet test src/Nethermind/Nethermind.Db.Test
     #  name: "Nethermind.Db.Test.Osx"
     #  os: osx
-    # - script: dotnet test src/Nethermind/Nethermind.Evm.Test
-    #  name: "Nethermind.Evm.Test"
+    - script: dotnet test src/Nethermind/Nethermind.Evm.Test
+      name: "Nethermind.Evm.Test"
     - script: dotnet test src/Nethermind/Nethermind.JsonRpc.Test
       name: "Nethermind.JsonRpc.Test"
     #- script: dotnet test src/Nethermind/Nethermind.KeyStore.Test
