@@ -22,7 +22,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
-using Nethermind.JsonRpc.Modules.Nethm;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using NSubstitute;
@@ -40,7 +39,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new ModuleInfo(ModuleType.Net, typeof(INetModule), typeof(INetModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Eth, typeof(IEthModule), typeof(IEthModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Web3, typeof(IWeb3Module), typeof(IWeb3Module).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
-                new ModuleInfo(ModuleType.Nethm, typeof(INethmModule), typeof(INethmModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Debug, typeof(IDebugModule), typeof(IDebugModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
                 new ModuleInfo(ModuleType.Trace, typeof(ITraceModule), typeof(ITraceModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>())
             });

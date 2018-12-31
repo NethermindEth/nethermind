@@ -30,7 +30,6 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
-using Nethermind.JsonRpc.Modules.Nethm;
 using Nethermind.JsonRpc.Modules.Web3;
 using Newtonsoft.Json;
 using NSubstitute;
@@ -62,29 +61,6 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcResponse response = _jsonRpcService.SendRequest(request);
             Assert.AreEqual(request.Id, response.Id);
             return response;
-        }
-
-        [Test]
-        public void CompileSolidityTest()
-        {
-            INethmModule nethmModule = Substitute.For<INethmModule>();
-            nethmModule.nethm_compileSolidity(Arg.Any<CompilerParameters>()).ReturnsForAnyArgs(r => ResultWrapper<string>.Success(
-                "608060405234801561001057600080fd5b5060bb8061001f6000396000f300608060405260043610603f576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063c6888fa1146044575b600080fd5b348015604f57600080fd5b50606c600480360381019080803590602001909291905050506082565b6040518082815260200191505060405180910390f35b60006007820290509190505600a165627a7a72305820cb09d883ac888f0961fd8d82f8dae501d09d54f4bda397e8ca0fb9c05e2ec72a0029"));
-
-            CompilerParameters parameters = new CompilerParameters
-            {
-                Contract =
-                    "pragma solidity ^0.4.22; contract test { function multiply(uint a) public returns(uint d) {   return a * 7;   } }",
-                EvmVersion = "byzantium",
-                Optimize = false,
-                Runs = 2
-            };
-
-            JsonRpcResponse response = TestRequest<INethmModule>(nethmModule, "nethm_compileSolidity", parameters.ToJson());
-
-            TestContext.Write(response.Result);
-            Assert.IsNotNull(response);
-            Assert.IsNull(response.Error, response.Error?.Message);
         }
 
         [Test]

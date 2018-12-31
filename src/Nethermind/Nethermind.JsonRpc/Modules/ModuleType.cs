@@ -29,7 +29,6 @@ namespace Nethermind.JsonRpc.Modules
         Net,
         Web3,
         Db,
-        Nethm,
         Debug,
         TxPool,
         Trace,
