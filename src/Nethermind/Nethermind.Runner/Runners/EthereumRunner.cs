@@ -48,7 +48,6 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
-using Nethermind.JsonRpc.Modules.Nethm;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.KeyStore;
@@ -266,9 +265,7 @@ namespace Nethermind.Runner.Runners
             }
 
             TraceModule traceModule = new TraceModule(_configProvider, _logManager, _jsonSerializer, tracer);
-            _rpcModuleProvider.Register<ITraceModule>(traceModule);
-            
-            _rpcModuleProvider.Register<INethmModule>(new NethmModule(_configProvider, _logManager, _jsonSerializer, _enode));
+            _rpcModuleProvider.Register<ITraceModule>(traceModule);            
         }
 
         private void UpdateNetworkConfig()
