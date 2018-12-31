@@ -63,7 +63,7 @@ namespace Nethermind.Network.Test.Discovery
             var logManager = NullLogManager.Instance;
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
 
-            _configurationProvider = new JsonConfigProvider();
+            _configurationProvider = new ConfigProvider();
             INetworkConfig networkConfig = _configurationProvider.GetConfig<INetworkConfig>();
             networkConfig.PongTimeout = 50;
             networkConfig.BucketSize = 3;

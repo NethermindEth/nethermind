@@ -43,11 +43,11 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder.Init();
             NullLogManager logManager = NullLogManager.Instance;
-            JsonConfigProvider configProvider = new JsonConfigProvider();
+            ConfigProvider configSource = new ConfigProvider();
             _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-            _networkConfig = configProvider.GetConfig<INetworkConfig>();
+            _networkConfig = configSource.GetConfig<INetworkConfig>();
             _networkConfig.DbBasePath = _tempDir;
-            _statsConfig = configProvider.GetConfig<IStatsConfig>();
+            _statsConfig = configSource.GetConfig<IStatsConfig>();
 
             _nodeFactory = new NodeFactory(LimboLogs.Instance);
             _storage = new NetworkStorage("test", _networkConfig, logManager, new PerfService(logManager));

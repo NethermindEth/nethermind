@@ -17,7 +17,10 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -39,6 +42,17 @@ namespace Nethermind.Runner
         public RunnerApp(ILogger logger) : base(logger)
         {
         }
+        
+        private static List<Type> _configs = new List<Type>
+        {
+            typeof(KeystoreConfig),
+            typeof(NetworkConfig),
+            typeof(JsonRpcConfig),
+            typeof(InitConfig),
+            typeof(DbConfig),
+            typeof(StatsConfig),
+            typeof(BlockchainConfig)
+        };
 
         [Todo("find better way to enforce assemblies with config impl are loaded")]
         protected override (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp()
@@ -48,19 +62,30 @@ namespace Nethermind.Runner
             var configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             var dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
 
+            foreach (Type configType in _configs)
+            {
+                foreach (PropertyInfo propertyInfo in configType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    app.Option($"--{configType.Name}.{propertyInfo.Name}", $"{configType.Name}.{propertyInfo.Name}", CommandOptionType.SingleValue);
+                }
+            }
+
             IConfigProvider BuildConfigProvider()
             {
-                // ReSharper disable once NotAccessedVariable
-                var config = typeof(KeystoreConfig).Assembly;
-                config = typeof(NetworkConfig).Assembly;
-                config = typeof(JsonRpcConfig).Assembly;
-                config = typeof(InitConfig).Assembly;
-                config = typeof(DbConfig).Assembly;
-                config = typeof(StatsConfig).Assembly;
-                config = typeof(BlockchainConfig).Assembly;
+                ConfigProvider configProvider = new ConfigProvider();
+                Dictionary<string, string> args = new Dictionary<string, string>();
+                foreach (CommandOption commandOption in app.Options)
+                {
+                    if (commandOption.HasValue())
+                    {
+                        args.Add(commandOption.LongName, commandOption.Value());
+                    }
+                }
 
-                var configProvider = new JsonConfigProvider();
-
+                IConfigSource argsSource = new ArgsConfigSource(args);
+                configProvider.AddSource(argsSource);
+                configProvider.AddSource(new EnvConfigSource());
+                
                 string configFilePath = configFile.HasValue() ? configFile.Value() : _defaultConfigFile;
                 var configPathVariable = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
                 if (!string.IsNullOrWhiteSpace(configPathVariable))
@@ -76,7 +101,7 @@ namespace Nethermind.Runner
                 }
 
                 Console.WriteLine($"Reading config file from {configFilePath}");
-                configProvider.LoadJsonConfig(configFilePath);
+                configProvider.AddSource(new JsonConfigSource(configFilePath));
                 return configProvider;
             }
 

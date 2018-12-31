@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,22 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
-using Nethermind.Core.Logging;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Runner.Runners;
+using Nethermind.Db.Config;
 using NUnit.Framework;
 
-namespace Nethermind.Runner.Test
+namespace Nethermind.Db.Test
 {
     [TestFixture]
-    public class RunnerSmokeTests
+    public class DbOnTheRocksTests
     {
         [Test]
-        public void SmokeTest()
+        public void Smoke_test()
         {
-            EthereumRunner runner = new EthereumRunner(new RpcModuleProvider(new JsonRpcConfig()), new ConfigProvider(), NullLogManager.Instance);
+            IDbConfig config = new DbConfig();
+            DbOnTheRocks db = new DbOnTheRocks("blocks", config);
+            db[new byte[] {1, 2, 3}] = new byte[] {4, 5, 6};
+            Assert.AreEqual(new byte[] {4, 5, 6}, db[new byte[] {1, 2, 3}]);
         }
     }
 }

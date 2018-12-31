@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
 using System.Linq;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -40,14 +41,18 @@ namespace Nethermind.Config.Test
             var jsonRpcConfig = new JsonRpcConfig();
             var statsConfig = new StatsConfig();
 
-            _configProvider = new JsonConfigProvider();
+            _configProvider = new JsonConfigProvider("SampleJsonConfig.cfg");
         }
 
         [Test]
-        public void TestLoadJsonConfig()
+        public void Provides_helpful_error_message_when_file_does_not_exist()
         {
-            _configProvider.LoadJsonConfig("SampleJsonConfig.json");
-
+            Assert.Throws<IOException>(() => _configProvider = new JsonConfigProvider("SampleJson.cfg"));
+        }
+        
+        [Test]
+        public void Can_load_config_from_file()
+        {
             var keystoreConfig = _configProvider.GetConfig<IKeystoreConfig>();
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             var jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();

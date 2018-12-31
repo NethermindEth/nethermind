@@ -77,7 +77,7 @@ namespace Nethermind.Network.Test.Builders
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {
-            var config = new JsonConfigProvider();
+            var config = new ConfigProvider();
             Signer signer = new Signer();
             var privateKeyProvider = new SameKeyGenerator(privateKey);
 
