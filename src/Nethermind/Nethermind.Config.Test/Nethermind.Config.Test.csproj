@@ -23,8 +23,9 @@
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="SampleJsonConfig.json">
+    <None Remove="SampleJsonConfig.json" />
+    <Content Include="SampleJsonConfig.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    </Content>
   </ItemGroup>
 </Project>

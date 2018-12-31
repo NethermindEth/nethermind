@@ -31,7 +31,7 @@ namespace Nethermind.Runner.Test
         [Test]
         public void SmokeTest()
         {
-            EthereumRunner runner = new EthereumRunner(new RpcModuleProvider(new JsonRpcConfig()), new JsonConfigSource(), NullLogManager.Instance);
+            EthereumRunner runner = new EthereumRunner(new RpcModuleProvider(new JsonRpcConfig()), new ConfigProvider(), NullLogManager.Instance);
         }
     }
 }

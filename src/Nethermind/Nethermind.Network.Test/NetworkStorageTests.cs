@@ -43,7 +43,7 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder.Init();
             NullLogManager logManager = NullLogManager.Instance;
-            JsonConfigSource configSource = new JsonConfigSource();
+            ConfigProvider configSource = new ConfigProvider();
             _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
             _networkConfig = configSource.GetConfig<INetworkConfig>();
             _networkConfig.DbBasePath = _tempDir;

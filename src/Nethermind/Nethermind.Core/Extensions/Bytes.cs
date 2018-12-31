@@ -23,6 +23,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
@@ -422,6 +423,19 @@ namespace Nethermind.Core.Extensions
             }
 
             return bytes;
+        }
+        
+        public static string ToBitString(this BitArray bits)
+        {
+            var sb = new StringBuilder();
+
+            for (int i = 0; i < bits.Count; i++)
+            {
+                char c = bits[i] ? '1' : '0';
+                sb.Append(c);
+            }
+
+            return sb.ToString();
         }
 
         public static BitArray ToBigEndianBitArray256(this byte[] bytes)

@@ -24,26 +24,6 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Config
 {
-    public class JsonConfigProvider : IConfigProvider
-    {
-        private ConfigProvider _provider = new ConfigProvider();
-
-        public JsonConfigProvider(string jsonConfigFile)
-        {
-            _provider.AddSource(new JsonConfigSource(jsonConfigFile));
-        }
-        
-        public T GetConfig<T>() where T : IConfig
-        {
-            return _provider.GetConfig<T>();
-        }
-
-        public void AddSource(IConfigSource configSource)
-        {
-            _provider.AddSource(configSource);
-        }
-    }
-    
     public class ConfigProvider : IConfigProvider
     {
         private IDictionary<Type, object> _instances = new Dictionary<Type, object>();
@@ -60,15 +40,25 @@ namespace Nethermind.Config
             if (!_instances.ContainsKey(typeof(T)))
             {
                 T config = (T)Activator.CreateInstance(_implementations[typeof(T)]);
-                foreach (PropertyInfo propertyInfo in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                _instances[typeof(T)] = config;
+                foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
-                    IConfigEntry configEntry = (IConfigEntry)propertyInfo.GetValue(config);
                     for (int i = 0; i < _configSource.Count; i++)
                     {
-                        (bool isSet, object value) = _configSource[i].GetValue(configEntry.Type, configEntry.Name, configEntry.Category);
+                        string category = config.GetType().Name;
+                        string name = propertyInfo.Name;
+                        (bool isSet, object value) = _configSource[i].GetValue(propertyInfo.PropertyType, category, name);
                         if (isSet)
                         {
-                            configEntry.SetValue(value);
+                            try
+                            {
+                                propertyInfo.SetValue(config, value);
+                            }
+                            catch (Exception e)
+                            {
+                                throw new InvalidOperationException($"Cannot set value of {category}.{name}", e);
+                            }
+                            
                             break;
                         }
                     }

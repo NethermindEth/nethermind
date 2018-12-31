@@ -58,7 +58,7 @@ namespace Nethermind.KeyStore.Test
             _testPasswordSecured.MakeReadOnly();
             _wrongPasswordSecured.MakeReadOnly();
 
-            _configurationProvider = new JsonConfigSource();
+            _configurationProvider = new ConfigProvider();
 
             ILogManager logger = NullLogManager.Instance;
             _serializer = new JsonSerializer(logger);

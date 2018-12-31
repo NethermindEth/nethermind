@@ -67,7 +67,7 @@ namespace Nethermind.Network.Test
             NetworkNodeDecoder.Init();
             _timestamp = new Timestamp();
             _logManager = new OneLoggerLogManager(new SimpleConsoleLogger());
-            _configurationProvider = new JsonConfigSource();
+            _configurationProvider = new ConfigProvider();
             var config = ((NetworkConfig) _configurationProvider.GetConfig<INetworkConfig>());
             config.DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
             config.IsActivePeerTimerEnabled = false;

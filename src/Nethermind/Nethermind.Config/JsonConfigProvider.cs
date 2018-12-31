@@ -16,18 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-
 namespace Nethermind.Config
 {
-    public interface IConfigEntry
-    {   
-        string Category { get; set; }
+    public class JsonConfigProvider : IConfigProvider
+    {
+        private ConfigProvider _provider = new ConfigProvider();
+
+        public JsonConfigProvider(string jsonConfigFile)
+        {
+            _provider.AddSource(new JsonConfigSource(jsonConfigFile));
+        }
         
-        string Name { get; set; }
-        
-        Type Type { get; }
-        
-        void SetValue(object value);
+        public T GetConfig<T>() where T : IConfig
+        {
+            return _provider.GetConfig<T>();
+        }
+
+        public void AddSource(IConfigSource configSource)
+        {
+            _provider.AddSource(configSource);
+        }
     }
 }

@@ -19,6 +19,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -48,14 +49,24 @@ namespace Nethermind.Config
         {
             if (!File.Exists(configFilePath))
             {
-                StringBuilder missingConfigFileMessage = new StringBuilder($"Config file does not exist {configFilePath}");
+                StringBuilder missingConfigFileMessage = new StringBuilder($"Config file {configFilePath} does not exist.");
                 try
                 {
-                    missingConfigFileMessage.AppendLine().AppendLine("Did you mean any of these:");
-                    string[] configFiles = Directory.GetFiles(Path.GetDirectoryName(configFilePath), "*.cfg");
-                    for (int i = 0; i < configFiles.Length; i++)
-                    {
-                        missingConfigFileMessage.AppendLine($"  * {configFiles[i]}");
+                    string directory = Path.GetDirectoryName(configFilePath);
+                    directory = Path.IsPathRooted(configFilePath)
+                        ? directory
+                        : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, directory);
+                    
+                    missingConfigFileMessage.AppendLine().AppendLine($"Search directory: {directory}");
+                    
+                    string[] configFiles = Directory.GetFiles(directory, "*.cfg");
+                    if (configFiles.Length > 0)
+                    {   
+                        missingConfigFileMessage.AppendLine("Found the following config files:");
+                        for (int i = 0; i < configFiles.Length; i++)
+                        {
+                            missingConfigFileMessage.AppendLine($"  * {configFiles[i]}");
+                        }
                     }
                 }
                 catch (Exception)
@@ -64,7 +75,7 @@ namespace Nethermind.Config
                 }
                 finally
                 {
-                    throw new Exception(missingConfigFileMessage.ToString());
+                    throw new IOException(missingConfigFileMessage.ToString());
                 }
             }
 
@@ -73,69 +84,40 @@ namespace Nethermind.Config
 
         private void LoadModule(JToken moduleEntry)
         {
-            var entryName = (string) moduleEntry["ConfigModule"];
-            var configModule = string.Concat("I", entryName);
+            var moduleName = (string) moduleEntry["ConfigModule"];
 
             var configItems = (JObject) moduleEntry["ConfigItems"];
-            var itemsDict = new Dictionary<string, string>();
+            var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
 
             foreach (var configItem in configItems)
             {
                 if (!itemsDict.ContainsKey(configItem.Key))
                 {
-                    itemsDict[configItem.Key] = GetItemValue(entryName, configItem.Key, configItem.Value.ToString());
+                    itemsDict[configItem.Key] = configItem.Value.ToString();
                 }
                 else
                 {
-                    throw new Exception($"Duplicated config value: {configItem.Key}, module: {configModule}");
+                    throw new Exception($"Duplicated config value: {configItem.Key}, module: {moduleName}");
                 }
             }
 
-            ApplyConfigValues(configModule, itemsDict);
+            ApplyConfigValues(moduleName, itemsDict);
         }
 
-        Dictionary<string, Dictionary<string, string>> _values = new Dictionary<string, Dictionary<string, string>>();
+        Dictionary<string, Dictionary<string, string>> _values = new Dictionary<string, Dictionary<string, string>>(StringComparer.InvariantCultureIgnoreCase);
 
-        Dictionary<string, Dictionary<string, object>> _parsedValues = new Dictionary<string, Dictionary<string, object>>();
+        Dictionary<string, Dictionary<string, object>> _parsedValues = new Dictionary<string, Dictionary<string, object>>(StringComparer.InvariantCultureIgnoreCase);
 
         private void ApplyConfigValues(string configModule, Dictionary<string, string> items)
         {
             _values[configModule] = items;
-            _parsedValues[configModule] = new Dictionary<string, object>();
+            _parsedValues[configModule] = new Dictionary<string, object>(StringComparer.InvariantCultureIgnoreCase);
         }
 
         private void ParseValue(Type type, string category, string name)
         {
             string valueString = _values[category][name];
             _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString);
-        }
-
-        private string GetItemValue(string configModule, string key, string value)
-        {
-            if (string.IsNullOrWhiteSpace(key))
-            {
-                return value;
-            }
-
-            var variableName = $"NETHERMIND_{configModule.ToUpperInvariant()}_{key.ToUpperInvariant()}";
-            var variableValue = Environment.GetEnvironmentVariable(variableName);
-
-            return string.IsNullOrWhiteSpace(variableValue) ? value : variableValue;
-        }
-
-        private bool CompareIgnoreCaseTrim(string value1, string value2)
-        {
-            if (string.IsNullOrEmpty(value1) && string.IsNullOrEmpty(value2))
-            {
-                return true;
-            }
-
-            if (string.IsNullOrEmpty(value1) || string.IsNullOrEmpty(value2))
-            {
-                return false;
-            }
-
-            return string.Compare(value1.Trim(), value2.Trim(), StringComparison.CurrentCultureIgnoreCase) == 0;
         }
 
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)

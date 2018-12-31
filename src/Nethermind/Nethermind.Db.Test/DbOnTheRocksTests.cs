@@ -16,36 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.Db.Config;
+using NUnit.Framework;
 
-namespace Nethermind.Config
+namespace Nethermind.Db.Test
 {
-    public class ConfigEntry<T> : IConfigEntry
+    [TestFixture]
+    public class DbOnTheRocksTests
     {
-        private readonly T _defaultValue;
-
-        private bool _isValueSet;
-
-        private T _value;
-
-        public ConfigEntry(string category, string name, T defaultValue)
+        [Test]
+        public void Smoke_test()
         {
-            _defaultValue = defaultValue;
-            Category = category;
-            Name = name;
-        }
-
-        public T Value => _isValueSet ? _value : _defaultValue;
-
-        public string Category { get; set; }
-
-        public string Name { get; set; }
-        public Type Type { get; } = typeof(T);
-
-        void IConfigEntry.SetValue(object value)
-        {
-            _value = (T) value;
-            _isValueSet = true;
+            IDbConfig config = new DbConfig();
+            DbOnTheRocks db = new DbOnTheRocks("blocks", config);
+            db[new byte[] {1, 2, 3}] = new byte[] {4, 5, 6};
+            Assert.AreEqual(new byte[] {4, 5, 6}, db[new byte[] {1, 2, 3}]);
         }
     }
 }
