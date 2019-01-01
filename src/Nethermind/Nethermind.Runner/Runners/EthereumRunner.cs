@@ -274,21 +274,12 @@ namespace Nethermind.Runner.Runners
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             networkConfig.MasterExternalIp = localHost;
             networkConfig.MasterHost = localHost;
-            networkConfig.BootNodes = _chainSpec.Bootnodes.Select(nn => GetNode(nn, localHost)).ToArray();
-            networkConfig.DbBasePath = _initConfig.BaseDbPath;
-        }
-
-        [Todo(Improve.Refactor, "Let us use same bootnode from chain spec for network and ethereum")]
-        private ConfigNode GetNode(NetworkNode networkNode, string localHost)
-        {
-            var node = new ConfigNode
+            if (networkConfig.Bootnodes != string.Empty)
             {
-                NodeId = networkNode.NodeId.PublicKey.ToString(false),
-                Host = networkNode.Host == "127.0.0.1" ? localHost : networkNode.Host,
-                Port = networkNode.Port,
-                Description = networkNode.Description
-            };
-            return node;
+                networkConfig.Bootnodes = string.Join(",", _chainSpec.Bootnodes.Select(bn => bn.ToString()));
+            }
+            
+            networkConfig.DbBasePath = _initConfig.BaseDbPath;
         }
 
         public async Task StopAsync(ExitType exitType)

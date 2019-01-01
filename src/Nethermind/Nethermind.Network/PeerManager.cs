@@ -496,7 +496,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            foreach (var trustedPeer in trustedPeers)
+            foreach (var trustedPeer in NetworkNode.ParseNodes(trustedPeers))
             {
                 AddConfigNode(trustedPeer, true);
             }
@@ -504,25 +504,25 @@ namespace Nethermind.Network
 
         private void LoadConfiguredBootnodes()
         {
-            var bootNodes = _networkConfig.BootNodes;
+            var bootnodes = _networkConfig.Bootnodes;
 
-            if (_logger.IsInfo) _logger.Info($"Initializing bootnode peers: {bootNodes?.Length ?? 0}.");
+            if (_logger.IsInfo) _logger.Info($"Initializing bootnode peers: {bootnodes?.Length ?? 0}.");
 
-            if (bootNodes == null || !bootNodes.Any())
+            if (bootnodes == null || !bootnodes.Any())
             {
                 return;
             }
 
-            foreach (var node in bootNodes)
+            foreach (var node in NetworkNode.ParseNodes(bootnodes))
             {
                 AddConfigNode(node);
             }
         }
 
-        private void AddConfigNode(ConfigNode configNode, bool isTrustedPeer = false)
+        private void AddConfigNode(NetworkNode networkNode, bool isTrustedPeer = false)
         {
-            var node = _nodeFactory.CreateNode(new NodeId(new PublicKey(Bytes.FromHexString(configNode.NodeId))), configNode.Host, configNode.Port);
-            node.Description = configNode.Description;
+            var node = _nodeFactory.CreateNode(networkNode.NodeId, networkNode.Host, networkNode.Port);
+            node.Description = networkNode.Description;
 
             var nodeStats = _nodeStatsProvider.GetOrAddNodeStats(node);
             nodeStats.IsTrustedPeer = isTrustedPeer;

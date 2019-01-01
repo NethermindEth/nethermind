@@ -16,8 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.IO;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
@@ -74,17 +76,19 @@ namespace Nethermind.Config.Test
             {
                 Assert.IsTrue(statsConfig.PenalizedReputationLocalDisconnectReasons.Contains(x));
             });
-            Assert.AreEqual(2, networkConfig.BootNodes.Length);
 
-            var node1 = networkConfig.BootNodes.FirstOrDefault(x => x.NodeId == "testNodeId");
+            NetworkNode[] nodes = NetworkNode.ParseNodes(networkConfig.Bootnodes);
+            Assert.AreEqual(2, nodes.Length);
+
+            var node1 = nodes[0];
             Assert.IsNotNull(node1);
-            Assert.AreEqual("testHist", node1.Host);
-            Assert.AreEqual(43, node1.Port);
+            Assert.AreEqual("40.70.214.166", node1.Host);
+            Assert.AreEqual(40303, node1.Port);
 
-            var node2 = networkConfig.BootNodes.FirstOrDefault(x => x.NodeId == "testNodeId2");
+            var node2 = nodes[1];
             Assert.IsNotNull(node2);
-            Assert.AreEqual("testHist2", node2.Host);
-            Assert.AreEqual(44, node2.Port);
+            Assert.AreEqual("213.186.16.82", node2.Host);
+            Assert.AreEqual(1345, node2.Port);
         }
     }
 }

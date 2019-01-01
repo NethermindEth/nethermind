@@ -36,23 +36,23 @@ namespace Nethermind.Network.Config
         public int EvictionCheckInterval { get; set; } = 75;
         public int SendNodeTimeout { get; set; } = 500;
         public int PongTimeout { get; set; } = 1000 * 15;
-        public int BootNodePongTimeout { get; set; } = 1000 * 100;
+        public int BootnodePongTimeout { get; set; } = 1000 * 100;
         public int PingRetryCount { get; set; } = 3;
         public int DiscoveryInterval { get; set; } = 1000 * 30;
         public int DiscoveryPersistenceInterval { get; set; } = 1000 * 5;
         public int DiscoveryNewCycleWaitTime { get; set; } = 50;
         //public int RefreshInterval { get; set; } = 33000;
 
-        public ConfigNode[] BootNodes { get; set; } = new ConfigNode[0];
+        public string Bootnodes { get; set; } = string.Empty;
 
         public string KeyPass { get; set; } = "TestPass";
         public int UdpChannelCloseTimeout { get; set; } = 1000 * 5;
         public int PingMessageVersion { get; set; } = 4;
         public int DiscoveryMsgExpiryTime { get; set; } = 60 * 90;
         public int MaxNodeLifecycleManagersCount { get; set; } = 2000;
-        public int NodeLifecycleManagersCleaupCount { get; set; } = 200;
+        public int NodeLifecycleManagersCleanupCount { get; set; } = 200;
         
-        public ConfigNode[] TrustedPeers { get; set; } = new ConfigNode[0];
+        public string TrustedPeers { get; set; } = string.Empty;
         public string DbBasePath { get; set; } = Path.GetTempPath();
         public bool IsDiscoveryNodesPersistenceOn { get; set; } = true;
         public bool IsPeersPersistenceOn { get; set; } = true;

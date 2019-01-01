@@ -209,7 +209,7 @@ namespace Nethermind.Network.Discovery
                 //Step 1 - read nodes and stats from db
                 AddPersistedNodes(cancellationToken);
 
-                //Step 2 - initialize bootNodes
+                //Step 2 - initialize bootnodes
                 if(_logger.IsDebug) _logger.Debug("Initializing bootnodes.");
                 while (true)
                 {
@@ -224,7 +224,7 @@ namespace Nethermind.Network.Discovery
                     }
 
                     //Check if we were able to communicate with any trusted nodes or persisted nodes
-                    //if so no need to replay bootstraping, we can start discovery process
+                    //if so no need to replay bootstrapping, we can start discovery process
                     if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Any())
                     {
                         break;
@@ -388,20 +388,20 @@ namespace Nethermind.Network.Discovery
 
         private async Task<bool> InitializeBootnodes(CancellationToken cancellationToken)
         {
-            var bootNodes = _configurationProvider.BootNodes;
-            if (bootNodes == null || !bootNodes.Any())
+            var bootnodes = NetworkNode.ParseNodes(_configurationProvider.Bootnodes);
+            if (!bootnodes.Any())
             {
                 if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
                 return true;
             }
             
             var managers = new List<INodeLifecycleManager>();
-            for (var i = 0; i < bootNodes.Length; i++)
+            for (var i = 0; i < bootnodes.Length; i++)
             {
-                var bootnode = bootNodes[i];
+                var bootnode = bootnodes[i];
                 var node = bootnode.NodeId == null
                     ? _nodeFactory.CreateNode(bootnode.Host, bootnode.Port)
-                    : _nodeFactory.CreateNode(new NodeId(new PublicKey(Bytes.FromHexString(bootnode.NodeId))), bootnode.Host, bootnode.Port, true);
+                    : _nodeFactory.CreateNode(bootnode.NodeId, bootnode.Host, bootnode.Port, true);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
                 if (manager != null)
                 {
@@ -414,7 +414,7 @@ namespace Nethermind.Network.Discovery
             }
 
             //Wait for pong message to come back from Boot nodes
-            var maxWaitTime = _configurationProvider.BootNodePongTimeout;
+            var maxWaitTime = _configurationProvider.BootnodePongTimeout;
             var itemTime = maxWaitTime / 100;
             for (var i = 0; i < 100; i++)
             {

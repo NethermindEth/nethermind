@@ -191,7 +191,7 @@ namespace Nethermind.Network
         
         private string GetNodeLog(INodeStats nodeStats)
         {
-            var isBootnode = _networkConfig.BootNodes?.Any(x => new NodeId(new PublicKey(Bytes.FromHexString(x.NodeId))) == nodeStats.Node.Id) ?? false;
+            var isBootnode = NetworkNode.ParseNodes(_networkConfig.Bootnodes).Any(x => x.NodeId == nodeStats.Node.Id);
             return $"Node: {nodeStats.Node.Id.PublicKey.ToString(false)}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Desc: {nodeStats.Node.Description}, Trusted: {nodeStats.IsTrustedPeer}, Bootnode: {isBootnode}";
         }
         

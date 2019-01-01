@@ -238,7 +238,7 @@ namespace Nethermind.Network.Discovery
                 return;
             }
 
-            int cleanupCount = _configurationProvider.NodeLifecycleManagersCleaupCount;
+            int cleanupCount = _configurationProvider.NodeLifecycleManagersCleanupCount;
             var activeExcluded = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.ActiveExcluded).Take(cleanupCount).ToArray();
             if (activeExcluded.Length == cleanupCount)
             {

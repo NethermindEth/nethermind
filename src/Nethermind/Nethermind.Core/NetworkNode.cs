@@ -16,14 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Diagnostics;
+using System;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Model;
 
 namespace Nethermind.Core
 {
-    [DebuggerDisplay("{Description} {NodeId} @ {Host}:{Port}")]
     public class NetworkNode
     {
         public NetworkNode(string enode, string description)
@@ -35,6 +35,18 @@ namespace Nethermind.Core
             Host = address[0];
             Port = int.Parse(address[1]);
             Description = description;
+        }
+
+        public static NetworkNode[] ParseNodes(string enodesString)
+        {
+            NetworkNode[] nodes = enodesString?.Split(",", StringSplitOptions.RemoveEmptyEntries)
+                                      .Select(bn => new NetworkNode(bn.Trim(), string.Empty)).ToArray() ?? new NetworkNode[0];
+            return nodes;
+        }
+        
+        public override string ToString()
+        {
+            return $"enode://{NodeId?.PublicKey.ToString(false)}@{Host}:{Port}";
         }
 
         public NetworkNode(string publicKey, string ip, int port, string description, long reputation = 0)
