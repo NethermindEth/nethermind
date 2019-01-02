@@ -17,20 +17,14 @@
  */
 
 using System;
-using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Numerics;
 using System.Reflection;
-using System.Text;
-using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
-using Nethermind.JsonRpc.Data.Converters;
 using Nethermind.JsonRpc.Modules;
 using Newtonsoft.Json;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
@@ -50,20 +44,6 @@ namespace Nethermind.JsonRpc
         };
         
         public const string JsonRpcVersion = "2.0";
-        
-        public static IReadOnlyCollection<JsonConverter> GetStandardConverters()
-        {
-            return new JsonConverter[]
-            {
-                new AddressConverter(),
-                new KeccakConverter(),
-                new BloomConverter(),
-                new ByteArrayConverter(),
-                new UInt256Converter(),
-                new BigIntegerConverter(),
-                new NullableBigIntegerConverter()
-            };
-        }
 
         private readonly ILogger _logger;
         private readonly IRpcModuleProvider _rpcModuleProvider;
@@ -88,7 +68,7 @@ namespace Nethermind.JsonRpc
                 }
             }
 
-            foreach (JsonConverter converter in GetStandardConverters())
+            foreach (JsonConverter converter in EthereumJsonSerializer.BasicConverters)
             {
                 if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name}");
                 _serializer.Converters.Add(converter);

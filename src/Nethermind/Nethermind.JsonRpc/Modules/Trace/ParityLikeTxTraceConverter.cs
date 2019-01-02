@@ -18,8 +18,8 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc.Data.Converters;
 using Newtonsoft.Json;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 

@@ -34,6 +34,7 @@ using Nethermind.Clique;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
@@ -94,6 +95,7 @@ namespace Nethermind.Runner.Runners
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
         private ISigner _signer = new Signer();
         private IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
+        private IJsonSerializer _ethereumJsonSerializer = new EthereumJsonSerializer();
         private CancellationTokenSource _runnerCancellation;
 
         private IBlockchainProcessor _blockchainProcessor;
@@ -315,7 +317,11 @@ namespace Nethermind.Runner.Runners
         private void LoadChainSpec()
         {
             _logger.Info($"Loading chain spec from {_initConfig.ChainSpecPath}");
-            ChainSpecLoader loader = new ChainSpecLoader(_jsonSerializer);
+
+            IChainSpecLoader loader = _initConfig.ChainSpecFormat == "ChainSpec"
+                ? (IChainSpecLoader) new ChainSpecLoader(_ethereumJsonSerializer)
+                : new GenesisFileLoader(_ethereumJsonSerializer);
+
             _chainSpec = loader.LoadFromFile(_initConfig.ChainSpecPath);
             _chainSpec.Bootnodes = _chainSpec.Bootnodes.Where(n => !n.NodeId.PublicKey?.Equals(_nodeKey.PublicKey) ?? false).ToArray();
         }
@@ -447,7 +453,7 @@ namespace Nethermind.Runner.Runners
                     break;
                 case SealEngineType.Clique:
                     _rewardCalculator = new NoBlockRewards();
-                    cliqueConfig = new CliqueConfig(_chainSpec.ReadSealEngineParam<ulong>("period"), _chainSpec.ReadSealEngineParam<ulong>("epoch"));
+                    cliqueConfig = new CliqueConfig(_chainSpec.CliquePeriod, _chainSpec.CliqueEpoch);
                     _sealEngine = clique = new CliqueSealEngine(cliqueConfig, _ethereumSigner, _nodeKey, _dbProvider.BlocksDb, _blockTree, _logManager);
                     _sealEngine.CanSeal = _initConfig.IsMining;
                     break;

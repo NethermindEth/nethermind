@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.JsonRpc.Data;
 using Newtonsoft.Json.Linq;
 

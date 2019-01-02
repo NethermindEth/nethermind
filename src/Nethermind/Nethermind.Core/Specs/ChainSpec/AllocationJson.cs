@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,23 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
-
-namespace Nethermind.JsonRpc.Data.Converters
+namespace Nethermind.Core.Specs.ChainSpec
 {
-    public class Bytes32Converter : JsonConverter<byte[]>
+    internal class AllocationJson
     {
-        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
-        {
-            writer.WriteValue(string.Concat("0x", value.ToHexString(false).PadLeft(64, '0')));
-        }
-
-        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue, JsonSerializer serializer)
-        {
-            string s = (string) reader.Value;
-            return Bytes.FromHexString(s);
-        }
+        public string Balance { get; set; }
+        // TODO: other data
     }
 }

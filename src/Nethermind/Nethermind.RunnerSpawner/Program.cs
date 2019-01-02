@@ -24,6 +24,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Runner;
 using Nethermind.Runner.Config;

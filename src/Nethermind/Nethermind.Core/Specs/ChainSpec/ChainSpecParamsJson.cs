@@ -16,10 +16,59 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
+using Newtonsoft.Json;
+
 namespace Nethermind.Core.Specs.ChainSpec
 {
     internal class ChainSpecParamsJson
     {
-        public string NetworkId { get; set; }
+        public UInt256 NetworkId { get; set; }
+        
+        [JsonProperty(PropertyName = "registrar")]
+        public string EnsRegistrar { get; set; }
+        
+        public BigInteger? GasLimitBoundDivisor { get; set; }
+        
+        public BigInteger? AccountStartNonce { get; set; }
+        
+        public BigInteger? MaximumExtraDataSize { get; set; }
+        
+        public string MinGasLimit { get; set; }
+        
+        public BigInteger? ForkBlock { get; set; }
+        
+        public string ForkCanonHash { get; set; }
+        
+        public BigInteger? Eip150Transition { get; set; }
+        
+        public BigInteger? Eip160Transition { get; set; }
+        
+        public BigInteger? Eip161AbcTransition { get; set; }
+        
+        public BigInteger? Eip161DTransition { get; set; }
+        
+        public BigInteger? Eip155Transition { get; set; }
+        
+        public BigInteger? MaxCodeSize { get; set; }
+        
+        public BigInteger? MaxCodeSizeTransition { get; set; }
+        
+        public BigInteger? Eip140Transition { get; set; }
+        
+        public BigInteger? Eip211Transition { get; set; }
+        
+        public BigInteger? Eip214Transition { get; set; }
+        
+        public BigInteger? Eip658Transition { get; set; }
+        
+        public BigInteger? Eip145Transition { get; set; }
+        
+        public BigInteger? Eip1014Transition { get; set; }
+        
+        public BigInteger? Eip1052Transition { get; set; }
+        
+        public BigInteger? Eip1283Transition { get; set; }
     }
 }

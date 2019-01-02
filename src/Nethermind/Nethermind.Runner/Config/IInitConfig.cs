@@ -35,6 +35,7 @@ namespace Nethermind.Runner.Config
         int DiscoveryPort { get; set; }
         int P2PPort { get; set; }
         string ChainSpecPath { get; set; }
+        string ChainSpecFormat { get; set; }
         string BaseDbPath { get; set; }
         string TestNodeKey { get; set; }
         string GenesisHash { get; set; }

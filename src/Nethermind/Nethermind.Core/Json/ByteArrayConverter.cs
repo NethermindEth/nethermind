@@ -20,16 +20,16 @@ using System;
 using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc.Data.Converters
+namespace Nethermind.Core.Json
 {
     public class ByteArrayConverter : JsonConverter<byte[]>
     {
-        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, byte[] value, Newtonsoft.Json.JsonSerializer serializer)
         {
             writer.WriteValue(value.ToHexString(true));
         }
 
-        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
         {
             if (reader.TokenType == JsonToken.Null)
             {

@@ -17,45 +17,11 @@
  */
 
 using System;
-using System.Globalization;
 using System.Numerics;
 using Newtonsoft.Json;
-using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
-namespace Nethermind.JsonRpc.Data.Converters
+namespace Nethermind.Core.Json
 {
-    public class BigIntegerConverter : JsonConverter<BigInteger>
-    {
-        private readonly bool _useX64;
-
-        public BigIntegerConverter()
-            : this(false)
-        {
-        }
-
-        public BigIntegerConverter(bool useX64)
-        {
-            _useX64 = useX64;
-        }
-
-        public override void WriteJson(JsonWriter writer, BigInteger value, JsonSerializer serializer)
-        {
-            if (value.IsZero)
-            {
-                writer.WriteValue("0x0");
-                return;
-            }
-            
-            writer.WriteValue(string.Concat("0x", value.ToString(_useX64 ? "x64" : "x").TrimStart('0')));
-        }
-
-        public override BigInteger ReadJson(JsonReader reader, Type objectType, BigInteger existingValue, bool hasExistingValue, JsonSerializer serializer)
-        {
-            string s = (string) reader.Value;
-            return BigInteger.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
-        }
-    }
-    
     public class NullableBigIntegerConverter : JsonConverter<BigInteger?>
     {
         private BigIntegerConverter _bigIntegerConverter;
@@ -70,7 +36,7 @@ namespace Nethermind.JsonRpc.Data.Converters
             _bigIntegerConverter = new BigIntegerConverter(useX64);
         }
 
-        public override void WriteJson(JsonWriter writer, BigInteger? value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, BigInteger? value, Newtonsoft.Json.JsonSerializer serializer)
         {
             if (!value.HasValue)
             {
@@ -81,7 +47,7 @@ namespace Nethermind.JsonRpc.Data.Converters
             _bigIntegerConverter.WriteJson(writer, value.Value, serializer);
         }
 
-        public override BigInteger? ReadJson(JsonReader reader, Type objectType, BigInteger? existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override BigInteger? ReadJson(JsonReader reader, Type objectType, BigInteger? existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
         {
             if (reader.TokenType == JsonToken.Null)
             {

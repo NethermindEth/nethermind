@@ -18,6 +18,7 @@
 
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Modules.Net;
 using NSubstitute;
