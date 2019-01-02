@@ -18,43 +18,20 @@
 
 using System;
 using System.IO;
-using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Blockchain.TransactionPools.Storages;
-using Nethermind.Blockchain.Validators;
-using Nethermind.Clique;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Core.Utils;
-using Nethermind.Db;
-using Nethermind.Db.Config;
-using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Web3;
-using Nethermind.KeyStore;
-using Nethermind.Mining;
-using Nethermind.Mining.Difficulty;
-using Nethermind.Network;
-using Nethermind.Network.Config;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
-using Nethermind.Stats;
-using Nethermind.Store;
-using Nethermind.Wallet;
 
 namespace Nethermind.Runner
 {

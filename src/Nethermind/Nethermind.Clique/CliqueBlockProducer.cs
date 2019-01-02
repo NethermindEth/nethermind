@@ -118,6 +118,11 @@ namespace Nethermind.Clique
         {
             try
             {
+                if (_blockTree.Head == null)
+                {
+                    return;
+                }
+                
                 if (_scheduledBlock == null)
                 {
                     if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamp.EpochSeconds)
@@ -128,7 +133,7 @@ namespace Nethermind.Clique
                     _timer.Enabled = true;
                     return;
                 }
-
+                
                 ulong extraDelayMilliseconds = 0;
                 if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
                 {

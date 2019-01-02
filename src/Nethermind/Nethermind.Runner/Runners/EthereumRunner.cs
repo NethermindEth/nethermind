@@ -278,6 +278,13 @@ namespace Nethermind.Runner.Runners
             networkConfig.MasterHost = localHost;
             if (networkConfig.Bootnodes != string.Empty)
             {
+                if (_chainSpec.Bootnodes.Length != 0)
+                {
+                    networkConfig.Bootnodes += "," + string.Join(",", _chainSpec.Bootnodes.Select(bn => bn.ToString()));
+                }
+            }
+            else
+            {
                 networkConfig.Bootnodes = string.Join(",", _chainSpec.Bootnodes.Select(bn => bn.ToString()));
             }
             
