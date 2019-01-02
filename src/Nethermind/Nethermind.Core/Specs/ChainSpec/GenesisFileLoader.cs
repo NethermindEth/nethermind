@@ -57,7 +57,6 @@ namespace Nethermind.Core.Specs.ChainSpec
                 chainSpec.SpuriousDragonBlockNumber = genesisJson.Config.Eip158Block;
                 chainSpec.ByzantiumBlockNumber = genesisJson.Config.ByzantiumBlock;
                 chainSpec.ConstantinopleBlockNumber = genesisJson.Config.ConstantinopleBlock;
-                chainSpec.HomesteadBlockNumber = genesisJson.Config.HomesteadBlock;
 
                 return chainSpec;
             }

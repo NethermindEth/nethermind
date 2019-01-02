@@ -323,7 +323,7 @@ namespace Nethermind.Runner.Runners
                 : new GenesisFileLoader(_ethereumJsonSerializer);
 
             _chainSpec = loader.LoadFromFile(_initConfig.ChainSpecPath);
-            _chainSpec.Bootnodes = _chainSpec.Bootnodes.Where(n => !n.NodeId.PublicKey?.Equals(_nodeKey.PublicKey) ?? false).ToArray();
+            _chainSpec.Bootnodes = _chainSpec.Bootnodes?.Where(n => !n.NodeId.PublicKey?.Equals(_nodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
         }
 
         [Todo("This will be replaced with a bigger rewrite of state management so we can create a state at will")]
