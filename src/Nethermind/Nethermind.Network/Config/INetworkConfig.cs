@@ -80,7 +80,7 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Boot Node Pong Timeout in ms
         /// </summary>
-        int BootNodePongTimeout { get; }
+        int BootnodePongTimeout { get; }
 
         /// <summary>
         /// Pong Timeout in ms
@@ -98,19 +98,14 @@ namespace Nethermind.Network.Config
         int DiscoveryPersistenceInterval { get; }
 
         /// <summary>
-        /// Time between discovery cicles in milliseconds
+        /// Time between discovery cycles in milliseconds
         /// </summary>
         int DiscoveryNewCycleWaitTime { get; }
-
-        ///// <summary>
-        ///// Time between running refresh processes in milliseconds
-        ///// </summary>
-        //int RefreshInterval { get; }
 
         /// <summary>
         /// Boot nodes connection details
         /// </summary>
-        ConfigNode[] BootNodes { get; set; }
+        string Bootnodes { get; set; }
 
         /// <summary>
         /// Key Pass
@@ -140,12 +135,12 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Count of NodeLifecycleManagers to remove in one cleanup cycle
         /// </summary>
-        int NodeLifecycleManagersCleaupCount { get; }
+        int NodeLifecycleManagersCleanupCount { get; }
 
         /// <summary>
         /// List of trusted nodes - we connect to them and set predefined high reputation
         /// </summary>
-        ConfigNode[] TrustedPeers { get; set; }
+        string TrustedPeers { get; set; }
 
         /// <summary>
         /// Base path for discovery db
