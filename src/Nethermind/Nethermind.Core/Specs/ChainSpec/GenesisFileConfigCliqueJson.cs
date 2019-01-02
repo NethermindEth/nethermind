@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-
 namespace Nethermind.Core.Specs.ChainSpec
 {
-    internal class ChainSpecEthereumSealJson
+    internal class GenesisFileConfigCliqueJson
     {
-        public UInt256 Nonce { get; set; }
-        public Keccak MixHash { get; set; }
+        public ulong Period { get; set; }
+        public ulong Epoch { get; set; }
     }
 }

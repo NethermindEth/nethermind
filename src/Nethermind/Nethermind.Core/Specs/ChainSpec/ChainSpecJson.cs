@@ -17,6 +17,8 @@
  */
 
 using System.Collections.Generic;
+using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpec
 {
@@ -28,15 +30,35 @@ namespace Nethermind.Core.Specs.ChainSpec
         public ChainSpecParamsJson Params { get; set; }
         public ChainSpecGenesisJson Genesis { get; set; }
         public string[] Nodes { get; set; }
-        public Dictionary<string, ChainSpecAccountJson> Accounts { get; set; }
+        public Dictionary<string, AllocationJson> Accounts { get; set; }
         
         internal class EthashEngineJson
         {
+            public UInt256? HomesteadTransition => Params?.HomesteadTransition;
+            public UInt256? DaoHardForkTransition => Params?.DaoHardForkTransition;
+            public EthashEngineParamsJson Params { get; set; }
+        }
+        
+        internal class EthashEngineParamsJson
+        {
+            public UInt256? HomesteadTransition { get; set; }
+            public UInt256? DaoHardForkTransition { get; set; }
         }
     
         internal class CliqueEngineJson
         {
-            public Dictionary<string, string> Params { get; set; }
+            public ulong Period => Params.Period;
+            public ulong Epoch => Params.Epoch;
+            public UInt256? BlockReward => Params.BlockReward;
+            
+            public CliqueEngineParamsJson Params { get; set; }
+        }
+        
+        internal class CliqueEngineParamsJson
+        {
+            public ulong Period { get; set; }
+            public ulong Epoch { get; set; }
+            public UInt256? BlockReward { get; set; }
         }
         
         internal class AuraEngineJson

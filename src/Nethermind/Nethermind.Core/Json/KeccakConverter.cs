@@ -17,23 +17,23 @@
  */
 
 using System;
-using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
-using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
-namespace Nethermind.JsonRpc.Data.Converters
+namespace Nethermind.Core.Json
 {
-    public class AddressConverter : JsonConverter<Address>
+    public class KeccakConverter : JsonConverter<Keccak>
     {
-        public override void WriteJson(JsonWriter writer, Address value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, Keccak value, Newtonsoft.Json.JsonSerializer serializer)
         {
-            writer.WriteValue(value.ToString());
+            writer.WriteValue(value.Bytes.ToHexString(true));
         }
 
-        public override Address ReadJson(JsonReader reader, Type objectType, Address existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override Keccak ReadJson(JsonReader reader, Type objectType, Keccak existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
         {
             string s = (string)reader.Value;
-            return new Address(s);
+            return new Keccak(Bytes.FromHexString(s));
         }
     }
 }

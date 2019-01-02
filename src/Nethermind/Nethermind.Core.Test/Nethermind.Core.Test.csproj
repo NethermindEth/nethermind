@@ -17,14 +17,14 @@
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
   </ItemGroup>
-  <!--<ItemGroup>-->
-  <!--<Folder Include="TestRopstenBlocks">-->
-  <!--<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>-->
-  <!--</Folder>-->
-  <!--</ItemGroup>-->
   <ItemGroup>
     <Content Include="TestRopstenBlocks\*.*">
       <Link>TestRopstenBlocks\%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Specs\genesis_test.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

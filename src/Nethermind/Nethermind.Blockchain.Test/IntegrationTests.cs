@@ -26,6 +26,7 @@ using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
@@ -96,7 +97,7 @@ namespace Nethermind.Blockchain.Test
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumSigner, NullTransactionPool.Instance), logManager, false, false);
 
             /* load ChainSpec and init */
-            ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
             string path = "chainspec.json";
             logManager.GetClassLogger().Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));

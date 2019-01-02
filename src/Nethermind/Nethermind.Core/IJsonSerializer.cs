@@ -22,9 +22,13 @@ namespace Nethermind.Core
 {
     public interface IJsonSerializer
     {
+        [Todo(Improve.Refactor, "Move this method to a IRpcJsonSerializer")]
         T DeserializeAnonymousType<T>(string json, T definition);
-        T Deserialize<T>(string json);
+        
+        [Todo(Improve.Refactor, "Move this method to a IRpcJsonSerializer")]
         (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json);
+        
+        T Deserialize<T>(string json);
         string Serialize<T>(T value, bool indented = false); // TODO: support serializing to stream
     }
 }

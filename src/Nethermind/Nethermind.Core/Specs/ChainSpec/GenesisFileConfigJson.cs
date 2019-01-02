@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,25 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using System.Collections.Generic;
+using System.Numerics;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
-using JsonSerializer = Newtonsoft.Json.JsonSerializer;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.JsonRpc.Data.Converters
+namespace Nethermind.Core.Specs.ChainSpec
 {
-    public class KeccakConverter : JsonConverter<Keccak>
+    internal class GenesisFileConfigJson
     {
-        public override void WriteJson(JsonWriter writer, Keccak value, JsonSerializer serializer)
-        {
-            writer.WriteValue(value.Bytes.ToHexString(true));
-        }
-
-        public override Keccak ReadJson(JsonReader reader, Type objectType, Keccak existingValue, bool hasExistingValue, JsonSerializer serializer)
-        {
-            string s = (string)reader.Value;
-            return new Keccak(Bytes.FromHexString(s));
-        }
+        public UInt256 ChainId { get; set; }
+        
+        public UInt256? HomesteadBlock { get; set; }
+        
+        public UInt256? Eip150Block { get; set; }
+        
+        public Keccak Eip150Hash { get; set; }
+        
+        public UInt256? Eip155Block { get; set; }
+        
+        public UInt256? Eip158Block { get; set; }
+        
+        public UInt256? ByzantiumBlock { get; set; }
+        
+        public UInt256? ConstantinopleBlock { get; set; }
+        
+        public GenesisFileConfigCliqueJson Clique { get; set; }
     }
 }

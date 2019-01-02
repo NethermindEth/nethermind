@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using System;
+using Nethermind.Core.Extensions;
+using Newtonsoft.Json;
 
-namespace Nethermind.Core.Specs.ChainSpec
+namespace Nethermind.Core.Json
 {
-    internal class ChainSpecEthereumSealJson
+    public class BloomConverter : JsonConverter<Bloom>
     {
-        public UInt256 Nonce { get; set; }
-        public Keccak MixHash { get; set; }
+        public override void WriteJson(JsonWriter writer, Bloom value, Newtonsoft.Json.JsonSerializer serializer)
+        {
+            writer.WriteValue(value?.Bytes.ToHexString(true));
+        }
+
+        public override Bloom ReadJson(JsonReader reader, Type objectType, Bloom existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

@@ -16,6 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
+
 namespace Nethermind.Core.Specs.ChainSpec
 {
     internal class ChainSpecGenesisJson
@@ -23,12 +26,12 @@ namespace Nethermind.Core.Specs.ChainSpec
         public string Name { get; set; }
         public string DataDir { get; set; }
         public ChainSpecSealJson Seal { get; set; }
-        public string Difficulty { get; set; }
-        public string Author { get; set; }
-        public string Timestamp { get; set; }
-        public string ParentHash { get; set; }
-        public string ExtraData { get; set; }
-        public string GasLimit { get; set; }
-        public string StateRoot { get; set; }
+        public UInt256 Difficulty { get; set; }
+        public Address Author { get; set; }
+        public UInt256 Timestamp { get; set; }
+        public Keccak ParentHash { get; set; }
+        public byte[] ExtraData { get; set; }
+        public UInt256 GasLimit { get; set; }
+        public Keccak StateRoot { get; set; }
     }
 }

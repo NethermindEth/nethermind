@@ -42,27 +42,26 @@ namespace Nethermind.Core.Specs.ChainSpec
 
         public SealEngineType SealEngineType { get; set; }
 
-        public Dictionary<string, string> SealEngineParams { get; set; }
+        public ulong CliqueEpoch { get; set; }
+        
+        public ulong CliquePeriod { get; set; }
+        
+        public UInt256? CliqueReward { get; set; }
 
-        public T ReadSealEngineParam<T>(string name)
-        {
-            if (SealEngineParams.ContainsKey(name))
-            {
-                if (SealEngineParams[name] is string potentiallyHexString)
-                {
-                    if (potentiallyHexString.StartsWith("0x"))
-                    SealEngineParams[name] = UInt256.Parse(potentiallyHexString.Replace("0x", string.Empty), NumberStyles.HexNumber).ToString();
-                }
-                
-                return (T) Convert.ChangeType(SealEngineParams[name], typeof(T));
-            }
-
-            return default;
-        }
-
+        public UInt256? DaoForkBlockNumber { get; set; }
+        
+        public UInt256? HomesteadBlockNumber { get; set; }
+        
+        public UInt256? TangerineWhistleBlockNumber { get; set; }
+        
+        public UInt256? SpuriousDragonBlockNumber { get; set; }
+        
+        public UInt256? ByzantiumBlockNumber { get; set; }
+        
+        public UInt256? ConstantinopleBlockNumber { get; set; }
+        
         public string Name { get; set; }
 
         public int ChainId { get; set; }
-        // TODO: seal engine - for now we support PoW ethash only
     }
 }

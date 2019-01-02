@@ -18,26 +18,26 @@
 
 using System;
 using System.Globalization;
-using Nethermind.Dirichlet.Numerics;
+using System.Numerics;
 using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc.Data.Converters
+namespace Nethermind.Core.Json
 {
-    public class UInt256Converter : JsonConverter<UInt256>
+    public class BigIntegerConverter : JsonConverter<BigInteger>
     {
         private readonly bool _useX64;
 
-        public UInt256Converter()
+        public BigIntegerConverter()
             : this(false)
         {
         }
 
-        public UInt256Converter(bool useX64)
+        public BigIntegerConverter(bool useX64)
         {
             _useX64 = useX64;
         }
 
-        public override void WriteJson(JsonWriter writer, UInt256 value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, BigInteger value, Newtonsoft.Json.JsonSerializer serializer)
         {
             if (value.IsZero)
             {
@@ -48,10 +48,15 @@ namespace Nethermind.JsonRpc.Data.Converters
             writer.WriteValue(string.Concat("0x", value.ToString(_useX64 ? "x64" : "x").TrimStart('0')));
         }
 
-        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override BigInteger ReadJson(JsonReader reader, Type objectType, BigInteger existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
         {
+            if (reader.Value is long || reader.Value is int)
+            {
+                return (long)reader.Value;
+            }
+            
             string s = (string) reader.Value;
-            return UInt256.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
+            return s == "0x0" ? BigInteger.Zero : BigInteger.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
         }
     }
 }

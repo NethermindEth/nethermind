@@ -18,72 +18,40 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace Nethermind.Core
+namespace Nethermind.Core.Json
 {
-    public class JsonSerializer : IJsonSerializer
+    public class UnforgivingJsonSerializer : IJsonSerializer
     {
-        private readonly ILogger _logger;
-
-        public JsonSerializer(ILogManager logManager)
-        {
-            _logger = logManager.GetClassLogger();
-        }
-
         public T DeserializeAnonymousType<T>(string json, T definition)
         {
-            try
-            {
-                return JsonConvert.DeserializeAnonymousType(json, definition);
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error during json deserialization", e);
-                return default(T);
-            }
+            return JsonConvert.DeserializeAnonymousType(json, definition);
         }
 
         public T Deserialize<T>(string json)
         {
-            try
-            {
-                return JsonConvert.DeserializeObject<T>(json);
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error during json deserialization", e);
-                return default(T);
-            }           
+            return JsonConvert.DeserializeObject<T>(json);
         }
 
         public (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json)
         {
-            try
+            var token = JToken.Parse(json);
+            if (token is JArray array)
             {
-                var token = JToken.Parse(json);
-                if (token is JArray array)
+                foreach (var tokenElement in array)
                 {
-                    foreach (var tokenElement in array)
-                    {
-                        UpdateParams(tokenElement);
-                    }
-
-                    return (default, array.ToObject<List<T>>());
+                    UpdateParams(tokenElement);
                 }
-                UpdateParams(token);
 
-                return (token.ToObject<T>(), null);
+                return (default, array.ToObject<List<T>>());
             }
-            catch (Exception e)
-            {
-                _logger.Error("Error during json deserialization", e);
-                return (default, null);
-            }
+            UpdateParams(token);
+
+            return (token.ToObject<T>(), null);
         }
-
+        
         private void UpdateParams(JToken token)
         {
             var paramsToken = token.SelectToken("params");
@@ -120,19 +88,11 @@ namespace Nethermind.Core
 
         public string Serialize<T>(T value, bool indented = false)
         {
-            try
+            return JsonConvert.SerializeObject(value, new JsonSerializerSettings
             {
-                return JsonConvert.SerializeObject(value, new JsonSerializerSettings
-                {
-                    NullValueHandling = NullValueHandling.Ignore,
-                    Formatting = indented ? Formatting.Indented : Formatting.None
-                });
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error during json serialization", e);
-                return null;
-            }          
+                NullValueHandling = NullValueHandling.Ignore,
+                Formatting = indented ? Formatting.Indented : Formatting.None
+            });
         }
     }
 }

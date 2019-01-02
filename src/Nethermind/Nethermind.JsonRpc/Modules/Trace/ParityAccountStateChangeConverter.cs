@@ -18,10 +18,11 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Json;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc.Data.Converters;
 using Newtonsoft.Json;
+using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {

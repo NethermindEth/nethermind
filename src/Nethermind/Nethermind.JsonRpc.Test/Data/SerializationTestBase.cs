@@ -23,6 +23,7 @@ using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Modules.Trace;
 using Newtonsoft.Json;
@@ -72,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Data
                 serializer.Converters.Add(converter);
             }
 
-            foreach (JsonConverter converter in JsonRpcService.GetStandardConverters())
+            foreach (JsonConverter converter in EthereumJsonSerializer.BasicConverters)
             {
                 serializer.Converters.Add(converter);
             }

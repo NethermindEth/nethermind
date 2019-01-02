@@ -17,23 +17,21 @@
  */
 
 using System;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
-using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
-namespace Nethermind.JsonRpc.Data.Converters
+namespace Nethermind.Core.Json
 {
-    public class BloomConverter : JsonConverter<Bloom>
+    public class AddressConverter : JsonConverter<Address>
     {
-        public override void WriteJson(JsonWriter writer, Bloom value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, Address value, Newtonsoft.Json.JsonSerializer serializer)
         {
-            writer.WriteValue(value?.Bytes.ToHexString(true));
+            writer.WriteValue(value.ToString());
         }
 
-        public override Bloom ReadJson(JsonReader reader, Type objectType, Bloom existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override Address ReadJson(JsonReader reader, Type objectType, Address existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
         {
-            throw new NotSupportedException();
+            string s = (string)reader.Value;
+            return new Address(s);
         }
     }
 }

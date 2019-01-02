@@ -23,6 +23,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc;

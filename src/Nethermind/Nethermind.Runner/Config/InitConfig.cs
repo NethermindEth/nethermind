@@ -32,6 +32,7 @@ namespace Nethermind.Runner.Config
         public int DiscoveryPort { get; set; } = 30312;
         public int P2PPort { get; set; } = 30312;
         public string ChainSpecPath { get; set; }
+        public string ChainSpecFormat { get; set; } = "ChainSpec";
         public string BaseDbPath { get; set; } = "db";
         public string TestNodeKey { get; set; }
         public string LogFileName { get; set; } = "log.txt";
