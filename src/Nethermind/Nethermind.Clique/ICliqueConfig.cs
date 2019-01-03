@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,31 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Newtonsoft.Json;
-
-namespace Nethermind.KeyStore
+namespace Nethermind.Clique
 {
-    public class KdfParams
+    public interface ICliqueConfig
     {
-        [JsonProperty(PropertyName = "dklen")]
-        public int DkLen { get; set; }
-        
-        [JsonProperty(PropertyName = "n")]
-        public int? N { get; set; }
-        
-        [JsonProperty(PropertyName = "p")]
-        public int? P { get; set; }
-        
-        [JsonProperty(PropertyName = "r")]
-        public int? R { get; set; }
-        
-        [JsonProperty(PropertyName = "salt")]
-        public string Salt { get; set; }
+        ulong BlockPeriod { get; set; }
 
-        [JsonProperty(PropertyName = "c")]
-        public int? C { get; set; }
+        ulong Epoch { get; set; }
         
-        [JsonProperty(PropertyName = "prf")]
-        public string Prf { get; set; }
+        int SignerAccount { get; set; }
+        
+        string SignerPassFile { get; set; }
     }
 }

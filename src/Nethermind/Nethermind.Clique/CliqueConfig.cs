@@ -18,16 +18,14 @@
 
 namespace Nethermind.Clique
 {
-    public class CliqueConfig
+    public class CliqueConfig : ICliqueConfig
     {
-        public CliqueConfig(ulong blockPeriod, ulong epoch)
-        {
-            BlockPeriod = blockPeriod;
-            Epoch = epoch;
-        }
+        public ulong BlockPeriod { get; set; } = 15;
 
-        public ulong BlockPeriod { get; set; }
-
-        public ulong Epoch { get; set; }
+        public ulong Epoch { get; set; } = 30000;
+        
+        public int SignerAccount { get; set; }
+        
+        public string SignerPassFile { get; set; }
     }
 }

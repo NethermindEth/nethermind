@@ -79,7 +79,7 @@ namespace Nethermind.Clique.Test
             IEthereumSigner signer = new EthereumSigner(RinkebySpecProvider.Instance, NullLogManager.Instance);
             // Init snapshot db
             IDb db = new MemDb();
-            CliqueConfig config = new CliqueConfig(15, 30000);
+            CliqueConfig config = new CliqueConfig();
             // Select in-turn signer
             int currentBlock = 6;
             int currentSignerIndex = (currentBlock % _signers.Count);

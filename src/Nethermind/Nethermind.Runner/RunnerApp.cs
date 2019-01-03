@@ -45,7 +45,7 @@ namespace Nethermind.Runner
         
         private static List<Type> _configs = new List<Type>
         {
-            typeof(KeystoreConfig),
+            typeof(KeyStoreConfig),
             typeof(NetworkConfig),
             typeof(JsonRpcConfig),
             typeof(InitConfig),

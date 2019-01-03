@@ -45,7 +45,7 @@ namespace Nethermind.Network.Discovery
 {
     public class DiscoveryApp : IDiscoveryApp
     {
-        private readonly INetworkConfig _configurationProvider;
+        private readonly INetworkConfig _networkConfig;
         private readonly INodesLocator _nodesLocator;
         private readonly IDiscoveryManager _discoveryManager;
         private readonly INodeFactory _nodeFactory;
@@ -74,13 +74,13 @@ namespace Nethermind.Network.Discovery
             IMessageSerializationService messageSerializationService,
             ICryptoRandom cryptoRandom,
             INetworkStorage discoveryStorage,
-            IConfigProvider configurationProvider,
+            INetworkConfig networkConfig,
             ILogManager logManager, IPerfService perfService)
         {
             _logManager = logManager;
             _perfService = perfService;
             _logger = _logManager.GetClassLogger();
-            _configurationProvider = configurationProvider.GetConfig<INetworkConfig>();
+            _networkConfig = networkConfig;
             _nodesLocator = nodesLocator;
             _discoveryManager = discoveryManager;
             _nodeFactory = nodeFactory;
@@ -144,7 +144,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeUdpChannel()
         {
-            if(_logger.IsInfo) _logger.Info($"Starting Discovery UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
+            if(_logger.IsInfo) _logger.Info($"Starting Discovery UDP Channel: {_networkConfig.MasterHost}:{_networkConfig.MasterPort}");
             _group = new MultithreadEventLoopGroup(1);
             var bootstrap = new Bootstrap();
             bootstrap
@@ -163,7 +163,7 @@ namespace Nethermind.Network.Discovery
                     .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
             }
 
-            _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_configurationProvider.MasterHost), _configurationProvider.MasterPort)
+            _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_networkConfig.MasterHost), _networkConfig.MasterPort)
                 .ContinueWith(t => _channel = t.Result);
         }
 
@@ -252,7 +252,7 @@ namespace Nethermind.Network.Discovery
 
         private void AddPersistedNodes(CancellationToken cancellationToken)
         {
-            if (!_configurationProvider.IsDiscoveryNodesPersistenceOn)
+            if (!_networkConfig.IsDiscoveryNodesPersistenceOn)
             {
                 return;
             }
@@ -286,7 +286,7 @@ namespace Nethermind.Network.Discovery
         private void InitializeDiscoveryTimer()
         {
             if(_logger.IsDebug) _logger.Debug("Starting discovery timer");
-            _discoveryTimer = new Timer(_configurationProvider.DiscoveryInterval) {AutoReset = false};
+            _discoveryTimer = new Timer(_networkConfig.DiscoveryInterval) {AutoReset = false};
             _discoveryTimer.Elapsed += (sender, e) =>
             {
                 try
@@ -322,7 +322,7 @@ namespace Nethermind.Network.Discovery
         private void InitializeDiscoveryPersistenceTimer()
         {
             if(_logger.IsDebug) _logger.Debug("Starting discovery persistence timer");
-            _discoveryPersistenceTimer = new Timer(_configurationProvider.DiscoveryPersistenceInterval) {AutoReset = false};
+            _discoveryPersistenceTimer = new Timer(_networkConfig.DiscoveryPersistenceInterval) {AutoReset = false};
             _discoveryPersistenceTimer.Elapsed += (sender, e) =>
             {
                 try
@@ -375,9 +375,9 @@ namespace Nethermind.Network.Discovery
                     return;
                 }
                 var closeTask = _channel.CloseAsync();
-                if (await Task.WhenAny(closeTask, Task.Delay(_configurationProvider.UdpChannelCloseTimeout)) != closeTask)
+                if (await Task.WhenAny(closeTask, Task.Delay(_networkConfig.UdpChannelCloseTimeout)) != closeTask)
                 {
-                    _logger.Error($"Could not close udp connection in {_configurationProvider.UdpChannelCloseTimeout} miliseconds");
+                    _logger.Error($"Could not close udp connection in {_networkConfig.UdpChannelCloseTimeout} miliseconds");
                 }
             }
             catch (Exception e)
@@ -388,7 +388,7 @@ namespace Nethermind.Network.Discovery
 
         private async Task<bool> InitializeBootnodes(CancellationToken cancellationToken)
         {
-            var bootnodes = NetworkNode.ParseNodes(_configurationProvider.Bootnodes);
+            var bootnodes = NetworkNode.ParseNodes(_networkConfig.Bootnodes);
             if (!bootnodes.Any())
             {
                 if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
@@ -414,7 +414,7 @@ namespace Nethermind.Network.Discovery
             }
 
             //Wait for pong message to come back from Boot nodes
-            var maxWaitTime = _configurationProvider.BootnodePongTimeout;
+            var maxWaitTime = _networkConfig.BootnodePongTimeout;
             var itemTime = maxWaitTime / 100;
             for (var i = 0; i < 100; i++)
             {

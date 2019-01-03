@@ -63,7 +63,7 @@ namespace Nethermind.Clique.Test
             PrivateKey key = Build.A.PrivateKey.TestObject;
             // Init snapshot db
             MemDb db = new MemDb();
-            CliqueConfig config = new CliqueConfig(15, 30000);
+            CliqueConfig config = new CliqueConfig();
             _signer = new EthereumSigner(RinkebySpecProvider.Instance, LimboLogs.Instance);
             _clique = new CliqueSealEngine(config, _signer, key, db, _blockTree, LimboLogs.Instance);
         }

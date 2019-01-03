@@ -26,6 +26,7 @@ using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.KeyStore;
+using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -60,28 +61,28 @@ namespace Nethermind.Network.Test.Discovery
             var privateKey = new PrivateKey(TestPrivateKeyHex);
             _publicKey = privateKey.PublicKey;
             var logManager = NullLogManager.Instance;
-            //var config = new NetworkConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
-            var config = new ConfigProvider();
-            var networkConfig = config.GetConfig<INetworkConfig>(); 
-            networkConfig.PongTimeout = 100;
 
-            var statsConfig = config.GetConfig<IStatsConfig>();
+            IKeyStoreConfig keyStoreConfig = new KeyStoreConfig();
+            INetworkConfig networkConfig = new NetworkConfig();
+            networkConfig.PongTimeout = 100;
+            IStatsConfig statsConfig = new StatsConfig();
 
             _messageSender = Substitute.For<IMessageSender>();
             _nodeFactory = new NodeFactory(LimboLogs.Instance);
-            var calculator = new NodeDistanceCalculator(config);
+            var calculator = new NodeDistanceCalculator(networkConfig);
 
-            _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(config, new JsonSerializer(logManager), new AesEncrypter(config, logManager), new CryptoRandom(), logManager), calculator, config, logManager);
+
+            _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(keyStoreConfig, new EthereumJsonSerializer(), new AesEncrypter(keyStoreConfig, logManager), new CryptoRandom(), logManager), calculator, networkConfig, logManager);
             _nodeTable.Initialize();
             
             _timestamp = new Timestamp();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(config, _timestamp), evictionManager, new NodeStatsProvider(statsConfig, _nodeFactory, logManager, true), config, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(networkConfig, _timestamp), evictionManager, new NodeStatsProvider(statsConfig, _nodeFactory, logManager, true), networkConfig, logManager);
 
             _nodes = new[] { _nodeFactory.CreateNode("192.168.1.18", 1), _nodeFactory.CreateNode("192.168.1.19", 2) };
 
-            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeFactory, _nodeTable, new NetworkStorage("test", networkConfig, logManager, new PerfService(logManager)), config, logManager);
+            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeFactory, _nodeTable, new NetworkStorage("test", networkConfig, logManager, new PerfService(logManager)), networkConfig, logManager);
             _discoveryManager.MessageSender = _messageSender;
         }
 

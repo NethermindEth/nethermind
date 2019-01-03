@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
@@ -32,6 +33,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore.Config;
 
+[assembly:InternalsVisibleTo("Nethermind.KeyStore.Test")]
 namespace Nethermind.KeyStore
 {
     /// <summary>
@@ -62,17 +64,17 @@ namespace Nethermind.KeyStore
     public class FileKeyStore : IKeyStore
     {
         private readonly PrivateKeyGenerator _privateKeyGenerator;
-        private readonly IKeystoreConfig _config;
+        private readonly IKeyStoreConfig _config;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ISymmetricEncrypter _symmetricEncrypter;
         private readonly ICryptoRandom _cryptoRandom;
         private readonly ILogger _logger;
         private readonly Encoding _keyStoreEncoding;
 
-        public FileKeyStore(IConfigProvider configurationProvider, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
+        public FileKeyStore(IKeyStoreConfig keyStoreConfig, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _config = configurationProvider?.GetConfig<IKeystoreConfig>() ?? throw new ArgumentNullException(nameof(configurationProvider));
+            _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _symmetricEncrypter = symmetricEncrypter ?? throw new ArgumentNullException(nameof(symmetricEncrypter));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
@@ -82,10 +84,23 @@ namespace Nethermind.KeyStore
 
         public int Version => 3;
         public int CryptoVersion => 1;
-        
+
+        public (KeyStoreItem KeyData, Result Result) Verify(string keyJson)
+        {
+            try
+            {
+                KeyStoreItem keyData = _jsonSerializer.Deserialize<KeyStoreItem>(keyJson);
+                return (keyData, Result.Success);
+            }
+            catch (Exception)
+            {                
+                return (null, Result.Fail("Invalid key data format"));
+            }
+        }
+
         public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
         {
-            var serializedKey = ReadKey(address.ToString());
+            var serializedKey = ReadKey(address);
             if (serializedKey == null)
             {
                 return (null, Result.Fail("Cannot find key"));
@@ -115,10 +130,14 @@ namespace Nethermind.KeyStore
             switch (kdf)
             {
                 case "scrypt":
-                    derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, kdfParams.N, kdfParams.R, kdfParams.P, null, kdfParams.DkLen);
+                    int r = kdfParams.R.Value;
+                    int p = kdfParams.P.Value;
+                    int n = kdfParams.N.Value;
+                    derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, n, r, p, null, kdfParams.DkLen);
                     break;
                 case "pbkdf2":
-                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, kdfParams.C, HashAlgorithmName.SHA256);
+                    int c = kdfParams.C.Value;
+                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, kdfParams.C.Value, HashAlgorithmName.SHA256);
                     derivedKey = deriveBytes.GetBytes(256);
                     break;
                 default:
@@ -149,7 +168,13 @@ namespace Nethermind.KeyStore
             }
             
             // TODO: maybe only allow to sign here so the key never leaves the area?
-            return (new PrivateKey(key), Result.Success());
+            return (new PrivateKey(key), Result.Success);
+        }
+
+        public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
+        {
+            string keyDataJson = ReadKey(address);
+            return (_jsonSerializer.Deserialize<KeyStoreItem>(keyDataJson), Result.Success);
         }
 
         public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
@@ -157,6 +182,11 @@ namespace Nethermind.KeyStore
             var privateKey = _privateKeyGenerator.Generate();
             var result = StoreKey(privateKey, password);
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
+        }
+
+        public Result StoreKey(Address address, KeyStoreItem keyStoreItem)
+        {
+            return PersistKey(address, keyStoreItem);
         }
 
         public Result StoreKey(PrivateKey key, SecureString password)
@@ -178,10 +208,10 @@ namespace Nethermind.KeyStore
 
             var mac = Keccak.Compute(derivedKey.Skip(_config.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
 
-            var address = key.Address.ToString();
+            string addressString = key.Address.ToString(false, false); 
             var keyStoreItem = new KeyStoreItem
             {
-                Address = address,
+                Address = addressString,
                 Crypto = new Crypto
                 {
                     Cipher = _config.Cipher,
@@ -200,45 +230,29 @@ namespace Nethermind.KeyStore
                        Salt = salt.ToHexString(true)
                     },
                     MAC = mac.ToHexString(true),
-                    Version = CryptoVersion
                 },
-                Id = address,
+                
+                Id = addressString,
                 Version = Version
             };
             
-            var serializedKey = _jsonSerializer.Serialize(keyStoreItem);
-            if (serializedKey == null)
-            {
-                return Result.Fail("Error during key serialization");
-            }
-            
-            return PersistKey(address, serializedKey);
+            return StoreKey(key.Address, keyStoreItem);
         }
 
         public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses()
         {
             try
             {
-                var files = Directory.GetFiles(GetStoreDirectory());
-                var addresses = files.Select(Path.GetFileName).Where(x => Address.IsValidAddress(x, true)).Select(x => new Address(x)).ToArray();
+                var files = Directory.GetFiles(GetStoreDirectory(), "UTC--*--*");
+                var addresses = files.Select(Path.GetFileName).Select(fn => fn.Substring("UTC--2019-01-03T17-14-43.479138000Z--".Length)).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
                 return (addresses, new Result { ResultType = ResultType.Success });
             }
             catch (Exception e)
             {
                 var msg = "Error during getting addresses";
-                _logger.Error(msg, e);
+                if(_logger.IsError) _logger.Error(msg, e);
                 return (null, Result.Fail(msg));
             }
-        }
-
-        public Result DeleteKey(Address address, SecureString password)
-        {
-            var key = GetKey(address, password);
-            if (key.Item2.ResultType == ResultType.Failure)
-            {
-                return Result.Fail("Cannot find key");
-            }
-            return DeleteKey(address.ToString());
         }
 
         private Result Validate(KeyStoreItem keyStoreItem)
@@ -247,15 +261,13 @@ namespace Nethermind.KeyStore
             {
                 return Result.Fail("Incorrect key");
             }
+            
             if (keyStoreItem.Version != Version)
             {
                 return Result.Fail("KeyStore version mismatch");
             }
-            if (keyStoreItem.Crypto.Version != CryptoVersion)
-            {
-                return Result.Fail("Crypto version mismatch");
-            }
-            return Result.Success();
+            
+            return Result.Success;
         }
 
         private string GetStoreDirectory()
@@ -269,60 +281,78 @@ namespace Nethermind.KeyStore
             return directory;
         }
 
-        private Result PersistKey(string address, string serializedKey)
+        private Result PersistKey(Address address, KeyStoreItem keyData)
         {
+            var serializedKey = _jsonSerializer.Serialize(keyData);
+            
             try
             {
-                var path = Path.Combine(GetStoreDirectory(), address);
+                // "UTC--2018-12-30T14-04-11.699600594Z--1a959a04db22b9f4360db07125f690449fa97a83"
+                DateTime utcNow = DateTime.UtcNow;
+                string keyFileName = $"UTC--{utcNow:yyyy-MM-dd}T{utcNow:HH-mm-ss.ffffff}000Z--{address.ToString(false, false)}";
+                var path = Path.Combine(GetStoreDirectory(), keyFileName);
                 File.WriteAllText(path, serializedKey, _keyStoreEncoding);
                 return new Result {ResultType = ResultType.Success};
             }
             catch (Exception e)
             {
                 var msg = $"Error during persisting key for address: {address}";
-                _logger.Error(msg, e);
+                if(_logger.IsError) _logger.Error(msg, e);
                 return Result.Fail(msg);
             }
         }
 
-        private Result DeleteKey(string address)
+        public Result DeleteKey(Address address)
         {
             try
             {
-                var path = Path.Combine(GetStoreDirectory(), address);
-                if (!File.Exists(path))
+                var files = FindKeyFiles(address);
+                if (files.Length == 0)
                 {
-                    _logger.Error("Trying to internally delete key which does not exist");
+                    if(_logger.IsError) _logger.Error("Trying to internally delete key which does not exist");
                     return Result.Fail("Cannot find key");
                 }
-                File.Delete(path);
+
+                foreach (string file in files)
+                {
+                    File.Delete(file);
+                }
+                
                 return new Result { ResultType = ResultType.Success };
             }
             catch (Exception e)
             {
                 var msg = $"Error during deleting key for address: {address}";
-                _logger.Error(msg, e);
+                if(_logger.IsError) _logger.Error(msg, e);
                 return Result.Fail(msg);
             }
         }
-
-        private string ReadKey(string address)
+        
+        private string ReadKey(Address address)
         {
             try
             {
-                var path = Path.Combine(GetStoreDirectory(), address);
-                if (!File.Exists(path))
+                var files = FindKeyFiles(address);
+                if (files.Length == 0)
                 {
-                    _logger.Error($"A private key for address: {address} does not exists.");
+                    if(_logger.IsError) _logger.Error($"A private key for address: {address} does not exists.");
                     return null;
                 }
-                return File.ReadAllText(path);
+                
+                return File.ReadAllText(files[0]);
             }
             catch (Exception e)
             {
-                _logger.Error($"Error during reading key for address: {address}", e);
+                if(_logger.IsError) _logger.Error($"Error during reading key for address: {address}", e);
                 return null;
             }
+        }
+
+        internal string[] FindKeyFiles(Address address)
+        {
+            string addressString = address.ToString(false, false);
+            string[] files = Directory.GetFiles(GetStoreDirectory(), $"*{addressString}");
+            return files;
         }
     }
 }

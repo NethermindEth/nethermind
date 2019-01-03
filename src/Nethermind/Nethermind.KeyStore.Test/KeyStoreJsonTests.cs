@@ -28,6 +28,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
 using Nethermind.KeyStore.Config;
+using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Nethermind.KeyStore.Test
@@ -37,31 +38,28 @@ namespace Nethermind.KeyStore.Test
     {
         private IKeyStore _store;
         private IJsonSerializer _serializer;
-        private IConfigProvider _configurationProvider;
+        private IKeyStoreConfig _config;
         private ICryptoRandom _cryptoRandom;
         private string _keyStoreDir;
         private KeyStoreTestsModel _testsModel;
-        private Address _testAddress;
 
         [SetUp]
         public void Initialize()
         {
-            _configurationProvider = new ConfigProvider();
-            _keyStoreDir = _configurationProvider.GetConfig<IKeystoreConfig>().KeyStoreDirectory;
+            _config = new KeyStoreConfig();
+            _keyStoreDir = _config.KeyStoreDirectory;
             if (!Directory.Exists(_keyStoreDir))
             {
                 Directory.CreateDirectory(_keyStoreDir);
             }
 
             ILogManager logManager = NullLogManager.Instance;
-            _serializer = new JsonSerializer(logManager);
+            _serializer = new EthereumJsonSerializer();
             _cryptoRandom = new CryptoRandom();
-            _store = new FileKeyStore(_configurationProvider, _serializer, new AesEncrypter(_configurationProvider, logManager), _cryptoRandom, logManager);
+            _store = new FileKeyStore(_config, _serializer, new AesEncrypter(_config, logManager), _cryptoRandom, logManager);
 
             var testsContent = File.ReadAllText("basic_tests.json");
             _testsModel = _serializer.Deserialize<KeyStoreTestsModel>(testsContent);
-
-            _testAddress = Build.A.PrivateKey.TestObject.Address;
         }
 
         [Test]
@@ -86,33 +84,39 @@ namespace Nethermind.KeyStore.Test
         }
 
         [Test]
-        public void EvilnonceTest()
+        public void EvilNonceTest()
         {
-            var testModel = _testsModel.Evilnonce;
+            var testModel = _testsModel.EvilNonce;
+            RunTest(testModel);
+        }
+        
+        [Test]
+        public void Sealer0Test()
+        {
+            var testModel = _testsModel.Sealer0;
             RunTest(testModel);
         }
 
         private void RunTest(KeyStoreTestModel testModel)
         {
-            //this is missed in json file
-            testModel.Json.Crypto.Version = 1;
+            testModel.KeyData.Address = testModel.Address ?? new PrivateKey(testModel.Priv).Address.ToString(false, false);
+            Address address = new Address(testModel.KeyData.Address);
+            _store.StoreKey(address, testModel.KeyData);
 
-            //copy test key json to KeyStore
-            var filePath = Path.Combine(_keyStoreDir, _testAddress.ToString());
-            var keyFile = _serializer.Serialize(testModel.Json);
-            File.WriteAllText(filePath, keyFile);
+            try
+            {
+                var securedPass = new SecureString();
+                testModel.Password.ToCharArray().ToList().ForEach(x => securedPass.AppendChar(x));
+                (PrivateKey key, Result result) = _store.GetKey(address, securedPass);
 
-            //get key
-            var securedPass = new SecureString();
-            testModel.Password.ToCharArray().ToList().ForEach(x => securedPass.AppendChar(x));
-            var key = _store.GetKey(_testAddress, securedPass);
+                Assert.AreEqual(ResultType.Success, result.ResultType, result.Error);
+                Assert.AreEqual(testModel.KeyData.Address, key.Address.ToString(false, false));
 
-            //verify private key
-            Assert.AreEqual(ResultType.Success, key.Result.ResultType);
-            Assert.AreEqual(new PrivateKey(Bytes.FromHexString(testModel.Priv)), key.PrivateKey);
-
-            //clean up
-            File.Delete(filePath);
+            }
+            finally
+            {
+                _store.DeleteKey(address);
+            }
         }
 
         private class KeyStoreTestsModel
@@ -120,14 +124,19 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreTestModel Test1 { get; set; }
             public KeyStoreTestModel Test2 { get; set; }
             public KeyStoreTestModel Python_generated_test_with_odd_iv { get; set; }
-            public KeyStoreTestModel Evilnonce { get; set; }
+            public KeyStoreTestModel EvilNonce { get; set; }
+            
+            public KeyStoreTestModel Sealer0 { get; set; }
         }
 
         private class KeyStoreTestModel
         {
-            public KeyStoreItem Json { get; set; }
+            [JsonProperty(PropertyName = "Json")]
+            public KeyStoreItem KeyData { get; set; }
             public string Password { get; set; }
             public string Priv { get; set; }
+            
+            public string Address { get; set; }
         }
     } 
 }

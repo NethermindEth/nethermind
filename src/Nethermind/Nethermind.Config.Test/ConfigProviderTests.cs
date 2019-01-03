@@ -34,7 +34,7 @@ namespace Nethermind.Config.Test
         [SetUp]
         public void Initialize()
         {
-            var keystoreConfig = new KeystoreConfig();
+            var keystoreConfig = new KeyStoreConfig();
             var networkConfig = new NetworkConfig();
             var jsonRpcConfig = new JsonRpcConfig();
             var statsConfig = new StatsConfig();

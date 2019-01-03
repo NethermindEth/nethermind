@@ -32,8 +32,6 @@ namespace Nethermind.Clique.Test
 {
     public class SnapshotTests
     {
-        private CliqueSealEngine _clique;
-
         private IDb _snapshotDb = new MemDb();
 
         private const string Block1Rlp = "f9025bf90256a06341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a053580584816f617295ea26c0e17641e0120cab2f0a8ffb53a866fd53aa8e8c2da056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b901000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002018347c94c808458ee45dab861d783010600846765746887676f312e372e33856c696e757800000000000000009f1efa1efa72af138c915966c639544a0255e6288e188c22ce9168c10dbe46da3d88b4aa065930119fb886210bf01a084fde5d3bc48d8aa38bca92e4fcc5215100a00000000000000000000000000000000000000000000000000000000000000000880000000000000000c0c0";
@@ -64,18 +62,11 @@ namespace Nethermind.Clique.Test
             MineBlock(blockTree, block3);
             MineBlock(blockTree, block4);
             MineBlock(blockTree, block5);
-            // Get a test private key
-            PrivateKey key = Build.A.PrivateKey.TestObject;
-            // Init snapshot db
-            IDb db = new MemDb();
-            CliqueConfig config = GetRinkebyConfig();
-            _clique = new CliqueSealEngine(config, NullEthereumSigner.Instance, key, db, blockTree, NullLogManager.Instance);
         }
 
         [Test]
         public void Creates_new_snapshot()
         {
-            CliqueConfig config = GetRinkebyConfig();
             LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
             SortedList<Address, UInt256> signers = new SortedList<Address, UInt256>(CliqueAddressComparer.Instance)
@@ -85,21 +76,17 @@ namespace Nethermind.Clique.Test
                 {_signer3, 0},
             };
             Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
-            Snapshot snapshot = new Snapshot(
-                config, sigCache, genesis.Number, genesis.Hash, signers, tally);
+            Snapshot snapshot = new Snapshot(sigCache, genesis.Number, genesis.Hash, signers, tally);
             snapshot.Store(_snapshotDb);
         }
 
         [Test]
         public void Loads_snapshot()
         {
-            CliqueConfig config = GetRinkebyConfig();
             LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
-            Snapshot snapshot = Snapshot.LoadSnapshot(
-                config, sigCache, _snapshotDb, genesis.Hash);
+            Snapshot snapshot = Snapshot.LoadSnapshot(sigCache, _snapshotDb, genesis.Hash);
             Assert.NotNull(snapshot);
-            Assert.AreEqual(config, snapshot.Config);
             Assert.AreEqual(sigCache, snapshot.SigCache);
             Assert.AreEqual(genesis.Hash, snapshot.Hash);
             Assert.AreEqual(genesis.Number, snapshot.Number);
@@ -112,10 +99,9 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Recognises_signer_turn()
         {
-            CliqueConfig config = GetRinkebyConfig();
             LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
-            Snapshot snapshot = Snapshot.LoadSnapshot(config, sigCache, _snapshotDb, genesis.Hash);
+            Snapshot snapshot = Snapshot.LoadSnapshot(sigCache, _snapshotDb, genesis.Hash);
             // Block 1
             Assert.IsTrue(snapshot.InTurn(1, _signer1));
             Assert.IsFalse(snapshot.InTurn(1, _signer2));
@@ -179,11 +165,6 @@ namespace Nethermind.Clique.Test
             return genesis;
         }
 
-        private CliqueConfig GetRinkebyConfig()
-        {
-            return new CliqueConfig(15, 30000);
-        }
-
         private void MineBlock(BlockTree tree, Block block)
         {
             tree.SuggestBlock(block);
@@ -192,7 +173,6 @@ namespace Nethermind.Clique.Test
 
         private Snapshot GenerateSnapshot(Keccak hash, UInt256 number, Address candidate)
         {
-            CliqueConfig config = GetRinkebyConfig();
             SortedList<Address, UInt256> signers = new SortedList<Address, UInt256>(CliqueAddressComparer.Instance);
             signers.Add(_signer1, number - 2);
             signers.Add(_signer2, number - 1);
@@ -206,7 +186,7 @@ namespace Nethermind.Clique.Test
             tally[candidate].Votes = 2;
             tally[_signer2] = new Tally(false);
             tally[_signer2].Votes = 1;
-            Snapshot snapshot = new Snapshot(config, null, number, hash, signers, tally);
+            Snapshot snapshot = new Snapshot(null, number, hash, signers, tally);
             snapshot.Votes = votes;
             return snapshot;
         }

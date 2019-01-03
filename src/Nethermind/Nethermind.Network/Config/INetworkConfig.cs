@@ -150,12 +150,12 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// On/Off for discovery persistence
         /// </summary>
-        bool IsDiscoveryNodesPersistenceOn { get; }
+        bool IsDiscoveryNodesPersistenceOn { get; set; }
 
         /// <summary>
         /// On/Off for peers
         /// </summary>
-        bool IsPeersPersistenceOn { get; }
+        bool IsPeersPersistenceOn { get; set; }
 
         /// <summary>
         /// Time between running peer update in milliseconds
@@ -165,7 +165,7 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// On/Off for active peer timer - provides reconnections
         /// </summary>
-        bool IsActivePeerTimerEnabled { get; }
+        bool IsActivePeerTimerEnabled { get; set; }
 
         /// <summary>
         /// Max amount of active peers on the tcp level 

@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc
 
         public static ResultWrapper<T> Success(T data)
         {
-            return new ResultWrapper<T> { Data = data, Result = Result.Success()};
+            return new ResultWrapper<T> { Data = data, Result = Result.Success };
         }
 
         public Result GetResult()

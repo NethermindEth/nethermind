@@ -52,6 +52,7 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.KeyStore;
+using Nethermind.KeyStore.Config;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
 using Nethermind.Network;
@@ -460,7 +461,9 @@ namespace Nethermind.Runner.Runners
                     break;
                 case SealEngineType.Clique:
                     _rewardCalculator = new NoBlockRewards();
-                    cliqueConfig = new CliqueConfig(_chainSpec.CliquePeriod, _chainSpec.CliqueEpoch);
+                    cliqueConfig = new CliqueConfig();
+                    cliqueConfig.BlockPeriod = _chainSpec.CliquePeriod;
+                    cliqueConfig.Epoch = _chainSpec.CliqueEpoch;
                     _sealEngine = clique = new CliqueSealEngine(cliqueConfig, _ethereumSigner, _nodeKey, _dbProvider.BlocksDb, _blockTree, _logManager);
                     _sealEngine.CanSeal = _initConfig.IsMining;
                     break;
@@ -568,16 +571,13 @@ namespace Nethermind.Runner.Runners
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
             _nodeStatsProvider = new NodeStatsProvider(statsConfig, _nodeFactory, _logManager, !statsConfig.CaptureNodeStatsEventHistory);
 
-            var jsonSerializer = new JsonSerializer(
-                _logManager);
-
             var encrypter = new AesEncrypter(
-                _configProvider,
+                _configProvider.GetConfig<IKeyStoreConfig>(),
                 _logManager);
 
             _keyStore = new FileKeyStore(
-                _configProvider,
-                jsonSerializer,
+                _configProvider.GetConfig<IKeyStoreConfig>(),
+                _ethereumJsonSerializer,
                 encrypter,
                 _cryptoRandom,
                 _logManager);
@@ -852,10 +852,11 @@ namespace Nethermind.Runner.Runners
 
         private void InitDiscovery()
         {
-            _configProvider.GetConfig<INetworkConfig>().MasterPort = _initConfig.DiscoveryPort;
+            INetworkConfig networkConfig =_configProvider.GetConfig<INetworkConfig>(); 
+            networkConfig.MasterPort = _initConfig.DiscoveryPort;
 
             var privateKeyProvider = new SameKeyGenerator(_nodeKey);
-            var discoveryMessageFactory = new DiscoveryMessageFactory(_configProvider, _timestamp);
+            var discoveryMessageFactory = new DiscoveryMessageFactory(networkConfig, _timestamp);
             var nodeIdResolver = new NodeIdResolver(_signer);
 
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
@@ -867,14 +868,14 @@ namespace Nethermind.Runner.Runners
                 _nodeFactory);
 
             msgSerializersProvider.RegisterDiscoverySerializers();
-
-            var nodeDistanceCalculator = new NodeDistanceCalculator(_configProvider);
+            
+            var nodeDistanceCalculator = new NodeDistanceCalculator(networkConfig);
 
             var nodeTable = new NodeTable(
                 _nodeFactory,
                 _keyStore,
                 nodeDistanceCalculator,
-                _configProvider,
+                networkConfig,
                 _logManager);
 
             var evictionManager = new EvictionManager(
@@ -887,12 +888,12 @@ namespace Nethermind.Runner.Runners
                 discoveryMessageFactory,
                 evictionManager,
                 _nodeStatsProvider,
-                _configProvider,
+                networkConfig,
                 _logManager);
 
             var discoveryStorage = new NetworkStorage(
                 DiscoveryNodesDbPath,
-                _configProvider.GetConfig<INetworkConfig>(),
+                networkConfig,
                 _logManager,
                 _perfService);
 
@@ -901,7 +902,7 @@ namespace Nethermind.Runner.Runners
                 _nodeFactory,
                 nodeTable,
                 discoveryStorage,
-                _configProvider,
+                networkConfig,
                 _logManager);
 
             var nodesLocator = new NodesLocator(
@@ -918,7 +919,7 @@ namespace Nethermind.Runner.Runners
                 _messageSerializationService,
                 _cryptoRandom,
                 discoveryStorage,
-                _configProvider,
+                networkConfig,
                 _logManager, _perfService);
 
             _discoveryApp.Initialize(_nodeKey.PublicKey);

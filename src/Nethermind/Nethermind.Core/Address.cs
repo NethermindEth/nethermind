@@ -140,7 +140,7 @@ namespace Nethermind.Core
 
         public override string ToString()
         {
-            return ToString(false);
+            return ToString(true, false);
         }
 
         /// <summary>
@@ -149,7 +149,16 @@ namespace Nethermind.Core
         /// <returns></returns>
         public string ToString(bool withEip55Checksum)
         {
-            return Bytes.ToHexString(true, false, withEip55Checksum);
+            return ToString(true, withEip55Checksum);
+        }
+        
+        /// <summary>
+        ///     https://github.com/ethereum/EIPs/issues/55
+        /// </summary>
+        /// <returns></returns>
+        public string ToString(bool withZeroX, bool withEip55Checksum)
+        {
+            return Bytes.ToHexString(withZeroX, false, withEip55Checksum);
         }
 
         public override bool Equals(object obj)

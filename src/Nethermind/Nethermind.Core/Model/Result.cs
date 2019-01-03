@@ -21,6 +21,7 @@ namespace Nethermind.Core.Model
     public class Result
     {
         public ResultType ResultType { get; set; }
+        
         public string Error { get; set; }
 
         public static Result Fail(string error)
@@ -28,9 +29,6 @@ namespace Nethermind.Core.Model
             return new Result {ResultType = ResultType.Failure, Error = error};
         }
 
-        public static Result Success()
-        {
-            return new Result { ResultType = ResultType.Success };
-        }
+        public static Result Success { get; } = new Result {ResultType = ResultType.Success};
     }
 }

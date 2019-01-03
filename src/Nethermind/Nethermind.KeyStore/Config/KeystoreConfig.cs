@@ -20,7 +20,7 @@ using System.IO;
 
 namespace Nethermind.KeyStore.Config
 {
-    public class KeystoreConfig : IKeystoreConfig
+    public class KeyStoreConfig : IKeyStoreConfig
     {
         public string KeyStoreDirectory { get; set; } = Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore"));
         public string KeyStoreEncoding { get; set; } = "UTF-8";
