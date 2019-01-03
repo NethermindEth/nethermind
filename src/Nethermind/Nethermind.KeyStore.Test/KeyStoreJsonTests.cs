@@ -38,7 +38,7 @@ namespace Nethermind.KeyStore.Test
     {
         private IKeyStore _store;
         private IJsonSerializer _serializer;
-        private IConfigProvider _configurationProvider;
+        private IKeyStoreConfig _config;
         private ICryptoRandom _cryptoRandom;
         private string _keyStoreDir;
         private KeyStoreTestsModel _testsModel;
@@ -46,8 +46,8 @@ namespace Nethermind.KeyStore.Test
         [SetUp]
         public void Initialize()
         {
-            _configurationProvider = new ConfigProvider();
-            _keyStoreDir = _configurationProvider.GetConfig<IKeystoreConfig>().KeyStoreDirectory;
+            _config = new KeyStoreConfig();
+            _keyStoreDir = _config.KeyStoreDirectory;
             if (!Directory.Exists(_keyStoreDir))
             {
                 Directory.CreateDirectory(_keyStoreDir);
@@ -56,7 +56,7 @@ namespace Nethermind.KeyStore.Test
             ILogManager logManager = NullLogManager.Instance;
             _serializer = new EthereumJsonSerializer();
             _cryptoRandom = new CryptoRandom();
-            _store = new FileKeyStore(_configurationProvider, _serializer, new AesEncrypter(_configurationProvider, logManager), _cryptoRandom, logManager);
+            _store = new FileKeyStore(_config, _serializer, new AesEncrypter(_config, logManager), _cryptoRandom, logManager);
 
             var testsContent = File.ReadAllText("basic_tests.json");
             _testsModel = _serializer.Deserialize<KeyStoreTestsModel>(testsContent);
@@ -89,25 +89,34 @@ namespace Nethermind.KeyStore.Test
             var testModel = _testsModel.EvilNonce;
             RunTest(testModel);
         }
+        
+        [Test]
+        public void Sealer0Test()
+        {
+            var testModel = _testsModel.Sealer0;
+            RunTest(testModel);
+        }
 
         private void RunTest(KeyStoreTestModel testModel)
         {
-            //this is missed in json file
-            testModel.KeyData.Crypto.Version = 1;
-            testModel.KeyData.Address = new PrivateKey(testModel.Priv).Address.ToString(false, false);
+            testModel.KeyData.Address = testModel.Address ?? new PrivateKey(testModel.Priv).Address.ToString(false, false);
             Address address = new Address(testModel.KeyData.Address);
             _store.StoreKey(address, testModel.KeyData);
-            
-            var securedPass = new SecureString();
-            testModel.Password.ToCharArray().ToList().ForEach(x => securedPass.AppendChar(x));
-            var key = _store.GetKey(address, securedPass);
 
-            //verify private key
-            Assert.AreEqual(ResultType.Success, key.Result.ResultType);
-            Assert.AreEqual(new PrivateKey(Bytes.FromHexString(testModel.Priv)), key.PrivateKey);
+            try
+            {
+                var securedPass = new SecureString();
+                testModel.Password.ToCharArray().ToList().ForEach(x => securedPass.AppendChar(x));
+                (PrivateKey key, Result result) = _store.GetKey(address, securedPass);
 
-            //clean up
-            _store.DeleteKey(address);
+                Assert.AreEqual(ResultType.Success, result.ResultType, result.Error);
+                Assert.AreEqual(testModel.KeyData.Address, key.Address.ToString(false, false));
+
+            }
+            finally
+            {
+                _store.DeleteKey(address);
+            }
         }
 
         private class KeyStoreTestsModel
@@ -116,6 +125,8 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreTestModel Test2 { get; set; }
             public KeyStoreTestModel Python_generated_test_with_odd_iv { get; set; }
             public KeyStoreTestModel EvilNonce { get; set; }
+            
+            public KeyStoreTestModel Sealer0 { get; set; }
         }
 
         private class KeyStoreTestModel
@@ -124,6 +135,8 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreItem KeyData { get; set; }
             public string Password { get; set; }
             public string Priv { get; set; }
+            
+            public string Address { get; set; }
         }
     } 
 }

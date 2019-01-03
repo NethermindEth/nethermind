@@ -26,6 +26,7 @@ using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.KeyStore;
+using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -71,7 +72,7 @@ namespace Nethermind.Network.Test.Discovery
             _nodeFactory = new NodeFactory(LimboLogs.Instance);
             var calculator = new NodeDistanceCalculator(config);
 
-            _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(config, new EthereumJsonSerializer(), new AesEncrypter(config, logManager), new CryptoRandom(), logManager), calculator, config, logManager);
+            _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(config.GetConfig<IKeyStoreConfig>(), new EthereumJsonSerializer(), new AesEncrypter(config, logManager), new CryptoRandom(), logManager), calculator, config, logManager);
             _nodeTable.Initialize();
             
             _timestamp = new Timestamp();

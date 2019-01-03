@@ -52,6 +52,7 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.KeyStore;
+using Nethermind.KeyStore.Config;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
 using Nethermind.Network;
@@ -573,7 +574,7 @@ namespace Nethermind.Runner.Runners
                 _logManager);
 
             _keyStore = new FileKeyStore(
-                _configProvider,
+                _configProvider.GetConfig<IKeyStoreConfig>(),
                 _ethereumJsonSerializer,
                 encrypter,
                 _cryptoRandom,

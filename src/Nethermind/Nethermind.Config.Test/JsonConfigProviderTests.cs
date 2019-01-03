@@ -38,7 +38,7 @@ namespace Nethermind.Config.Test
         [SetUp]
         public void Initialize()
         {
-            var keystoreConfig = new KeystoreConfig();
+            var keystoreConfig = new KeyStoreConfig();
             var networkConfig = new NetworkConfig();
             var jsonRpcConfig = new JsonRpcConfig();
             var statsConfig = new StatsConfig();
@@ -55,7 +55,7 @@ namespace Nethermind.Config.Test
         [Test]
         public void Can_load_config_from_file()
         {
-            var keystoreConfig = _configProvider.GetConfig<IKeystoreConfig>();
+            var keystoreConfig = _configProvider.GetConfig<IKeyStoreConfig>();
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             var jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
             var statsConfig = _configProvider.GetConfig<IStatsConfig>();

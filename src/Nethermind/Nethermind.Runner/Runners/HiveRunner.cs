@@ -221,7 +221,7 @@ namespace Nethermind.Runner.Runners
 
         private string GetStoreDirectory()
         {
-            var directory = _configurationProvider.GetConfig<IKeystoreConfig>().KeyStoreDirectory;
+            var directory = _configurationProvider.GetConfig<IKeyStoreConfig>().KeyStoreDirectory;
             if (!Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);

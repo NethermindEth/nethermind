@@ -27,13 +27,13 @@ namespace Nethermind.KeyStore
 {
     public class AesEncrypter : ISymmetricEncrypter
     {
-        private readonly IKeystoreConfig _configurationProvider;
+        private readonly IKeyStoreConfig _config;
         private readonly ILogger _logger;
 
-        public AesEncrypter(IConfigProvider configurationProvider, ILogManager logManager)
+        public AesEncrypter(IKeyStoreConfig keyStoreConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _configurationProvider = configurationProvider.GetConfig<IKeystoreConfig>();
+            _config = keyStoreConfig;
         }
 
         public byte[] Encrypt(byte[] content, byte[] key, byte[] iv, string cipherType)
@@ -93,8 +93,8 @@ namespace Nethermind.KeyStore
                 case "aes-128-cbc":
                     return new AesCryptoServiceProvider
                     {
-                        BlockSize = _configurationProvider.SymmetricEncrypterBlockSize,
-                        KeySize = _configurationProvider.SymmetricEncrypterKeySize,
+                        BlockSize = _config.SymmetricEncrypterBlockSize,
+                        KeySize = _config.SymmetricEncrypterKeySize,
                         Padding = PaddingMode.PKCS7,
                         Key = key,
                         IV = iv

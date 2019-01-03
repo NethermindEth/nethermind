@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
@@ -32,6 +33,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore.Config;
 
+[assembly:InternalsVisibleTo("Nethermind.KeyStore.Test")]
 namespace Nethermind.KeyStore
 {
     /// <summary>
@@ -62,17 +64,17 @@ namespace Nethermind.KeyStore
     public class FileKeyStore : IKeyStore
     {
         private readonly PrivateKeyGenerator _privateKeyGenerator;
-        private readonly IKeystoreConfig _config;
+        private readonly IKeyStoreConfig _config;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ISymmetricEncrypter _symmetricEncrypter;
         private readonly ICryptoRandom _cryptoRandom;
         private readonly ILogger _logger;
         private readonly Encoding _keyStoreEncoding;
 
-        public FileKeyStore(IConfigProvider configurationProvider, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
+        public FileKeyStore(IKeyStoreConfig keyStoreConfig, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _config = configurationProvider?.GetConfig<IKeystoreConfig>() ?? throw new ArgumentNullException(nameof(configurationProvider));
+            _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _symmetricEncrypter = symmetricEncrypter ?? throw new ArgumentNullException(nameof(symmetricEncrypter));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
@@ -92,7 +94,6 @@ namespace Nethermind.KeyStore
             }
             catch (Exception e)
             {                
-                Console.WriteLine(e);
                 return (null, Result.Fail("Invalid key key data format"));
             }
         }
@@ -129,10 +130,14 @@ namespace Nethermind.KeyStore
             switch (kdf)
             {
                 case "scrypt":
-                    derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, kdfParams.N, kdfParams.R, kdfParams.P, null, kdfParams.DkLen);
+                    int r = kdfParams.R.Value;
+                    int p = kdfParams.P.Value;
+                    int n = kdfParams.N.Value;
+                    derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, n, r, p, null, kdfParams.DkLen);
                     break;
                 case "pbkdf2":
-                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, kdfParams.C, HashAlgorithmName.SHA256);
+                    int c = kdfParams.C.Value;
+                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, kdfParams.C.Value, HashAlgorithmName.SHA256);
                     derivedKey = deriveBytes.GetBytes(256);
                     break;
                 default:
@@ -225,7 +230,6 @@ namespace Nethermind.KeyStore
                        Salt = salt.ToHexString(true)
                     },
                     MAC = mac.ToHexString(true),
-                    Version = CryptoVersion
                 },
                 
                 Id = addressString,
@@ -257,13 +261,10 @@ namespace Nethermind.KeyStore
             {
                 return Result.Fail("Incorrect key");
             }
+            
             if (keyStoreItem.Version != Version)
             {
                 return Result.Fail("KeyStore version mismatch");
-            }
-            if (keyStoreItem.Crypto.Version != CryptoVersion)
-            {
-                return Result.Fail("Crypto version mismatch");
             }
             
             return Result.Success;
@@ -347,7 +348,7 @@ namespace Nethermind.KeyStore
             }
         }
 
-        private string[] FindKeyFiles(Address address)
+        internal string[] FindKeyFiles(Address address)
         {
             string addressString = address.ToString(false, false);
             string[] files = Directory.GetFiles(GetStoreDirectory(), $"*{addressString}");

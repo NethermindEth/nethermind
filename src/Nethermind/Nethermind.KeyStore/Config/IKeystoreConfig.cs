@@ -20,7 +20,7 @@ using Nethermind.Config;
 
 namespace Nethermind.KeyStore.Config
 {
-    public interface IKeystoreConfig : IConfig
+    public interface IKeyStoreConfig : IConfig
     {
         string KeyStoreDirectory { get; }
         string KeyStoreEncoding { get; }
