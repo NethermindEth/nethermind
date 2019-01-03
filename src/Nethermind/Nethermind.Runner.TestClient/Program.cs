@@ -30,7 +30,7 @@ namespace Nethermind.Runner.TestClient
         static async Task Main(string[] args)
         {
             Console.WriteLine("Welcome in Runner Test Client");
-            IJsonRpcClient jsonRpcClient = new BasicJsonRpcClient(KnownRpcUris.Localhost, new JsonSerializer(NullLogManager.Instance), NullLogManager.Instance);
+            IJsonRpcClient jsonRpcClient = new BasicJsonRpcClient(KnownRpcUris.Localhost, new EthereumJsonSerializer(), NullLogManager.Instance);
             var client = new RunnerTestClientApp(jsonRpcClient);
             await client.Run();
             Console.WriteLine("Exiting Runner Test Client");

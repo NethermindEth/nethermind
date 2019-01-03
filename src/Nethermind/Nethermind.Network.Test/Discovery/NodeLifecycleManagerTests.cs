@@ -73,7 +73,7 @@ namespace Nethermind.Network.Test.Discovery
             _nodeFactory = new NodeFactory(LimboLogs.Instance);
             var calculator = new NodeDistanceCalculator(_configurationProvider);
 
-            _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(_configurationProvider, new JsonSerializer(logManager), new AesEncrypter(_configurationProvider, logManager), new CryptoRandom(), logManager), calculator, _configurationProvider, logManager);
+            _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(_configurationProvider, new EthereumJsonSerializer(), new AesEncrypter(_configurationProvider, logManager), new CryptoRandom(), logManager), calculator, _configurationProvider, logManager);
             _nodeTable.Initialize();
             
             _timestamp = new Timestamp();

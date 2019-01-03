@@ -26,11 +26,14 @@ namespace Nethermind.KeyStore
 {
     public interface IKeyStore
     {
+        (KeyStoreItem KeyData, Result Result) Verify(string keyJson);
         (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password);
+        (KeyStoreItem KeyData, Result Result) GetKeyData(Address address);
         (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses();
         (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password);
+        Result StoreKey(Address address, KeyStoreItem keyStoreItem);
         Result StoreKey(PrivateKey key, SecureString password);
-        Result DeleteKey(Address address, SecureString password);
+        Result DeleteKey(Address address);
         int Version { get; }
         int CryptoVersion { get; }
     }

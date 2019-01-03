@@ -568,16 +568,13 @@ namespace Nethermind.Runner.Runners
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
             _nodeStatsProvider = new NodeStatsProvider(statsConfig, _nodeFactory, _logManager, !statsConfig.CaptureNodeStatsEventHistory);
 
-            var jsonSerializer = new JsonSerializer(
-                _logManager);
-
             var encrypter = new AesEncrypter(
                 _configProvider,
                 _logManager);
 
             _keyStore = new FileKeyStore(
                 _configProvider,
-                jsonSerializer,
+                _ethereumJsonSerializer,
                 encrypter,
                 _cryptoRandom,
                 _logManager);

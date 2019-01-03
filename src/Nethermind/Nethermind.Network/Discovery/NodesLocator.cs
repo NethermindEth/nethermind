@@ -190,7 +190,7 @@ namespace Nethermind.Network.Discovery
 
                 if (await _discoveryManager.WasMessageReceived(destinationNode.IdHash, MessageType.Neighbors, _configurationProvider.SendNodeTimeout))
                 {
-                    return Result.Success();
+                    return Result.Success;
                 }
 
                 return Result.Fail($"Did not receive Neighbors reponse in time from: {destinationNode.Host}");
