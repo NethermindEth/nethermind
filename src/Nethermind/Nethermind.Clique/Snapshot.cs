@@ -30,7 +30,6 @@ namespace Nethermind.Clique
 {
     internal class Snapshot
     {
-        internal CliqueConfig Config { get; private set; }
         internal LruCache<Keccak, Address> SigCache { get; private set; }
         internal UInt256 Number { get; private set; }
         internal Keccak Hash { get; private set; }
@@ -38,9 +37,8 @@ namespace Nethermind.Clique
         internal List<Vote> Votes;
         internal Dictionary<Address, Tally> Tally { get; private set; }
 
-        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, SortedList<Address, UInt256> signers, Dictionary<Address, Tally> tally)
+        internal Snapshot(LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, SortedList<Address, UInt256> signers, Dictionary<Address, Tally> tally)
         {
-            Config = config;
             SigCache = sigCache;
             Number = number;
             Hash = hash;
@@ -49,19 +47,19 @@ namespace Nethermind.Clique
             Tally = tally;
         }
 
-        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, SortedList<Address, UInt256> signers)
-            : this(config, sigCache, number, hash, signers, new Dictionary<Address, Tally>())
+        internal Snapshot(LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, SortedList<Address, UInt256> signers)
+            : this(sigCache, number, hash, signers, new Dictionary<Address, Tally>())
         {
         }
 
         private Snapshot Clone()
         {
-            Snapshot clone = new Snapshot(Config, SigCache, Number, Hash, new SortedList<Address, UInt256>(Signers, CliqueAddressComparer.Instance), new Dictionary<Address, Tally>(Tally));
+            Snapshot clone = new Snapshot(SigCache, Number, Hash, new SortedList<Address, UInt256>(Signers, CliqueAddressComparer.Instance), new Dictionary<Address, Tally>(Tally));
             clone.Votes = new List<Vote>(Votes);
             return clone;
         }
 
-        public static Snapshot LoadSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, IDb db, Keccak hash)
+        public static Snapshot LoadSnapshot(LruCache<Keccak, Address> sigCache, IDb db, Keccak hash)
         {
             Keccak key = GetSnapshotKey(hash);
             byte[] blob = db.Get(key);
@@ -72,7 +70,6 @@ namespace Nethermind.Clique
 
             SnapshotDecoder decoder = new SnapshotDecoder();
             Snapshot snapshot = decoder.Decode(blob.AsRlpContext());
-            snapshot.Config = config;
             snapshot.SigCache = sigCache;
             return snapshot;
         }
@@ -86,7 +83,7 @@ namespace Nethermind.Clique
             db.Set(key, blob);
         }
 
-        public Snapshot Apply(List<BlockHeader> headers)
+        public Snapshot Apply(List<BlockHeader> headers, ulong epoch)
         {
             // Allow passing in no headers for cleaner code
             if (headers.Count == 0)
@@ -109,7 +106,7 @@ namespace Nethermind.Clique
             {
                 // Remove any votes on checkpoint blocks
                 UInt256 number = header.Number;
-                if ((ulong) number % Config.Epoch == 0)
+                if ((ulong) number % epoch == 0)
                 {
                     snapshot.Votes.Clear();
                     snapshot.Tally = new Dictionary<Address, Tally>();

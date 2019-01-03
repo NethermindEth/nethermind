@@ -39,7 +39,7 @@ namespace Nethermind.Clique
     {
         private readonly ILogger _logger;
 
-        public CliqueSealEngine(CliqueConfig config, IEthereumSigner signer, PrivateKey key, IDb blocksDb, IBlockTree blockTree, ILogManager logManager)
+        public CliqueSealEngine(ICliqueConfig config, IEthereumSigner signer, PrivateKey key, IDb blocksDb, IBlockTree blockTree, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -73,7 +73,7 @@ namespace Nethermind.Clique
         private const int AddressLength = 20;
 
         private readonly IBlockTree _blockTree;
-        private CliqueConfig _config;
+        private ICliqueConfig _config;
         private IEthereumSigner _signer;
         private PrivateKey _key;
         private IDb _blocksDb;
@@ -308,7 +308,7 @@ namespace Nethermind.Clique
                         signers.Add(signer, UInt256.Zero);
                     }
 
-                    snapshot = new Snapshot(_config, _signatures, number, header.Hash, signers);
+                    snapshot = new Snapshot(_signatures, number, header.Hash, signers);
                     snapshot.Store(_blocksDb);
                     break;
                 }
@@ -332,7 +332,7 @@ namespace Nethermind.Clique
                 headers[i].Author = headers[i].Author ?? GetBlockSealer(headers[i]);
             }
 
-            snapshot = snapshot.Apply(headers);
+            snapshot = snapshot.Apply(headers, _config.Epoch);
 
             _recent.Set(snapshot.Hash, snapshot);
             // If we've generated a new checkpoint snapshot, save to disk
@@ -356,7 +356,7 @@ namespace Nethermind.Clique
             // If an on-disk checkpoint snapshot can be found, use that
             if ((ulong) number % Clique.CheckpointInterval == 0)
             {
-                Snapshot persistedSnapshot = Snapshot.LoadSnapshot(_config, _signatures, _blocksDb, hash);
+                Snapshot persistedSnapshot = Snapshot.LoadSnapshot(_signatures, _blocksDb, hash);
                 if (persistedSnapshot != null)
                 {
                     return persistedSnapshot;

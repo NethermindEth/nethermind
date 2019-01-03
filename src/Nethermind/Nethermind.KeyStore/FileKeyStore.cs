@@ -92,9 +92,9 @@ namespace Nethermind.KeyStore
                 KeyStoreItem keyData = _jsonSerializer.Deserialize<KeyStoreItem>(keyJson);
                 return (keyData, Result.Success);
             }
-            catch (Exception e)
+            catch (Exception)
             {                
-                return (null, Result.Fail("Invalid key key data format"));
+                return (null, Result.Fail("Invalid key data format"));
             }
         }
 

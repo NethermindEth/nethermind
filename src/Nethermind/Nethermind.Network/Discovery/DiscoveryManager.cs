@@ -55,11 +55,11 @@ namespace Nethermind.Network.Discovery
             INodeFactory nodeFactory,
             INodeTable nodeTable,
             INetworkStorage discoveryStorage,
-            IConfigProvider configurationProvider,
+            INetworkConfig networkConfig,
             ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
-            _configurationProvider = configurationProvider.GetConfig<INetworkConfig>();
+            _configurationProvider = networkConfig;
             _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
             _nodeFactory = nodeFactory;
             _nodeTable = nodeTable;

@@ -33,19 +33,19 @@ namespace Nethermind.Network.Discovery.Lifecycle
         private readonly IDiscoveryManager _discoveryManager;
         private readonly INodeTable _nodeTable;
         private readonly ILogger _logger;
-        private readonly INetworkConfig _configurationProvider;
+        private readonly INetworkConfig _networkConfig;
         private readonly IDiscoveryMessageFactory _discoveryMessageFactory;
         private readonly IEvictionManager _evictionManager;
 
         private bool _isPongExpected;
         private bool _isNeighborsExpected;
 
-        public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, IConfigProvider configurationProvider, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats)
+        public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, INetworkConfig networkConfig, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats)
         {
             _discoveryManager = discoveryManager;
             _nodeTable = nodeTable;
             _logger = logger;
-            _configurationProvider = configurationProvider.GetConfig<INetworkConfig>();
+            _networkConfig = networkConfig;
             _discoveryMessageFactory = discoveryMessageFactory;
             _evictionManager = evictionManager;
             NodeStats = nodeStats;
@@ -124,7 +124,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         public void SendPing()
         {
             _isPongExpected = true;
-            Task.Run(() => SendPingAsync(_configurationProvider.PingRetryCount));
+            Task.Run(() => SendPingAsync(_networkConfig.PingRetryCount));
         }
 
         public void SendPong(PingMessage discoveryMessage)
@@ -202,13 +202,13 @@ namespace Nethermind.Network.Discovery.Lifecycle
             try
             {
                 var msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);         
-                msg.Version = _configurationProvider.PingMessageVersion;
+                msg.Version = _networkConfig.PingMessageVersion;
                 msg.SourceAddress = _nodeTable.MasterNode.Address;
                 msg.DestinationAddress = msg.FarAddress;
                 _discoveryManager.SendMessage(msg);
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
 
-                var result = await _discoveryManager.WasMessageReceived(ManagedNode.IdHash, MessageType.Pong, _configurationProvider.PongTimeout);
+                var result = await _discoveryManager.WasMessageReceived(ManagedNode.IdHash, MessageType.Pong, _networkConfig.PongTimeout);
                 if (!result)
                 {
                     if (counter > 1)

@@ -49,7 +49,7 @@ namespace Nethermind.Clique
         private readonly IBlockchainProcessor _processor;
         private readonly ITransactionPool _transactionPool;
         private CliqueSealEngine _sealEngine;
-        private CliqueConfig _config;
+        private ICliqueConfig _config;
         private Address _address;
         private ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
 
@@ -64,7 +64,7 @@ namespace Nethermind.Clique
             ITimestamp timestamp,
             ICryptoRandom cryptoRandom,
             CliqueSealEngine cliqueSealEngine,
-            CliqueConfig config,
+            ICliqueConfig config,
             Address address,
             ILogManager logManager)
         {

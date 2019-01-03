@@ -34,7 +34,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Sets_clique_block_producer_properly()
         {
-            CliqueConfig cliqueConfig = new CliqueConfig(15, 30000);
+            CliqueConfig cliqueConfig = new CliqueConfig();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             CliqueBlockProducer producer = new CliqueBlockProducer(
                 Substitute.For<ITransactionPool>(),

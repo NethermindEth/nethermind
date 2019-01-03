@@ -68,15 +68,15 @@ namespace Nethermind.Network.Test
             _timestamp = new Timestamp();
             _logManager = new OneLoggerLogManager(new SimpleConsoleLogger());
             _configurationProvider = new ConfigProvider();
-            var config = ((NetworkConfig) _configurationProvider.GetConfig<INetworkConfig>());
-            config.DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
-            config.IsActivePeerTimerEnabled = false;
-            config.IsDiscoveryNodesPersistenceOn = false;
-            config.IsPeersPersistenceOn = false;
+            INetworkConfig networkConfig = _configurationProvider.GetConfig<INetworkConfig>();
+            networkConfig.DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
+            networkConfig.IsActivePeerTimerEnabled = false;
+            networkConfig.IsDiscoveryNodesPersistenceOn = false;
+            networkConfig.IsPeersPersistenceOn = false;
 
-            if (!Directory.Exists(_configurationProvider.GetConfig<INetworkConfig>().DbBasePath))
+            if (!Directory.Exists(networkConfig.DbBasePath))
             {
-                Directory.CreateDirectory(_configurationProvider.GetConfig<INetworkConfig>().DbBasePath);
+                Directory.CreateDirectory(networkConfig.DbBasePath);
             }
 
             var syncManager = Substitute.For<ISynchronizationManager>();
@@ -90,16 +90,15 @@ namespace Nethermind.Network.Test
             var key = keyProvider.Generate().PublicKey;
             _synchronizationManager = Substitute.For<ISynchronizationManager>();
 
-            var nodeTable = new NodeTable(_nodeFactory, Substitute.For<IKeyStore>(), new NodeDistanceCalculator(_configurationProvider), _configurationProvider, _logManager);
-            nodeTable.Initialize(new NodeId(key));
-
-            INetworkConfig networkConfig = _configurationProvider.GetConfig<INetworkConfig>();
             IStatsConfig statsConfig = _configurationProvider.GetConfig<IStatsConfig>();
-            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider, _timestamp), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _nodeFactory, _logManager, true), _configurationProvider, _logManager), _nodeFactory, nodeTable, new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
+            var nodeTable = new NodeTable(_nodeFactory, Substitute.For<IKeyStore>(), new NodeDistanceCalculator(networkConfig), networkConfig, _logManager);
+            nodeTable.Initialize(new NodeId(key));
+            
+            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(networkConfig, _timestamp), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _nodeFactory, _logManager, true), networkConfig, _logManager), _nodeFactory, nodeTable, new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager)), networkConfig, _logManager);
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
             _transactionPool = NullTransactionPool.Instance;
             _blockTree = Substitute.For<IBlockTree>();
-            var app = new DiscoveryApp(new NodesLocator(nodeTable, _discoveryManager, _configurationProvider, _logManager), _discoveryManager, _nodeFactory, nodeTable, Substitute.For<IMessageSerializationService>(), new CryptoRandom(), Substitute.For<INetworkStorage>(), _configurationProvider, _logManager, new PerfService(_logManager));
+            var app = new DiscoveryApp(new NodesLocator(nodeTable, _discoveryManager, _configurationProvider, _logManager), _discoveryManager, _nodeFactory, nodeTable, Substitute.For<IMessageSerializationService>(), new CryptoRandom(), Substitute.For<INetworkStorage>(), networkConfig, _logManager, new PerfService(_logManager));
             app.Initialize(key);
 
             var sessionLogger = new PeerSessionLogger(_logManager, _configurationProvider, new PerfService(_logManager));

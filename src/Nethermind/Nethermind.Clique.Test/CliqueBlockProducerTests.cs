@@ -60,7 +60,9 @@ namespace Nethermind.Clique.Test
 
             private On(ulong blockPeriod)
             {
-                _cliqueConfig = new CliqueConfig(blockPeriod, 30000);
+                _cliqueConfig = new CliqueConfig();
+                _cliqueConfig.BlockPeriod = blockPeriod;
+                _cliqueConfig.Epoch = 30000;
                 _genesis = GetGenesis();
                 _genesis3Validators = GetGenesis(3);
             }

@@ -30,8 +30,6 @@ namespace Nethermind.Clique
         {
             context.ReadSequenceLength();
             
-            // Config
-            CliqueConfig config = new CliqueConfig(15, 30000);
             // Signature cache
             LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(Clique.InMemorySignatures);
             // Block number
@@ -44,7 +42,7 @@ namespace Nethermind.Clique
             List<Vote> votes = DecodeVotes(context);
             // Tally
             Dictionary<Address, Tally> tally = DecodeTally(context);
-            Snapshot snapshot = new Snapshot(config, sigCache, number, hash, signers, tally);
+            Snapshot snapshot = new Snapshot(sigCache, number, hash, signers, tally);
             snapshot.Votes = votes;
 
             return snapshot;
