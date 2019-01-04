@@ -54,6 +54,19 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0xde0b6b3a7640000\"}");
         }
+        
+        [Test]
+        public void Eth_get_block_number()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.Head.Returns(Build.A.BlockHeader.WithNumber(310000).TestObject);
+
+            IEthModule module = new EthModule(new UnforgivingJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+
+            string serialized = RpcTest.TestSerializedRequest(module, "eth_blockNumber");
+
+            Assert.AreEqual(serialized, $"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x4baf0\"}}");
+        }
 
         [Test]
         public void Eth_get_balance_internal_error()
