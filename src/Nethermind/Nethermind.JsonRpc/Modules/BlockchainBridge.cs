@@ -51,8 +51,6 @@ namespace Nethermind.JsonRpc.Modules
         private readonly IReceiptStorage _receiptStorage;
         private readonly IWallet _wallet;
 
-        private ReaderWriterLockSlim _readerWriterLockSlim = new ReaderWriterLockSlim();
-
         public BlockchainBridge(IEthereumSigner signer,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
@@ -110,108 +108,73 @@ namespace Nethermind.JsonRpc.Modules
 
         public Keccak SendTransaction(Transaction transaction)
         {
-            try
-            {
-                _readerWriterLockSlim.EnterWriteLock();
-                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
 
-                if (transaction.SenderAddress == null) transaction.SenderAddress = _wallet.GetAccounts()[0];
+            if (transaction.SenderAddress == null) transaction.SenderAddress = _wallet.GetAccounts()[0];
 
-                transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
-                _wallet.Sign(transaction, _blockTree.ChainId);
-                transaction.Hash = Transaction.CalculateHash(transaction);
+            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
+            _wallet.Sign(transaction, _blockTree.ChainId);
+            transaction.Hash = Transaction.CalculateHash(transaction);
 
-                if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce)
-                    throw new InvalidOperationException("Invalid nonce");
+            if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce)
+                throw new InvalidOperationException("Invalid nonce");
 
-                _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
+            _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
 
-                _stateProvider.Reset();
-                return transaction.Hash;
-            }
-            finally
-            {
-                _readerWriterLockSlim.ExitWriteLock();
-            }
+            _stateProvider.Reset();
+            return transaction.Hash;
         }
 
         public TransactionReceipt GetTransactionReceipt(Keccak txHash) => _receiptStorage.Get(txHash);
 
         public byte[] Call(Block block, Transaction transaction)
         {
-            try
-            {
-                _readerWriterLockSlim.EnterWriteLock();
-                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-                BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary,
-                    block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
-                transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
-                transaction.Hash = Nethermind.Core.Transaction.CalculateHash(transaction);
-                CallOutputTracer callOutputTracer = new CallOutputTracer();
-                _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
-                _stateProvider.Reset();
-                return callOutputTracer.ReturnValue;
-            }
-            finally
-            {
-                _readerWriterLockSlim.ExitWriteLock();
-            }
+            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary,
+                block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
+            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
+            transaction.Hash = Nethermind.Core.Transaction.CalculateHash(transaction);
+            CallOutputTracer callOutputTracer = new CallOutputTracer();
+            _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
+            _stateProvider.Reset();
+            return callOutputTracer.ReturnValue;
+        }
+        
+        public long EstimateGas(Block block, Transaction transaction)
+        {
+            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary,
+                block.Difficulty, block.Number + 1, block.GasLimit, block.Timestamp + 1, Bytes.Empty);
+            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
+            transaction.Hash = Nethermind.Core.Transaction.CalculateHash(transaction);
+            CallOutputTracer callOutputTracer = new CallOutputTracer();
+            _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
+            _stateProvider.Reset();
+            return callOutputTracer.GasSpent;
         }
 
         public byte[] GetCode(Address address)
         {
-            try
-            {
-                _readerWriterLockSlim.EnterReadLock();
-                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-                return _stateProvider.GetCode(address);
-            }
-            finally
-            {
-                _readerWriterLockSlim.ExitReadLock();
-            }
+            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            return _stateProvider.GetCode(address);
         }
 
         public byte[] GetCode(Keccak codeHash)
         {
-            try
-            {
-                _readerWriterLockSlim.EnterReadLock();
-                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-                return _stateProvider.GetCode(codeHash);
-            }
-            finally
-            {
-                _readerWriterLockSlim.ExitReadLock();
-            }
+            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            return _stateProvider.GetCode(codeHash);
         }
 
         public BigInteger GetNonce(Address address)
         {
-            try
-            {
-                _readerWriterLockSlim.EnterReadLock();
-                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-                return _stateProvider.GetNonce(address);
-            }
-            finally
-            {
-                _readerWriterLockSlim.ExitReadLock();
-            }
+            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            return _stateProvider.GetNonce(address);
         }
 
         public BigInteger GetBalance(Address address)
         {
-            try
-            {
-                _readerWriterLockSlim.EnterReadLock();
-                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-                return _stateProvider.GetBalance(address);
-            }
-            finally
-            {
-                _readerWriterLockSlim.ExitReadLock();
-            }
+            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            return _stateProvider.GetBalance(address);
         }
 
         public byte[] GetStorage(Address address, BigInteger index)
@@ -222,7 +185,7 @@ namespace Nethermind.JsonRpc.Modules
         public byte[] GetStorage(Address address, BigInteger index, Keccak stateRoot)
         {
             _stateProvider.StateRoot = stateRoot;
-            return _storageProvider.Get(new StorageAddress(address, (UInt256)index));
+            return _storageProvider.Get(new StorageAddress(address, (UInt256) index));
         }
 
         public Account GetAccount(Address address)
@@ -232,16 +195,8 @@ namespace Nethermind.JsonRpc.Modules
 
         public Account GetAccount(Address address, Keccak stateRoot)
         {
-            try
-            {
-                _readerWriterLockSlim.EnterReadLock();
-                _stateProvider.StateRoot = stateRoot;
-                return _stateProvider.GetAccount(address);
-            }
-            finally
-            {
-                _readerWriterLockSlim.ExitReadLock();
-            }
+            _stateProvider.StateRoot = stateRoot;
+            return _stateProvider.GetAccount(address);
         }
 
         public int GetNetworkId() => _blockTree.ChainId;

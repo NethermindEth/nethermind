@@ -16,13 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Newtonsoft.Json;
+
 namespace Nethermind.JsonRpc
 {
     public class JsonRpcRequest
     {
         public string JsonRpc { get; set; }
         public string Method { get; set; }
-        public string[] Params { get; set; }
+        
+        [JsonProperty(Required = Required.Default)]
+        public string[] Params { get; set; } = new string[0];
         public ulong Id { get; set; }
 
         public override string ToString()
