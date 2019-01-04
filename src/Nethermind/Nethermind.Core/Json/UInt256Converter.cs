@@ -56,7 +56,21 @@ namespace Nethermind.Core.Json
             }
             
             string s = (string) reader.Value;
-            return s == "0x0" ? UInt256.Zero : UInt256.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
+            if (s == "0x0")
+            {
+                return UInt256.Zero;
+            }
+
+            if (s.StartsWith("0x0"))
+            {
+                return UInt256.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);    
+            }
+            
+            Span<char> withZero = new Span<char>(new char[s.Length - 1]);
+            withZero[0] = '0';
+            s.AsSpan(2).CopyTo(withZero.Slice(1));
+            
+            return UInt256.Parse(withZero, NumberStyles.AllowHexSpecifier);
         }
     }
 }
