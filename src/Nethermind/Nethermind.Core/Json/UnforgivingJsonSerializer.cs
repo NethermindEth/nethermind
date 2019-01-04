@@ -60,8 +60,13 @@ namespace Nethermind.Core.Json
                 paramsToken = token.SelectToken("Params");
                 if (paramsToken == null)
                 {
-                    throw new FormatException("Missing 'params' token");
+                    return;
                 }
+
+//                if (paramsToken == null)
+//                {
+//                    throw new FormatException("Missing 'params' token");
+//                }
             }
             
             var values = new List<string>();

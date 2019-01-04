@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<Keccak> eth_sendTransaction(TransactionForRpc transactionForRpc);
         ResultWrapper<Keccak> eth_sendRawTransaction(byte[] transaction);
         ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter);
-        ResultWrapper<BigInteger> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter);
+        ResultWrapper<BigInteger> eth_estimateGas(TransactionForRpc transactionCall);
         ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects);
         ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects);
         ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash);
@@ -57,10 +57,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<ReceiptForRpc> eth_getTransactionReceipt(Keccak txHashData);
         ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, BigInteger positionIndex);
         ResultWrapper<BlockForRpc> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, BigInteger positionIndex);
-        ResultWrapper<IEnumerable<string>> eth_getCompilers();
-        ResultWrapper<byte[]> eth_compileLLL(string code);
-        ResultWrapper<byte[]> eth_compileSolidity(string code);
-        ResultWrapper<byte[]> eth_compileSerpent(string code);
         ResultWrapper<BigInteger> eth_newFilter(Filter filter);
         ResultWrapper<BigInteger> eth_newBlockFilter();
         ResultWrapper<BigInteger> eth_newPendingTransactionFilter();

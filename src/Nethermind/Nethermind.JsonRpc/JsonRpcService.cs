@@ -36,13 +36,13 @@ namespace Nethermind.JsonRpc
     {
         public static IDictionary<ErrorType, int> ErrorCodes => new Dictionary<ErrorType, int>
         {
-            { ErrorType.ParseError, -32700 },
-            { ErrorType.InvalidRequest, -32600 },
-            { ErrorType.MethodNotFound, -32601 },
-            { ErrorType.InvalidParams, -32602 },
-            { ErrorType.InternalError, -32603 }
+            {ErrorType.ParseError, -32700},
+            {ErrorType.InvalidRequest, -32600},
+            {ErrorType.MethodNotFound, -32601},
+            {ErrorType.InvalidParams, -32602},
+            {ErrorType.InternalError, -32603}
         };
-        
+
         public const string JsonRpcVersion = "2.0";
 
         private readonly ILogger _logger;
@@ -77,40 +77,35 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        public static object _syncObject = new object();
-        
         public JsonRpcResponse SendRequest(JsonRpcRequest rpcRequest)
         {
-            lock (_syncObject)
+            try
             {
+                (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
+                if (errorType.HasValue)
+                {
+                    return GetErrorResponse(errorType.Value, errorMessage, rpcRequest.Id, rpcRequest?.Method);
+                }
+
                 try
                 {
-                    (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
-                    if (errorType.HasValue)
-                    {
-                        return GetErrorResponse(errorType.Value, errorMessage, rpcRequest.Id, rpcRequest?.Method);
-                    }
-
-                    try
-                    {
-                        return ExecuteRequest(rpcRequest);
-                    }
-                    catch (TargetInvocationException ex)
-                    {
-                        if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
-                        return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
-                    }
-                    catch (Exception ex)
-                    {
-                        if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                        return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
-                    }
+                    return ExecuteRequest(rpcRequest);
+                }
+                catch (TargetInvocationException ex)
+                {
+                    if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
+                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
                 }
                 catch (Exception ex)
                 {
-                    if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
-                    return GetErrorResponse(ErrorType.ParseError, "Incorrect message", 0, null);
+                    if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
+                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
                 }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
+                return GetErrorResponse(ErrorType.ParseError, "Incorrect message", 0, null);
             }
         }
 
@@ -143,7 +138,7 @@ namespace Nethermind.JsonRpc
                 parameters = DeserializeParameters(expectedParameters, providedParameters);
                 if (parameters == null)
                 {
-                    if(_logger.IsError) _logger.Error($"Incorrect JSON RPC parameters when calling {methodName}: {string.Join(", ", providedParameters)}");
+                    if (_logger.IsError) _logger.Error($"Incorrect JSON RPC parameters when calling {methodName}: {string.Join(", ", providedParameters)}");
                     return GetErrorResponse(ErrorType.InvalidParams, "Incorrect parameters", request.Id, methodName);
                 }
             }
@@ -155,7 +150,7 @@ namespace Nethermind.JsonRpc
                 return GetErrorResponse(ErrorType.InternalError, "Internal error", request.Id, methodName);
             }
 
-            Result result = resultWrapper.GetResult();            
+            Result result = resultWrapper.GetResult();
             if (result == null || result.ResultType == ResultType.Failure)
             {
                 if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: {result?.Error ?? "no result"}");

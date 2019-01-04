@@ -37,14 +37,18 @@ namespace Nethermind.Evm.Tracing
 
         public byte[] ReturnValue { get; set; }
         
+        public long GasSpent { get; set; }
+        
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
             ReturnValue = output;
+            GasSpent = gasSpent;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent)
         {
             ReturnValue = Bytes.Empty;
+            GasSpent = gasSpent;
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
