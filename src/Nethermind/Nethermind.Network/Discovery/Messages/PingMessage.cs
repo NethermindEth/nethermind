@@ -29,6 +29,9 @@ namespace Nethermind.Network.Discovery.Messages
         public int Version { get; set; }
         public byte[] Mdc { get; set; }
 
+        //time in seconds x seconds from now
+        public long ExpirationTime { get; set; }   
+
         public override string ToString()
         {
             return base.ToString() + $", SourceAddress: {SourceAddress?.ToString() ?? "empty"}, DestinationAddress: {DestinationAddress?.ToString() ?? "empty"}, Version: {Version}, Mdc: {Mdc?.ToHexString() ?? "empty"}";

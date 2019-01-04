@@ -23,6 +23,9 @@ namespace Nethermind.Network.Discovery.Messages
     public class PongMessage : DiscoveryMessage
     {
         public byte[] PingMdc { get; set; }
+        
+        //time in seconds x seconds from now
+        public long ExpirationTime { get; set; }
 
         public override string ToString()
         {
