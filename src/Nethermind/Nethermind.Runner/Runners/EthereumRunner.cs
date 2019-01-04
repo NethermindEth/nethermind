@@ -326,7 +326,7 @@ namespace Nethermind.Runner.Runners
         {
             _logger.Info($"Loading chain spec from {_initConfig.ChainSpecPath}");
 
-            IChainSpecLoader loader = _initConfig.ChainSpecFormat == "ChainSpec"
+            IChainSpecLoader loader = string.Equals(_initConfig.ChainSpecFormat, "ChainSpec", StringComparison.InvariantCultureIgnoreCase)
                 ? (IChainSpecLoader) new ChainSpecLoader(_ethereumJsonSerializer)
                 : new GenesisFileLoader(_ethereumJsonSerializer);
 
