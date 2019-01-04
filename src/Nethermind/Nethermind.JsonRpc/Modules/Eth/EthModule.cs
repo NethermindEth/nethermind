@@ -139,7 +139,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<byte[]> eth_getStorageAt(Address address, BigInteger positionIndex, BlockParameter blockParameter)
         {
-            return ResultWrapper<byte[]>.Fail("eth_getStorageAt not supported");
+            if (_blockchainBridge.Head == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+            }
+
+            var result = GetStorage(address, positionIndex, blockParameter);
+            if (result.Result.ResultType == ResultType.Failure)
+            {
+                return result;
+            }
+
+            if (Logger.IsTrace) Logger.Trace($"eth_getBalance request {address}, {blockParameter}, result: {result.Data}");
+            return result;
         }
 
         public ResultWrapper<BigInteger> eth_getTransactionCount(Address address, BlockParameter blockParameter)
@@ -218,7 +230,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
         public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter blockParameter)
-        {
+        {   
             if (_blockchainBridge.Head == null)
             {
                 return ResultWrapper<byte[]>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
@@ -643,6 +655,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             return GetAccountBalance(address, block.Data.Header.StateRoot);
         }
+        
+        private ResultWrapper<byte[]> GetStorage(Address address, BigInteger index, BlockParameter blockParameter)
+        {
+            if (blockParameter.Type == BlockParameterType.Pending)
+            {
+                var storageValue = _blockchainBridge.GetStorage(address, index);
+                return ResultWrapper<byte[]>.Success(storageValue);
+            }
+
+            var block = GetBlock(blockParameter);
+            if (block.Result.ResultType == ResultType.Failure)
+            {
+                return ResultWrapper<byte[]>.Fail(block.Result.Error);
+            }
+
+            return GetAccountStorage(address, index, block.Data.Header.StateRoot);
+        }
 
         private ResultWrapper<Core.Block> GetBlock(BlockParameter blockParameter)
         {
@@ -681,12 +710,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
+        private ResultWrapper<byte[]> GetAccountStorage(Address address, BigInteger index, Keccak stateRoot)
+        {
+            var account = _blockchainBridge.GetAccount(address, stateRoot);
+            if (account == null)
+            {
+                return ResultWrapper<byte[]>.Success(Bytes.Empty);
+            }
+
+            return ResultWrapper<byte[]>.Success(_blockchainBridge.GetStorage(address, index, stateRoot));
+        }
+        
         private ResultWrapper<BigInteger> GetAccountBalance(Address address, Keccak stateRoot)
         {
             var account = _blockchainBridge.GetAccount(address, stateRoot);
             if (account == null)
             {
-                return ResultWrapper<BigInteger>.Fail("Cannot find account", ErrorType.NotFound);
+                return ResultWrapper<BigInteger>.Success(0);
             }
 
             return ResultWrapper<BigInteger>.Success(account.Balance);
@@ -697,7 +737,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             var account = _blockchainBridge.GetAccount(address, stateRoot);
             if (account == null)
             {
-                return ResultWrapper<BigInteger>.Fail("Cannot find account", ErrorType.NotFound);
+                return ResultWrapper<BigInteger>.Success(0);    
             }
 
             return ResultWrapper<BigInteger>.Success(account.Nonce);
@@ -708,7 +748,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             var account = _blockchainBridge.GetAccount(address, stateRoot);
             if (account == null)
             {
-                return ResultWrapper<byte[]>.Fail("Cannot find account", ErrorType.NotFound);
+                return ResultWrapper<byte[]>.Success(Bytes.Empty);
             }
 
             var code = _blockchainBridge.GetCode(account.CodeHash);

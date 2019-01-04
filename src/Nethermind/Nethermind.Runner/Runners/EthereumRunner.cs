@@ -220,6 +220,7 @@ namespace Nethermind.Runner.Runners
             var blockchainBridge = new BlockchainBridge(
                 _ethereumSigner,
                 rpcState.StateProvider,
+                rpcState.StorageProvider,
                 rpcState.BlockTree,
                 _transactionPool,
                 _transactionPoolInfoProvider,

@@ -77,35 +77,40 @@ namespace Nethermind.JsonRpc
             }
         }
 
+        public static object _syncObject = new object();
+        
         public JsonRpcResponse SendRequest(JsonRpcRequest rpcRequest)
         {
-            try
+            lock (_syncObject)
             {
-                (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
-                if (errorType.HasValue)
-                {
-                    return GetErrorResponse(errorType.Value, errorMessage, rpcRequest.Id, rpcRequest?.Method);
-                }
-
                 try
                 {
-                    return ExecuteRequest(rpcRequest);
-                }
-                catch (TargetInvocationException ex)
-                {
-                    if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
-                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
+                    (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
+                    if (errorType.HasValue)
+                    {
+                        return GetErrorResponse(errorType.Value, errorMessage, rpcRequest.Id, rpcRequest?.Method);
+                    }
+
+                    try
+                    {
+                        return ExecuteRequest(rpcRequest);
+                    }
+                    catch (TargetInvocationException ex)
+                    {
+                        if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
+                        return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
+                        return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
+                    if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
+                    return GetErrorResponse(ErrorType.ParseError, "Incorrect message", 0, null);
                 }
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
-                return GetErrorResponse(ErrorType.ParseError, "Incorrect message", 0, null);
             }
         }
 

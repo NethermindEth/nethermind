@@ -46,6 +46,7 @@ namespace Nethermind.JsonRpc.Modules
         private readonly IFilterStore _filterStore;
         private readonly IEthereumSigner _signer;
         private readonly IStateProvider _stateProvider;
+        private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IWallet _wallet;
@@ -54,6 +55,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public BlockchainBridge(IEthereumSigner signer,
             IStateProvider stateProvider,
+            IStorageProvider storageProvider,
             IBlockTree blockTree,
             ITransactionPool transactionPool,
             ITransactionPoolInfoProvider transactionPoolInfoProvider,
@@ -65,6 +67,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(_transactionPool));
             _transactionPoolInfoProvider = transactionPoolInfoProvider ?? throw new ArgumentNullException(nameof(transactionPoolInfoProvider));
@@ -209,6 +212,22 @@ namespace Nethermind.JsonRpc.Modules
             {
                 _readerWriterLockSlim.ExitReadLock();
             }
+        }
+
+        public byte[] GetStorage(Address address, BigInteger index)
+        {
+            return GetStorage(address, index, _blockTree.Head.StateRoot);
+        }
+
+        public byte[] GetStorage(Address address, BigInteger index, Keccak stateRoot)
+        {
+            _stateProvider.StateRoot = stateRoot;
+            return _storageProvider.Get(new StorageAddress(address, (UInt256)index));
+        }
+
+        public Account GetAccount(Address address)
+        {
+            return GetAccount(address, _blockTree.Head.StateRoot);
         }
 
         public Account GetAccount(Address address, Keccak stateRoot)
