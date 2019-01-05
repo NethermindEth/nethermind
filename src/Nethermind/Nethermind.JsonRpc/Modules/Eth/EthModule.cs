@@ -182,7 +182,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     return ResultWrapper<byte[]>.Fail($"Incorrect head block: {(_blockchainBridge.Head != null ? "HeadBlock is null" : "HeadBlock header is null")}");
                 }
-                
+
                 var result = GetStorage(address, positionIndex, blockParameter);
                 if (result.Result.ResultType == ResultType.Failure)
                 {
@@ -395,12 +395,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        public ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter)
+        public ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
         {
             try
             {
                 _readerWriterLockSlim.EnterWriteLock();
-                Block block = GetBlock(blockParameter).Data;
+                BlockHeader block = blockParameter == null ? _blockchainBridge.Head : GetBlock(blockParameter).Data.Header;
                 byte[] result = _blockchainBridge.Call(block, transactionCall.ToTransaction());
                 return ResultWrapper<byte[]>.Success(result);
             }
@@ -420,7 +420,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     transactionCall.Gas = headBlock.GasLimit;
                 }
-                
+
                 long result = _blockchainBridge.EstimateGas(headBlock, transactionCall.ToTransaction());
                 return ResultWrapper<BigInteger>.Success(result);
             }

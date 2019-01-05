@@ -127,11 +127,11 @@ namespace Nethermind.JsonRpc.Modules
 
         public TransactionReceipt GetTransactionReceipt(Keccak txHash) => _receiptStorage.Get(txHash);
 
-        public byte[] Call(Block block, Transaction transaction)
+        public byte[] Call(BlockHeader blockHeader, Transaction transaction)
         {
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-            BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary,
-                block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
+            BlockHeader header = new BlockHeader(blockHeader.Hash, Keccak.OfAnEmptySequenceRlp, blockHeader.Beneficiary,
+                blockHeader.Difficulty, blockHeader.Number + 1, (long) transaction.GasLimit, blockHeader.Timestamp + 1, Bytes.Empty);
             transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
             transaction.Hash = Nethermind.Core.Transaction.CalculateHash(transaction);
             CallOutputTracer callOutputTracer = new CallOutputTracer();

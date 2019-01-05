@@ -23,6 +23,7 @@ using System.Reflection;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
@@ -70,6 +71,17 @@ namespace Nethermind.JsonRpc.Test
             ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true)));
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_getBlockByNumber", "0x1b4", "true");
             Assert.AreEqual((BigInteger)2, (response.Result as BlockForRpc)?.Number);
+        }
+        
+        [Test]
+        public void CanHandleOptionalArguments()
+        {
+            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            string serialized = serializer.Serialize(new TransactionForRpc());
+            IEthModule ethModule = Substitute.For<IEthModule>();
+            ethModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(x => ResultWrapper<byte[]>.Success(new byte[] {1}));
+            JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_call", serialized);
+            Assert.AreEqual(1, (response.Result as byte[]).Length);
         }
 
         [Test]

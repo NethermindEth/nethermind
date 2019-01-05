@@ -126,16 +126,35 @@ namespace Nethermind.JsonRpc
         {
             var expectedParameters = method.GetParameters();
             var providedParameters = request.Params;
-            if (expectedParameters.Length != (providedParameters?.Length ?? 0))
+            int missingParamsCount = expectedParameters.Length - (providedParameters?.Length ?? 0);
+            
+            if (missingParamsCount != 0)
             {
-                return GetErrorResponse(ErrorType.InvalidParams, $"Incorrect parameters count, expected: {expectedParameters.Length}, actual: {providedParameters?.Length ?? 0}", request.Id, methodName);
+                bool incorrectParametersCount = true;
+                if (missingParamsCount > 0)
+                {
+                    for (int i = 0; i < missingParamsCount; i++)
+                    {
+                        if (!expectedParameters[expectedParameters.Length - missingParamsCount - 1 + i].IsOptional)
+                        {
+                            break;
+                        }
+                    }
+
+                    incorrectParametersCount = false;
+                }
+
+                if (incorrectParametersCount)
+                {
+                    return GetErrorResponse(ErrorType.InvalidParams, $"Incorrect parameters count, expected: {expectedParameters.Length}, actual: {providedParameters?.Length ?? 0}", request.Id, methodName);
+                }
             }
 
             //prepare parameters
             object[] parameters = null;
             if (expectedParameters.Length > 0)
             {
-                parameters = DeserializeParameters(expectedParameters, providedParameters);
+                parameters = DeserializeParameters(expectedParameters, providedParameters, missingParamsCount);
                 if (parameters == null)
                 {
                     if (_logger.IsError) _logger.Error($"Incorrect JSON RPC parameters when calling {methodName}: {string.Join(", ", providedParameters)}");
@@ -160,7 +179,7 @@ namespace Nethermind.JsonRpc
             return GetSuccessResponse(resultWrapper.GetData(), request.Id);
         }
 
-        private object[] DeserializeParameters(ParameterInfo[] expectedParameters, string[] providedParameters)
+        private object[] DeserializeParameters(ParameterInfo[] expectedParameters, string[] providedParameters, int missingParamsCount)
         {
             try
             {
@@ -186,6 +205,11 @@ namespace Nethermind.JsonRpc
                     }
 
                     executionParameters.Add(executionParam);
+                }
+
+                for (int i = 0; i < missingParamsCount; i++)
+                {
+                    executionParameters.Add(Type.Missing);
                 }
 
                 return executionParameters.ToArray();
