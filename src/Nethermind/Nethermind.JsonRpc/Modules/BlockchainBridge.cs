@@ -128,11 +128,6 @@ namespace Nethermind.JsonRpc.Modules
         public TransactionReceipt GetTransactionReceipt(Keccak txHash)
         {
             var rec = _receiptStorage.Get(txHash);
-            if (rec == null)
-            {
-                return null;
-            }
-            Console.WriteLine($"REC.error: {rec?.Error}, gas: {rec?.GasUsed}");
             return rec;
         }
 
