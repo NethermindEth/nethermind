@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -25,55 +25,39 @@ using Nethermind.Stats;
 
 namespace Nethermind.Network.Discovery.Serializers
 {
-    public class PongMessageSerializer : DiscoveryMessageSerializerBase, IMessageSerializer<PongMessage>
+    public class TopicQueryMessageSerializer : DiscoveryMessageSerializerBase, IMessageSerializer<TopicQueryMessage>
     {
-        public PongMessageSerializer(ISigner signer, IPrivateKeyGenerator privateKeyGenerator, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver, INodeFactory nodeFactory) : base(signer, privateKeyGenerator, messageFactory, nodeIdResolver, nodeFactory)
+        public TopicQueryMessageSerializer(ISigner signer, IPrivateKeyGenerator privateKeyGenerator, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver, INodeFactory nodeFactory) : base(signer, privateKeyGenerator, messageFactory, nodeIdResolver, nodeFactory)
         {
         }
 
-        public byte[] Serialize(PongMessage message)
+        public byte[] Serialize(TopicQueryMessage message)
         {
             byte[] typeBytes = { (byte)message.MessageType };
             byte[] data = Rlp.Encode(
-                Encode(message.FarAddress),
-                Rlp.Encode(message.PingMdc),
-                Rlp.Encode(message.ExpirationTime),
-                Rlp.Encode(message.TopicHash),
-                Rlp.Encode(message.TicketSerial),
-                Rlp.Encode(message.WaitPeriods)
+                Rlp.Encode(message.Topic),
+                Rlp.Encode(message.ExpirationTime)
             ).Bytes;
 
             byte[] serializedMsg = Serialize(typeBytes, data);
             return serializedMsg;
         }
 
-        public PongMessage Deserialize(byte[] msg)
+        public TopicQueryMessage Deserialize(byte[] msg)
         {
-            var results = PrepareForDeserialization<PongMessage>(msg);
+            var results = PrepareForDeserialization<TopicQueryMessage>(msg);
 
             var rlp = results.Data.AsRlpContext();
 
             rlp.ReadSequenceLength();
             rlp.ReadSequenceLength();
 
-            // GetAddress(rlp.DecodeByteArray(), rlp.DecodeInt());
-            rlp.DecodeByteArray();
-            rlp.DecodeInt();
-
-            rlp.DecodeInt(); // UDP port
-            var pingMdc = rlp.DecodeByteArray();
+            var topic = new Topic(rlp.DecodeString());
             var expirationTime = rlp.DecodeLong();
 
-            var topicHash = rlp.DecodeByteArray();
-            var ticketSerial = rlp.DecodeUInt();
-            var waitPeriods = rlp.DecodeArray(ctx => ctx.DecodeUint());
-
             var message = results.Message;
-            message.PingMdc = pingMdc;
+            message.Topic = topic;
             message.ExpirationTime = expirationTime;
-            message.TopicHash = topicHash;
-            message.TicketSerial = ticketSerial;
-            message.WaitPeriods = waitPeriods;
 
             return message;
         }

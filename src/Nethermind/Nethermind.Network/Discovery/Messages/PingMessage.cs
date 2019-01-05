@@ -18,6 +18,7 @@
 
 using System.Net;
 using Nethermind.Core.Extensions;
+using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Network.Discovery.Messages
 {
@@ -26,15 +27,18 @@ namespace Nethermind.Network.Discovery.Messages
         public IPEndPoint SourceAddress { get; set; }
         public IPEndPoint DestinationAddress { get; set; }
 
-        public int Version { get; set; }
-        public byte[] Mdc { get; set; }
+        public string Version { get; set; }
+
+        public Topic[] Topics { get; set; }
 
         //time in seconds x seconds from now
         public long ExpirationTime { get; set; }   
 
+        public byte[] Mdc { get; set; } // TODO: Should be protected? Should be Keccak?
+
         public override string ToString()
         {
-            return base.ToString() + $", SourceAddress: {SourceAddress?.ToString() ?? "empty"}, DestinationAddress: {DestinationAddress?.ToString() ?? "empty"}, Version: {Version}, Mdc: {Mdc?.ToHexString() ?? "empty"}";
+            return base.ToString() + $", SourceAddress: {SourceAddress?.ToString() ?? "empty"}, DestinationAddress: {DestinationAddress?.ToString() ?? "empty"}, Version: {Version}, Topics: {String.Join(", ", Array.ConvertAll(topics, (t => t.ToString())))}, ExpirationTime: {ExpirationTIme}, Mdc: {Mdc?.ToHexString() ?? "empty"}";
         }
 
         public override MessageType MessageType => MessageType.Ping;

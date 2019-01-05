@@ -22,14 +22,20 @@ namespace Nethermind.Network.Discovery.Messages
 {
     public class PongMessage : DiscoveryMessage
     {
-        public byte[] PingMdc { get; set; }
-        
+        public byte[] PingMdc { get; set; } //TODO: Should be Keccak?
+
         //time in seconds x seconds from now
         public long ExpirationTime { get; set; }
 
+        public byte[] TopicHash { get; set; } //TODO: Should be Keccak?
+
+        public int TicketSerial { get; set; }
+
+        public uint[] WaitPeriods { get; set; }
+
         public override string ToString()
         {
-            return base.ToString() + $", PingMdc: {PingMdc?.ToHexString() ?? "empty"}";
+            return base.ToString() + $", PingMdc: {PingMdc?.ToHexString() ?? "empty"}, ExpirationTime {ExpirationTime}, TopicHash {TopicHash?.ToHexString() ?? "empty"}, TicketSerial {TIcketSerial}, WaitPeriods {String.Join(", ", Array.ConvertAll(WaitPeriods, x => x.ToString()))}";
         }
 
         public override MessageType MessageType => MessageType.Pong;

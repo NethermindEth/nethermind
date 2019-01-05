@@ -25,13 +25,13 @@ namespace Nethermind.Network.Discovery.Messages
     public class NeighborsMessage : DiscoveryMessage
     {
         public Node[] Nodes { get; set; }
-        
+
         //time in seconds x seconds from now
         public long ExpirationTime { get; set; }   
 
         public override string ToString()
         {
-            return base.ToString() + $", Nodes: {(Nodes != null && Nodes.Any() ? string.Join(",", Nodes.Select(x => x.ToString())) : "empty")}";
+            return base.ToString() + $", Nodes: {(Nodes != null && Nodes.Any() ? string.Join(",", Nodes.Select(x => x.ToString())) : "empty")}, ExpirationTIme {ExpirationTime}";
         }
         
         public override MessageType MessageType => MessageType.Neighbors;

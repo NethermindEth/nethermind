@@ -30,7 +30,7 @@ namespace Nethermind.Network.Discovery.Messages
 
         public override string ToString()
         {
-            return $"Type: {MessageType}, FarAddress: {FarAddress?.ToString() ?? "empty"}, FarPublicKey: {FarPublicKey?.ToString() ?? "empty"}, ExpirationTime: {ExpirationTime}";
+            return $"Type: {MessageType}, FarAddress: {FarAddress?.ToString() ?? "empty"}, FarPublicKey: {FarPublicKey?.ToString() ?? "empty"}";
         }
 
         public abstract MessageType MessageType { get; }

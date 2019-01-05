@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,21 +17,21 @@
  */
 
 using Nethermind.Core.Extensions;
-
+using Nethermind.Core.Crypto;
+using Nethermind.Stats.Model;
 namespace Nethermind.Network.Discovery.Messages
 {
-    public class FindNodeMessage : DiscoveryMessage
+    public class TopicNodesMessage : DiscoveryMessage
     {
-        public byte[] SearchedNodeId { get; set; }
+        public byte[] TopicQueryMdc { get; set; }
 
-        //time in seconds x seconds from now
-        public long ExpirationTime { get; set; }   
+        public Node[] Nodes { get; set; }
 
         public override string ToString()
         {
-            return base.ToString() + $", SearchedNodeId: {(SearchedNodeId != null ? SearchedNodeId.ToHexString() : "empty")}, ExpirationTime {ExpirationTime}";
+            return base.ToString() + $", TopicQueryMdc: {(TopicQueryMdc != null ? TopicQueryMdc.ToHexString() : "empty")}, , Nodes: {(Nodes != null && Nodes.Any() ? string.Join(",", Nodes.Select(x => x.ToString())) : "empty")}";
         }
 
-        public override MessageType MessageType => MessageType.FindNode;
+        public override MessageType MessageType => MessageType.TopicNodes;
     }
 }

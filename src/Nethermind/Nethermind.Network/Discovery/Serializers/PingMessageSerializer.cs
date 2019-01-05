@@ -36,12 +36,14 @@ namespace Nethermind.Network.Discovery.Serializers
             byte[] typeBytes = { (byte)message.MessageType };
             Rlp source = Encode(message.SourceAddress);
             Rlp destination = Encode(message.DestinationAddress);
+
             byte[] data = Rlp.Encode(
                 Rlp.Encode(message.Version),
                 source,
                 destination,
                 //verify if encoding is correct
-                Rlp.Encode(message.ExpirationTime)
+                Rlp.Encode(message.ExpirationTime),
+                Rlp.Encode(Array.ConvertAll(message.Topics, t => t.ToString()))
             ).Bytes;
 
             byte[] serializedMsg = Serialize(typeBytes, data);
@@ -54,7 +56,7 @@ namespace Nethermind.Network.Discovery.Serializers
             
             var rlp = results.Data.AsRlpContext();
             rlp.ReadSequenceLength();
-            var version = rlp.DecodeInt();
+            var version = rlp.DecodeString();
 
             rlp.ReadSequenceLength();
             byte[] sourceAddress = rlp.DecodeByteArray();
@@ -67,12 +69,18 @@ namespace Nethermind.Network.Discovery.Serializers
 
             var expireTime = rlp.DecodeLong();
 
+            var topics = rlp.DecodeArray(ctx =>
+            {
+                return new Topic(ctx.DecodeString());
+            }).ToList();
+
             var message = results.Message;
             message.SourceAddress = source;
             message.DestinationAddress = destination;
             message.Mdc = results.Mdc;
             message.Version = version;
             message.ExpirationTime = expireTime;
+            message.Topics = topics;
 
             return message;
         }
