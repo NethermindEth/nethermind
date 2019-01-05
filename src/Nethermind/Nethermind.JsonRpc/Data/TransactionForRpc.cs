@@ -26,11 +26,8 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
-    [JsonObject]
-    public class TransactionForRpc : IJsonRpcRequest
-    {
-        private readonly IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
-        
+    public class TransactionForRpc
+    {   
         public TransactionForRpc(Keccak blockHash, BigInteger? blockNumber, int? txIndex, Transaction transaction)
         {
             Hash = transaction.Hash;
@@ -62,19 +59,6 @@ namespace Nethermind.JsonRpc.Data
         public BigInteger? GasPrice { get; set; }
         public BigInteger? Gas { get; set; }
         public byte[] Data { get; set; }
-
-        public void FromJson(string jsonValue)
-        {
-            var jsonObj = new { from = string.Empty, to = string.Empty, gas = string.Empty, gasPrice = string.Empty, value = string.Empty, data = string.Empty, nonce = string.Empty };
-            var transaction = _jsonSerializer.DeserializeAnonymousType(jsonValue, jsonObj);
-            From = !string.IsNullOrEmpty(transaction.from) ? new Address(transaction.from) : null;
-            To = !string.IsNullOrEmpty(transaction.to) ? new Address(transaction.to) : null;
-            Gas = !string.IsNullOrEmpty(transaction.gas) ? BigIntegerExtensions.ParseEthHex(transaction.gas) : BigInteger.Zero;
-            GasPrice = !string.IsNullOrEmpty(transaction.gasPrice) ? BigIntegerExtensions.ParseEthHex(transaction.gasPrice) : BigInteger.Zero;
-            Value = !string.IsNullOrEmpty(transaction.value) ? BigIntegerExtensions.ParseEthHex(transaction.value) : BigInteger.Zero;
-            Data = !string.IsNullOrEmpty(transaction.data) ? Bytes.FromHexString(transaction.data) : null;
-            Nonce = !string.IsNullOrEmpty(transaction.nonce) ? BigIntegerExtensions.ParseEthHex(transaction.nonce) : BigInteger.Zero;
-        }
 
         public Transaction ToTransaction()
         {

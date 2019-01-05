@@ -202,7 +202,14 @@ namespace Nethermind.JsonRpc
                     }
                     else
                     {
-                        executionParam = JsonConvert.DeserializeObject($"\"{providedParameter}\"", paramType, Converters.ToArray());
+                        if (providedParameter.StartsWith('[') || providedParameter.StartsWith('{'))
+                        {
+                            executionParam = JsonConvert.DeserializeObject(providedParameter, paramType, Converters.ToArray());
+                        }
+                        else
+                        {
+                            executionParam = JsonConvert.DeserializeObject($"\"{providedParameter}\"", paramType, Converters.ToArray());
+                        }
                     }
 
                     executionParameters.Add(executionParam);
