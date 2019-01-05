@@ -44,10 +44,10 @@ namespace Nethermind.Evm.Tracing
             _trace.Gas = gasSpent;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, string error)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error)
         {
             _trace.Failed = true;
-            _trace.ReturnValue = Bytes.Empty;
+            _trace.ReturnValue = output ?? Bytes.Empty;
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)

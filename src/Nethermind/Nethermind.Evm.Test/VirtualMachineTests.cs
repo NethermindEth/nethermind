@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
         public void Stop()
         {
             var receipt = Execute((byte)Instruction.STOP);
-            Assert.AreEqual(GasCostOf.Transaction, receipt.GasUsed);
+            Assert.AreEqual(GasCostOf.Transaction, receipt.GasSpent);
         }
         
         [Test]
@@ -166,7 +166,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SReset, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SReset, receipt.GasSpent, "gas");
             Assert.AreEqual(new byte[] {0}, Storage.Get(new StorageAddress(Recipient, 0)), "storage");
         }
 
@@ -182,7 +182,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet, receipt.GasSpent, "gas");
             Assert.AreEqual(new byte[] {1}, Storage.Get(new StorageAddress(Recipient, 0)), "storage");
         }
 
@@ -198,7 +198,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet, receipt.GasSpent, "gas");
             Assert.AreEqual(new byte[] {1}, Storage.Get(new StorageAddress(Recipient, 0)), "storage");
         }
 
@@ -211,7 +211,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 64, // position
                 (byte)Instruction.MSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Memory * 3, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Memory * 3, receipt.GasSpent, "gas");
         }
 
         [Test]
@@ -228,7 +228,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 64,
                 (byte)Instruction.MSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 6 + GasCostOf.Memory * 3, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 6 + GasCostOf.Memory * 3, receipt.GasSpent, "gas");
         }
 
         [Test]
@@ -238,7 +238,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 64, // position
                 (byte)Instruction.MLOAD);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.Memory * 3, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.Memory * 3, receipt.GasSpent, "gas");
         }
 
         [Test]
@@ -253,7 +253,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 64,
                 (byte)Instruction.MLOAD);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 5 + GasCostOf.Memory * 3, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 5 + GasCostOf.Memory * 3, receipt.GasSpent, "gas");
         }
 
         [Test]
@@ -263,7 +263,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.DUP1);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2, receipt.GasSpent, "gas");
         }
 
         [Test]
@@ -277,7 +277,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 32, // dest
                 (byte)Instruction.CODECOPY);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.Memory * 3, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.Memory * 3, receipt.GasSpent, "gas");
         }
 
         [Test]
@@ -289,7 +289,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0, // src
                 (byte)Instruction.SWAP1);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3, receipt.GasSpent, "gas");
         }
 
         [Test]
@@ -299,7 +299,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0, // index
                 (byte)Instruction.SLOAD);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.SLoadEip150, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.SLoadEip150, receipt.GasSpent, "gas");
         }
 
         [Test]
@@ -314,7 +314,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet + GasCostOf.Exp + GasCostOf.ExpByteEip160, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet + GasCostOf.Exp + GasCostOf.ExpByteEip160, receipt.GasSpent, "gas");
             Assert.AreEqual(BigInteger.Pow(2, 160).ToBigEndianByteArray(), Storage.Get(new StorageAddress(Recipient, 0)), "storage");
         }
 
@@ -330,7 +330,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.SSet, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.SSet, receipt.GasSpent, "gas");
             Assert.AreEqual(BigInteger.One.ToBigEndianByteArray(), Storage.Get(new StorageAddress(Recipient, 0)), "storage");
         }
         
@@ -346,7 +346,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SReset, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SReset, receipt.GasSpent, "gas");
             Assert.AreEqual(BigInteger.Zero.ToBigEndianByteArray(), Storage.Get(new StorageAddress(Recipient, 0)), "storage");
         }
         
@@ -362,7 +362,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SSet, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SSet, receipt.GasSpent, "gas");
             Assert.AreEqual(BigInteger.One.ToBigEndianByteArray(), Storage.Get(new StorageAddress(Recipient, 0)), "storage");
         }
         
@@ -378,7 +378,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset, receipt.GasSpent, "gas");
             Assert.AreEqual(new byte[] {0}, Storage.Get(new StorageAddress(Recipient, 0)), "storage");
         }
         
@@ -392,7 +392,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet, receipt.GasSpent, "gas");
             Assert.AreEqual((BigInteger.Pow(2, 256) - 1).ToBigEndianByteArray(), Storage.Get(new StorageAddress(Recipient, 0)), "storage");
         }
         
@@ -408,7 +408,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset, receipt.GasSpent, "gas");
             Assert.AreEqual(BigInteger.Zero.ToBigEndianByteArray(), Storage.Get(new StorageAddress(Recipient, 0)), "storage");
         }
         
@@ -421,7 +421,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SReset, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SReset, receipt.GasSpent, "gas");
             Assert.AreEqual(BigInteger.Zero.ToBigEndianByteArray(), Storage.Get(new StorageAddress(Recipient, 0)), "storage");
         }
 

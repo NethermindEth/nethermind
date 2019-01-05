@@ -63,7 +63,7 @@ namespace Nethermind.Evm
         {
             block.GasUsed += (long)tx.GasLimit;
             Address recipient = tx.To ?? Address.OfContract(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
-            if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)tx.GasLimit, "invalid");
+            if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)tx.GasLimit, Bytes.Empty,"invalid");
         }
         
         public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
@@ -268,7 +268,7 @@ namespace Nethermind.Evm
             {
                 if (statusCode == StatusCode.Failure)
                 {
-                    txTracer.MarkAsFailed(recipient, spentGas, substate.Error);
+                    txTracer.MarkAsFailed(recipient, spentGas, substate.ShouldRevert ? substate.Output : Bytes.Empty, substate.Error);
                 }
                 else
                 {

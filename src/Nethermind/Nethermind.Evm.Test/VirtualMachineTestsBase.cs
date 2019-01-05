@@ -126,18 +126,18 @@ namespace Nethermind.Evm.Test
             return tracer.BuildResult();
         }
 
-        protected VmTestResultTracer Execute(params byte[] code)
+        protected CallOutputTracer Execute(params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            VmTestResultTracer tracer = new VmTestResultTracer();
+            CallOutputTracer tracer = new CallOutputTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
 
-        protected VmTestResultTracer Execute(UInt256 blockNumber, long gasLimit, byte[] code)
+        protected CallOutputTracer Execute(UInt256 blockNumber, long gasLimit, byte[] code)
         {
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
-            VmTestResultTracer tracer = new VmTestResultTracer();
+            CallOutputTracer tracer = new CallOutputTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
@@ -207,9 +207,9 @@ namespace Nethermind.Evm.Test
             return Build.A.Block.WithNumber(blockNumber).WithBeneficiary(Miner).TestObject;
         }
 
-        protected void AssertGas(VmTestResultTracer receipt, long gas)
+        protected void AssertGas(CallOutputTracer receipt, long gas)
         {
-            Assert.AreEqual(gas, receipt.GasUsed, "gas");
+            Assert.AreEqual(gas, receipt.GasSpent, "gas");
         }
 
         protected void AssertStorage(UInt256 address, Address value)

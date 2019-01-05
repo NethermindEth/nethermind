@@ -85,7 +85,7 @@ namespace Nethermind.JsonRpc
                 (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
                 if (errorType.HasValue)
                 {
-                    return GetErrorResponse(errorType.Value, errorMessage, rpcRequest.Id, rpcRequest?.Method);
+                    return GetErrorResponse(errorType.Value, errorMessage, rpcRequest.Id, rpcRequest.Method);
                 }
 
                 try
@@ -174,7 +174,7 @@ namespace Nethermind.JsonRpc
             if (result == null || result.ResultType == ResultType.Failure)
             {
                 if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: {result?.Error ?? "no result"}");
-                return GetErrorResponse(resultWrapper.GetErrorType(), resultWrapper.GetResult().Error, request.Id, methodName);
+                return GetErrorResponse(resultWrapper.GetErrorType(), resultWrapper.GetResult().Error, request.Id, methodName, resultWrapper.GetData());
             }
 
             return GetSuccessResponse(resultWrapper.GetData(), request.Id);
@@ -248,7 +248,7 @@ namespace Nethermind.JsonRpc
 
         public IList<JsonConverter> Converters { get; } = new List<JsonConverter>();
 
-        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, ulong id, string methodName)
+        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, ulong id, string methodName, object result = null)
         {
             if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
             var response = new JsonRpcResponse
@@ -259,7 +259,8 @@ namespace Nethermind.JsonRpc
                 {
                     Code = ErrorCodes[errorType],
                     Message = message
-                }
+                },
+                Result = result ?? new byte[0]
             };
 
             return response;

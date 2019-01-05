@@ -20,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm.Tracing;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -29,17 +30,17 @@ namespace Nethermind.Evm.Test
     {
         protected override UInt256 BlockNumber => MainNetSpecProvider.ConstantinopleBlockNumber;
 
-        private void AssertEip145(VmTestResultTracer receipt, byte result)
+        private void AssertEip145(CallOutputTracer receipt, byte result)
         {
             AssertEip145(receipt, new[] {result});
         }
 
-        private void AssertEip145(VmTestResultTracer receipt, string result)
+        private void AssertEip145(CallOutputTracer receipt, string result)
         {
             AssertEip145(receipt, Bytes.FromHexString(result));
         }
         
-        private void AssertEip145(VmTestResultTracer receipt, byte[] result)
+        private void AssertEip145(CallOutputTracer receipt, byte[] result)
         {
             AssertStorage(0, result);
             AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);
@@ -94,7 +95,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            VmTestResultTracer receipt = Execute(code);
+            CallOutputTracer receipt = Execute(code);
             AssertEip145(receipt, result);
         }
         
@@ -124,7 +125,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            VmTestResultTracer receipt = Execute(code);
+            CallOutputTracer receipt = Execute(code);
             AssertEip145(receipt, result);
         }
     }
