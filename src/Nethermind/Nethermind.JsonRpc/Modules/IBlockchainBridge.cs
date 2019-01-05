@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Modules
         Keccak GetBlockHash(Keccak transactionHash);
         Keccak SendTransaction(Transaction transaction);
         TransactionReceipt GetTransactionReceipt(Keccak txHash);
-        byte[] Call(Block block, Transaction transaction);
+        byte[] Call(BlockHeader blockHeader, Transaction transaction);
         long EstimateGas(Block block, Transaction transaction);
 
         byte[] GetCode(Address address);

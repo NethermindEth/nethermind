@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message);
         ResultWrapper<Keccak> eth_sendTransaction(TransactionForRpc transactionForRpc);
         ResultWrapper<Keccak> eth_sendRawTransaction(byte[] transaction);
-        ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter);
+        ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null);
         ResultWrapper<BigInteger> eth_estimateGas(TransactionForRpc transactionCall);
         ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects);
         ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects);

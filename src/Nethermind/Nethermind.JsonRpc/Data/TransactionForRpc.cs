@@ -22,9 +22,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Dirichlet.Numerics;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
+    [JsonObject]
     public class TransactionForRpc : IJsonRpcRequest
     {
         private readonly IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
