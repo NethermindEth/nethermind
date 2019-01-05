@@ -125,19 +125,33 @@ namespace Nethermind.JsonRpc.Modules
             return transaction.Hash;
         }
 
-        public TransactionReceipt GetTransactionReceipt(Keccak txHash) => _receiptStorage.Get(txHash);
+        public TransactionReceipt GetTransactionReceipt(Keccak txHash)
+        {
+            var rec = _receiptStorage.Get(txHash);
+            return rec;
+        }
 
-        public byte[] Call(BlockHeader blockHeader, Transaction transaction)
+        public class CallOutput
+        {
+            public string Error { get; set; }
+
+            public byte[] OutputData { get; set; }
+
+            public long GasSpent { get; set; }
+        }
+        
+        public CallOutput Call(BlockHeader blockHeader, Transaction transaction)
         {
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
             BlockHeader header = new BlockHeader(blockHeader.Hash, Keccak.OfAnEmptySequenceRlp, blockHeader.Beneficiary,
                 blockHeader.Difficulty, blockHeader.Number + 1, (long) transaction.GasLimit, blockHeader.Timestamp + 1, Bytes.Empty);
             transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
-            transaction.Hash = Nethermind.Core.Transaction.CalculateHash(transaction);
+            transaction.Hash = Transaction.CalculateHash(transaction);
             CallOutputTracer callOutputTracer = new CallOutputTracer();
             _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
             _stateProvider.Reset();
-            return callOutputTracer.ReturnValue;
+            
+            return new CallOutput{Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
         }
         
         public long EstimateGas(Block block, Transaction transaction)

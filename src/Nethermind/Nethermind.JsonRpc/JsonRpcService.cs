@@ -40,7 +40,8 @@ namespace Nethermind.JsonRpc
             {ErrorType.InvalidRequest, -32600},
             {ErrorType.MethodNotFound, -32601},
             {ErrorType.InvalidParams, -32602},
-            {ErrorType.InternalError, -32603}
+            {ErrorType.InternalError, -32603},
+            {ErrorType.ExecutionError, -32015}
         };
 
         public const string JsonRpcVersion = "2.0";
@@ -173,7 +174,7 @@ namespace Nethermind.JsonRpc
             if (result == null || result.ResultType == ResultType.Failure)
             {
                 if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: {result?.Error ?? "no result"}");
-                return GetErrorResponse(ErrorType.InternalError, "Internal error", request.Id, methodName);
+                return GetErrorResponse(resultWrapper.GetErrorType(), resultWrapper.GetResult().Error, request.Id, methodName);
             }
 
             return GetSuccessResponse(resultWrapper.GetData(), request.Id);
@@ -201,7 +202,14 @@ namespace Nethermind.JsonRpc
                     }
                     else
                     {
-                        executionParam = JsonConvert.DeserializeObject($"\"{providedParameter}\"", paramType, Converters.ToArray());
+                        if (providedParameter.StartsWith('[') || providedParameter.StartsWith('{'))
+                        {
+                            executionParam = JsonConvert.DeserializeObject(providedParameter, paramType, Converters.ToArray());
+                        }
+                        else
+                        {
+                            executionParam = JsonConvert.DeserializeObject($"\"{providedParameter}\"", paramType, Converters.ToArray());
+                        }
                     }
 
                     executionParameters.Add(executionParam);

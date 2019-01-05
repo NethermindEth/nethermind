@@ -81,8 +81,6 @@ namespace Nethermind.EvmPlayground
         {
             string responseJson = await _jsonRpcClient.Post("eth_getTransactionReceipt", txHash);
             return responseJson;
-//            JsonRpcResponse<TransactionReceipt> response = _serializer.Deserialize<JsonRpcResponse<TransactionReceipt>>(responseJson);
-//            return _serializer.Serialize(response.Result, true);
         }
     }
 }

@@ -37,6 +37,7 @@ namespace Nethermind.Evm.Test
 
         public long GasUsed { get; set; }
         public byte StatusCode { get; set; }
+        public string Error { get; set; }
         
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
@@ -44,10 +45,11 @@ namespace Nethermind.Evm.Test
             StatusCode = Evm.StatusCode.Success;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent)
+        public void MarkAsFailed(Address recipient, long gasSpent, string error)
         {
             GasUsed = gasSpent;
             StatusCode = Evm.StatusCode.Failure;
+            Error = error;
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
