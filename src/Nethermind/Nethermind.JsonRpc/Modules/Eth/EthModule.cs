@@ -401,8 +401,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 _readerWriterLockSlim.EnterWriteLock();
                 BlockHeader block = blockParameter == null ? _blockchainBridge.Head : GetBlock(blockParameter).Data.Header;
-                byte[] result = _blockchainBridge.Call(block, transactionCall.ToTransaction());
-                return ResultWrapper<byte[]>.Success(result);
+                BlockchainBridge.CallOutput result = _blockchainBridge.Call(block, transactionCall.ToTransaction());
+
+                if (result.Error != null)
+                {
+                    return ResultWrapper<byte[]>.Fail($"VM Exception while processing transaction: {result.Error}", ErrorType.ExecutionError);
+                }
+                
+                return ResultWrapper<byte[]>.Success(result.OutputData);
             }
             finally
             {

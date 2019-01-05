@@ -24,5 +24,7 @@ namespace Nethermind.JsonRpc
     {
         Result GetResult();
         object GetData();
+        
+        ErrorType GetErrorType();
     }
 }

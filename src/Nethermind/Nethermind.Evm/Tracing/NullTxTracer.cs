@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs) => throw new InvalidOperationException(ErrorMessage);
 
-        public void MarkAsFailed(Address recipient, long gasSpent) => throw new InvalidOperationException(ErrorMessage);
+        public void MarkAsFailed(Address recipient, long gasSpent, string error) => throw new InvalidOperationException(ErrorMessage);
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new InvalidOperationException(ErrorMessage);
 

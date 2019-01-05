@@ -40,6 +40,7 @@ namespace Nethermind.JsonRpc.Data
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.StatusCode;
+            Error = receipt.Error;
         }
         
         public Keccak TransactionHash { get; set; }
@@ -55,5 +56,6 @@ namespace Nethermind.JsonRpc.Data
         public Bloom LogsBloom { get; set; }
         public Keccak Root { get; set; }
         public BigInteger Status { get; set; }
+        public string Error { get; set; }
     }
 }

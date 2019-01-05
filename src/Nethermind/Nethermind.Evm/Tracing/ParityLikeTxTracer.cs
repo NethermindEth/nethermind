@@ -113,7 +113,7 @@ namespace Nethermind.Evm.Tracing
             _trace.Action.Result = new ParityTraceResult {Output = output, GasUsed = (long) gasSpent};
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent)
+        public void MarkAsFailed(Address recipient, long gasSpent, string error)
         {
             if (_currentCall != null)
             {

@@ -48,11 +48,12 @@ namespace Nethermind.Evm
             DestroyList = destroyList;
             Logs = logs;
             ShouldRevert = shouldRevert;
+            Error = ShouldRevert ? "revert" : null;
         }
 
-        public bool IsError => Error != null;
+        public bool IsError => Error != null && !ShouldRevert;
         
-        public string Error { get; set; }
+        public string Error { get; }
         
         public byte[] Output { get; }
         

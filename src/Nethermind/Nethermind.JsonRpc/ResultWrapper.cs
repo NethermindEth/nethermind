@@ -54,5 +54,10 @@ namespace Nethermind.JsonRpc
         {
             return Data;
         }
+
+        public ErrorType GetErrorType()
+        {
+            return ErrorType;
+        }
     }
 }

@@ -26,6 +26,7 @@ namespace Nethermind.JsonRpc
         MethodNotFound,
         InvalidParams,
         InternalError,
+        ExecutionError,
         ServerError,
         NotFound
     }
