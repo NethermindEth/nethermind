@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Tracing
         bool IsTracingState { get; }
 
         void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs);
-        void MarkAsFailed(Address recipient, long gasSpent, string error);
+        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error);
 
         void StartOperation(int depth, long gas, Instruction opcode, int pc);
         void SetOperationError(string error);

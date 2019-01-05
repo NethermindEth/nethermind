@@ -405,7 +405,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (result.Error != null)
                 {
-                    return ResultWrapper<byte[]>.Fail($"VM Exception while processing transaction: {result.Error}", ErrorType.ExecutionError);
+                    return ResultWrapper<byte[]>.Fail($"VM Exception while processing transaction: {result.Error}", ErrorType.ExecutionError, result.OutputData);
                 }
                 
                 return ResultWrapper<byte[]>.Success(result.OutputData);

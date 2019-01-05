@@ -110,10 +110,10 @@ namespace Nethermind.Evm.Tracing
             }
 
             _trace.Action.To = recipient;
-            _trace.Action.Result = new ParityTraceResult {Output = output, GasUsed = (long) gasSpent};
+            _trace.Action.Result = new ParityTraceResult {Output = output ?? Bytes.Empty, GasUsed = (long) gasSpent};
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, string error)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error)
         {
             if (_currentCall != null)
             {
@@ -133,7 +133,7 @@ namespace Nethermind.Evm.Tracing
             }
             
             _trace.Action.To = recipient;
-            _trace.Action.Result = new ParityTraceResult {Output = Bytes.Empty, GasUsed = (long) gasSpent};
+            _trace.Action.Result = new ParityTraceResult {Output = output ?? Bytes.Empty, GasUsed = (long) gasSpent};
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new NotSupportedException();
@@ -250,7 +250,7 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportCallEnd(long gas, byte[] output)
         {
-            _currentCall.Result.Output = output;
+            _currentCall.Result.Output = output ?? Bytes.Empty;
             _currentCall.Result.GasUsed = _currentCall.Gas - gas;
             PopCall();
         }

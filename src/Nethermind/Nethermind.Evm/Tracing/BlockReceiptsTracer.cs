@@ -50,12 +50,12 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, string error)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error)
         {
             TransactionReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent, error);
             if (_currentTxTracer.IsTracingReceipt)
             {
-                _currentTxTracer.MarkAsFailed(recipient, gasSpent, error);
+                _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error);
             }
         }
 
