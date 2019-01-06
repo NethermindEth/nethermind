@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_call", serialized);
             Assert.AreEqual(1, (response.Result as byte[]).Length);
         }
-
+        
         [Test]
         public void GetNewFilterTest()
         {
