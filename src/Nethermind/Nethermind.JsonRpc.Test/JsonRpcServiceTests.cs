@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Test
         public void GetNewFilterTest()
         {
             IEthModule ethModule = Substitute.For<IEthModule>();
-            ethModule.eth_newFilter(Arg.Any<Filter>()).ReturnsForAnyArgs(x => ResultWrapper<BigInteger>.Success(1));
+            ethModule.eth_newFilter(Arg.Any<Filter>()).ReturnsForAnyArgs(x => ResultWrapper<BigInteger?>.Success(1));
 
             var parameters = new
             {
@@ -126,7 +126,7 @@ namespace Nethermind.JsonRpc.Test
         {
             JsonRpcResponse response = TestRequest<IEthModule>(Substitute.For<IEthModule>(), "incorrect_method");
             Assert.AreEqual(response.Error.Code, JsonRpcService.ErrorCodes[ErrorType.MethodNotFound]);
-            Assert.IsNull(response.Result);
+            Assert.AreEqual(Bytes.Empty, response.Result);
             Assert.AreEqual(response.JsonRpc, "2.0");
         }
 

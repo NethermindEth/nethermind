@@ -131,18 +131,18 @@ namespace Nethermind.JsonRpc
             
             if (missingParamsCount != 0)
             {
-                bool incorrectParametersCount = true;
+                bool incorrectParametersCount = missingParamsCount != 0;
                 if (missingParamsCount > 0)
                 {
+                    incorrectParametersCount = false;
                     for (int i = 0; i < missingParamsCount; i++)
                     {
                         if (!expectedParameters[expectedParameters.Length - missingParamsCount - 1 + i].IsOptional)
                         {
+                            incorrectParametersCount = true;
                             break;
                         }
                     }
-
-                    incorrectParametersCount = false;
                 }
 
                 if (incorrectParametersCount)

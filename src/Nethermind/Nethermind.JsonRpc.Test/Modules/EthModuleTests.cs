@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.AddressA.Bytes.ToHexString(true), "0x01");
 
-            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0xde0b6b3a7640000\"}");
+            Assert.AreEqual( "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0xde0b6b3a7640000\"}", serialized);
         }
         
         [Test]
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_blockNumber");
 
-            Assert.AreEqual(serialized, $"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x4baf0\"}}");
+            Assert.AreEqual( $"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x4baf0\"}}", serialized);
         }
 
         [Test]
@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.AddressA.Bytes.ToHexString(true), "0x01");
 
-            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32603,\"message\":\"Internal error\",\"data\":null}}");
+            Assert.AreEqual( "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"error\":{\"code\":-32603,\"message\":\"Incorrect head block\",\"data\":null}}", serialized);
         }
 
         [Test]
@@ -91,7 +91,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.AddressA.Bytes.ToHexString(true));
 
-            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters count, expected: 2, actual: 1\",\"data\":null}}");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters count, expected: 2, actual: 1\",\"data\":null}}", serialized);
         }
 
         [Test]
@@ -104,7 +104,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestObject.KeccakA.Bytes.ToHexString(true), "0x01");
 
-            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters\",\"data\":null}}");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters\",\"data\":null}}", serialized);
         }
 
         [Test]
@@ -119,7 +119,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_syncing");
 
-            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x384\",\"highestBlock\":\"0x3e8\"}}");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x384\",\"highestBlock\":\"0x3e8\"}}", serialized);
         }
 
         [Test]
@@ -136,7 +136,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_syncing");
 
-            Assert.AreEqual(serialized, "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":false}");
+            Assert.AreEqual( "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":false}", serialized);
         }
 
         [Test]
@@ -211,7 +211,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getTransactionReceipt", TestObject.KeccakA.ToString());
 
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x0\"}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x0\",\"error\":\"error\"}}", serialized);
         }
         
         [Test]
