@@ -268,7 +268,7 @@ namespace Nethermind.Evm
             {
                 if (statusCode == StatusCode.Failure)
                 {
-                    txTracer.MarkAsFailed(recipient, spentGas, substate.ShouldRevert ? substate.Output : Bytes.Empty, substate.Error);
+                    txTracer.MarkAsFailed(recipient, spentGas, (substate?.ShouldRevert ?? false) ? substate.Output : Bytes.Empty, substate?.Error);
                 }
                 else
                 {
