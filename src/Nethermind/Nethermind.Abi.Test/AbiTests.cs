@@ -32,232 +32,295 @@ namespace Nethermind.Abi.Test
     {
         private readonly AbiEncoder _abiEncoder = new AbiEncoder();
 
-        [Test]
-        public void Dynamic_array_of_dynamic_array_of_uint()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Dynamic_array_of_dynamic_array_of_uint(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiArray(new AbiArray(AbiType.UInt));
             AbiSignature signature = new AbiSignature("abc", type);
             BigInteger[] element = {1, 2, 3};
             BigInteger[][] data = {element, element};
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, new object[] {data});
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] {data});
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
-        [Test]
-        public void Dynamic_array_of_dynamic_array_of_uint_empty()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Dynamic_array_of_dynamic_array_of_uint_empty(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiArray(new AbiArray(AbiType.UInt));
             AbiSignature signature = new AbiSignature("abc", type);
             BigInteger[] data = { };
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
-        [Test]
-        public void Dynamic_array_of_string()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Dynamic_array_of_string(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiArray(AbiType.String);
             AbiSignature signature = new AbiSignature("abc", type);
             string[] data = {"a", "bc", "def"};
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, new object[] {data});
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] {data});
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
-        [Test]
-        public void Dynamic_array_of_uint()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Dynamic_array_of_uint(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiArray(AbiType.UInt);
             AbiSignature signature = new AbiSignature("abc", type);
             BigInteger[] data = {1, 2, 3};
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
-        [Test]
-        public void Fixed_array_of_fixed_array_of_uint()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Fixed_array_of_fixed_array_of_uint(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiFixedLengthArray(new AbiFixedLengthArray(AbiType.UInt, 2), 3);
             BigInteger[] element = {1, 1};
             BigInteger[][] data = {element, element, element};
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, new object[] {data});
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] {data});
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
-        [Test]
-        public void Fixed_array_of_string()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Fixed_array_of_string(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiFixedLengthArray(AbiType.String, 3);
             AbiSignature signature = new AbiSignature("abc", type);
             string[] data = {"a", "bc", "def"};
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, new object[] {data});
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] {data});
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
-        [Test]
-        public void Fixed_array_of_uint()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Fixed_array_of_uint(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiFixedLengthArray(AbiType.UInt, 2);
             BigInteger[] data = {1, 1};
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
-        [Test]
-        public void Test_bytes()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_bytes(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiBytes(19);
             byte[] data = new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
         }
 
-        [Test]
-        public void Test_bytes_invalid_length()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_bytes_invalid_length(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiBytes(19);
             byte[] data = new byte[23];
             AbiSignature signature = new AbiSignature("abc", type);
-            Assert.Throws<AbiException>(() => _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data));
+            Assert.Throws<AbiException>(() => _abiEncoder.Encode(encodingStyle, signature, data));
         }
 
-        [Test]
-        public void Test_dynamic_bytes()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_dynamic_bytes(AbiEncodingStyle encodingStyle)
         {
             AbiType type = AbiType.DynamicBytes;
             byte[] data = new byte[17] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
         }
 
-        [Test]
-        public void Test_fixed()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_fixed(AbiEncodingStyle encodingStyle)
         {
             AbiFixed type = AbiType.Fixed;
             BigRational data = BigRational.FromBigInt(123456789) * BigRational.Reciprocal(BigRational.Pow(BigRational.FromInt(10), type.Precision));
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
-        [Test]
-        public void Test_single_address()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_single_address(AbiEncodingStyle encodingStyle)
         {
             AbiType type = AbiType.Address;
             AbiSignature signature = new AbiSignature("abc", type);
             Address arg = new Address(Keccak.OfAnEmptyString);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, arg);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, arg);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], arg);
         }
 
-        [Test]
-        public void Test_single_bool()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_single_bool(AbiEncodingStyle encodingStyle)
         {
             AbiType type = AbiType.Bool;
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, true);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, true);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(true, arguments[0]);
         }
 
-        [Test]
-        public void Test_single_function()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_single_function(AbiEncodingStyle encodingStyle)
         {
             AbiType type = AbiType.Function;
             byte[] data = new byte[24];
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
         }
 
-        [Test]
-        public void Test_single_int()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_single_int(AbiEncodingStyle encodingStyle)
         {
             AbiType type = AbiType.Int;
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, BigInteger.MinusOne);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, BigInteger.MinusOne);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(BigInteger.MinusOne, arguments[0]);
         }
 
-        [Test]
-        public void Test_single_uint()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_single_uint(AbiEncodingStyle encodingStyle)
         {
             AbiType type = AbiType.UInt;
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, BigInteger.Zero);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, BigInteger.Zero);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(BigInteger.Zero, arguments[0]);
         }
-        
-        [Test]
-        public void Test_single_uint32()
+
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_single_uint32(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiUInt(32);
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, 123U);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, 123U);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(new BigInteger(123U), arguments[0]);
         }
 
-        [Test]
-        public void Test_string()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_string(AbiEncodingStyle encodingStyle)
         {
             AbiType type = AbiType.String;
             string data = "def";
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
-        [Test]
-        public void Test_ufixed()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_ufixed(AbiEncodingStyle encodingStyle)
         {
             AbiUFixed type = AbiType.UFixed;
 
             BigRational data = BigRational.FromBigInt(-123456789) * BigRational.Reciprocal(BigRational.Pow(BigRational.FromInt(10), type.Precision));
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
-        [Test]
-        public void Test_single_address_no_signature()
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_single_address_no_signature(AbiEncodingStyle encodingStyle)
         {
             AbiType type = AbiType.Address;
             AbiSignature signature = new AbiSignature("abc", type);
             Address arg = new Address(Keccak.OfAnEmptyString);
             byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.None, signature, arg);
-            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.None, signature , encoded);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.None, signature, encoded);
             Assert.AreEqual(arguments[0], arg);
         }
-        
-        [Test]
-        public void Test_packed()
+
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_packed(AbiEncodingStyle encodingStyle)
         {
             Keccak headerId = Keccak.Compute("headerId");
             uint expiryTime = (uint) new Timestamp().EpochSeconds + 86000;
             UInt256 value = 1.Ether();
             uint units = 10U;
             byte[] salt = new byte[16];
-            
+
             AbiSignature abiDef = new AbiSignature("example",
                 new AbiBytes(32),
                 new AbiUInt(32),
@@ -266,11 +329,11 @@ namespace Nethermind.Abi.Test
                 new AbiBytes(16),
                 AbiType.Address,
                 AbiType.Address);
-            
+
             byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.Packed, abiDef, headerId.Bytes, units, value, expiryTime, salt, Address.Zero, Address.Zero);
             Assert.AreEqual(108, encoded.Length);
         }
-        
+
         /// <summary>
         ///     http://solidity.readthedocs.io/en/develop/abi-spec.html
         /// </summary>

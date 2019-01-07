@@ -60,8 +60,8 @@ namespace Nethermind.Abi
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            BigInteger lengthData = data.Slice(position, UInt.LengthInBytes).ToUnsignedBigInteger();
-            return (lengthData, position + UInt.LengthInBytes);
+            BigInteger lengthData = data.Slice(position, (packed ? LengthInBytes : UInt.LengthInBytes)).ToUnsignedBigInteger();
+            return (lengthData, position + (packed ? LengthInBytes : UInt.LengthInBytes));
         }
 
         public (BigInteger, int) DecodeUInt(byte[] data, int position, bool packed)

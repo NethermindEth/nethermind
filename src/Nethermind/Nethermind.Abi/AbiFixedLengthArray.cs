@@ -50,30 +50,14 @@ namespace Nethermind.Abi
 
             if (_elementType.IsDynamic)
             {
-                BigInteger currentOffset = (Length - 1) * UInt.LengthInBytes;
-                int lengthsPosition = position;
-                for (int i = 0; i < Length; i++)
-                {
-                    if (i != 0)
-                    {    
-                        (currentOffset, lengthsPosition) = UInt.DecodeUInt(data, lengthsPosition, packed);
-                    }
-
-                    object element;
-                    (element, currentOffset) = _elementType.Decode(data, position + (int)currentOffset, packed);
-                    result.SetValue(element, i);
-                }
-
-                position = (int)currentOffset;
+                position += (Length - 1) * UInt.LengthInBytes;
             }
-            else
+
+            for (int i = 0; i < Length; i++)
             {
-                for (int i = 0; i < Length; i++)
-                {
-                    (object element, int newPosition) = _elementType.Decode(data, position, packed);
-                    result.SetValue(element, i);
-                    position = newPosition;
-                }
+                (object element, int newPosition) = _elementType.Decode(data, position, packed);
+                result.SetValue(element, i);
+                position = newPosition;
             }
 
             return (result, position);
@@ -98,8 +82,8 @@ namespace Nethermind.Abi
                         encodedItems[Length + i - 1] = _elementType.Encode(o, packed);
                         if (i != 0)
                         {
-                            currentOffset += new BigInteger(encodedItems[Length + i - 1].Length);
                             encodedItems[i - 1] = UInt.Encode(currentOffset, packed);
+                            currentOffset += new BigInteger(encodedItems[Length + i - 1].Length);
                         }
 
                         i++;

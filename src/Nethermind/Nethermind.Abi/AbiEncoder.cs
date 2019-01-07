@@ -106,9 +106,11 @@ namespace Nethermind.Abi
             return $"{functionName}({typeList})";
         }
 
-        public object[] Decode(AbiEncodingStyle abiEncodingStyle, AbiSignature signature, byte[] data)
+        public object[] Decode(AbiEncodingStyle encodingStyle, AbiSignature signature, byte[] data)
         {
-            bool packed = (abiEncodingStyle & AbiEncodingStyle.Packed) == AbiEncodingStyle.Packed; 
+            bool packed = (encodingStyle & AbiEncodingStyle.Packed) == AbiEncodingStyle.Packed; 
+            bool includeSig = encodingStyle == AbiEncodingStyle.IncludeSignature;
+            int sigOffset = includeSig ? 4 : 0;
             
             string[] argTypeNames = new string[signature.Types.Length];
             for (int i = 0; i < signature.Types.Length; i++)
@@ -117,7 +119,7 @@ namespace Nethermind.Abi
             }
 
             int position = 0;
-            if (abiEncodingStyle == AbiEncodingStyle.IncludeSignature)
+            if (encodingStyle == AbiEncodingStyle.IncludeSignature)
             {
                 if (!Bytes.AreEqual(data.Slice(0, 4), ComputeAddress(signature)))
                 {
@@ -137,7 +139,7 @@ namespace Nethermind.Abi
                 {
                     // TODO: do not have to decode this - can just jump 32 and check if first call and use dynamic position
                     (BigInteger offset, int nextPosition) = AbiType.UInt.DecodeUInt(data, position, packed);
-                    (arguments[i], dynamicPosition) = type.Decode(data, 4 + (int)offset, packed);
+                    (arguments[i], dynamicPosition) = type.Decode(data, sigOffset + (int)offset, packed);
                     position = nextPosition;
                 }
                 else
