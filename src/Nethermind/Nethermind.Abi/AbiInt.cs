@@ -57,18 +57,18 @@ namespace Nethermind.Abi
 
         public override string Name => $"int{Length}";
 
-        public override (object, int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             byte[] input = data.Slice(position, LengthInBytes);
             return (input.ToSignedBigInteger(LengthInBytes), position + LengthInBytes);
         }
 
-        public (BigInteger, int) DecodeInt(byte[] data, int position)
+        public (BigInteger, int) DecodeInt(byte[] data, int position, bool packed)
         {
-            return ((BigInteger, int))Decode(data, position);
+            return ((BigInteger, int))Decode(data, position, packed);
         }
 
-        public override byte[] Encode(object arg)
+        public override byte[] Encode(object arg, bool packed)
         {
             if (arg is BigInteger input)
             {

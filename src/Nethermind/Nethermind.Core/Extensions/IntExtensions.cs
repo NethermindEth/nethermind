@@ -92,5 +92,16 @@ namespace Nethermind.Core.Extensions
 
             return bytes;
         }
+        
+        public static byte[] ToBigEndianByteArray(this uint value)
+        {
+            byte[] bytes = BitConverter.GetBytes(value);
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(bytes);
+            }
+
+            return bytes;
+        }
     }
 }

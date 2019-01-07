@@ -49,9 +49,9 @@ namespace Nethermind.Abi
             return true;
         }
 
-        public abstract (object, int) Decode(byte[] data, int position);
+        public abstract (object, int) Decode(byte[] data, int position, bool packed);
 
-        public abstract byte[] Encode(object arg);
+        public abstract byte[] Encode(object arg, bool packed);
 
         public override string ToString()
         {

@@ -39,25 +39,25 @@ namespace Nethermind.Abi
 
         public override Type CSharpType { get; } = typeof(byte[]);
 
-        public override (object, int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            (BigInteger length, int currentPosition) = UInt.DecodeUInt(data, position);
+            (BigInteger length, int currentPosition) = UInt.DecodeUInt(data, position, packed);
             int paddingSize = (1 + (int) length / PaddingMultiple) * PaddingMultiple;
             return (data.Slice(currentPosition, (int) length), currentPosition + paddingSize);
         }
 
-        public override byte[] Encode(object arg)
+        public override byte[] Encode(object arg, bool packed)
         {
             if (arg is byte[] input)
             {
                 int paddingSize = (1 + input.Length / PaddingMultiple) * PaddingMultiple;
-                byte[] lengthEncoded = UInt.Encode(new BigInteger(input.Length));
+                byte[] lengthEncoded = UInt.Encode(new BigInteger(input.Length), packed);
                 return Bytes.Concat(lengthEncoded, Bytes.PadRight(input, paddingSize));
             }
 
             if (arg is string stringInput)
             {
-                return Encode(Encoding.ASCII.GetBytes(stringInput));
+                return Encode(Encoding.ASCII.GetBytes(stringInput), packed);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

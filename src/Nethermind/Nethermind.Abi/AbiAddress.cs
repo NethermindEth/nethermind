@@ -31,25 +31,33 @@ namespace Nethermind.Abi
 
         public override string Name => "address";
 
-        public override byte[] Encode(object arg)
+        public override byte[] Encode(object arg, bool packed)
         {
-            if (arg is Address input)
+            while (true)
             {
-                byte[] bytes = input.Bytes;
-                return UInt.Encode(bytes.ToUnsignedBigInteger());
+                switch (arg)
+                {
+                    case Address input:
+                    {
+                        byte[] bytes = input.Bytes;
+                        return packed ? bytes : bytes.PadLeft(UInt.LengthInBytes);
+                    }
+                    case string stringInput:
+                    {
+                        arg = new Address(stringInput);
+                        continue;
+                    }
+                    default:
+                    {
+                        throw new AbiException(AbiEncodingExceptionMessage);
+                    }
+                }
             }
-
-            if (arg is string stringInput)
-            {
-                return Encode(new Address(stringInput));
-            }
-
-            throw new AbiException(AbiEncodingExceptionMessage);
         }
 
-        public override (object, int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            return (new Address(data.Slice(position + 12, Address.LengthInBytes)), position + UInt.LengthInBytes);
+            return (new Address(data.Slice(position + (packed ? 0 : 12), Address.LengthInBytes)), position + (packed ? Address.LengthInBytes : UInt.LengthInBytes));
         }
     }
 }

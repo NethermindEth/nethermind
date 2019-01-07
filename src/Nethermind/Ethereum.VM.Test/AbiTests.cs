@@ -64,7 +64,7 @@ namespace Ethereum.VM.Test
         {
             AbiEncoder encoder = new AbiEncoder();
             AbiSignature signature = new AbiSignature(abiTest.Name, abiTest.Types);
-            byte[] encoded = encoder.Encode(signature, abiTest.Args).Slice(4);
+            byte[] encoded = encoder.Encode(AbiEncodingStyle.IncludeSignature, signature, abiTest.Args).Slice(4);
             Assert.True(Bytes.AreEqual(abiTest.Result, encoded));
         }
 

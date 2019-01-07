@@ -1080,6 +1080,12 @@ namespace Nethermind.Core.Encoding
                 byte[] bytes = DecodeByteArray();
                 return bytes.Length == 0 ? 0 : bytes.ToInt32();
             }
+            
+            public uint DecodeUInt()
+            {
+                byte[] bytes = DecodeByteArray();
+                return bytes.Length == 0 ? 0 : bytes.ToUInt32();
+            }
 
             public long DecodeLong()
             {

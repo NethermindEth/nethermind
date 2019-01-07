@@ -22,6 +22,7 @@ using MathNet.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Abi.Test
@@ -38,8 +39,8 @@ namespace Nethermind.Abi.Test
             AbiSignature signature = new AbiSignature("abc", type);
             BigInteger[] element = {1, 2, 3};
             BigInteger[][] data = {element, element};
-            byte[] encoded = _abiEncoder.Encode(signature, new object[] {data});
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, new object[] {data});
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
@@ -49,8 +50,8 @@ namespace Nethermind.Abi.Test
             AbiType type = new AbiArray(new AbiArray(AbiType.UInt));
             AbiSignature signature = new AbiSignature("abc", type);
             BigInteger[] data = { };
-            byte[] encoded = _abiEncoder.Encode(signature, data);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature, encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
@@ -60,8 +61,8 @@ namespace Nethermind.Abi.Test
             AbiType type = new AbiArray(AbiType.String);
             AbiSignature signature = new AbiSignature("abc", type);
             string[] data = {"a", "bc", "def"};
-            byte[] encoded = _abiEncoder.Encode(signature, new object[] {data});
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, new object[] {data});
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
@@ -71,8 +72,8 @@ namespace Nethermind.Abi.Test
             AbiType type = new AbiArray(AbiType.UInt);
             AbiSignature signature = new AbiSignature("abc", type);
             BigInteger[] data = {1, 2, 3};
-            byte[] encoded = _abiEncoder.Encode(signature, data);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
@@ -83,8 +84,8 @@ namespace Nethermind.Abi.Test
             BigInteger[] element = {1, 1};
             BigInteger[][] data = {element, element, element};
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(signature, new object[] {data});
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, new object[] {data});
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
@@ -94,8 +95,8 @@ namespace Nethermind.Abi.Test
             AbiType type = new AbiFixedLengthArray(AbiType.String, 3);
             AbiSignature signature = new AbiSignature("abc", type);
             string[] data = {"a", "bc", "def"};
-            byte[] encoded = _abiEncoder.Encode(signature, new object[] {data});
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, new object[] {data});
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
@@ -105,8 +106,8 @@ namespace Nethermind.Abi.Test
             AbiType type = new AbiFixedLengthArray(AbiType.UInt, 2);
             BigInteger[] data = {1, 1};
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(signature, data);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
@@ -116,8 +117,8 @@ namespace Nethermind.Abi.Test
             AbiType type = new AbiBytes(19);
             byte[] data = new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(signature, data);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
         }
 
@@ -127,7 +128,7 @@ namespace Nethermind.Abi.Test
             AbiType type = new AbiBytes(19);
             byte[] data = new byte[23];
             AbiSignature signature = new AbiSignature("abc", type);
-            Assert.Throws<AbiException>(() => _abiEncoder.Encode(signature, data));
+            Assert.Throws<AbiException>(() => _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data));
         }
 
         [Test]
@@ -136,8 +137,8 @@ namespace Nethermind.Abi.Test
             AbiType type = AbiType.DynamicBytes;
             byte[] data = new byte[17] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(signature, data);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
         }
 
@@ -147,8 +148,8 @@ namespace Nethermind.Abi.Test
             AbiFixed type = AbiType.Fixed;
             BigRational data = BigRational.FromBigInt(123456789) * BigRational.Reciprocal(BigRational.Pow(BigRational.FromInt(10), type.Precision));
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(signature, data);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
@@ -158,8 +159,8 @@ namespace Nethermind.Abi.Test
             AbiType type = AbiType.Address;
             AbiSignature signature = new AbiSignature("abc", type);
             Address arg = new Address(Keccak.OfAnEmptyString);
-            byte[] encoded = _abiEncoder.Encode(signature, arg);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, arg);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(arguments[0], arg);
         }
 
@@ -168,8 +169,8 @@ namespace Nethermind.Abi.Test
         {
             AbiType type = AbiType.Bool;
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(signature, true);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, true);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(true, arguments[0]);
         }
 
@@ -179,8 +180,8 @@ namespace Nethermind.Abi.Test
             AbiType type = AbiType.Function;
             byte[] data = new byte[24];
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(signature, data);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
         }
 
@@ -189,8 +190,8 @@ namespace Nethermind.Abi.Test
         {
             AbiType type = AbiType.Int;
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(signature, BigInteger.MinusOne);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, BigInteger.MinusOne);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(BigInteger.MinusOne, arguments[0]);
         }
 
@@ -199,9 +200,19 @@ namespace Nethermind.Abi.Test
         {
             AbiType type = AbiType.UInt;
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(signature, BigInteger.Zero);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, BigInteger.Zero);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(BigInteger.Zero, arguments[0]);
+        }
+        
+        [Test]
+        public void Test_single_uint32()
+        {
+            AbiType type = new AbiUInt(32);
+            AbiSignature signature = new AbiSignature("abc", type);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, 123U);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
+            Assert.AreEqual(new BigInteger(123U), arguments[0]);
         }
 
         [Test]
@@ -210,8 +221,8 @@ namespace Nethermind.Abi.Test
             AbiType type = AbiType.String;
             string data = "def";
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(signature, data);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
@@ -219,14 +230,47 @@ namespace Nethermind.Abi.Test
         public void Test_ufixed()
         {
             AbiUFixed type = AbiType.UFixed;
-            
+
             BigRational data = BigRational.FromBigInt(-123456789) * BigRational.Reciprocal(BigRational.Pow(BigRational.FromInt(10), type.Precision));
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(signature, data);
-            object[] arguments = _abiEncoder.Decode(signature, encoded);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, signature, data);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature , encoded);
             Assert.AreEqual(arguments[0], data);
         }
 
+        [Test]
+        public void Test_single_address_no_signature()
+        {
+            AbiType type = AbiType.Address;
+            AbiSignature signature = new AbiSignature("abc", type);
+            Address arg = new Address(Keccak.OfAnEmptyString);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.None, signature, arg);
+            object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.None, signature , encoded);
+            Assert.AreEqual(arguments[0], arg);
+        }
+        
+        [Test]
+        public void Test_packed()
+        {
+            Keccak headerId = Keccak.Compute("headerId");
+            uint expiryTime = (uint) new Timestamp().EpochSeconds + 86000;
+            UInt256 value = 1.Ether();
+            uint units = 10U;
+            byte[] salt = new byte[16];
+            
+            AbiSignature abiDef = new AbiSignature("example",
+                new AbiBytes(32),
+                new AbiUInt(32),
+                new AbiUInt(96),
+                new AbiUInt(32),
+                new AbiBytes(16),
+                AbiType.Address,
+                AbiType.Address);
+            
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.Packed, abiDef, headerId.Bytes, units, value, expiryTime, salt, Address.Zero, Address.Zero);
+            Assert.AreEqual(108, encoded.Length);
+        }
+        
         /// <summary>
         ///     http://solidity.readthedocs.io/en/develop/abi-spec.html
         /// </summary>
@@ -252,6 +296,7 @@ namespace Nethermind.Abi.Test
                 new AbiBytes(10),
                 AbiType.DynamicBytes);
             byte[] encoded = _abiEncoder.Encode(
+                AbiEncodingStyle.IncludeSignature,
                 signature,
                 new BigInteger(0x123),
                 new BigInteger[] {0x456, 0x789},

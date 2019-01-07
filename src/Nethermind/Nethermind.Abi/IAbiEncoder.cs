@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -18,29 +18,8 @@
 
 namespace Nethermind.Abi
 {
-    public class AbiBool : AbiUInt
+    public interface IAbiEncoder
     {
-        private AbiBool() : base(8)
-        {
-        }
-
-        public static AbiBool Instance = new AbiBool();
-
-        public override string Name => "bool";
-
-        public override byte[] Encode(object arg, bool packed)
-        {
-            if (arg is bool input)
-            {
-                return new[] {input ? (byte) 1 : (byte) 0};
-            }
-
-            throw new AbiException(AbiEncodingExceptionMessage);
-        }
-
-        public override (object, int) Decode(byte[] data, int position, bool packed)
-        {
-            return (data[position] == 1, position + 1);
-        }
+        byte[] Encode(AbiEncodingStyle encodingStyle, AbiSignature signature, params object[] arguments);
     }
 }

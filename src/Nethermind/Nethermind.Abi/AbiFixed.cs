@@ -75,16 +75,16 @@ namespace Nethermind.Abi
         public int Length { get; }
         public int Precision { get; }
 
-        public override (object, int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            (BigInteger nominator, int newPosition) = Int.DecodeInt(data, position);
+            (BigInteger nominator, int newPosition) = Int.DecodeInt(data, position, packed);
             BigRational rational = BigRational.FromBigInt(nominator) * BigRational.Reciprocal(BigRational.Pow(BigRational.FromInt(10), Precision));
             return (rational, newPosition);
         }
 
         private readonly BigInteger _denominator;
 
-        public override byte[] Encode(object arg)
+        public override byte[] Encode(object arg, bool packed)
         {
             if (arg is BigRational input)
             {
@@ -93,7 +93,7 @@ namespace Nethermind.Abi
                     throw new AbiException(AbiEncodingExceptionMessage);
                 }
 
-                return UInt.Encode(input.Numerator);
+                return UInt.Encode(input.Numerator, packed);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

@@ -33,17 +33,17 @@ namespace Nethermind.Abi
 
         public override string Name => "string";
 
-        public override (object, int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            (object bytes, int newPosition) = DynamicBytes.Decode(data, position);
+            (object bytes, int newPosition) = DynamicBytes.Decode(data, position, packed);
             return (Encoding.ASCII.GetString((byte[]) bytes), newPosition);
         }
 
-        public override byte[] Encode(object arg)
+        public override byte[] Encode(object arg, bool packed)
         {
             if (arg is string input)
             {
-                return DynamicBytes.Encode(Encoding.ASCII.GetBytes(input));
+                return DynamicBytes.Encode(Encoding.ASCII.GetBytes(input), packed);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

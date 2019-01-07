@@ -48,12 +48,12 @@ namespace Nethermind.Abi
 
         public override string Name => $"bytes{Length}";
 
-        public override (object, int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            return (data.Slice(position, Length), position + MaxLength);
+            return (data.Slice(position, Length), position + (packed ? Length : MaxLength));
         }
 
-        public override byte[] Encode(object arg)
+        public override byte[] Encode(object arg, bool packed)
         {
             if (arg is byte[] input)
             {
@@ -62,12 +62,12 @@ namespace Nethermind.Abi
                     throw new AbiException(AbiEncodingExceptionMessage);
                 }
 
-                return Bytes.PadRight(input, MaxLength);
+                return input.PadRight(packed ? Length : MaxLength);
             }
 
             if (arg is string stringInput)
             {
-                return Encode(Encoding.ASCII.GetBytes(stringInput));
+                return Encode(Encoding.ASCII.GetBytes(stringInput), packed);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

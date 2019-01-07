@@ -44,7 +44,7 @@ namespace Nethermind.Abi
 
         public override string Name => $"{_elementType}[{Length}]";
 
-        public override (object, int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             Array result = Array.CreateInstance(_elementType.CSharpType, Length);
 
@@ -56,11 +56,11 @@ namespace Nethermind.Abi
                 {
                     if (i != 0)
                     {    
-                        (currentOffset, lengthsPosition) = UInt.DecodeUInt(data, lengthsPosition);
+                        (currentOffset, lengthsPosition) = UInt.DecodeUInt(data, lengthsPosition, packed);
                     }
 
                     object element;
-                    (element, currentOffset) = _elementType.Decode(data, position + (int)currentOffset);
+                    (element, currentOffset) = _elementType.Decode(data, position + (int)currentOffset, packed);
                     result.SetValue(element, i);
                 }
 
@@ -70,7 +70,7 @@ namespace Nethermind.Abi
             {
                 for (int i = 0; i < Length; i++)
                 {
-                    (object element, int newPosition) = _elementType.Decode(data, position);
+                    (object element, int newPosition) = _elementType.Decode(data, position, packed);
                     result.SetValue(element, i);
                     position = newPosition;
                 }
@@ -79,7 +79,7 @@ namespace Nethermind.Abi
             return (result, position);
         }
 
-        public override byte[] Encode(object arg)
+        public override byte[] Encode(object arg, bool packed)
         {
             if (arg is Array input)
             {
@@ -95,11 +95,11 @@ namespace Nethermind.Abi
                     int i = 0;
                     foreach (object o in input)
                     {
-                        encodedItems[Length + i - 1] = _elementType.Encode(o);
+                        encodedItems[Length + i - 1] = _elementType.Encode(o, packed);
                         if (i != 0)
                         {
                             currentOffset += new BigInteger(encodedItems[Length + i - 1].Length);
-                            encodedItems[i - 1] = UInt.Encode(currentOffset);
+                            encodedItems[i - 1] = UInt.Encode(currentOffset, packed);
                         }
 
                         i++;
@@ -113,7 +113,7 @@ namespace Nethermind.Abi
                     int i = 0;
                     foreach (object o in input)
                     {
-                        encodedItems[i++] = _elementType.Encode(o);
+                        encodedItems[i++] = _elementType.Encode(o, packed);
                     }
 
                     return Bytes.Concat(encodedItems);
