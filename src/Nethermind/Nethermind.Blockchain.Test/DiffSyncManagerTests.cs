@@ -19,11 +19,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
@@ -40,13 +43,21 @@ namespace Nethermind.Blockchain.Test
     public class DiffSyncManagerTests
     {
         private static Block _genesisBlock = Build.A.Block.Genesis.TestObject;
-        
+
         private class SyncPeerMock : ISynchronizationPeer
-        {   
+        {
+            private readonly bool _causeTimeoutOnInit;
+            private readonly bool _causeTimeoutOnBlocks;
             public List<Block> Blocks { get; set; } = new List<Block>();
 
-            public SyncPeerMock(string peerName)
+            public Block HeadBlock => Blocks.Last();
+
+            public BlockHeader HeadHeader => HeadBlock.Header;
+
+            public SyncPeerMock(string peerName, bool causeTimeoutOnInit = false, bool causeTimeoutOnBlocks = false)
             {
+                _causeTimeoutOnInit = causeTimeoutOnInit;
+                _causeTimeoutOnBlocks = causeTimeoutOnBlocks;
                 NodeStats = new NodeStatsLight(new Node(NodeId), new StatsConfig(), LimboLogs.Instance);
                 Blocks.Add(_genesisBlock);
                 ClientId = peerName;
@@ -62,6 +73,11 @@ namespace Nethermind.Blockchain.Test
 
             public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
             {
+                if (_causeTimeoutOnBlocks)
+                {
+                    throw new TimeoutException();
+                }
+
                 Block[] result = new Block[blockHashes.Length];
                 for (int i = 0; i < blockHashes.Length; i++)
                 {
@@ -81,7 +97,7 @@ namespace Nethermind.Blockchain.Test
             {
                 if (skip != 0)
                 {
-                    throw new NotImplementedException();
+                    throw new TimeoutException();
                 }
 
                 int filled = 0;
@@ -98,6 +114,11 @@ namespace Nethermind.Blockchain.Test
                     {
                         result[filled++] = block.Header;
                     }
+                    
+                    if (filled >= maxBlocks)
+                    {
+                        break;
+                    }
                 }
 
                 return Task.FromResult(result);
@@ -105,11 +126,6 @@ namespace Nethermind.Blockchain.Test
 
             public Task<BlockHeader[]> GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
             {
-                if (skip != 0)
-                {
-                    throw new NotImplementedException();
-                }
-
                 int filled = 0;
                 bool started = false;
                 BlockHeader[] result = new BlockHeader[maxBlocks];
@@ -124,6 +140,11 @@ namespace Nethermind.Blockchain.Test
                     {
                         result[filled++] = block.Header;
                     }
+
+                    if (filled >= maxBlocks)
+                    {
+                        break;
+                    }
                 }
 
                 return Task.FromResult(result);
@@ -131,16 +152,31 @@ namespace Nethermind.Blockchain.Test
 
             public Task<Keccak> GetHeadBlockHash(CancellationToken token)
             {
+                if (_causeTimeoutOnInit)
+                {
+                    return Task.FromException<Keccak>(new TimeoutException());
+                }
+
                 return Task.FromResult(Blocks.Last().Hash);
             }
 
             public Task<UInt256> GetHeadBlockNumber(CancellationToken token)
             {
+                if (_causeTimeoutOnInit)
+                {
+                    return Task.FromException<UInt256>(new TimeoutException());
+                }
+
                 return Task.FromResult(Blocks.Last().Number);
             }
 
             public Task<UInt256> GetHeadDifficulty(CancellationToken token)
             {
+                if (_causeTimeoutOnInit)
+                {
+                    throw new TimeoutException();
+                }
+
                 return Task.FromResult(Blocks.Last().Difficulty);
             }
 
@@ -161,27 +197,16 @@ namespace Nethermind.Blockchain.Test
             {
                 throw new NotImplementedException();
             }
-        }
 
-        private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(5000);
-
-        public class MockPerfService : IPerfService
-        {
-            public Guid StartPerfCalc()
+            public void AddBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
             {
-                return Guid.NewGuid();
+                Block block = Blocks.Last();
+                for (UInt256 j = block.Number; j < i; j++)
+                {
+                    block = Build.A.Block.WithParent(block).WithExtraData(j < branchStart ? Bytes.Empty : new byte[] {branchIndex}).TestObject;
+                    Blocks.Add(block);
+                }
             }
-
-            public void EndPerfCalc(Guid id, string logMsg)
-            {
-            }
-
-            public long? EndPerfCalc(Guid id)
-            {
-                return 0;
-            }
-
-            public bool LogOnDebug { get; set; } = false;
         }
 
         public class When
@@ -209,8 +234,12 @@ namespace Nethermind.Blockchain.Test
                     TestTransactionValidator.AlwaysValid,
                     LimboLogs.Instance,
                     new BlockchainConfig(),
-                    new MockPerfService(),
+                    new PerfService(LimboLogs.Instance),
                     NullReceiptStorage.Instance);
+
+
+                SyncManager.Start();
+                SyncManager.SyncEvent += (sender, args) => TestContext.WriteLine(args.SyncStatus);
             }
 
             public SyncingContext BestKnownNumberIs(UInt256 number)
@@ -231,9 +260,15 @@ namespace Nethermind.Blockchain.Test
                 return this;
             }
 
-            public SyncingContext BlockIs(BlockHeader header)
+            public SyncingContext HeaderIs(BlockHeader header)
             {
                 Assert.AreSame(header, _blockHeader);
+                return this;
+            }
+
+            public SyncingContext BlockHasNumber(UInt256 number)
+            {
+                Assert.AreEqual(number, _blockHeader.Number);
                 return this;
             }
 
@@ -252,6 +287,23 @@ namespace Nethermind.Blockchain.Test
                     _blockHeader = BlockTree.Genesis;
                     return this;
                 }
+            }
+
+            public SyncingContext Wait(int milliseconds)
+            {
+                Thread.Sleep(milliseconds);
+                return this;
+            }
+
+            public SyncingContext Wait()
+            {
+                return Wait(WaitTime);
+            }
+
+            public SyncingContext After(Action action)
+            {
+                action();
+                return this;
             }
 
             public SyncingContext BestSuggested
@@ -273,8 +325,34 @@ namespace Nethermind.Blockchain.Test
 
             public SyncingContext AfterPeerIsAdded(ISynchronizationPeer syncPeer)
             {
-                _peers.Add(syncPeer.ClientId, syncPeer);
+                _peers.TryAdd(syncPeer.ClientId, syncPeer);
+                var task = new Task(async () => { await SyncManager.AddPeer(syncPeer); });
+                task.RunSynchronously();
                 return this;
+            }
+
+            public SyncingContext AfterPeerIsRemoved(ISynchronizationPeer syncPeer)
+            {
+                _peers.Remove(syncPeer.ClientId);
+                SyncManager.RemovePeer(syncPeer);
+                return this;
+            }
+
+            public SyncingContext AfterNewBlockMessage(Block block, ISynchronizationPeer peer)
+            {
+                SyncManager.AddNewBlock(block, peer.NodeId);
+                return this;
+            }
+
+            public SyncingContext PeerCountIs(long i)
+            {
+                Assert.AreEqual(i, Metrics.SyncPeers);
+                return this;
+            }
+
+            public SyncingContext WaitAMoment()
+            {
+                return Wait(Moment);
             }
         }
 
@@ -303,5 +381,234 @@ namespace Nethermind.Blockchain.Test
                 .AfterPeerIsAdded(peerA)
                 .BestSuggested.BlockIsSameAsGenesis();
         }
+
+        [Test]
+        public void Can_sync_with_one_peer_straight_and_extend_chain()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(3);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .BestSuggested.HeaderIs(peerA.HeadHeader);
+        }
+
+        [Test]
+        public void Will_ignore_blocks_it_does_not_know_about()
+        {
+            // testing the test framework here
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .After(() => peerA.AddBlocksUpTo(2))
+                .Wait(2000)
+                .BestSuggested.BlockHasNumber(1);
+        }
+
+        [Test]
+        public void Can_extend_chain_by_one_on_new_block_message()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .After(() => peerA.AddBlocksUpTo(2))
+                .AfterNewBlockMessage(peerA.HeadBlock, peerA)
+                .BestSuggested.HeaderIs(peerA.HeadHeader);
+        }
+
+        [Test]
+        public void Can_extend_chain_by_more_than_one_on_new_block_message()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .After(() => peerA.AddBlocksUpTo(8))
+                .AfterNewBlockMessage(peerA.HeadBlock, peerA)
+                .Wait()
+                .BestSuggested.HeaderIs(peerA.HeadHeader);
+        }
+
+        [Test]
+        public void Can_sync_when_best_peer_is_timing_out()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .After(() => peerA.AddBlocksUpTo(8))
+                .AfterNewBlockMessage(peerA.HeadBlock, peerA)
+                .Wait()
+                .BestSuggested.HeaderIs(peerA.HeadHeader);
+        }
+
+        [Test]
+        public void Will_ignore_new_block_that_is_far_ahead()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(1);
+
+            SyncPeerMock badPeer = new SyncPeerMock("B", false, true);
+            badPeer.AddBlocksUpTo(20);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(badPeer)
+                .Wait()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .BestSuggested.BlockHasNumber(1);
+        }
+
+        [Test]
+        public void Will_not_add_same_peer_twice()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .AfterPeerIsAdded(peerA)
+                .WaitAMoment()
+                .PeerCountIs(1)
+                .BestSuggested.BlockHasNumber(1);
+        }
+        
+        [Test]
+        public void Will_remove_peer_when_init_fails()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A", true, true);
+            peerA.AddBlocksUpTo(1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .WaitAMoment()
+                .PeerCountIs(0);
+        }
+
+
+        [Test]
+        public void Can_remove_peers()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerB = new SyncPeerMock("B");
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .AfterPeerIsAdded(peerB)
+                .WaitAMoment()
+                .PeerCountIs(2)
+                .AfterPeerIsRemoved(peerB)
+                .WaitAMoment()
+                .PeerCountIs(1)
+                .AfterPeerIsRemoved(peerA)
+                .WaitAMoment()
+                .PeerCountIs(0);
+        }
+
+        [Test]
+        public void Can_reorg_on_add_peer()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(DiffSyncManager.MaxBatchSize, 0, 0);
+
+            SyncPeerMock peerB = new SyncPeerMock("B");
+            peerB.AddBlocksUpTo(DiffSyncManager.MaxBatchSize * 2, 0, 1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .BestSuggested.HeaderIs(peerA.HeadHeader)
+                .AfterPeerIsAdded(peerB)
+                .Wait()
+                .BestSuggested.HeaderIs(peerB.HeadHeader);
+        }
+
+        [Test]
+        public void Will_not_reorganize_on_same_chain_length()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(10, 0, 0);
+
+            SyncPeerMock peerB = new SyncPeerMock("B");
+            peerB.AddBlocksUpTo(10, 0, 1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .BestSuggested.HeaderIs(peerA.HeadHeader)
+                .AfterPeerIsAdded(peerB)
+                .Wait()
+                .BestSuggested.HeaderIs(peerA.HeadHeader);
+        }
+        
+        [Test]
+        public void Will_not_reorganize_more_than_max_reorg_length()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(DiffSyncManager.MaxReorganizationLength + 1, 0, 0);
+
+            SyncPeerMock peerB = new SyncPeerMock("B");
+            peerB.AddBlocksUpTo(DiffSyncManager.MaxReorganizationLength + 2, 0, 1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .BestSuggested.HeaderIs(peerA.HeadHeader)
+                .AfterPeerIsAdded(peerB)
+                .Wait()
+                .BestSuggested.HeaderIs(peerA.HeadHeader);
+        }
+        
+        [Test]
+        public void Can_sync_more_than_a_batch()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(DiffSyncManager.MaxBatchSize * 3, 0, 0);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .BestSuggested.HeaderIs(peerA.HeadHeader);
+        }
+        
+        [Test]
+        public void Can_sync_exactly_one_batch()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(DiffSyncManager.MaxBatchSize, 0, 0);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .BestSuggested.HeaderIs(peerA.HeadHeader);
+        }
+
+        private const int Moment = 20;
+        private const int WaitTime = 2000;
     }
 }

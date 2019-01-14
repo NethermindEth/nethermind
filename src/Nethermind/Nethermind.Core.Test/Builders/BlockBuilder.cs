@@ -43,6 +43,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
+        public BlockBuilder WithExtraData(byte[] extraData)
+        {
+            TestObjectInternal.Header.ExtraData = extraData;
+            return this;
+        }
+        
         public BlockBuilder WithGasLimit(long gasLimit)
         {
             TestObjectInternal.Header.GasLimit = gasLimit;

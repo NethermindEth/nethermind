@@ -42,6 +42,7 @@ namespace Nethermind.Blockchain
         public const int MinBatchSize = 8;
         private int _batchSize = 256;
         public const int MaxBatchSize = 256;
+        public const int MaxReorganizationLength = 2 * MaxBatchSize;
         private int _sinceLastTimeout = 0;
 
         private readonly ILogger _logger;
@@ -311,7 +312,7 @@ namespace Nethermind.Blockchain
 
             if (_initCancelTokens.TryGetValue(synchronizationPeer.NodeId, out CancellationTokenSource initCancelTokenSource))
             {
-                initCancelTokenSource.Cancel();
+                initCancelTokenSource?.Cancel();
             }
         }
 
@@ -338,7 +339,6 @@ namespace Nethermind.Blockchain
 
             await Task.CompletedTask;
 
-            // TODO: tks: with return before some perf calc that was started will never be finished
             if (_logger.IsInfo) _logger.Info("Sync shutdown complete.. please wait for all components to close");
             _perfService.EndPerfCalc(key, "Close: SynchronizationManager");
         }
@@ -691,7 +691,7 @@ namespace Nethermind.Blockchain
             UInt256 bestNumber = _blockTree.BestKnownNumber;
             //            UInt256 bestDifficulty = _blockTree.BestSuggested.Difficulty;
 
-            const int maxLookup = 2 * MaxBatchSize;
+            const int maxLookup = MaxReorganizationLength;
             int ancestorLookupLevel = 0;
             int emptyBlockListCounter = 0;
             bool isCommonAncestorKnown = false;
@@ -986,6 +986,8 @@ namespace Nethermind.Blockchain
             _batchSize = Math.Max(MinBatchSize, _batchSize / 2);
         }
 
+        public static int InitTimeout = 10000;
+        
         private async Task InitPeerInfo(ISynchronizationPeer peer, CancellationToken token)
         {
             if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {peer.NodeId}");
@@ -993,16 +995,18 @@ namespace Nethermind.Blockchain
             Task<UInt256> getNumberTask = peer.GetHeadBlockNumber(token);
             //            Task<UInt256> getDifficultyTask = peer.GetHeadDifficulty(token);
 
-            await Task.WhenAny(Task.WhenAll(getHashTask, getNumberTask), Task.Delay(10000, token)).ContinueWith(
+            Task delayTask = Task.Delay(InitTimeout, token);
+            Task firstToComplete = await Task.WhenAny(Task.WhenAll(getHashTask, getNumberTask), delayTask);
+            await firstToComplete.ContinueWith(
                 t =>
-                {
-                    if (t.IsFaulted)
+                {   
+                    if (firstToComplete.IsFaulted || firstToComplete == delayTask)
                     {
                         if (_logger.IsTrace) _logger.Trace($"InitPeerInfo failed for node: {peer.NodeId}{Environment.NewLine}{t.Exception}");
                         RemovePeer(peer);
                         SyncEvent?.Invoke(this, new SyncEventArgs(peer, SyncStatus.InitFailed));
                     }
-                    else if (t.IsCanceled)
+                    else if (firstToComplete.IsCanceled)
                     {
                         RemovePeer(peer);
                         SyncEvent?.Invoke(this, new SyncEventArgs(peer, SyncStatus.InitCancelled));
