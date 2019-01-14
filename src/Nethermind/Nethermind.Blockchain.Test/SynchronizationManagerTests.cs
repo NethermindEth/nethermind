@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Test
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
             ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 
-            _manager = new SynchronizationManager(_stateDb, _blockTree, blockValidator, headerValidator, transactionValidator, NullLogManager.Instance, quickConfig, new PerfService(NullLogManager.Instance), _receiptStorage);
+            _manager = new DiffSyncManager(_stateDb, _blockTree, blockValidator, headerValidator, transactionValidator, NullLogManager.Instance, quickConfig, new PerfService(NullLogManager.Instance), _receiptStorage);
         }
 
         private IDb _stateDb;
@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test
         private IBlockTree _remoteBlockTree;
         private IReceiptStorage _receiptStorage;
         private Block _genesisBlock;
-        private SynchronizationManager _manager;
+        private DiffSyncManager _manager;
 
         [Test]
         public async Task Retrieves_missing_blocks_in_batches()
