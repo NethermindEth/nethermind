@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain
         Block Find(Keccak hash);
         Block Find(UInt256 number);
         Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);
-        void AddNewBlock(Block block, NodeId receivedFrom);
+        void AddNewBlock(Block block, NodeId nodeWhoSentTheBlock);
         Task AddPeer(ISynchronizationPeer synchronizationPeer);
         void RemovePeer(ISynchronizationPeer synchronizationPeer);
         int GetPeerCount();

@@ -160,11 +160,11 @@ namespace Nethermind.Blockchain.TransactionPools
 
             // check nonce
 
-            NewPending?.Invoke(this, new TransactionEventArgs(transaction));
             List<ISynchronizationPeer> selectedPeers = SelectPeers(transaction);
             NotifyPeers(selectedPeers, transaction);
 
             FilterAndStoreTransaction(transaction, blockNumber);
+            NewPending?.Invoke(this, new TransactionEventArgs(transaction));
             return AddTransactionResult.Added;
         }
 
