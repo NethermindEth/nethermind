@@ -388,6 +388,12 @@ namespace Nethermind.Blockchain
                 return;
             }
 
+            if (number > _blockTree.BestKnownNumber + 8)
+            {
+                // ignore blocks when syncing in a simple non-locking way
+                return;
+            }
+            
             if (number > peerInfo.HeadNumber)
             {
                 peerInfo.HeadNumber = number;
