@@ -121,7 +121,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             StatusMessage statusMessage = new StatusMessage();
             statusMessage.ChainId = (UInt256) SyncManager.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
-            statusMessage.TotalDifficulty = head.Difficulty;
+            statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
             statusMessage.BestHash = head.Hash;
             statusMessage.GenesisHash = SyncManager.Genesis.Hash;
 
