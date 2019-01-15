@@ -560,6 +560,10 @@ namespace Nethermind.Blockchain
                         _lastSyncPeersCount = initPeerCount;
                         if (_logger.IsInfo) _logger.Info($"Sync peers {initPeerCount}({_peers.Count})/{_blockchainConfig.SyncPeersMaxCount} {(_currentSyncingPeerInfo != null ? $"(sync in progress with {_currentSyncingPeerInfo?.ToString()})" : string.Empty)}");
                     }
+                    else if(initPeerCount == 0)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Sync peers 0, searching or peers to sync with...");
+                    }
 
                     CheckIfSyncingWithFastestPeer();
                 }

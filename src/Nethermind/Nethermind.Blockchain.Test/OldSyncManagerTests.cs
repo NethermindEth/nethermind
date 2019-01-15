@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public async Task Retrieves_missing_blocks_in_batches()
         {
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SynchronizationManager.MaxBatchSize * 2).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(QueueBasedSyncManager.MaxBatchSize * 2).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreSame(addPeerTask, firstToComplete);
             
             resetEvent.WaitOne(_standardTimeoutUnit);
-            Assert.AreEqual(SynchronizationManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(QueueBasedSyncManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
 
         [Test]
@@ -105,7 +105,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public async Task Syncs_when_knows_more_blocks()
         {
-            _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SynchronizationManager.MaxBatchSize * 2).TestObject;
+            _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(QueueBasedSyncManager.MaxBatchSize * 2).TestObject;
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
@@ -117,13 +117,13 @@ namespace Nethermind.Blockchain.Test
             Assert.AreSame(addPeerTask, firstToComplete);
             
             resetEvent.WaitOne(_standardTimeoutUnit);
-            Assert.AreEqual(SynchronizationManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(QueueBasedSyncManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
 
         [Test]
         public async Task Can_resync_if_missed_a_block()
         {
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SynchronizationManager.MaxBatchSize).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(QueueBasedSyncManager.MaxBatchSize).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
             SemaphoreSlim semaphore = new SemaphoreSlim(0);
@@ -136,19 +136,19 @@ namespace Nethermind.Blockchain.Test
             Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(_standardTimeoutUnit));
             Assert.AreSame(addPeerTask, firstToComplete);
 
-            BlockTreeBuilder.ExtendTree(_remoteBlockTree, SynchronizationManager.MaxBatchSize * 2);
+            BlockTreeBuilder.ExtendTree(_remoteBlockTree, QueueBasedSyncManager.MaxBatchSize * 2);
             _manager.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.NodeId);
             
             semaphore.Wait(_standardTimeoutUnit);
             semaphore.Wait(_standardTimeoutUnit);
 
-            Assert.AreEqual(SynchronizationManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(QueueBasedSyncManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
 
         [Test]
         public async Task Can_add_new_block()
         {
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SynchronizationManager.MaxBatchSize).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(QueueBasedSyncManager.MaxBatchSize).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Test
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.AreEqual(SynchronizationManager.MaxBatchSize - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(QueueBasedSyncManager.MaxBatchSize - 1, (int) _blockTree.BestSuggested.Number);
         }
 
         [Test]

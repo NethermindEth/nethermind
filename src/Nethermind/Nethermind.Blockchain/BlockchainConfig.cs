@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain
 {
     public class BlockchainConfig : IBlockchainConfig
     {
-        public int SyncTimerInterval { get; set; } = 5000;
+        public int SyncTimerInterval { get; set; } = 1000;
         public int SyncPeersMaxCount { get; set; } = 25;
         public long MinAvailableBlockDiffForSyncSwitch { get; } = 100;
         public long MinLatencyDiffForSyncSwitch { get; } = 5;

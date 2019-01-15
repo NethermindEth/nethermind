@@ -673,7 +673,7 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            _syncManager = new SynchronizationManager(
+            _syncManager = new QueueBasedSyncManager(
                 _dbProvider.StateDb,
                 _blockTree,
                 _blockValidator,
