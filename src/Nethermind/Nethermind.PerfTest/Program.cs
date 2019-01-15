@@ -346,7 +346,7 @@ namespace Nethermind.PerfTest
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumSigner, transactionPool), _logManager, true, true);
 
             /* load ChainSpec and init */
-            ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "ropsten.json"));
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
