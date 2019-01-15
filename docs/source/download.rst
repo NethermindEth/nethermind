@@ -13,10 +13,9 @@ Windows
 Linux (Ubuntu 16.04 18.04 - reach out on gitter for other distributions)
 
  * sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6 unzip
- * curl https://nethdev.blob.core.windows.net/builds/nethermind-linux-amd64-0.9.1-8bf2977.zip --output 
- * nethermind_0_9_2.zip
- * unzip nethermind_0_9_2.zip -d nethermind_0_9_2
- * cd nethermind_0_9_2
+ * curl [Linux_package_address] --output nethermind.zip
+ * unzip nethermind.zip -d nethermind
+ * cd nethermind
  * chmod +x Nethermind.Runner
  * ./Nethermind.Runner
 
