@@ -513,7 +513,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return blocks;
         }
 
-        async Task<UInt256> ISynchronizationPeer.GetHeadBlockNumber(CancellationToken token)
+        async Task<BlockHeader> ISynchronizationPeer.GetHeadBlockHeader(CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.StartingBlockHash = _remoteHeadBlockHash;
@@ -522,19 +522,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.Skip = 0;
 
             BlockHeader[] headers = await SendRequest(msg, token);
-            return headers[0]?.Number ?? 0;
-        }
-
-        async Task<UInt256> ISynchronizationPeer.GetHeadDifficulty(CancellationToken token)
-        {
-            var msg = new GetBlockHeadersMessage();
-            msg.StartingBlockHash = _remoteHeadBlockHash;
-            msg.MaxHeaders = 1;
-            msg.Reverse = 0;
-            msg.Skip = 0;
-
-            BlockHeader[] headers = await SendRequest(msg, token);
-            return headers[0]?.Difficulty ?? 0;
+            return headers.Length > 0 ? headers[0] : null;
         }
 
         public void Dispose()

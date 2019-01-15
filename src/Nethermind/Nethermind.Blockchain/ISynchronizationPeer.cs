@@ -37,8 +37,7 @@ namespace Nethermind.Blockchain
         Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token);
-        Task<UInt256> GetHeadBlockNumber(CancellationToken token);
-        Task<UInt256> GetHeadDifficulty(CancellationToken token);
+        Task<BlockHeader> GetHeadBlockHeader(CancellationToken token);
         void SendNewBlock(Block block);
         void SendNewTransaction(Transaction transaction);
         

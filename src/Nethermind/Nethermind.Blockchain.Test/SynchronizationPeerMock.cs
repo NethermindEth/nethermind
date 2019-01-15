@@ -89,19 +89,9 @@ namespace Nethermind.Blockchain.Test
             return Task.FromResult(result);
         }
 
-        public Task<Keccak> GetHeadBlockHash(CancellationToken token)
+        public Task<BlockHeader> GetHeadBlockHeader(CancellationToken token)
         {
-            return Task.FromResult(_blockTree.Head.Hash);
-        }
-
-        public Task<UInt256> GetHeadBlockNumber(CancellationToken token)
-        {
-            return Task.FromResult(_blockTree.Head.Number);
-        }
-
-        public Task<UInt256> GetHeadDifficulty(CancellationToken token)
-        {
-            return Task.FromResult(_blockTree.Head.Difficulty);
+            return Task.FromResult(_blockTree.Head);
         }
 
         public void SendNewBlock(Block block)

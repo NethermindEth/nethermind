@@ -154,34 +154,14 @@ namespace Nethermind.Blockchain.Test
                 return Task.FromResult(result);
             }
 
-            public Task<Keccak> GetHeadBlockHash(CancellationToken token)
+            public Task<BlockHeader> GetHeadBlockHeader(CancellationToken token)
             {
                 if (_causeTimeoutOnInit)
                 {
-                    return Task.FromException<Keccak>(new TimeoutException());
+                    return Task.FromException<BlockHeader>(new TimeoutException());
                 }
 
-                return Task.FromResult(Blocks.Last().Hash);
-            }
-
-            public Task<UInt256> GetHeadBlockNumber(CancellationToken token)
-            {
-                if (_causeTimeoutOnInit)
-                {
-                    return Task.FromException<UInt256>(new TimeoutException());
-                }
-
-                return Task.FromResult(Blocks.Last().Number);
-            }
-
-            public Task<UInt256> GetHeadDifficulty(CancellationToken token)
-            {
-                if (_causeTimeoutOnInit)
-                {
-                    throw new TimeoutException();
-                }
-
-                return Task.FromResult(Blocks.Last().Difficulty);
+                return Task.FromResult(Blocks.Last().Header);
             }
 
             public void SendNewBlock(Block block)
@@ -480,6 +460,7 @@ namespace Nethermind.Blockchain.Test
         }
         
         [Test]
+        [Ignore("Not supported for now - still analyzing this scenario")]
         public void Can_reorg_on_hint_block_message()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -653,6 +634,7 @@ namespace Nethermind.Blockchain.Test
         }
         
         [Test]
+        [Ignore("Not supported for now - still analyzing this scenario")]
         public void Can_extend_chain_on_hint_block_when_high_difficulty_low_number()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
