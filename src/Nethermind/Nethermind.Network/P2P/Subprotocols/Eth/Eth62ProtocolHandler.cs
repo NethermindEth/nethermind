@@ -100,6 +100,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public INodeStats NodeStats => P2PSession.NodeStats;
         public string ClientId { get; set; }
         
+        public UInt256 TotalDifficultyOnSessionStart { get; private set; }
+
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         event EventHandler<ProtocolEventArgs> IProtocolHandler.SubprotocolRequested
         {
@@ -269,6 +271,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 TotalDifficulty = status.TotalDifficulty
             };
 
+            TotalDifficultyOnSessionStart = status.TotalDifficulty;
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
@@ -385,9 +388,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        private void Handle(NewBlockMessage newBlock)
+        private void Handle(NewBlockMessage newBlockMessage)
         {
-            SyncManager.AddNewBlock(newBlock.Block, P2PSession.RemoteNodeId);
+            newBlockMessage.Block.TotalDifficulty = (UInt256)newBlockMessage.TotalDifficulty;
+            SyncManager.AddNewBlock(newBlockMessage.Block, P2PSession.RemoteNodeId);
         }
 
         protected class Request<TMsg, TResult>

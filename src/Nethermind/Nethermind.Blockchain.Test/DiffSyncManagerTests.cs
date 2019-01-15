@@ -71,6 +71,10 @@ namespace Nethermind.Blockchain.Test
 
             public string ClientId { get; }
 
+            public UInt256 TotalDifficultyOnSessionStart =>
+                (UInt256)((Blocks?.LastOrDefault()?.Difficulty ?? UInt256.Zero) * (BigInteger)((UInt256)(Blocks?.Count ?? 0)- UInt256.One)
+                + _genesisBlock.Difficulty);
+
             public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
             {
                 if (_causeTimeoutOnBlocks)
@@ -207,6 +211,16 @@ namespace Nethermind.Blockchain.Test
                     Blocks.Add(block);
                 }
             }
+            
+            public void AddHighDifficultyBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
+            {
+                Block block = Blocks.Last();
+                for (UInt256 j = block.Number; j < i; j++)
+                {
+                    block = Build.A.Block.WithParent(block).WithDifficulty(2000000).WithExtraData(j < branchStart ? Bytes.Empty : new byte[] {branchIndex}).TestObject;
+                    Blocks.Add(block);
+                }
+            }
         }
 
         public class When
@@ -340,6 +354,7 @@ namespace Nethermind.Blockchain.Test
 
             public SyncingContext AfterNewBlockMessage(Block block, ISynchronizationPeer peer)
             {
+                block.TotalDifficulty = (UInt256)(block.Difficulty * ((BigInteger)block.Number + 1));
                 SyncManager.AddNewBlock(block, peer.NodeId);
                 return this;
             }
@@ -420,7 +435,7 @@ namespace Nethermind.Blockchain.Test
                 .AfterPeerIsAdded(peerA)
                 .Wait()
                 .After(() => peerA.AddBlocksUpTo(2))
-                .Wait(2000)
+                .Wait()
                 .BestSuggested.BlockHasNumber(1);
         }
 
@@ -437,6 +452,46 @@ namespace Nethermind.Blockchain.Test
                 .After(() => peerA.AddBlocksUpTo(2))
                 .AfterNewBlockMessage(peerA.HeadBlock, peerA)
                 .BestSuggested.HeaderIs(peerA.HeadHeader);
+        }
+        
+        [Test]
+        public void Can_reorg_on_new_block_message()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(3);
+            
+            SyncPeerMock peerB = new SyncPeerMock("B");
+            peerB.AddBlocksUpTo(3);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .AfterPeerIsAdded(peerB)
+                .Wait()
+                .After(() => peerB.AddBlocksUpTo(6))
+                .AfterNewBlockMessage(peerB.HeadBlock, peerB)
+                .Wait()
+                .BestSuggested.HeaderIs(peerB.HeadHeader);
+        }
+        
+        [Test]
+        public void Can_reorg_on_hint_block_message()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(3);
+            
+            SyncPeerMock peerB = new SyncPeerMock("B");
+            peerB.AddBlocksUpTo(3);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .AfterPeerIsAdded(peerB)
+                .Wait()
+                .After(() => peerB.AddBlocksUpTo(6))
+                .AfterHintBlockMessage(peerB.HeadBlock, peerB)
+                .Wait()
+                .BestSuggested.HeaderIs(peerB.HeadHeader);
         }
         
         [Test]
@@ -572,6 +627,65 @@ namespace Nethermind.Blockchain.Test
                 .Wait()
                 .BestSuggested.HeaderIs(peerB.HeadHeader);
         }
+        
+        [Test]
+        public void Can_reorg_based_on_total_difficulty()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(10, 0, 0);
+
+            SyncPeerMock peerB = new SyncPeerMock("B");
+            peerB.AddHighDifficultyBlocksUpTo(6, 0, 1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .BestSuggested.HeaderIs(peerA.HeadHeader)
+                .AfterPeerIsAdded(peerB)
+                .Wait()
+                .BestSuggested.HeaderIs(peerB.HeadHeader);
+        }
+        
+        [Test]
+        public void Can_extend_chain_on_hint_block_when_high_difficulty_low_number()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(10, 0, 0);
+
+            SyncPeerMock peerB = new SyncPeerMock("B");
+            peerB.AddHighDifficultyBlocksUpTo(5, 0, 1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .AfterPeerIsAdded(peerB)
+                .Wait()
+                .After(() => peerB.AddHighDifficultyBlocksUpTo(6, 0, 1))
+                .AfterHintBlockMessage(peerB.HeadBlock, peerB)
+                .BestSuggested.HeaderIs(peerB.HeadHeader);
+        }
+        
+        [Test]
+        public void Can_extend_chain_on_new_block_when_high_difficulty_low_number()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(10, 0, 0);
+
+            SyncPeerMock peerB = new SyncPeerMock("B");
+            peerB.AddHighDifficultyBlocksUpTo(6, 0, 1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .AfterPeerIsAdded(peerB)
+                .Wait()
+                .After(() => peerB.AddHighDifficultyBlocksUpTo(6, 0, 1))
+                .AfterNewBlockMessage(peerB.HeadBlock, peerB)
+                .BestSuggested.HeaderIs(peerB.HeadHeader);
+        }
 
         [Test]
         public void Will_not_reorganize_on_same_chain_length()
@@ -647,7 +761,7 @@ namespace Nethermind.Blockchain.Test
                 .Stop();
         }
 
-        private const int Moment = 20;
+        private const int Moment = 100;
         private const int WaitTime = 2000;
     }
 }

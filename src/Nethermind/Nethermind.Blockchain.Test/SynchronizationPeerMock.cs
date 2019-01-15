@@ -42,6 +42,7 @@ namespace Nethermind.Blockchain.Test
         public NodeId NodeId { get; set; }
         public INodeStats NodeStats { get; set; }
         public string ClientId { get; set; }
+        public UInt256 TotalDifficultyOnSessionStart => _blockTree.Head.TotalDifficulty ?? 0;
 
         public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
