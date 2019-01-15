@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class SynchronizationManagerTests
     {
-        private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(5000);
+        private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(1000);
         
         [SetUp]
         public void Setup()
@@ -51,7 +51,13 @@ namespace Nethermind.Blockchain.Test
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
             ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 
-            _manager = new DiffSyncManager(_stateDb, _blockTree, blockValidator, headerValidator, transactionValidator, NullLogManager.Instance, quickConfig, new PerfService(NullLogManager.Instance), _receiptStorage);
+            _manager = new QueueBasedSyncManager(_stateDb, _blockTree, blockValidator, headerValidator, transactionValidator, NullLogManager.Instance, quickConfig, new PerfService(NullLogManager.Instance), _receiptStorage);
+        }
+
+        [TearDown]
+        public async Task TearDown()
+        {
+            await _manager.StopAsync();
         }
 
         private IDb _stateDb;
@@ -60,7 +66,7 @@ namespace Nethermind.Blockchain.Test
         private IBlockTree _remoteBlockTree;
         private IReceiptStorage _receiptStorage;
         private Block _genesisBlock;
-        private DiffSyncManager _manager;
+        private ISynchronizationManager _manager;
 
         [Test]
         public async Task Retrieves_missing_blocks_in_batches()
@@ -265,11 +271,9 @@ namespace Nethermind.Blockchain.Test
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
             miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockNumber(CancellationToken.None));
-            miner2.GetHeadBlockHash(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHash(CancellationToken.None));
             miner2.NodeId.Returns(new NodeId(TestObject.PublicKeyB));
 
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()), "number as expected");
-            Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(default(CancellationToken)), "hash as expected");
 
             await _manager.AddPeer(miner2);
             resetEvent.WaitOne(_standardTimeoutUnit);
@@ -304,11 +308,9 @@ namespace Nethermind.Blockchain.Test
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
             miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockNumber(CancellationToken.None));
-            miner2.GetHeadBlockHash(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHash(CancellationToken.None));
             miner2.NodeId.Returns(new NodeId(TestObject.PublicKeyB));
 
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()), "number as expected");
-            Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(default(CancellationToken)), "hash as expected");
 
             await _manager.AddPeer(miner2);
             resetEvent.WaitOne(_standardTimeoutUnit);

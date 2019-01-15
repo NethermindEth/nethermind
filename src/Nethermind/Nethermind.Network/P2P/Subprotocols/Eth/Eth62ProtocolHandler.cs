@@ -513,11 +513,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return blocks;
         }
 
-        Task<Keccak> ISynchronizationPeer.GetHeadBlockHash(CancellationToken token)
-        {
-            return Task.FromResult(_remoteHeadBlockHash);
-        }
-
         async Task<UInt256> ISynchronizationPeer.GetHeadBlockNumber(CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();

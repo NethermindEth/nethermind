@@ -989,11 +989,10 @@ namespace Nethermind.Blockchain
         private async Task InitPeerInfo(ISynchronizationPeer peer, CancellationToken token)
         {
             if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {peer.NodeId}");
-            Task<Keccak> getHashTask = peer.GetHeadBlockHash(token);
             Task<UInt256> getNumberTask = peer.GetHeadBlockNumber(token);
             //            Task<UInt256> getDifficultyTask = peer.GetHeadDifficulty(token);
 
-            await Task.WhenAny(Task.WhenAll(getHashTask, getNumberTask), Task.Delay(10000, token)).ContinueWith(
+            await Task.WhenAny(getNumberTask, Task.Delay(10000, token)).ContinueWith(
                 t =>
                 {
                     if (t.IsFaulted)
