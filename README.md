@@ -16,6 +16,8 @@
 [Linux](http://downloads.nethermind.io)<br/>
 [MacOS](http://downloads.nethermind.io)<br/>
 
+it syncs fully on Mainnet, Ropsten, Rinkeby, Goerli
+
 ## Build (Windows / Linux / MacOS)
 
 ### IDE
