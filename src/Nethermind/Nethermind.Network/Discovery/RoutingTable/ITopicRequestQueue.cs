@@ -1,4 +1,4 @@
-﻿/*
+        /*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,33 +16,39 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security;
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.KeyStore;
+using Nethermind.Network.Config;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
-    public interface INodeTable
+    public interface ITopicRequestQueue
     {
-        void Initialize(NodeId masterNodeKey = null);
-        Node MasterNode { get; }
-        NodeBucket[] Buckets { get; }
-        NodeAddResult AddNode(Node node);
-        void ReplaceNode(Node nodeToRemove, Node nodeToAdd);
-        void RefreshNode(Node node);
+        public TopicRequestQueue()
+        {
+             topicRequestQueueList = new List<TopicRequestQueItem>();
+        }
+        public int Len();
 
-        /// <summary>
-        /// GetClosestNodes to MasterNode
-        /// </summary>
-        Node[] GetClosestNodes();
+        public bool Less(int i, int j);
 
-        /// <summary>
-        /// GetClosestNodes to provided Node
-        /// </summary>
-        Node[] GetClosestNodes(byte[] nodeId);
+        public void Swap(int i, int j);
 
-        /// <summary>
-        /// GetClosestNodes to provided Node hash
-        /// </summary>
-        Node[] GetClosestNodes(Keccak nodeIdHash);
+        public void Push(ITopicRequestQueueItem item);
+
+        public TopicRequestQueueItem Pop();
+
+        public void Update(TopicRequestQueueItem item, long priority);
     }
 }

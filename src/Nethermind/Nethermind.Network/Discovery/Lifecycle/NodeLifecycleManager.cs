@@ -36,9 +36,12 @@ namespace Nethermind.Network.Discovery.Lifecycle
         private readonly INetworkConfig _networkConfig;
         private readonly IDiscoveryMessageFactory _discoveryMessageFactory;
         private readonly IEvictionManager _evictionManager;
+        private readonly ITicketProvider _ticketProvider;
 
         private bool _isPongExpected;
         private bool _isNeighborsExpected;
+
+        private List<Ticket> _pingTickets;
 
         public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, INetworkConfig networkConfig, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats)
         {
@@ -50,6 +53,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             _evictionManager = evictionManager;
             NodeStats = nodeStats;
             ManagedNode = node;
+            _ticketProvider = discoveryManager.ticketProvider;
             UpdateState(NodeLifecycleState.New);
         }
 
@@ -63,6 +67,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         {
             SendPong(discoveryMessage);
 
+            _pingTickets = new List<Ticket>(discoveryMessage.Topics);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
             RefreshNodeContactTime();
             
@@ -79,6 +84,13 @@ namespace Nethermind.Network.Discovery.Lifecycle
             }
 
             _isPongExpected = false;
+
+            try {
+                ticket = pongToTicket(_timestamp.GetTimestamp(), _pingTickets, ManagedNode, discoveryMessage);
+                _ticketProvider.addTicket(_timestamp.GetTimestamp(), discoveryMessage.PingMdc, ticket);
+            } catch (Exception e) {
+                _logger.Trace($"Failure to convert pong to ticket, {e.Message}");
+            }
         }
 
         public void ProcessNeighborsMessage(NeighborsMessage discoveryMessage)
@@ -112,6 +124,65 @@ namespace Nethermind.Network.Discovery.Lifecycle
             SendNeighbors(nodes);
         }
 
+        public void ProcessFindNodeHashMessage(FindNodeHashMessage discoveryMessage)
+        {
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeHashIn);
+            RefreshNodeContactTime();
+
+            var nodes = _nodeTable.GetClosestNodes(new Keccak(discoveryMessage.SearchedNodeIdHash));
+            SendNeighbors(nodes);
+        }
+
+        public void ProcessTopicRegisterMessage(TopicRegisterMessage discoveryMessage) {
+            _logger.Trace("got TopicRegisterPacket");
+            NodeStats.AddNoteStatsEvent(NodeStatsEventType.DiscoveryTopicRegisterIn);
+            RefreshNodeContactTime();
+
+            try {
+                ValidateTopicRegister(discoveryMessage); //TODO: ValidateTopicRegister
+            } catch (Exception e) {
+                    _logger.Trace($"Bad waiting ticket: { e.ToString() }");
+            } finally {
+                _topicTable.useTicket(ManagedNode, 
+                                      discoveryMessage.Pong.TicketSerial,
+                                      discoveryMessage.Topics,
+                                      Int32(idx),
+                                      discoveryMessage.Pong.Expiration,
+                                      discoveryMessage.WaitPeriods
+                            );
+            }
+            // TODO: Change Node state appropriately    
+        }
+        public void ProcessTopicQueryMessage(TopicQueryMessage discoveryMessage) {
+            NodeStats.AddNoteStatsEvent(NodeStatsEventType.DiscoveryTopicQueryIn);
+            RefreshNodeContactTime();
+
+            Topic topic = discoveryMessage.Topic;
+
+            ICollection<Node> results = _topicTable.getEntries(topic);
+
+            if (_ticketProvider.tickets.ContainsKey(topic)) {
+                results.Append(_nodeTable.MasterNode);
+            }
+            if (results.Count() > 10) {
+                results = results.GetRange(0, 10);
+            }
+
+            //_topicTable.
+            SendTopicNodes(discoveryMessage, results);
+            // TODO: Change Node state appropriately
+        }
+
+        public void ProcessTopicNodesMessage(TopicNodesMessage topicNodesMessage) {
+            NodeStats.AddNoteStatsEvent(NodeStatsEventType.DiscoveryTopicNodesIn);
+            RefreshNodeContactTime();
+
+            if (_ticketProvider.queriesSent.ContainsKey(ManagedNode)) {
+                Task.Run(() => gotTopicNodes(ManagedNode, topicNodesMessage.TopicQueryMdc, topicNodesMessage.Nodes));
+            }
+            //TODO: Change node state appropriately
+        }
+
         public void SendFindNode(byte[] searchedNodeId)
         {
             var msg = _discoveryMessageFactory.CreateOutgoingMessage<FindNodeMessage>(ManagedNode);
@@ -130,6 +201,9 @@ namespace Nethermind.Network.Discovery.Lifecycle
         public void SendPong(PingMessage discoveryMessage)
         {
             var msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
+            Ticket t = _topicTable.getTIcket(ManagedNode, discoveryMessage.Topics);
+
+            ticketToPong(t, msg);
             msg.PingMdc = discoveryMessage.Mdc;
             _discoveryManager.SendMessage(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
@@ -141,6 +215,32 @@ namespace Nethermind.Network.Discovery.Lifecycle
             msg.Nodes = nodes;
             _discoveryManager.SendMessage(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursOut);
+        }
+
+        // TODO: add to _waitingEvents
+        public void SendTopicQuery(Topic topic)
+        {
+            var msg = _discoveryMessageFactory.CreateOutgoingMessage<TopicQueryMessage>(ManagedNode);
+            msg.Topic = topic;
+            _discoveryManager.SendMessage(msg);
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.TopicQueryOut);
+        }
+
+        public void SendTopicRegister(ICollection<Topic> topics, UInt16 idx, byte[] pong) {
+            var msg = _discoveryMessageFactory.CreateOutgoingMesasge<TopicRegisterMessage>(ManagedNode);
+            msg.Topics = topics;
+            msg.Idx = idx;
+            msg.Pong = pong;
+            _discoveryManager.SendMessage(msg);
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.TopicRegisterOut);
+        }
+
+        private void SendTopicNodes(TopicQueryMessage topicQueryMessage, ICollection<Node> results) {
+            var msg = _discoveryMessageFactory.CreateOutgoingMesasge<TopicNodesMessage>(ManagedNode);
+            msg.TopicQueryMdc = topicQueryMessage.Mdc;
+            msg.Nodes = results;
+            _discoveryManager.SendMessage(msg);
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.TopicNodesOut);
         }
 
         public void StartEvictionProcess()
@@ -205,6 +305,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 msg.Version = _networkConfig.PingMessageVersion;
                 msg.SourceAddress = _nodeTable.MasterNode.Address;
                 msg.DestinationAddress = msg.FarAddress;
+                msg.Topics = _ticketProvider.regTopicSet(); 
                 _discoveryManager.SendMessage(msg);
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
 
@@ -225,6 +326,41 @@ namespace Nethermind.Network.Discovery.Lifecycle
             {
                 _logger.Error("Error during sending ping message", e);
             }
+        }
+
+        private Ticket pongToTicket(long localTime, ICollection<Topic> topics, Node node, PongMessage pong) {
+            ICollection<int> wps = pong.WaitPeriods;
+            if (topics.Count() != wps.Count()) {
+                throw new Exception($"bad wait period list; got {wps.Count()} values want {topics.Count()}");
+            }
+            string[] topicStrings = new string[topics.Count()];
+            for (int i = 0; i < topics.Count(); i++) {
+                topicStrings[i] = topics[i].ToString();
+            } 
+            if (new Keccak(_rlp.Encode(topicStrings)) != pong.TopicHash) {
+                throw new Exception("bad topic hash");
+            }
+            List<long> regTime = new List<long>();
+            for (int i = 0; i < wps.Count(); i++) {
+                wp = wps[i];
+                regTime[i] = localTime + (new TimeSpan(0, 0, 1)).Ticks*wp;
+            }
+            Ticket t = new Ticket(localTime, node, topics, pong, regTime);
+            return t;
+        }
+
+        private void ticketToPong(Ticket t, PongMessage pong) {
+            pong.Expiration = UInt64(t.issueTime / (new TimeSpan(0, 0, 1).Ticks));
+            for (int i = 0; i < t.topics.Count(); i++) {
+                topicStrings[i] = t.topics[i].ToString();
+            } 
+            pong.TopicHash = new Keccak(_rlp.Encode(topicStrings));
+            pong.TicketSerial = t.serial;
+            List<UInt32> waitPeriods = new List<UInt32>();
+            for (int i = 0; i < t.regTime.Count(); i++) {
+                waitPeriods[i] = UInt32(new TimeSpan(regTime - t.issueTime).TotalSeconds);
+            }
+            pong.WaitPeriods = waitPeriods;
         }
     }
 }

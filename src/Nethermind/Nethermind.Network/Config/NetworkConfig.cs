@@ -47,7 +47,7 @@ namespace Nethermind.Network.Config
 
         public string KeyPass { get; set; } = "TestPass";
         public int UdpChannelCloseTimeout { get; set; } = 1000 * 5;
-        public int PingMessageVersion { get; set; } = 4;
+        public string PingMessageVersion { get; set; } = "temporary discovery v5";
         public int DiscoveryMsgExpiryTime { get; set; } = 60 * 90;
         public int MaxNodeLifecycleManagersCount { get; set; } = 2000;
         public int NodeLifecycleManagersCleanupCount { get; set; } = 200;
@@ -69,5 +69,18 @@ namespace Nethermind.Network.Config
         public int PersistedPeerCountCleanupThreshold { get; set; } = 2200;
         public int MaxCandidatePeerCount { get; set; } = 10000;
         public int CandidatePeerCountCleanupThreshold { get; set; } = 11000;
+
+        // v5
+
+        public int MaxNoAdjust { get; set; } = 20;
+        public int MinPeakSize { get; set; } = 40;
+        public int MinRightSum { get; set; } = 20;
+        public TimeSpan TargetWaitTime { get; set; } = new TimeSpan(0, 10, 0);
+        public int RadiusBucketsPerBit { get; set; } = 8;
+
+        public int MaxEntries { get; set; } = 10000;
+        public int MaxEntriesPerTopic { get; set; } = 50;
+        public TimeSpan FallbackRegistrationExpiry = new TimeSpan(1, 0, 0);
+        public TimeSpan RegTimeWindow = new TimeSpan(0, 0, 10);
     }
 }

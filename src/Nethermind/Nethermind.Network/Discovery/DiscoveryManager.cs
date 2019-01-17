@@ -47,6 +47,7 @@ namespace Nethermind.Network.Discovery
         private readonly ConcurrentDictionary<Keccak, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<Keccak, INodeLifecycleManager>();
         private readonly INodeTable _nodeTable;
         private readonly INetworkStorage _discoveryStorage;
+        public readonly ITicketProvider _ticketProvider = new TicketProvider(); // TODO: figure out waht goes into the constructor
 
         private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>>();
         private IMessageSender _messageSender;
@@ -103,6 +104,19 @@ namespace Nethermind.Network.Discovery
                     case MessageType.FindNode:
                         nodeManager.ProcessFindNodeMessage(message as FindNodeMessage);
                         break;
+                    case MessageType.FindNodeHash:
+                        nodeManager.ProcessFindNodeHashMessage(message as FindNodeHashMessage);
+                        break;
+                    case MessageType.TopicQueryMessage:
+                        nodeManager.ProcessTopicQueryMessage(message as TopicQueryMessage);
+                        break;
+                    case MessageType.TopicRegisterMessage:
+                        nodeManager.ProcessTopicRegisterMessage(message as TopicRegisterMessage);
+                        break;
+                    case MessageTypeKey.TopicNodesMessage:
+                        nodeManager.ProcessTopicNodesMessage(message as TopicNodesMessage);
+                        break;
+                        
                     default:
                         _logger.Error($"Unsupported msgType: {msgType}");
                         return;
@@ -116,7 +130,15 @@ namespace Nethermind.Network.Discovery
                 _logger.Error("Error during msg handling", e);
             }
         }
+        
+        private async Task NextRegisterTime() {
+            _logger.Trace("<-nextRegisterTime");
+            _ticketProvider.ticketRegistered(_nextTicket);
+            _logger.Trace($"sendTopicRegister { _nextTicket.t.node } { _nextTicket.t.topics } { _nextTicket.idx } { _nextTicket.t.pong }");
 
+            NodeLifecycleManager node = GetNodeLifecycleManager(_nextTicket.t.node);
+            node.SendTopicRegister(_nextTicket.t.topics, _nextTicket.idx, _nextTicket.t.pong);
+        }
         public INodeLifecycleManager GetNodeLifecycleManager(Node node, bool isPersisted = false)
         {
             if (_nodeTable.MasterNode.Equals(node))

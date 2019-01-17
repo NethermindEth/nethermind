@@ -59,6 +59,15 @@ namespace Nethermind.Network.Discovery
             await LocateNodesAsync(null, cancellationToken);
         }
 
+        public async Task LocateTopicRegisterNodesAsync(CancellationToken cancelllationToken)
+        { 
+            
+        }
+
+        public async Task LocateTopicNodesAsync(CancellationToken cancellationToken)
+        {
+            
+        }
         public async Task LocateNodesAsync(byte[] searchedNodeId, CancellationToken cancellationToken)
         {
             var alreadyTriedNodes = new List<Keccak>();
