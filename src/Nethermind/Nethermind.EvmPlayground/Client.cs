@@ -26,7 +26,7 @@ namespace Nethermind.EvmPlayground
         private IJsonSerializer _serializer = new JsonSerializer();
 
         public Client()
-            : this(new Uri("http://127.0.0.1:8345"))
+            : this(new Uri("http://127.0.0.1:8545"))
         {
         }
 
