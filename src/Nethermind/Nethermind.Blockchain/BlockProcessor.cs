@@ -306,9 +306,9 @@ namespace Nethermind.Blockchain
 
                 ApplyMinerReward(block, reward, tracer.IsTracingRewards ? tracer : NullBlockTracer.Instance);
                 
-                tracer.EndTxTrace();
                 if (tracer.IsTracingRewards)
                 {
+                    tracer.EndTxTrace();
                     tracer.ReportReward(reward.Address, reward.RewardType == BlockRewardType.Block ? "block" : "uncle", (UInt256) reward.Value);
                     if (txTracer?.IsTracingState ?? false)
                     {
