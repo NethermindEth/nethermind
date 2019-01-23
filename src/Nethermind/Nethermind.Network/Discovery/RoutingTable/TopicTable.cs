@@ -38,7 +38,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
     public class TopicTable : ITopicTable
     {
         private NetworkStorage _db;
-        private Node MasterNode { get; private set;}
+        public Node MasterNode { get; private set;}
         private  Dictionary<Node, NodeInfo> _nodes;
 
         private Dictionary<Topic, TopicInfo> _topics;
