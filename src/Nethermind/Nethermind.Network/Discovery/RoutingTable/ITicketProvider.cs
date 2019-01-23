@@ -70,7 +70,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         void registerLookupDone(LookupInfo lookup, ICollection<Node> nodes, Func<Node, byte[]> ping);
         void searchLookupDone(LookupInfo lookup, ICollection<Node> nodes, Func<Node, Topic, byte[]> query);
         void adjustWithTicket(long now, Keccak targetHash, in ITicket t);
-        void addTicket(long localTime, byte[] pingHash, ITicket ticket);
+        void addTicket(long localTime, byte[] pingHash, in ITicket ticket);
         bool canQueryTopic(Node node, Topic topic);
         // Called by searchLookupDone(...)
         void addTopicQuery(Keccak hash, Node node, LookupInfo lookup);
