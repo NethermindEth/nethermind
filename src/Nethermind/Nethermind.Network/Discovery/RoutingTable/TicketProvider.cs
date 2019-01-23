@@ -73,7 +73,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         private Dictionary<Node, Ticket> _nodes;
 
-        private Dictionary<Node,    > _nodeLastReq;
+        private Dictionary<Node, ReqInfo> _nodeLastReq;
 
         private int _lastBucketFetched;
 

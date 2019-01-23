@@ -43,4 +43,5 @@ namespace Nethermind.Network.Discovery.RoutingTable
         bool hasMinimumWaitPeriod() ;
 
         TimeSpan noRegTimeout();
+    }
 }

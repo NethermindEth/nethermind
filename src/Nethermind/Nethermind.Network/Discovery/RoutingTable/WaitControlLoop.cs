@@ -36,59 +36,60 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
     public class WaitControlLoop : IWaitControlLoop
     {
-    private readonly TimeSpan MINUTE = new TimeSpan(0, 1, 0);
+        private readonly TimeSpan MINUTE = new TimeSpan(0, 1, 0);
 
-    private readonly TimeSpan SECOND = new TimeSpan(0, 0, 1);
-	private readonly TimeSpan minWaitPeriod = MINUTE;
-	
-    private readonly TimeSpan regTimeWindow  = 10 * SECOND; // seconds
-	
-    
-    private readonly TimeSpan avgnoRegTimeout = MINUTE * 10;
-	// target average interval between two incoming ad requests
-	private readonly TimeSpan wcTargetRegInterval = (MINUTE * 10) / maxEntriesPerTopic;
-	//
-	private readonly TimeSpan wcTimeConst = MINUTE * 10;
+        private readonly TimeSpan SECOND = new TimeSpan(0, 0, 1);
+        private readonly TimeSpan minWaitPeriod = MINUTE;
+        
+        private readonly TimeSpan regTimeWindow  = 10 * SECOND; // seconds
+        
+        
+        private readonly TimeSpan avgnoRegTimeout = MINUTE * 10;
+        // target average interval between two incoming ad requests
+        private readonly TimeSpan wcTargetRegInterval = (MINUTE * 10) / maxEntriesPerTopic;
+        //
+        private readonly TimeSpan wcTimeConst = MINUTE * 10;
 
-    private long _lastIncoming;
+        private long _lastIncoming;
 
-    private TimeSpan _waitPeriod;
+        private TimeSpan _waitPeriod;
 
-    private readonly Stopwatch timestamp = new Stopwatch();
+        private readonly Stopwatch timestamp = new Stopwatch();
 
-    private readonly Random RandomNumberGenerator = new Random();
-    public void registered(long time) {
-        _waitPeriod = nextWaitPeriod(time);
-        _lastIncoming = time;
-    }
-
-    private TimeSpan nextWaitPeriod(long time) {
-        TimeSpan period = new TimeSpan(time - _lastIncoming);
-        long frequency = Stopwatch.Frequency;
-        long nanosecPerTick = (1000L*1000L*1000L) / frequency;
-        // The Go mclock library measures in nanoseconds, so keep the calculations the same
-        TimeSpan wp = _waitPeriod * (new TimeSpan(math.Exp(new TimeSpan((wcTargetRegInterval.Ticks-period.Ticks)/wcTimeConst.Ticks).TotalMilliseconds*1000000)*nanosecPerTick));
-
-        if (wp < minWaitPeriod) {
-            wp = minWaitPeriod;
+        private readonly Random RandomNumberGenerator = new Random();
+        public void registered(long time) {
+            _waitPeriod = nextWaitPeriod(time);
+            _lastIncoming = time;
         }
-        return wp;
-    }
 
-    public bool hasMinimumWaitPeriod() {
-        return nextWaitPeriod(timestamp.GetTimestamp()) == minWaitPeriod;
-    }
-    
-    public TimeSpan noRegTimeout() {
-        double e = nextExpDouble();
-        if ( e > 100 ) {
-            e = 100;
+        private TimeSpan nextWaitPeriod(long time) {
+            TimeSpan period = new TimeSpan(time - _lastIncoming);
+            long frequency = Stopwatch.Frequency;
+            long nanosecPerTick = (1000L*1000L*1000L) / frequency;
+            // The Go mclock library measures in nanoseconds, so keep the calculations the same
+            TimeSpan wp = _waitPeriod * (new TimeSpan(math.Exp(new TimeSpan((wcTargetRegInterval.Ticks-period.Ticks)/wcTimeConst.Ticks).TotalMilliseconds*1000000)*nanosecPerTick));
+
+            if (wp < minWaitPeriod) {
+                wp = minWaitPeriod;
+            }
+            return wp;
         }
-        return SECOND * avgnoRegTimeout * e;
-    }
 
-    private double nextExpDouble() {
-        double random_number = RandomNumberGenerator.NextDouble();
-        return log(1-random_number)/-1;
+        public bool hasMinimumWaitPeriod() {
+            return nextWaitPeriod(timestamp.GetTimestamp()) == minWaitPeriod;
+        }
+        
+        public TimeSpan noRegTimeout() {
+            double e = nextExpDouble();
+            if ( e > 100 ) {
+                e = 100;
+            }
+            return SECOND * avgnoRegTimeout * e;
+        }
+
+        private double nextExpDouble() {
+            double random_number = RandomNumberGenerator.NextDouble();
+            return log(1-random_number)/-1;
+        }
     }
 }
