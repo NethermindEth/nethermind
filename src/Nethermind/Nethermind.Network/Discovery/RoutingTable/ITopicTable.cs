@@ -37,7 +37,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
     public interface ITopicTable
     {
-        Node MasterNode { get; private set; }
+        Node MasterNode { get; }
 
         TopicInfo getOrNewTopic(Topic topic);
         bool checkDeleteTopic(Topic topic);
