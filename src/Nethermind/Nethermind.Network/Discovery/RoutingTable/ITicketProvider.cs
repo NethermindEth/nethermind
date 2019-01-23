@@ -80,6 +80,6 @@ namespace Nethermind.Network.Discovery.RoutingTable
         //TODO: merge this class's RpcNode with Nethermind.Stats.Model.Node with discoveryNode = True or IPEndpoint;
         Task getTopicNodes(Node from, Keccak hash, ICollection<Node> nodes);
 
-        void Initialize(NodeId masterNodeKey = null)
+        void Initialize(NodeId masterNodeKey = null);
     }
 }
