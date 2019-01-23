@@ -39,12 +39,12 @@ namespace Nethermind.Network.Discovery.RoutingTable
     public interface ITicketProvider
     {
 
-        Dictionary<Topic, TopicRadius> radius { get; set; }
+        Dictionary<Topic, TopicRadius> radius { get; }
 
         // Contains buckets (for each absolute minute) of tickets
         // that can be used in that minute.
         // This is only set if the topic is being registered.
-        Dictionary<Topic, TopicTickets> tickets { get; set; }
+        Dictionary<Topic, TopicTickets> tickets { get; }
         
         // addTopic starts tracking a topic. If register is true,
         // the local node will register the topic and tickets will be collected.
@@ -69,8 +69,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         void registerLookupDone(LookupInfo lookup, ICollection<Node> nodes, Func<Node, byte[]> ping);
         void searchLookupDone(LookupInfo lookup, ICollection<Node> nodes, Func<Node, Topic, byte[]> query);
-        void adjustWithTicket(long now, Keccak targetHash, ITicket t);
-        void addTicket(long localTime, byte[] pingHash, Ticket ticket);
+        void adjustWithTicket(long now, Keccak targetHash, in ITicket t);
+        void addTicket(long localTime, byte[] pingHash, ITicket ticket);
         bool canQueryTopic(Node node, Topic topic);
         // Called by searchLookupDone(...)
         void addTopicQuery(Keccak hash, Node node, LookupInfo lookup);

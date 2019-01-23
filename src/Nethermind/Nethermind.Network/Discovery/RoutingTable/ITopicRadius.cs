@@ -44,7 +44,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
             TopicRadiusBucket[] buckets { get; set; }
 
-            bool converged { get; set; }
+            bool converged { get; }
 
             int radiusLookupCnt { get; set; }
 

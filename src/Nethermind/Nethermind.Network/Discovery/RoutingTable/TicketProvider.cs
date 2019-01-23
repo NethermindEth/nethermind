@@ -19,7 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.Stopwatch;
+using System.Diagnostics;
 using System.Linq;
 using System.Security;
 using Nethermind.Config;
@@ -514,7 +514,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         }
 
         //TODO: merge this class's RpcNode with Nethermind.Stats.Model.Node with discoveryNode = True or IPEndpoint;
-        public async void gotTopicNodes(Node from, Keccak hash, ICollection<Node> nodes) {
+        public async Task gotTopicNodes(Node from, Keccak hash, ICollection<Node> nodes) {
             long now = _timestamp.GetTimestamp();
             _logger.Trace($"got {from.Address.ToString()} {hash} {nodes.Count}");
             Dictionary<Keccak, SentQuery> qq = _queriesSent[from];

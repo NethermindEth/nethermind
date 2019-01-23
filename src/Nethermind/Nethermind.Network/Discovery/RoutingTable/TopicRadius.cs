@@ -56,11 +56,11 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
             public ulong _minRadius {get; set; }
 
-            public TopicRadiusBucket[] buckets;
+            public TopicRadiusBucket[] buckets { get; set; }
 
-            public bool converged;
+            public bool converged { get; private set; }
 
-            public int radiusLookupCnt;
+            public int radiusLookupCnt { get; set; };
 
             private int _radiusBucketsPerBit = 8;
             

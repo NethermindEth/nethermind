@@ -38,8 +38,6 @@ namespace Nethermind.Network.Discovery.RoutingTable
     {
         void registered(long time);
 
-        TimeSpan nextWaitPeriod(long time);
-
         bool hasMinimumWaitPeriod() ;
 
         TimeSpan noRegTimeout();

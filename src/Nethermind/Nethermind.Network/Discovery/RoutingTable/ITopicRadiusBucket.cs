@@ -37,9 +37,9 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
      public interface ITopicRadiusBucket
         {
-            int trCount { get; set; }
+            int trCount { get; }
 
-            double[] weights { get; set; }
+            double[] weights { get; }
 
             long lastTime { get; set; }
 

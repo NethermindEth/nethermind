@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Config;
+using System;
 
 namespace Nethermind.Network.Config
 {

@@ -39,16 +39,16 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             public enum TopicRadiusEvent { trOutside, trInside, trNoAdjust };
 
-            public int trCount = Enum.GetNames(typeof(TopicRadiusEvent)).Length;
+            public int trCount { get; private set; }
 
-            public double[] weights = new double[trCount];
+            public double[] weights { get; private set; }
 
             private Stopwatch _timestamp = new Stopwatch();
-            public long lastTime;
+            public long lastTime { get; set; }
 
-            public double value;
+            public double value { get; set; }
 
-            public Dictionary<Keccak, long> lookupSent; 
+            public Dictionary<Keccak, long> lookupSent { get; set; } 
 
             private long _radiusTC = new TimeSpan(0, 20).TotalMilliseconds;
 
@@ -56,7 +56,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
             public TopicRadiusBucket(Topic t)
             {
-                
+                trCount = Enum.GetNames(typeof(TopicRadiusEvent)).Length;
+                weights = new double[trCount];
             }
 
             public void update(long now) { // TODO: Convert to MonotonicTimestamp, a Long of DateTime.Ticks just typedefed
