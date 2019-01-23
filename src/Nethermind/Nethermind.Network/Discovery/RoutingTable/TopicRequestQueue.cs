@@ -41,11 +41,10 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
              _topicRequestQueueList = new List<TopicRequestQueItem>();
         }
+
         public int Len() {
             return _topicRequestQueueList.Count;
         }
-
-        public 
 
         public bool Less(int i, int j) {
             return _topicRequestQueueList[i].priority < _topicRequestQueueList[j].priority; 
@@ -61,7 +60,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             _topicRequestQueueList[j].index = i;
         }
 
-        public void Push(ITopicRequestQueueItem item) {
+        public void Push(TopicRequestQueueItem item) {
             item.index = _topicReqeustQueueList.Length;
             _topicRequestQueueList.Append(item);
         }

@@ -66,7 +66,7 @@ namespace Nethermind.Network.Discovery.Serializers
             return serializedMsg;
         }
 
-        public NeighborsMessage Deserialize(byte[] msg)
+        public TopicNodesMessage Deserialize(byte[] msg)
         {
             var results = PrepareForDeserialization<TopicNodesMessage>(msg);
 

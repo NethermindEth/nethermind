@@ -1,4 +1,4 @@
-﻿/*
+   /*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,34 +16,40 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security;
+using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.KeyStore;
+using Nethermind.Network.Config;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Network;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
-    public interface INodeTable
+    public struct ReqInfo
     {
-        void Initialize(NodeId masterNodeKey = null);
-        Node MasterNode { get; }
-        NodeBucket[] Buckets { get; }
-        NodeAddResult AddNode(Node node);
-        void ReplaceNode(Node nodeToRemove, Node nodeToAdd);
-        void RefreshNode(Node node);
+        // radius detector and target address generator
+	    // exists for both searched and registered topics
+        private byte[] pingHash;
 
-        /// <summary>
-        /// GetClosestNodes to MasterNode
-        /// </summary>
-        Node[] GetClosestNodes();
+        private LookupInfo lookup;
 
-        /// <summary>
-        /// GetClosestNodes to provided Node
-        /// </summary>
-        Node[] GetClosestNodes(byte[] nodeId);
+        private long time;
 
-        /// <summary>
-        /// GetClosestNodes to provided Node hash
-        /// </summary>
-        Node[] GetClosestNodes(Keccak nodeIdHash);
+        public ReqInfo(byte[] _pingHash, LookupInfo _lookup, long _time)
+        {
+            pingHash = _pingHash;
+            lookup = _lookup;
+            time = _time;
+
+        }
     }
 }

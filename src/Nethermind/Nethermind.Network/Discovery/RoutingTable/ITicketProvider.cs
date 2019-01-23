@@ -39,14 +39,13 @@ namespace Nethermind.Network.Discovery.RoutingTable
     public interface ITicketProvider
     {
 
-        Dictionary<Topic, TopicRadius> radius { get; private set; }
+        Dictionary<Topic, TopicRadius> radius { get; set; }
 
         // Contains buckets (for each absolute minute) of tickets
         // that can be used in that minute.
         // This is only set if the topic is being registered.
-        Dictionary<Topic, TopicTickets> tickets { get; private set; }
+        Dictionary<Topic, TopicTickets> tickets { get; set; }
         
-        TicketProvider(INetworkStorage nodeDb, Node self);
         // addTopic starts tracking a topic. If register is true,
         // the local node will register the topic and tickets will be collected.
         void addTopic(Topic topic, bool register);
@@ -70,15 +69,15 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         void registerLookupDone(LookupInfo lookup, ICollection<Node> nodes, Func<Node, byte[]> ping);
         void searchLookupDone(LookupInfo lookup, ICollection<Node> nodes, Func<Node, Topic, byte[]> query);
-        void adjustWithTicket(long now, Keccak targetHash, ref ITicket t);
-        void addTicket(long localTime, byte[] pingHash, ref Ticket ticket);
+        void adjustWithTicket(long now, Keccak targetHash, ITicket t);
+        void addTicket(long localTime, byte[] pingHash, Ticket ticket);
         bool canQueryTopic(Node node, Topic topic);
         // Called by searchLookupDone(...)
         void addTopicQuery(Keccak hash, Node node, LookupInfo lookup);
         //
         void cleanupTopicQueries(long now);
         //TODO: merge this class's RpcNode with Nethermind.Stats.Model.Node with discoveryNode = True or IPEndpoint;
-        Task getTopicNodes(Node from, Keccak hash, ICollection<Node> nodes);
+        Task gotTopicNodes(Node from, Keccak hash, ICollection<Node> nodes);
 
         void Initialize(NodeId masterNodeKey = null);
     }

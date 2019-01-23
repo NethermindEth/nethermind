@@ -35,16 +35,16 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
     public interface ITopicRequestQueue
     {
-        public int Len();
+        int Len();
 
-        public bool Less(int i, int j);
+        bool Less(int i, int j);
 
-        public void Swap(int i, int j);
+        void Swap(int i, int j);
 
-        public void Push(TopicRequestQueueItem item);
+        void Push(TopicRequestQueueItem item);
 
-        public TopicRequestQueueItem Pop();
+        TopicRequestQueueItem Pop();
 
-        public void Update(TopicRequestQueueItem item, long priority);
+        void Update(TopicRequestQueueItem item, long priority);
     }
 }

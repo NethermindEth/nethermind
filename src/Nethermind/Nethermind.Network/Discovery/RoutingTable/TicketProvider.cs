@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.Stopwatch;
 using System.Linq;
 using System.Security;
 using Nethermind.Config;
@@ -72,7 +73,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         private Dictionary<Node, Ticket> _nodes;
 
-        private Dictionary<Node, ReqInfo> _nodeLastReq;
+        private Dictionary<Node,    > _nodeLastReq;
 
         private int _lastBucketFetched;
 
@@ -401,7 +402,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             }
         }
         
-        public void addTicket(long localTime, byte[] pingHash, ref Ticket ticket) {
+        public void addTicket(long localTime, byte[] pingHash, in Ticket ticket) {
             _logger.Trace($"Adding discovery ticket node {ticket.node.ID} serial {ticket.serial}");
 
             if(!_nodeLastReq.ContainsKey(ticket.node)) {
@@ -549,7 +550,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             public ConcurrentQueue<Node> foundChn;
 
-            public SearchTopic(ConcurrentList<Node> _foundChn) {
+            public SearchTopic(ConcurrentQueue<Node> _foundChn) {
                 foundChn = _foundChn;
             }   
         }

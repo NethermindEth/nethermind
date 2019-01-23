@@ -60,7 +60,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             (ulong, int) recalcRadius();
             LookupInfo nextTarget(bool forceRegular);
 
-            void adjustWithTicket(long now, Keccak targetHash, TicketRef t);
+            void adjustWithTicket(long now, Keccak targetHash, in TicketRef t);
 
             void adjust(long now, Keccak targetHash, Keccak addrHash, double inside);
 

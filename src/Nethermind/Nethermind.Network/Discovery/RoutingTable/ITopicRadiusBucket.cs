@@ -37,17 +37,15 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
      public interface ITopicRadiusBucket
         {
-            enum TopicRadiusEvent { trOutside, trInside, trNoAdjust };
+            int trCount { get; set; }
 
-            int trCount;
+            double[] weights { get; set; }
 
-            double[] weights;
+            long lastTime { get; set; }
 
-            long lastTime;
+            double value { get; set; }
 
-            double value;
-
-            Dictionary<Kecak, long> lookupSent; 
+            Dictionary<Keccak, long> lookupSent { get; set; } 
 
             void update(long now);
 
