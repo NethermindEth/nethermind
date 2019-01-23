@@ -17,6 +17,7 @@
  */
 
 using System.IO;
+using System.TimeSpan;
 
 namespace Nethermind.Network.Config
 {

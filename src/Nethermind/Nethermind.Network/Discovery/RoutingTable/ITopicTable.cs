@@ -37,32 +37,29 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
     public interface ITopicTable
     {
-        private Node MasterNode { get; private set;}
+        Node MasterNode { get; set; }
 
-        public TopicTable(INetworkStorage nodeDb, Node self);
-        public TopicInfo getOrNewTopic(Topic topic);
-        public bool checkDeleteTopic(Topic topic);
+        TopicInfo getOrNewTopic(Topic topic);
+        bool checkDeleteTopic(Topic topic);
 
-        public bool checkDeleteNode(Node node);
+        bool checkDeleteNode(Node node);
 
         // TODO: storeTicketCounters
-        public NodeInfo getOrNewNode(Node node);
-        public Ticket getTicket(Node node, ICollection<Topic> topics);
+        NodeInfo getOrNewNode(Node node);
+        Ticket getTicket(Node node, ICollection<Topic> topics);
         
-        public ICollection<Node> getEntries(Topic topic);
-        public void addEntry(Node node, Topic topic);
-        public TopicEntry leastRequested();
+        ICollection<Node> getEntries(Topic topic);
+        void addEntry(Node node, Topic topic);
+        TopicEntry leastRequested();
 
-        public void deleteEntry(TopicEntry e);
+        void deleteEntry(TopicEntry e);
 
         //TODO: replace with WaitControlLoop's no RegTimeout(), or make the call shared between the two
-        public TimeSpan noRegTimeout();
+        TimeSpan noRegTimeout();
 
-        public bool useTicket(Node node, UInt32 serialNo, ICollection<Topic> topics, int idx, UInt64 issueTime, ICollection<TimeSpan> waitPeriods);
+        bool useTicket(Node node, UInt32 serialNo, ICollection<Topic> topics, int idx, UInt64 issueTime, ICollection<TimeSpan> waitPeriods);
 
-        public void Initialize();
-
-        
+        void Initialize();
 
     }
 }

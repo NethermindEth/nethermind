@@ -32,40 +32,36 @@ using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Network;
-using Nethermind.Core.Crypto.Keccak256;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
      public interface ITopicRadius
         {
-            public Topic topic { get; }
-            public byte[] topicHashPrefix { get; }
+            Topic topic { get; }
+            byte[] topicHashPrefix { get; }
 
-            public ulong radius { get; set; }
+            ulong radius { get; set; }
 
-            public TopicRadiusBucket[] buckets;
+            TopicRadiusBucket[] buckets { get; set; }
 
-            public bool converged;
+            bool converged { get; set; }
 
-            public int radiusLookupCnt;
+            int radiusLookupCnt { get; set; }
 
-            public TopicRadius(Topic t);
-
-            public int getBucketIdx(Keccak addrHash);
+            int getBucketIdx(Keccak addrHash);
             
-            public Keccak targetForBucket(int bucket);
+            Keccak targetForBucket(int bucket);
 
-            public bool isInRadius(Keccak addrHash);
+            bool isInRadius(Keccak addrHash);
 
-            public int chooseLookupBucket(int a, int b);
+            int chooseLookupBucket(int a, int b);
 
-            public bool needMoreLooukps(int a, int b, double maxValue);
-            public (ulong, int) recalcRadius();
-            public LookupInfo nextTarget(bool forceRegular);
+            bool needMoreLooukps(int a, int b, double maxValue);
+            (ulong, int) recalcRadius();
+            LookupInfo nextTarget(bool forceRegular);
 
-            public void adjustWithTicket(long now, Keccak targetHash, TicketRef t);
+            void adjustWithTicket(long now, Keccak targetHash, TicketRef t);
 
-            public void adjust(long now, Keccak targetHash, Keccak addrHash, double inside);
+            void adjust(long now, Keccak targetHash, Keccak addrHash, double inside);
 
-        }
-}
+        }}

@@ -32,7 +32,6 @@ using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Network;
-using Nethermind.Core.Crypto.Keccak256;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {

@@ -39,9 +39,6 @@ namespace Nethermind.Network.Discovery.RoutingTable
            public long sent;
            public LookupInfo lookup;
 
-           public SentQuery() {
-               // Default
-           }
            public SentQuery(long _sent, LookupInfo _lookup) {
                sent = _sent;
                lookup = _lookup;

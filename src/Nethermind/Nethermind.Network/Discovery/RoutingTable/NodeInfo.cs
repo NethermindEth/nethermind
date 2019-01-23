@@ -1,4 +1,4 @@
-/*
+   /*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,24 +16,37 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Extensions;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security;
+using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Core.Logging;
+using Nethermind.Core.Model;
+using Nethermind.KeyStore;
+using Nethermind.Network.Config;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
+using Nethermind.Network;
 
-
-namespace Nethermind.Network.Discovery.Messages
+namespace Nethermind.Network.Discovery.RoutingTable
 {
-    public class TopicQueryMessage : DiscoveryMessage
+    public struct NodeInfo
     {
-        public Topic Topic { get; set; }
+        public Dictionary<Topic, TopicEntry> entries;
 
-        public long ExpirationTime { get; set; }
+        public int lastIssuedTicket, lastUsedTicket;
 
-        public override string ToString()
-        {
-            return base.ToString() + $", TopicQueryName: {(Topic != null ? Topic.ToString() : "empty")}, Expiration: {ExpirationTime}";
+        public UInt64 noRegUntil;
+
+        public NodeInfo(int _lastIssuedTicket, int _lastUsedTicket) {
+            entries = new Dictionary<Topic, TopicEntry>();
+            lastIssuedTicket = _lastIssuedTicket;
+            lastUsedTicket = _lastUsedTicket;
         }
-
-        public override MessageType MessageType => MessageType.TopicQuery;
     }
 }
+

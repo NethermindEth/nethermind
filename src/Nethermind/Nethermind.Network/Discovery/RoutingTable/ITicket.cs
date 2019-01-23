@@ -36,16 +36,14 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
     public interface ITicket
     {
-        public List<Topic> topics { get; private set; }
-        public List<long> regTime { get; set;} // Per-topic local absolute time when the ticet can be used.
+        List<Topic> topics { get; }
+        List<long> regTime { get; } // Per-topic local absolute time when the ticet can be used.
 
-        public int serial {get; private set;} //The serial number that was issued by the server
-        public long issueTime {get; private set;} // // Used by registrar, tracks absolute time when the ticket was created.
-        public Node node { get; private set; }
-        public int refCnt { get; set; } // tracks number of topics that will be registered using this ticket
-        public byte[] pong { get; private set; } // encoded pong packet signed by the registrar
-        public Ticket(long _issueTime, List<Topic> _topics, int _serial, ICollection<long> _regTime);
-        public Ticket(long _issueTime, List<Topic> _topics, int serial);
-        public int findIdx(Topic topic);
+        int serial { get; } //The serial number that was issued by the server
+        long issueTime { get; } // // Used by registrar, tracks absolute time when the ticket was created.
+        Node node { get; }
+        int refCnt { get; set; } // tracks number of topics that will be registered using this ticket
+        byte[] pong { get; } // encoded pong packet signed by the registrar
+        int findIdx(Topic topic);
     }
 }

@@ -120,7 +120,7 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Version of the Ping message
         /// </summary>
-        int PingMessageVersion { get; }
+        string PingMessageVersion { get; }
 
         /// <summary>
         /// Ping expiry time in seconds

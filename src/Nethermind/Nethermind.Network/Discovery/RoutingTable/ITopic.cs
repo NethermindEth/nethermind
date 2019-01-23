@@ -1,8 +1,8 @@
 namespace Nethermind.Network.Discovery.RoutingTable
 {
-    public interface Topic
+    public interface ITopic
     {
-        public string Name;
-        public override string ToString();
+        string Name { get; set; };
+        override string ToString();
     }
 }

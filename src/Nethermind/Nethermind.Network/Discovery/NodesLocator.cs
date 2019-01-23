@@ -64,9 +64,9 @@ namespace Nethermind.Network.Discovery
             
         }
 
-        public async Task LocateTopicNodesAsync(CancellationToken cancellationToken)
+        public async Task<Nodes> LocateTopicNodesAsync(CancellationToken cancellationToken)
         {
-            
+
         }
         public async Task LocateNodesAsync(byte[] searchedNodeId, CancellationToken cancellationToken)
         {

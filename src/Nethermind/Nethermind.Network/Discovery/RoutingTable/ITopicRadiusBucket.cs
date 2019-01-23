@@ -32,32 +32,26 @@ using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Network;
-using Nethermind.Core.Crypto.Keccak256;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
      public interface ITopicRadiusBucket
         {
-            public enum TopicRadiusEvent { trOutside, trInside, trNoAdjust };
+            enum TopicRadiusEvent { trOutside, trInside, trNoAdjust };
 
-            public int trCount;
+            int trCount;
 
-            public double[] weights;
+            double[] weights;
 
-            public long lastTime;
+            long lastTime;
 
-            public double value;
+            double value;
 
-            public Dictionary<Kecak, long> lookupSent; 
+            Dictionary<Kecak, long> lookupSent; 
 
-            public TopicRadiusBucket(Topic t)
-            {
-                
-            }
+            void update(long now);
 
-            public void update(long now);
-
-            public void adjust(long now, double inside);
+            void adjust(long now, double inside);
             
         }
 }

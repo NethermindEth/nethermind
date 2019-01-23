@@ -18,6 +18,7 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Network.Discovery.Messages
 {

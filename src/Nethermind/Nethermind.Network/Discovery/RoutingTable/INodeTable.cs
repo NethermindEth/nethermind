@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypo;
 using Nethermind.Core.Model;
 using Nethermind.Stats.Model;
 

@@ -112,7 +112,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
             GetClosestNodes(idHash);
         }
         
-        public Node[] GetClosestNodes(Keccak idHash) {
+        public Node[] GetClosestNodes(Keccak idHash) 
+        {
             var idHashText = idHash.ToString();
             var allNodes = Buckets.SelectMany(x => x.Items).Where(x => x.Node.IdHash != idHash)
                 .Select(x => new {x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node.Id.PublicKey.Bytes, nodeId)})

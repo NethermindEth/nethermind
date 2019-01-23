@@ -42,10 +42,6 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         public bool radiusLookup;
 
-        public LookupInfo()
-        { 
-
-        }
         public LookupInfo(Keccak _target, Topic _topic, bool _radiusLookup) 
         {
             target = _target;
