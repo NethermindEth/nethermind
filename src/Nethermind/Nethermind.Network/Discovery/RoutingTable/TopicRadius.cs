@@ -60,7 +60,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
             public bool converged { get; private set; }
 
-            public int radiusLookupCnt { get; set; };
+            public int radiusLookupCnt { get; set; }
 
             private int _radiusBucketsPerBit = 8;
             
