@@ -65,8 +65,8 @@ namespace Nethermind.Network.Discovery.Serializers
 
             var pongFarAddressUDPPort = rlp.DecodeInt();
             var pingMdc = rlp.DecodeByteArray();
-            var pongExpirationTime = rlp.DecodeUint();
-            var pongWaitPeriods = rlp.DecodeArray(ctx => ctx.DecodeUInt());
+            var pongExpirationTime = rlp.DecodeUInt256();
+            var pongWaitPeriods = rlp.DecodeArray(ctx => ctx.DecodeUInt256());
 
             var message = results.Message;
             message.Topics = topics;

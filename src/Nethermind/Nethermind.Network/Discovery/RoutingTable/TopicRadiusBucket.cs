@@ -49,7 +49,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
             public double value;
 
-            public Dictionary<Kecak, long> lookupSent; 
+            public Dictionary<Keccak, long> lookupSent; 
 
             private long _radiusTC = new TimeSpan(0, 20).TotalMilliseconds;
 

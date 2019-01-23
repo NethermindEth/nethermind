@@ -140,7 +140,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 for (int j = 0; j < n.entries.Count; j++) {
                     TopicEntry e = n.entries.ElementAt(j);
                     if (e.expire <= tm) {
-                        deleteEntry(EntryPointNotFoundException);
+                        deleteEntry(e);
                     }
                 }
                 bool deleted = checkDeleteNode(node);
@@ -161,8 +161,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
             collectGarbage();
 
             long now = _timestamp.GetTimestamp();
-            NodeInfo n = getOrNewNode(node);
-            n.lastIssuedTicket++;
+            NodeInfo n = getOrNewNode(node); //TODO: Convert to NodeLifecycleManager
+            n.lastIssuedTicket++; //TODO: Convert to NodeStats Model + NodeLifecycleManager
             storeTicketCounts(node);
 
             Ticket tic = new Ticket(now, topics, n.lastIssuedTicket, new List<long>());
@@ -298,7 +298,9 @@ namespace Nethermind.Network.Discovery.RoutingTable
             TimeSpan regTime = new TimeSpan(issueTime + waitPeriods[idx].Ticks);
             TimeSpan relTime = currTime - regTime;
 
-            if (relTime.TotalMilliseconds*1000000 >= -1  && relTime <= new TimeSpan(0, 0, (_regTimeWindow.TotalMilliseconds+1)/1000)) {
+            if (relTime.TotalMilliseconds*1000000 >= -1  // Turn into nanoseconds
+                && relTime <= new TimeSpan(0, 0, (_regTimeWindow.TotalMilliseconds+1)/1000)
+            ) {
                 if ( !n.entries.ContainsKey(topics[idx]) ) {
                     addEntry(node, topics[idx]); 
                 }

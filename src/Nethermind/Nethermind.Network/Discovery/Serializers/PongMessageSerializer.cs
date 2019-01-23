@@ -65,8 +65,8 @@ namespace Nethermind.Network.Discovery.Serializers
             var expirationTime = rlp.DecodeLong();
 
             var topicHash = rlp.DecodeByteArray();
-            var ticketSerial = rlp.DecodeUInt();
-            var waitPeriods = rlp.DecodeArray(ctx => ctx.DecodeUint());
+            var ticketSerial = rlp.DecodeUInt256();
+            var waitPeriods = rlp.DecodeArray(ctx => ctx.DecodeUInt256());
 
             var message = results.Message;
             message.PingMdc = pingMdc;

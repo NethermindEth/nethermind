@@ -61,7 +61,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 	    // exists for both searched and registered topics
         public Dictionary<Topic, TopicRadius> radius { get; private set; }
 
-        // Contains buckets (for each absolute minute) of tickets
+        // Contains buckets (for each absol                                                                                                                                                                                                                                                                               ute minute) of tickets
         // that can be used in that minute.
         // This is only set if the topic is being registered.
         public Dictionary<Topic, TopicTickets> tickets { get; private set; }
@@ -110,7 +110,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
            }
         }
 
-        public void addSearchTopic(Topic t, WritableChannel<Node> foundChn) {
+        public void addSearchTopic(Topic t, ConcurrentQueue<Node> foundChn) {
             addTopic(t, false);
             if (searchTopicMap[t]?.foundChn == null) { //searchTOpicMap[t]?.
                 searchTopicMap[t] = new SearchTopic(foundChn);

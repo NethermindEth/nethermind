@@ -946,18 +946,6 @@ namespace Nethermind.Core.Encoding
                 return new Address(buffer);
             }
 
-            public uint DecodeUInt()
-            {
-                Span<byte> bytes = DecodeByteArraySpan();
-                if (bytes.Length > 32)
-                {
-                    throw new ArgumentException();
-                }
-
-                UInt.CreateFromBigEndian(out uint result, bytes);
-                return result;
-            }
-
             public UInt256 DecodeUInt256()
             {
                 Span<byte> bytes = DecodeByteArraySpan();
