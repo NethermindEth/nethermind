@@ -403,7 +403,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             }
         }
         
-        public void addTicket(long localTime, byte[] pingHash, in Ticket ticket) {
+        public void addTicket(long localTime, byte[] pingHash, in ITicket ticket) {
             _logger.Trace($"Adding discovery ticket node {ticket.node.ID} serial {ticket.serial}");
 
             if(!_nodeLastReq.ContainsKey(ticket.node)) {
