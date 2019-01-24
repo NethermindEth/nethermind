@@ -31,7 +31,6 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GetSpec(UInt256 blockNumber)
         {
-            // TODO: this is not covered by test at the moment
             if (blockNumber < SpuriousDragonBlockNumber)
             {
                 return TangerineWhistle.Instance;
@@ -42,12 +41,26 @@ namespace Nethermind.Core.Specs
                 return SpuriousDragon.Instance;
             }
             
-            return Byzantium.Instance;
+            if (blockNumber < ConstantinopleBlockNumber)
+            {
+                return Byzantium.Instance;
+            }
+            
+            if (blockNumber < ConstantinopleFixBlockNumber)
+            {
+                return Constantinople.Instance;
+            }
+            
+            return ConstantinopleFix.Instance;
         }
 
         public UInt256? DaoBlockNumber { get; } = null;
         public static UInt256 SpuriousDragonBlockNumber { get; } = 3;
         public static UInt256 ByzantiumBlockNumber { get; } = 1035301;
+        
+        public static UInt256 ConstantinopleBlockNumber { get; } = 3660663;
+        
+        public static UInt256 ConstantinopleFixBlockNumber { get; } = 3800083;
         
         public int ChainId => 4;
 

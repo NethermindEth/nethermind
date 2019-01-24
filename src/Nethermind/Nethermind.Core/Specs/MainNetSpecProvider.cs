@@ -21,7 +21,7 @@ using Nethermind.Dirichlet.Numerics;
 namespace Nethermind.Core.Specs
 {
     public class MainNetSpecProvider : ISpecProvider
-    {   
+    {
         public IReleaseSpec CurrentSpec => Byzantium.Instance;
 
         public IReleaseSpec GenesisSpec => Frontier.Instance;
@@ -52,14 +52,13 @@ namespace Nethermind.Core.Specs
             {
                 return SpuriousDragon.Instance;
             }
-            
-            if (blockNumber < ConstantinopleBlockNumber)
+
+            if (blockNumber < ConstantinopleFixBlockNumber)
             {
                 return Byzantium.Instance;
             }
 
-
-            return Constantinople.Instance;
+            return ConstantinopleFix.Instance;
         }
 
         public static UInt256 HomesteadBlockNumber { get; } = 1150000;
@@ -67,14 +66,14 @@ namespace Nethermind.Core.Specs
         public static UInt256 TangerineWhistleBlockNumber { get; } = 2463000;
         public static UInt256 SpuriousDragonBlockNumber { get; } = 2675000;
         public static UInt256 ByzantiumBlockNumber { get; } = 4370000;
-        public static UInt256 ConstantinopleBlockNumber { get; } = 9999999;
-        
+        public static UInt256 ConstantinopleFixBlockNumber { get; } = 7280000;
+
         public int ChainId => 1;
-        
+
         private MainNetSpecProvider()
         {
         }
-        
+
         public static MainNetSpecProvider Instance = new MainNetSpecProvider();
     }
 }
