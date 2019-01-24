@@ -103,6 +103,8 @@ namespace Ethereum.Test.Base
                     return Dao.Instance;
                 case "Constantinople":
                     return Constantinople.Instance;
+                case "ConstantinopleFix":
+                    return ConstantinopleFix.Instance;
                 case "Byzantium":
                     return Byzantium.Instance;
                 default:
