@@ -5,6 +5,8 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Json;
 
 namespace Nethermind.EvmPlayground
 {
@@ -15,12 +17,12 @@ namespace Nethermind.EvmPlayground
         private readonly ILogger _logger;
 
         public BasicJsonRpcClient(Uri uri)
-            : this(uri, new JsonSerializer(), NullLogger.Instance)
+            : this(uri, new EthereumJsonSerializer(), NullLogger.Instance)
         {
         }
 
         internal BasicJsonRpcClient(Uri uri, ILogger logger)
-            : this(uri, new JsonSerializer(), logger)
+            : this(uri, new EthereumJsonSerializer(), logger)
         {
             _logger.Info($"Starting RPC client for {uri}");
         }

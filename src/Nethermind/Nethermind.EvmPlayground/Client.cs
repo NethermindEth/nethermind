@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.EvmPlayground
@@ -23,10 +25,10 @@ namespace Nethermind.EvmPlayground
         private readonly IJsonRpcClient _jsonRpcClient;
         private readonly ILogger _logger;
 
-        private IJsonSerializer _serializer = new JsonSerializer();
+        private IJsonSerializer _serializer = new EthereumJsonSerializer();
 
         public Client()
-            : this(new Uri("http://127.0.0.1:8345"))
+            : this(new Uri("http://127.0.0.1:8545"))
         {
         }
 
