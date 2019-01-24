@@ -37,7 +37,6 @@ namespace Nethermind.Evm.Test
         private readonly IEthereumSigner _ethereumSigner;
         private readonly ITransactionProcessor _processor;
         private readonly ISnapshotableDb _stateDb;
-        protected internal readonly ISpecProvider SpecProvider;
         protected internal IStateProvider TestState { get; }
         protected internal IStorageProvider Storage { get; }
 
@@ -47,12 +46,13 @@ namespace Nethermind.Evm.Test
         protected internal static Address Miner { get; } = TestObject.AddressD;
 
         protected virtual UInt256 BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
+        
+        protected virtual ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
 
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
 
         public VirtualMachineTestsBase()
         {
-            SpecProvider = MainNetSpecProvider.Instance;
             ILogManager logger = LimboLogs.Instance;;
             IDb codeDb = new StateDb();
             _stateDb = new StateDb();
