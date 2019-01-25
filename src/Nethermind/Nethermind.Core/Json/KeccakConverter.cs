@@ -33,7 +33,7 @@ namespace Nethermind.Core.Json
         public override Keccak ReadJson(JsonReader reader, Type objectType, Keccak existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
         {
             string s = (string)reader.Value;
-            return new Keccak(Bytes.FromHexString(s));
+            return s == null ? null : new Keccak(Bytes.FromHexString(s));
         }
     }
 }

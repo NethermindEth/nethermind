@@ -51,16 +51,13 @@ namespace Nethermind.Wallet
             for (int i = 0; i < 10; i++)
             {
                 PrivateKey key = new PrivateKey(_keySeed);
-                _unlockedAccounts.Add(key.Address, key);
-                
-                if (GetAccounts().Any(a => a == key.Address))
+                if (GetAccounts().All(a => a != key.Address))
                 {
-                    continue;
+                    SecureString secureString = new SecureString();
+                    secureString.MakeReadOnly();
+                    _keyStore.StoreKey(key, secureString);
                 }
                 
-                SecureString secureString = new SecureString();
-                secureString.MakeReadOnly();
-                _keyStore.StoreKey(key, secureString);
                 _unlockedAccounts.Add(key.Address, key);
                 _keySeed[31]++;
             }
@@ -129,7 +126,7 @@ namespace Nethermind.Wallet
             }
             else
             {
-                if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a message");
+                if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a messge");
 
                 key = _keyStore.GetKey(address, passphrase).PrivateKey;
             }

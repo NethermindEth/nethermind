@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,22 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using System.IO;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Json;
+using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
+using NUnit.Framework;
 
-namespace Nethermind.Core.Json
+namespace Nethermind.Core.Test.Json
 {
-    public class AddressConverter : JsonConverter<Address>
+    [TestFixture]
+    public class BloomConverterTests
     {
-        public override void WriteJson(JsonWriter writer, Address value, Newtonsoft.Json.JsonSerializer serializer)
+        [Test]
+        public void Can_read_null()
         {
-            writer.WriteValue(value.ToString());
-        }
-
-        public override Address ReadJson(JsonReader reader, Type objectType, Address existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
-        {
-            string s = (string)reader.Value;
-            return s == null ? null : new Address(s);
+            BloomConverter converter = new BloomConverter();
+            JsonReader reader = new JsonTextReader(new StringReader(""));
+            reader.ReadAsString();
+            Bloom result = converter.ReadJson(reader, typeof(Bloom), null, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(null, result);
         }
     }
 }

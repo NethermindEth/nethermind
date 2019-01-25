@@ -49,6 +49,14 @@ namespace Nethermind.Wallet.Test
                     throw new ArgumentOutOfRangeException(nameof(devWalletType), devWalletType, null);
             }
         }
+
+        [TestCase(DevWalletType.KeyStore)]
+        [TestCase(DevWalletType.Memory)]
+        public void Can_setup_wallet_twice(DevWalletType walletType)
+        {
+            IWallet wallet1 = SetupWallet(walletType);
+            IWallet wallet2 = SetupWallet(walletType);
+        }
         
         [TestCase(DevWalletType.KeyStore)]
         [TestCase(DevWalletType.Memory)]

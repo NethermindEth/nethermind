@@ -36,5 +36,35 @@ namespace Nethermind.Core.Test.Json
             BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(BigInteger.Parse("10485760"), result);
         }
+        
+        [Test]
+        public void Can_read_0x0()
+        {
+            BigIntegerConverter converter = new BigIntegerConverter();
+            JsonReader reader = new JsonTextReader(new StringReader("0x0"));
+            reader.ReadAsString();
+            BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(BigInteger.Parse("0"), result);
+        }
+        
+        [Test]
+        public void Can_read_0()
+        {
+            BigIntegerConverter converter = new BigIntegerConverter();
+            JsonReader reader = new JsonTextReader(new StringReader("0"));
+            reader.ReadAsString();
+            BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(BigInteger.Parse("0"), result);
+        }
+        
+        [Test]
+        public void Can_read_1()
+        {
+            BigIntegerConverter converter = new BigIntegerConverter();
+            JsonReader reader = new JsonTextReader(new StringReader("1"));
+            reader.ReadAsString();
+            BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(BigInteger.Parse("1"), result);
+        }
     }
 }

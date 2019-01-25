@@ -67,7 +67,7 @@ namespace Nethermind.Core.Json
             {
                 return new UInt256((long)reader.Value);
             }
-            
+
             string s = (string) reader.Value;
             if (s == "0x0")
             {
@@ -76,14 +76,18 @@ namespace Nethermind.Core.Json
 
             if (s.StartsWith("0x0"))
             {
-                return UInt256.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);    
+                return UInt256.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
             }
-            
-            Span<char> withZero = new Span<char>(new char[s.Length - 1]);
-            withZero[0] = '0';
-            s.AsSpan(2).CopyTo(withZero.Slice(1));
-            
-            return UInt256.Parse(withZero, NumberStyles.AllowHexSpecifier);
+
+            if (s.StartsWith("0x"))
+            {
+                Span<char> withZero = new Span<char>(new char[s.Length - 1]);
+                withZero[0] = '0';
+                s.AsSpan(2).CopyTo(withZero.Slice(1));
+                return UInt256.Parse(withZero, NumberStyles.AllowHexSpecifier);
+            }
+
+            return UInt256.Parse(s, NumberStyles.Integer);
         }
     }
 }
