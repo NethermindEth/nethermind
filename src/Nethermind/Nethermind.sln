@@ -157,6 +157,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli", "Nethermin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Facade", "Nethermind.Facade\Nethermind.Facade.csproj", "{B71A6E5F-73A4-4A45-A324-A10496F80DAA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Overseer.Test", "Nethermind.Overseer.Test\Nethermind.Overseer.Test.csproj", "{F3A983E4-1E44-49DF-B948-210490415CEB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -407,6 +409,10 @@ Global
 		{B71A6E5F-73A4-4A45-A324-A10496F80DAA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B71A6E5F-73A4-4A45-A324-A10496F80DAA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B71A6E5F-73A4-4A45-A324-A10496F80DAA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F3A983E4-1E44-49DF-B948-210490415CEB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3A983E4-1E44-49DF-B948-210490415CEB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3A983E4-1E44-49DF-B948-210490415CEB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3A983E4-1E44-49DF-B948-210490415CEB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -454,6 +460,7 @@ Global
 		{333F90F5-6A53-40AF-98DC-1DE4B024D5D8} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 		{E513347C-7082-42B8-B3A8-39C3D6992A9B} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 		{43545FB4-82E6-4763-830B-D6B6E4662927} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
+		{F3A983E4-1E44-49DF-B948-210490415CEB} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}
