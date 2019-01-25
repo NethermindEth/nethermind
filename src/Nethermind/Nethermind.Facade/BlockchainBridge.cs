@@ -81,9 +81,9 @@ namespace Nethermind.Facade
             return _wallet.GetAccounts();
         }
 
-        public Signature Sign(Address address, Keccak message)
+        public Signature Sign(Address address, byte[] message)
         {
-            return _wallet.Sign(address, message);
+            return new Signature(_wallet.Sign(message, address));_wallet.Sign(message, address);
         }
 
         public BlockHeader Head => _blockTree.Head;

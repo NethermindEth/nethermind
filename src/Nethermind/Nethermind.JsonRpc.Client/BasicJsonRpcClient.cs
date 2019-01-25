@@ -39,7 +39,6 @@ namespace Nethermind.JsonRpc.Client
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _jsonSerializer = jsonSerializer;
 
-//            _client = new HttpClient {BaseAddress = new Uri("http://94.237.51.104:8345")}; // neth vm1
             _client = new HttpClient {BaseAddress = uri};
             _client.DefaultRequestHeaders.Accept.Clear();
             _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -58,6 +57,22 @@ namespace Nethermind.JsonRpc.Client
             {
                 _logger.Error($"Error during execution of {method}", e);
                 return $"Error: {e.Message}";
+            }
+        }
+        
+        public async Task<T> Post<T>(string method, params object[] parameters)
+        {
+            try
+            {
+                string request = GetJsonRequest(method, parameters);
+                HttpResponseMessage response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
+                string responseString = await response.Content.ReadAsStringAsync();
+                return _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString).Result;
+            }
+            catch (Exception e)
+            {
+                _logger.Error($"Error during execution of {method}", e);
+                return default(T);
             }
         }
 

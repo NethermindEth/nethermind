@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,22 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
+using System.Security;
 using Nethermind.Core;
+using Nethermind.Wallet;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.Facade
 {
-    [Todo(Improve.Refactor, "Can we use string instead to avoid coupling and introduce conventions?")]
-    public enum ModuleType
+    public class PersonalBridge : IPersonalBridge
     {
-        Admin,
-        Clique,
-        Db,
-        Debug,
-        Eth,
-        Net,
-        Personal,
-        Trace,
-        TxPool,
-        Web3,
+        private readonly IWallet _wallet;
+
+        public PersonalBridge(IWallet wallet)
+        {
+            _wallet = wallet;
+        }
+        
+        public Address[] ListAccounts()
+        {
+            return _wallet.GetAccounts().ToArray();
+        }
+
+        public Address NewAccount(SecureString passphrase)
+        {
+            return _wallet.NewAccount(passphrase);
+        }
     }
 }

@@ -22,7 +22,7 @@ using Nethermind.Core.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
-    public class AdminModule : ModuleBase
+    public class AdminModule : ModuleBase, IAdminModule
     {
         public override ModuleType ModuleType => ModuleType.Admin;
 
@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
             throw new System.NotImplementedException();
         }
 
-        public AdminModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
+        public AdminModule(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configProvider, logManager, jsonSerializer)
         {
         }
     }

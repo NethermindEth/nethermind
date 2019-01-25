@@ -27,8 +27,8 @@ namespace Nethermind.JsonRpc.Modules.TxPool
     {
         private readonly IBlockchainBridge _blockchainBridge;        
 
-        public TxPoolModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer,
-            IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager, jsonSerializer)
+        public TxPoolModule(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer,
+            IBlockchainBridge blockchainBridge) : base(configProvider, logManager, jsonSerializer)
         {
             _blockchainBridge = blockchainBridge;
         }

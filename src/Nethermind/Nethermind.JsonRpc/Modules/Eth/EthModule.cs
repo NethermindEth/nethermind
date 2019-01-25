@@ -40,13 +40,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         private Encoding _messageEncoding = Encoding.UTF8;
 
-        private const string SignatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
-
         private readonly IBlockchainBridge _blockchainBridge;
 
         private ReaderWriterLockSlim _readerWriterLockSlim = new ReaderWriterLockSlim();
 
-        public EthModule(IJsonSerializer jsonSerializer, IConfigProvider configurationProvider, ILogManager logManager, IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager, jsonSerializer)
+        public EthModule(IJsonSerializer jsonSerializer, IConfigProvider configProvider, ILogManager logManager, IBlockchainBridge blockchainBridge) : base(configProvider, logManager, jsonSerializer)
         {
             _blockchainBridge = blockchainBridge;
         }
@@ -348,9 +346,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 try
                 {
                     Address address = addressData;
-                    var messageText = _messageEncoding.GetString(message);
-                    var signatureText = string.Format(SignatureTemplate, messageText.Length, messageText);
-                    sig = _blockchainBridge.Sign(address, Keccak.Compute(signatureText));
+                    sig = _blockchainBridge.Sign(address, message);
                 }
                 catch (Exception)
                 {

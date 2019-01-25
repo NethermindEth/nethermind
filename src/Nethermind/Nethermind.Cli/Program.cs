@@ -18,6 +18,7 @@
 
 using System;
 using Jint;
+using Nethermind.Core;
 using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Client;
@@ -26,14 +27,15 @@ namespace Nethermind.Cli
 {
     static class Program
     {
+        private static IJsonSerializer _serializer = new EthereumJsonSerializer();
+        
         static void Main(string[] args)
         {
             ILogManager logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
-            BasicJsonRpcClient client = new BasicJsonRpcClient(new Uri("http://localhost:8545"), new EthereumJsonSerializer(), logManager);
+            BasicJsonRpcClient client = new BasicJsonRpcClient(new Uri("http://localhost:8545"), _serializer, logManager);
 
             var engine = new Engine();
-            new CliApiBuilder(engine, "personal")
-                .AddMethod("listAccounts", () => throw new NotImplementedException()).Build();
+            BuildPersonal(engine, client);
 
             while (true)
             {
@@ -56,6 +58,14 @@ namespace Nethermind.Cli
                     Console.ForegroundColor = color;
                 }
             }
+        }
+
+        private static void BuildPersonal(Engine engine, BasicJsonRpcClient client)
+        {
+            new CliApiBuilder(engine, "personal")
+                .AddProperty("listAccounts", () => _serializer.Serialize(client.Post<Address[]>("personal_listAccounts").Result))
+                .AddMethod("newAccount", (string passphrase) => _serializer.Serialize(client.Post<Address>("personal_newAccount", passphrase).Result.ToString()))
+                .Build();
         }
     }
 }

@@ -21,6 +21,7 @@ using Jint;
 using Jint.Native;
 using Jint.Native.Object;
 using Jint.Runtime;
+using Jint.Runtime.Descriptors;
 using Jint.Runtime.Interop;
 
 namespace Nethermind.Cli
@@ -39,22 +40,42 @@ namespace Nethermind.Cli
 
         public CliApiBuilder AddMethod<T1, T2>(string name, Action<T1, T2> action)
         {
-            JsValue value = new DelegateWrapper(_engine, action);
-            _instance.FastAddProperty(name, value, true, false, true);
-            return this;
+            return AddMethod(name, new DelegateWrapper(_engine, action));
         }
         
         public CliApiBuilder AddMethod<T>(string name, Action<T> action)
         {
-            JsValue value = new DelegateWrapper(_engine, action);
-            _instance.FastAddProperty(name, value, true, false, true);
-            return this;
+            return AddMethod(name, new DelegateWrapper(_engine, action));
         }
         
         public CliApiBuilder AddMethod(string name, Action action)
         {
-            JsValue value = new DelegateWrapper(_engine, action);
-            _instance.FastAddProperty(name, value, true, false, true);
+            return AddMethod(name, new DelegateWrapper(_engine, action));
+        }
+        
+        public CliApiBuilder AddMethod<T>(string name, Func<T> func)
+        {
+            return AddMethod(name, new DelegateWrapper(_engine, func));
+        }
+        
+        public CliApiBuilder AddProperty<T>(string name, Func<T> func)
+        {
+            var nativeDelegate = new DelegateWrapper(_engine, func);
+            JsValue getter = JsValue.FromObject(_engine, nativeDelegate);
+            JsValue setter = JsValue.Null;
+
+            _instance.DefineOwnProperty(name, new PropertyDescriptor(getter, setter, true, false), true);
+            return this;
+        }
+        
+        public CliApiBuilder AddMethod<T, TResult>(string name, Func<T, TResult> func)
+        {
+            return AddMethod(name, new DelegateWrapper(_engine, func));
+        }
+
+        private CliApiBuilder AddMethod(string name, DelegateWrapper delegateWrapper)
+        {
+            _instance.FastAddProperty(name, delegateWrapper, true, false, true);
             return this;
         }
 

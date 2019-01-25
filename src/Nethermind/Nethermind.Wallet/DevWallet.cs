@@ -19,6 +19,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -30,10 +32,14 @@ namespace Nethermind.Wallet
     [DoNotUseInSecuredContext("For dev purposes only")]
     public class DevWallet : IWallet
     {
+        private const string SignatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
         private static byte[] _keySeed = new byte[32];
         private readonly ILogger _logger;
-
+        private Dictionary<Address, bool> _isUnlocked = new Dictionary<Address, bool>();
+        private Dictionary<Address, string> _passwords = new Dictionary<Address, string>();
         private Dictionary<Address, PrivateKey> _keys = new Dictionary<Address, PrivateKey>();
+
+        private Encoding _messageEncoding = Encoding.UTF8;
 
         public DevWallet(ILogManager logManager)
         {
@@ -44,24 +50,83 @@ namespace Nethermind.Wallet
             {
                 PrivateKey key = new PrivateKey(_keySeed);
                 _keys.Add(key.Address, key);
+                _passwords.Add(key.Address, "");
+                _isUnlocked.Add(key.Address, true);
                 _keySeed[31]++;
             }
+        }
+
+        public void Import(byte[] keyData, SecureString passphrase)
+        {
+            throw new NotSupportedException();
         }
 
         public Address[] GetAccounts()
         {
             return _keys.Keys.ToArray();
         }
+        
+        public Address NewAccount(SecureString passphrase)
+        {
+            PrivateKey key = new PrivateKeyGenerator().Generate();
+            _keys.Add(key.Address, key);
+            _isUnlocked.Add(key.Address, true);
+            _passwords.Add(key.Address, passphrase.Unsecure());
+            return key.Address;
+        }
+
+        public void UnlockAccount(Address address, SecureString passphrase)
+        {
+            UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
+        }
+        
+        public void UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
+        {
+            if (!_passwords.ContainsKey(address))
+            {
+                throw new SecurityException("Account does not exist.");
+            }
+
+            if (_passwords[address] != passphrase.Unsecure())
+            {
+                throw new SecurityException("Password is invalid.");
+            }
+
+            _isUnlocked[address] = true;
+        }
+
+        public void LockAccount(Address address)
+        {
+            if (!_passwords.ContainsKey(address))
+            {
+                throw new SecurityException("Account does not exist.");
+            }
+            
+            _isUnlocked[address] = false;
+        }
+
+        public byte[] Sign(byte[] message, Address address, SecureString passphrase = null)
+        {   
+            if (!_isUnlocked[address] && passphrase?.Unsecure() != _passwords[address])
+            {
+                throw new SecurityException("Cannot sign without password or unlocked account.");
+            }
+
+            string messageText = _messageEncoding.GetString(message);
+            string signatureText = string.Format(SignatureTemplate, messageText.Length, messageText);
+            Signature signature = Sign(address, Keccak.Compute(signatureText));
+            return signature.Bytes;
+        }
 
         public void Sign(Transaction tx, int chainId)
-        {
+        {   
             if (_logger.IsDebug) _logger?.Debug($"Signing transaction: {tx.Value} to {tx.To}");
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId));
             tx.Signature = Sign(tx.SenderAddress, hash);
             tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
         }
 
-        public Signature Sign(Address address, Keccak message)
+        private Signature Sign(Address address, Keccak message)
         {
             var rs = Proxy.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
             return new Signature(rs, v);
