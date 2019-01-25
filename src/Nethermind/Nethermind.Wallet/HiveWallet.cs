@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Wallet
 {
@@ -50,7 +51,12 @@ namespace Nethermind.Wallet
             throw new System.NotImplementedException();
         }
 
-        public byte[] Sign(byte[] message, Address address, SecureString passphrase = null)
+        public Signature Sign(byte[] message, Address address, SecureString passphrase = null)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public Signature Sign(Keccak hash, Address address, SecureString passphrase = null)
         {
             throw new System.NotImplementedException();
         }

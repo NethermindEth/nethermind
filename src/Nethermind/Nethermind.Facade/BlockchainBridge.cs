@@ -83,7 +83,7 @@ namespace Nethermind.Facade
 
         public Signature Sign(Address address, byte[] message)
         {
-            return new Signature(_wallet.Sign(message, address));_wallet.Sign(message, address);
+            return _wallet.Sign(message, address);
         }
 
         public BlockHeader Head => _blockTree.Head;
