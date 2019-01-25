@@ -17,62 +17,53 @@
  */
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Wallet
 {
-    public class HiveWallet : IWallet
+    public class NullWallet : IWallet
     {
-        private readonly ISet<Address> _addresses = new HashSet<Address>();
-
-        public void Add(Address address)
-            => _addresses.Add(address);
-
         public void Import(byte[] keyData, SecureString passphrase)
         {
-            throw new System.NotImplementedException();
         }
 
         public Address NewAccount(SecureString passphrase)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
 
         public void UnlockAccount(Address address, SecureString passphrase)
         {
-            throw new System.NotImplementedException();
         }
 
         public void UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
         {
-            throw new NotImplementedException();
         }
 
         public void LockAccount(Address address)
         {
-            throw new System.NotImplementedException();
         }
 
         public Signature Sign(byte[] message, Address address, SecureString passphrase = null)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
 
         public Signature Sign(Keccak hash, Address address, SecureString passphrase = null)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
 
         public Address[] GetAccounts()
-            => _addresses.ToArray();
+        {
+            return Array.Empty<Address>();
+        }
 
         public void Sign(Transaction tx, int chainId)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
     }
 }

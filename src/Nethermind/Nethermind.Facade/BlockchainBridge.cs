@@ -85,6 +85,11 @@ namespace Nethermind.Facade
         {
             return _wallet.Sign(message, address);
         }
+        
+        public void Sign(Transaction tx)
+        {
+            _wallet.Sign(tx, _blockTree.ChainId);
+        }
 
         public BlockHeader Head => _blockTree.Head;
         public BlockHeader BestSuggested => _blockTree.BestSuggested;

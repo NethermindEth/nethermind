@@ -31,6 +31,8 @@ namespace Nethermind.Facade
     {
         IReadOnlyCollection<Address> GetWalletAccounts();
         Signature Sign(Address address, byte[] message);
+        
+        void Sign(Transaction tx);
 
         int GetNetworkId();
         BlockHeader Head { get; }

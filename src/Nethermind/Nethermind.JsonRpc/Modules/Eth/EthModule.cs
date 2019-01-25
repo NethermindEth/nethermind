@@ -368,6 +368,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 _readerWriterLockSlim.EnterWriteLock();
                 Transaction tx = transactionForRpc.ToTransaction();
+                if (tx.Signature == null)
+                {
+                    tx.Nonce = (UInt256)_blockchainBridge.GetNonce(tx.SenderAddress);
+                    _blockchainBridge.Sign(tx);
+                }
+                
                 Keccak txHash = _blockchainBridge.SendTransaction(tx);
                 return ResultWrapper<Keccak>.Success(txHash);
             }

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,6 +28,8 @@ namespace Nethermind.Wallet
         void Import(byte[] keyData, SecureString passphrase);
         Address NewAccount(SecureString passphrase);
         void UnlockAccount(Address address, SecureString passphrase);
+        
+        void UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan );
         void LockAccount(Address address);
         Signature Sign(byte[] message, Address address, SecureString passphrase = null);
         Signature Sign(Keccak hash, Address address, SecureString passphrase = null);

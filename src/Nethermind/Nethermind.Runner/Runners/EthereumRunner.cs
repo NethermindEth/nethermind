@@ -215,7 +215,10 @@ namespace Nethermind.Runner.Runners
             ITracer tracer = new Tracer(rpcChain.Processor, _receiptStorage, _blockTree, _dbProvider.TraceDb);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, _blockProcessor, _transactionPool, _logManager);
-            _wallet = HiveEnabled ? (IWallet)new HiveWallet() : new DevWallet(_logManager);
+
+            _wallet = HiveEnabled
+                ? new HiveWallet()
+                : _initConfig.EnableUnsecuredDevWallet ? new DevKeyStoreWallet(_keyStore, _logManager) : (IWallet)new NullWallet();
             RpcState rpcState = new RpcState(_blockTree, _specProvider, rpcDbProvider, _logManager);
 
             //creating blockchain bridge

@@ -22,7 +22,7 @@ namespace Nethermind.KeyStore.Config
 {
     public interface IKeyStoreConfig : IConfig
     {
-        string KeyStoreDirectory { get; }
+        string KeyStoreDirectory { get; set; }
         string KeyStoreEncoding { get; }
 
         string Kdf { get; }

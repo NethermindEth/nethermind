@@ -23,7 +23,7 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture]
-    public class UnclesSpecialTests : BlockchainTestBase
+    public class UncleSpecialTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "bcUncleSpecialTests" })]
         public async Task Test(BlockchainTest test)

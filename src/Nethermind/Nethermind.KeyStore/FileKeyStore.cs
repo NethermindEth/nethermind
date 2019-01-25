@@ -100,6 +100,11 @@ namespace Nethermind.KeyStore
 
         public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
         {
+            if (!password.IsReadOnly())
+            {
+                throw new InvalidOperationException("Cannot work with password that is not readonly");
+            }
+            
             var serializedKey = ReadKey(address);
             if (serializedKey == null)
             {
@@ -179,6 +184,11 @@ namespace Nethermind.KeyStore
 
         public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
         {
+            if (!password.IsReadOnly())
+            {
+                throw new InvalidOperationException("Cannot work with password that is not readonly");
+            }
+            
             var privateKey = _privateKeyGenerator.Generate();
             var result = StoreKey(privateKey, password);
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
@@ -191,6 +201,11 @@ namespace Nethermind.KeyStore
 
         public Result StoreKey(PrivateKey key, SecureString password)
         {
+            if (!password.IsReadOnly())
+            {
+                throw new InvalidOperationException("Cannot work with password that is not readonly");
+            }
+            
             var salt = _cryptoRandom.GenerateRandomBytes(32);
             var passBytes = password.ToByteArray(_keyStoreEncoding);
 
