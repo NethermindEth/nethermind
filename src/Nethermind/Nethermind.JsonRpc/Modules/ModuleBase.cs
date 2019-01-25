@@ -31,11 +31,11 @@ namespace Nethermind.JsonRpc.Modules
         protected readonly IJsonRpcConfig JsonRpcConfig;
         protected readonly IJsonSerializer JsonSerializer;
 
-        protected ModuleBase(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer)
+        protected ModuleBase(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer)
         {
             JsonSerializer = jsonSerializer;
             Logger = logManager.GetClassLogger();
-            JsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
+            JsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
         }
 
         protected string GetJsonLog(object model)

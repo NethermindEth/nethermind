@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Modules.Net
     {
         private readonly INetBridge _netBridge;
 
-        public NetModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer, INetBridge netBridge) : base(configurationProvider, logManager, jsonSerializer)
+        public NetModule(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer, INetBridge netBridge) : base(configProvider, logManager, jsonSerializer)
         {
             _netBridge = netBridge;
         }

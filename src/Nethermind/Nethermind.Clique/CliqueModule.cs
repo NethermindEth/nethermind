@@ -31,7 +31,7 @@ namespace Nethermind.Clique
     {
         private readonly ICliqueBridge _cliqueBridge;
 
-        public CliqueModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer, ICliqueBridge cliqueBridge) : base(configurationProvider, logManager, jsonSerializer)
+        public CliqueModule(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer, ICliqueBridge cliqueBridge) : base(configProvider, logManager, jsonSerializer)
         {
             _cliqueBridge = cliqueBridge ?? throw new ArgumentNullException(nameof(cliqueBridge));
         }

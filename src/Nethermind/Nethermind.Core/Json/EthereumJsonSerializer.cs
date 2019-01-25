@@ -25,18 +25,42 @@ namespace Nethermind.Core.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
-        private JsonSerializerSettings _settingsIndented = new JsonSerializerSettings
+        public static IList<JsonConverter> BasicConverters { get; } = new JsonConverter[]
         {
-            NullValueHandling = NullValueHandling.Ignore,
-            Formatting = Formatting.Indented,
-            Converters = BasicConverters
+            new AddressConverter(),
+            new KeccakConverter(),
+            new BloomConverter(),
+            new ByteArrayConverter(),
+            new UInt256Converter(),
+            new NullableUInt256Converter(),
+            new BigIntegerConverter(),
+            new NullableBigIntegerConverter()
         };
         
-        private JsonSerializerSettings _settings = new JsonSerializerSettings
+        private static IList<JsonConverter> ReadableConverters { get; } = new JsonConverter[]
+        {
+            new AddressConverter(),
+            new KeccakConverter(),
+            new BloomConverter(),
+            new ByteArrayConverter(),
+            new UInt256Converter(NumberConversion.Decimal),
+            new NullableUInt256Converter(NumberConversion.Decimal),
+            new BigIntegerConverter(NumberConversion.Decimal),
+            new NullableBigIntegerConverter(NumberConversion.Decimal)
+        };
+        
+        private static JsonSerializerSettings _settings = new JsonSerializerSettings
         {
             NullValueHandling = NullValueHandling.Ignore,
             Formatting = Formatting.None,
             Converters = BasicConverters
+        };
+        
+        private static JsonSerializerSettings _readableSettings = new JsonSerializerSettings
+        {
+            NullValueHandling = NullValueHandling.Ignore,
+            Formatting = Formatting.None,
+            Converters = ReadableConverters
         };
         
         public T DeserializeAnonymousType<T>(string json, T definition)
@@ -49,18 +73,6 @@ namespace Nethermind.Core.Json
             return JsonConvert.DeserializeObject<T>(json, _settings);
         }
 
-        public static IList<JsonConverter> BasicConverters { get; } = new JsonConverter[]
-        {
-            new AddressConverter(),
-            new KeccakConverter(),
-            new BloomConverter(),
-            new ByteArrayConverter(),
-            new UInt256Converter(),
-            new NullableUInt256Converter(),
-            new BigIntegerConverter(),
-            new NullableBigIntegerConverter()
-        };
-
         public (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json)
         {
             throw new NotSupportedException();
@@ -68,7 +80,7 @@ namespace Nethermind.Core.Json
 
         public string Serialize<T>(T value, bool indented = false)
         {
-            return JsonConvert.SerializeObject(value, indented ? _settingsIndented : _settings);
+            return JsonConvert.SerializeObject(value, indented ? _readableSettings : _settings);
         }
     }
 }

@@ -32,21 +32,6 @@ namespace Nethermind.Wallet.Test
         }
 
         [Test]
-        public void Can_sign()
-        {
-            EthereumSigner signer = new EthereumSigner(new SingleReleaseSpecProvider(LatestRelease.Instance, 99), NullLogManager.Instance);
-            DevWallet wallet = new DevWallet(NullLogManager.Instance);
-
-            for (int i = 1; i <= 10; i++)
-            {
-                Address signerAddress = wallet.GetAccounts()[0];
-                Signature sig = wallet.Sign(signerAddress, TestObject.KeccakA);
-                Address recovered = signer.RecoverAddress(sig, TestObject.KeccakA);
-                Assert.AreEqual(signerAddress, recovered, $"{i}");
-            }
-        }
-
-        [Test]
         public void Can_sign_on_networks_with_chain_id()
         {
             const int networkId = 40000;

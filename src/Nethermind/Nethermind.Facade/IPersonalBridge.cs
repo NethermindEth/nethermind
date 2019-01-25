@@ -16,22 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Security;
 using Nethermind.Core;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.Facade
 {
-    [Todo(Improve.Refactor, "Can we use string instead to avoid coupling and introduce conventions?")]
-    public enum ModuleType
+    public interface IPersonalBridge
     {
-        Admin,
-        Clique,
-        Db,
-        Debug,
-        Eth,
-        Net,
-        Personal,
-        Trace,
-        TxPool,
-        Web3,
+        Address[] ListAccounts();
+        
+        Address NewAccount(SecureString passphrase);
     }
 }

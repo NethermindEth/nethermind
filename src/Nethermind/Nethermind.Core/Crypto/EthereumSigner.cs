@@ -47,7 +47,7 @@ namespace Nethermind.Core.Crypto
         
         public void Sign(PrivateKey privateKey, Transaction transaction, UInt256 blockNumber)
         {
-            _logger?.Debug($"Signing transaction: {transaction.Value} to {transaction.To}");
+            _logger?.Debug($"Signing transaction: {transaction.Value} to {transaction.To} with data {transaction.Data}");
             bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
             Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, isEip155Enabled, _chainIdValue));
             transaction.Signature = Sign(privateKey, hash);

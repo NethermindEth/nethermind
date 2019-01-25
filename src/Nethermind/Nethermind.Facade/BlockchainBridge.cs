@@ -81,9 +81,9 @@ namespace Nethermind.Facade
             return _wallet.GetAccounts();
         }
 
-        public Signature Sign(Address address, Keccak message)
+        public Signature Sign(Address address, byte[] message)
         {
-            return _wallet.Sign(address, message);
+            return new Signature(_wallet.Sign(message, address));_wallet.Sign(message, address);
         }
 
         public BlockHeader Head => _blockTree.Head;
@@ -112,15 +112,8 @@ namespace Nethermind.Facade
         {
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
 
-            if (transaction.SenderAddress == null) transaction.SenderAddress = _wallet.GetAccounts()[0];
-
-            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
-            _wallet.Sign(transaction, _blockTree.ChainId);
             transaction.Hash = Transaction.CalculateHash(transaction);
             transaction.Timestamp = _timestamp.EpochSeconds;
-
-            if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce)
-                throw new InvalidOperationException("Invalid nonce");
 
             _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
 

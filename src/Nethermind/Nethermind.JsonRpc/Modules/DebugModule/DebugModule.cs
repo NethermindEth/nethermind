@@ -37,8 +37,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
     {
         private readonly IDebugBridge _debugBridge;
 
-        public DebugModule(IConfigProvider configurationProvider, ILogManager logManager, IDebugBridge debugBridge, IJsonSerializer jsonSerializer)
-            : base(configurationProvider, logManager, jsonSerializer)
+        public DebugModule(IConfigProvider configProvider, ILogManager logManager, IDebugBridge debugBridge, IJsonSerializer jsonSerializer)
+            : base(configProvider, logManager, jsonSerializer)
         {
             _debugBridge = debugBridge;
         }

@@ -50,6 +50,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.KeyStore;
@@ -255,6 +256,13 @@ namespace Nethermind.Runner.Runners
             {
                 CliqueModule cliqueModule = new CliqueModule(_configProvider, _logManager, _jsonSerializer, new CliqueBridge(_blockProducer as CliqueBlockProducer, _blockTree));
                 _rpcModuleProvider.Register<ICliqueModule>(cliqueModule);
+            }
+
+            if (_initConfig.EnableUnsecuredDevWallet)
+            {
+                PersonalBridge personalBridge = new PersonalBridge(_wallet);
+                PersonalModule personalModule = new PersonalModule(personalBridge, _configProvider, _logManager, _jsonSerializer);
+                _rpcModuleProvider.Register<IPersonalModule>(personalModule);
             }
 
             AdminModule adminModule = new AdminModule(_configProvider, _logManager, _jsonSerializer);
