@@ -23,5 +23,7 @@ namespace Nethermind.JsonRpc.Client
     public interface IJsonRpcClient
     {
         Task<string> Post(string method, params object[] parameters);
+        
+        Task<T> Post<T>(string method, params object[] parameters);
     }
 }

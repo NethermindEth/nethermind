@@ -25,16 +25,16 @@ namespace Nethermind.Core.Json
 {
     public class UInt256Converter : JsonConverter<UInt256>
     {
-        private readonly bool _useX64;
+        private readonly NumberConversion _conversion;
 
         public UInt256Converter()
-            : this(false)
+            : this(NumberConversion.Hex)
         {
         }
 
-        public UInt256Converter(bool useX64)
+        public UInt256Converter(NumberConversion conversion)
         {
-            _useX64 = useX64;
+            _conversion = conversion;
         }
 
         public override void WriteJson(JsonWriter writer, UInt256 value, Newtonsoft.Json.JsonSerializer serializer)
@@ -45,7 +45,20 @@ namespace Nethermind.Core.Json
                 return;
             }
             
-            writer.WriteValue(string.Concat("0x", value.ToString(_useX64 ? "x64" : "x").TrimStart('0')));
+            switch (_conversion)
+            {
+                case NumberConversion.PaddedHex:
+                    writer.WriteValue(string.Concat("0x", value.ToString("x64").TrimStart('0')));
+                    break;
+                case NumberConversion.Hex:
+                    writer.WriteValue(string.Concat("0x", value.ToString("x").TrimStart('0')));
+                    break;
+                case NumberConversion.Decimal:
+                    writer.WriteValue(value.ToString());
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
         }
 
         public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)

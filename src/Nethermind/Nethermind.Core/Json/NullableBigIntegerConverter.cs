@@ -27,13 +27,13 @@ namespace Nethermind.Core.Json
         private BigIntegerConverter _bigIntegerConverter;
         
         public NullableBigIntegerConverter()
-            : this(false)
+            : this(NumberConversion.Hex)
         {
         }
 
-        public NullableBigIntegerConverter(bool useX64)
+        public NullableBigIntegerConverter(NumberConversion conversion)
         {
-            _bigIntegerConverter = new BigIntegerConverter(useX64);
+            _bigIntegerConverter = new BigIntegerConverter(conversion);
         }
 
         public override void WriteJson(JsonWriter writer, BigInteger? value, Newtonsoft.Json.JsonSerializer serializer)

@@ -17,25 +17,54 @@
  */
 
 using System;
+using System.IO;
+using System.Numerics;
 using Jint;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
+using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Cli
 {
     static class Program
     {
         private static IJsonSerializer _serializer = new EthereumJsonSerializer();
+        private static IJsonRpcClient _client;
+        private static ILogManager _logManager;
+        private static Engine _engine;
+        private static PrivateKey _nodeKey; 
+
+        // ReSharper disable once InconsistentNaming
+        private static CliApiBuilder Build;
         
         static void Main(string[] args)
         {
-            ILogManager logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
-            BasicJsonRpcClient client = new BasicJsonRpcClient(new Uri("http://localhost:8545"), _serializer, logManager);
+            string privateKeyPath = args.Length > 0 ? args[0] : "node.key.plain";
 
-            var engine = new Engine();
-            BuildPersonal(engine, client);
+            _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            _client = new BasicJsonRpcClient(new Uri("http://localhost:8545"), _serializer, _logManager);
+
+            _engine = new Engine();
+            _engine.SetValue("gasPrice", (double)20.GWei());            
+            
+            Build = new CliApiBuilder(_engine, _serializer, _client, _logManager);
+            
+            BuildPersonal();
+            BuildEth();
+            BuildNet();
+
+            if (File.Exists(privateKeyPath))
+            {
+                BuildNode();
+                _nodeKey = new PrivateKey(File.ReadAllBytes(privateKeyPath));
+            }
 
             while (true)
             {
@@ -48,7 +77,7 @@ namespace Nethermind.Cli
                         break;
                     }
 
-                    Console.WriteLine(engine.Execute(statement).GetCompletionValue());
+                    Console.WriteLine(_engine.Execute(statement).GetCompletionValue());
                 }
                 catch (Exception e)
                 {
@@ -60,12 +89,75 @@ namespace Nethermind.Cli
             }
         }
 
-        private static void BuildPersonal(Engine engine, BasicJsonRpcClient client)
+        private static void BuildPersonal()
         {
-            new CliApiBuilder(engine, "personal")
-                .AddProperty("listAccounts", () => _serializer.Serialize(client.Post<Address[]>("personal_listAccounts").Result))
-                .AddMethod("newAccount", (string passphrase) => _serializer.Serialize(client.Post<Address>("personal_newAccount", passphrase).Result.ToString()))
+            Build.Api("personal")
+                .WithProperty<string[]>("listAccounts")
+                .WithFunc<string, string>("newAccount")
+                .WithFunc<string, bool>("lockAccount")
+                .WithFunc<string, bool>("unlockAccount")
                 .Build();
+        }
+        
+        private static void BuildEth()
+        {
+            Build.Api("eth")
+                .WithProperty<BigInteger>("blockNumber")
+                .WithFunc<string, string, BigInteger>("getBalance")
+                .WithFunc("sendEth", (string from, string to, decimal amount) => SendEth(new Address(from), new Address(to), amount))
+                .Build();
+        }
+        
+        private static void BuildNet()
+        {
+            Build.Api("net")
+                .WithProperty<BigInteger>("version")
+                .Build();
+        }
+        
+        private static void BuildNode()
+        {
+            Console.WriteLine("Enabling node operations");
+            Build.Api("node")
+                .WithFunc("sendEth", (string address, decimal amount) => SendEth(new Address(address), amount))
+                .WithProperty<string>("address", () => _nodeKey.Address.ToString())
+                .Build();
+        }
+
+        private static string SendEth(Address from, Address address, decimal amount)
+        {
+            UInt256 blockNumber = _client.Post<UInt256>("eth_blockNumber").Result;
+            
+            TransactionForRpc tx = new TransactionForRpc();
+            tx.Value = (UInt256)(amount * (decimal)1.Ether());
+            tx.Gas = 21000;
+            tx.GasPrice = (UInt256)(_engine.GetValue("gasPrice").AsNumber());
+            tx.To = address;
+            tx.Nonce = (ulong)_client.Post<BigInteger>("eth_getTransactionCount", _nodeKey.Address, blockNumber).Result;
+            tx.From = from;
+            
+            Keccak keccak = _client.Post<Keccak>("eth_sendTransaction", tx).Result;
+            return _serializer.Serialize(keccak, true);
+        }
+        
+        private static string SendEth(Address address, decimal amount)
+        {
+            UInt256 blockNumber = _client.Post<UInt256>("eth_blockNumber").Result;
+            
+            Transaction tx = new Transaction();
+            tx.Value = (UInt256)(amount * (decimal)1.Ether());
+            tx.To = address;
+            tx.GasLimit = 21000;
+            tx.GasPrice = (UInt256)(_engine.GetValue("gasPrice").AsNumber());
+            tx.Nonce = (ulong)_client.Post<BigInteger>("eth_getTransactionCount", _nodeKey.Address, blockNumber).Result;
+            tx.SenderAddress = _nodeKey.Address;
+
+            int chainId = _client.Post<int>("net_version").Result;
+            EthereumSigner signer = new EthereumSigner(new SingleReleaseSpecProvider(ConstantinopleFix.Instance, chainId), _logManager);
+            signer.Sign(_nodeKey, tx, blockNumber);
+            
+            Keccak keccak = _client.Post<Keccak>("eth_sendRawTransaction", Rlp.Encode(tx, false).Bytes).Result;
+            return _serializer.Serialize(keccak, true);
         }
     }
 }

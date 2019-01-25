@@ -25,19 +25,19 @@ namespace Nethermind.Core.Json
 {
     public class BigIntegerConverter : JsonConverter<BigInteger>
     {
-        private readonly bool _useX64;
+        private readonly NumberConversion _conversion;
 
         public BigIntegerConverter()
-            : this(false)
+            : this(NumberConversion.Hex)
         {
         }
 
-        public BigIntegerConverter(bool useX64)
+        public BigIntegerConverter(NumberConversion conversion)
         {
-            _useX64 = useX64;
+            _conversion = conversion;
         }
 
-        public override void WriteJson(JsonWriter writer, BigInteger value, Newtonsoft.Json.JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, BigInteger value, JsonSerializer serializer)
         {
             if (value.IsZero)
             {
@@ -45,7 +45,20 @@ namespace Nethermind.Core.Json
                 return;
             }
 
-            writer.WriteValue(string.Concat("0x", value.ToString(_useX64 ? "x64" : "x").TrimStart('0')));
+            switch (_conversion)
+            {
+                case NumberConversion.PaddedHex:
+                    writer.WriteValue(string.Concat("0x", value.ToString("x64").TrimStart('0')));
+                    break;
+                case NumberConversion.Hex:
+                    writer.WriteValue(string.Concat("0x", value.ToString("x").TrimStart('0')));
+                    break;
+                case NumberConversion.Decimal:
+                    writer.WriteValue(value.ToString());
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
         }
 
         public override BigInteger ReadJson(JsonReader reader, Type objectType, BigInteger existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)

@@ -28,13 +28,13 @@ namespace Nethermind.Core.Json
         private UInt256Converter _uInt256Converter;
         
         public NullableUInt256Converter()
-            : this(false)
+            : this(NumberConversion.Hex)
         {
         }
 
-        public NullableUInt256Converter(bool useX64)
+        public NullableUInt256Converter(NumberConversion conversion)
         {
-            _uInt256Converter = new UInt256Converter(useX64);
+            _uInt256Converter = new UInt256Converter(conversion);
         }
 
         public override void WriteJson(JsonWriter writer, UInt256? value, Newtonsoft.Json.JsonSerializer serializer)
