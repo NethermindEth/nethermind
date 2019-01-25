@@ -567,7 +567,7 @@ namespace Nethermind.Blockchain
                     }
                     else if (initPeerCount == 0)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Sync peers 0, searching or peers to sync with...");
+                        if (_logger.IsInfo) _logger.Info($"Sync peers 0, searching for peers to sync with...");
                     }
 
                     CheckIfSyncingWithFastestPeer();

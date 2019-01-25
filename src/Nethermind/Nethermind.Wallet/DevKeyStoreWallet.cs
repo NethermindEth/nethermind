@@ -51,6 +51,8 @@ namespace Nethermind.Wallet
             for (int i = 0; i < 10; i++)
             {
                 PrivateKey key = new PrivateKey(_keySeed);
+                _unlockedAccounts.Add(key.Address, key);
+                
                 if (GetAccounts().Any(a => a == key.Address))
                 {
                     continue;
@@ -127,7 +129,7 @@ namespace Nethermind.Wallet
             }
             else
             {
-                if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a messge");
+                if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a message");
 
                 key = _keyStore.GetKey(address, passphrase).PrivateKey;
             }
