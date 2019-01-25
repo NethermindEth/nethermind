@@ -59,6 +59,7 @@ namespace Nethermind.Cli
             BuildPersonal();
             BuildEth();
             BuildNet();
+            BuildWeb3();
 
             if (File.Exists(privateKeyPath))
             {
@@ -103,8 +104,18 @@ namespace Nethermind.Cli
         {
             Build.Api("eth")
                 .WithProperty<BigInteger>("blockNumber")
+                .WithProperty<int>("protocolVersion")
+                .WithFunc<string, string, string>("getCode")
                 .WithFunc<string, string, BigInteger>("getBalance")
                 .WithFunc("sendEth", (string from, string to, decimal amount) => SendEth(new Address(from), new Address(to), amount))
+                .Build();
+        }
+        
+        private static void BuildWeb3()
+        {
+            Build.Api("web3")
+                .WithProperty<string>("clientVersion")
+                .WithFunc<string, string>("sha3")
                 .Build();
         }
         
@@ -112,6 +123,7 @@ namespace Nethermind.Cli
         {
             Build.Api("net")
                 .WithProperty<BigInteger>("version")
+                .WithProperty<BigInteger>("peerCount")
                 .Build();
         }
         
