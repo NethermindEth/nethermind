@@ -333,6 +333,7 @@ ASALocalRun/
 
 .vscode/
 nethermind_db/
+keystore/
 spaceneth_db/
 docs/build/
 out/
