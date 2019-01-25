@@ -28,7 +28,8 @@ namespace Nethermind.Wallet
         Address NewAccount(SecureString passphrase);
         void UnlockAccount(Address address, SecureString passphrase);
         void LockAccount(Address address);
-        byte[] Sign(byte[] message, Address address, SecureString passphrase = null);
+        Signature Sign(byte[] message, Address address, SecureString passphrase = null);
+        Signature Sign(Keccak hash, Address address, SecureString passphrase = null);
         Address[] GetAccounts();
         void Sign(Transaction tx, int chainId);
     }

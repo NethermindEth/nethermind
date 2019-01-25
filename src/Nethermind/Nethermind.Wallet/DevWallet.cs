@@ -105,8 +105,13 @@ namespace Nethermind.Wallet
             _isUnlocked[address] = false;
         }
 
-        public byte[] Sign(byte[] message, Address address, SecureString passphrase = null)
+        public Signature Sign(byte[] message, Address address, SecureString passphrase = null)
         {   
+                    if (!_isUnlocked.ContainsKey(address))
+                    {
+                        throw new SecurityException("Account does not exist.");
+                    }
+        
             if (!_isUnlocked[address] && passphrase?.Unsecure() != _passwords[address])
             {
                 throw new SecurityException("Cannot sign without password or unlocked account.");
@@ -115,9 +120,24 @@ namespace Nethermind.Wallet
             string messageText = _messageEncoding.GetString(message);
             string signatureText = string.Format(SignatureTemplate, messageText.Length, messageText);
             Signature signature = Sign(address, Keccak.Compute(signatureText));
-            return signature.Bytes;
+            return signature;
         }
 
+        public Signature Sign(Keccak hash, Address address, SecureString passphrase = null)
+        {
+            if (!_isUnlocked.ContainsKey(address))
+            {
+                throw new SecurityException("Account does not exist.");
+            }
+
+            if (!_isUnlocked[address] && passphrase?.Unsecure() != _passwords[address])
+            {
+                throw new SecurityException("Cannot sign without password or unlocked account.");
+            }
+            
+            return Sign(address, hash);
+        }
+        
         public void Sign(Transaction tx, int chainId)
         {   
             if (_logger.IsDebug) _logger?.Debug($"Signing transaction: {tx.Value} to {tx.To}");
