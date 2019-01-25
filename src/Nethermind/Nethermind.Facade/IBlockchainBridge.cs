@@ -25,7 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Block = Nethermind.Core.Block;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.Facade
 {
     public interface IBlockchainBridge
     {

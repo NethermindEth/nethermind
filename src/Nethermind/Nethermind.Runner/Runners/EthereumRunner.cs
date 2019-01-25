@@ -44,6 +44,7 @@ using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -218,7 +219,7 @@ namespace Nethermind.Runner.Runners
 
             //creating blockchain bridge
             var blockchainBridge = new BlockchainBridge(
-                _ethereumSigner,
+                rpcState.StateReader,
                 rpcState.StateProvider,
                 rpcState.StorageProvider,
                 rpcState.BlockTree,
@@ -366,6 +367,7 @@ namespace Nethermind.Runner.Runners
 
         private class RpcState
         {
+            public IStateReader StateReader;
             public IStateProvider StateProvider;
             public IStorageProvider StorageProvider;
             public IBlockhashProvider BlockhashProvider;
@@ -379,6 +381,7 @@ namespace Nethermind.Runner.Runners
                 IDb codeDb = readOnlyDbProvider.CodeDb;
                 StateTree stateTree = new StateTree(readOnlyDbProvider.StateDb);
 
+                StateReader = new StateReader(new StateTree(readOnlyDbProvider.StateDb), codeDb, logManager);
                 StateProvider = new StateProvider(stateTree, codeDb, logManager);
                 StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
 

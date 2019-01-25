@@ -19,6 +19,7 @@
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
+using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {

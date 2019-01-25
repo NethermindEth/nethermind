@@ -153,6 +153,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Abi.Test", "Neth
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.MrWolf", "Nethermind.MrWolf\Nethermind.MrWolf.csproj", "{43545FB4-82E6-4763-830B-D6B6E4662927}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli", "Nethermind.Cli\Nethermind.Cli.csproj", "{AABF177A-9E50-4736-AE65-0152B0C26121}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Facade", "Nethermind.Facade\Nethermind.Facade.csproj", "{B71A6E5F-73A4-4A45-A324-A10496F80DAA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -395,6 +399,14 @@ Global
 		{43545FB4-82E6-4763-830B-D6B6E4662927}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{43545FB4-82E6-4763-830B-D6B6E4662927}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{43545FB4-82E6-4763-830B-D6B6E4662927}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AABF177A-9E50-4736-AE65-0152B0C26121}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AABF177A-9E50-4736-AE65-0152B0C26121}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AABF177A-9E50-4736-AE65-0152B0C26121}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AABF177A-9E50-4736-AE65-0152B0C26121}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B71A6E5F-73A4-4A45-A324-A10496F80DAA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B71A6E5F-73A4-4A45-A324-A10496F80DAA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B71A6E5F-73A4-4A45-A324-A10496F80DAA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B71A6E5F-73A4-4A45-A324-A10496F80DAA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
