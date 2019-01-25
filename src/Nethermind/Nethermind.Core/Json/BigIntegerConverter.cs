@@ -44,7 +44,7 @@ namespace Nethermind.Core.Json
                 writer.WriteValue("0x0");
                 return;
             }
-            
+
             writer.WriteValue(string.Concat("0x", value.ToString(_useX64 ? "x64" : "x").TrimStart('0')));
         }
 
@@ -52,25 +52,29 @@ namespace Nethermind.Core.Json
         {
             if (reader.Value is long || reader.Value is int)
             {
-                return (long)reader.Value;
+                return (long) reader.Value;
             }
-            
+
             string s = (string) reader.Value;
             if (s == "0x0")
             {
                 return BigInteger.Zero;
             }
-            
+
             if (s.StartsWith("0x0"))
             {
-                return BigInteger.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);    
+                return BigInteger.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
             }
-            
-            Span<char> withZero = new Span<char>(new char[s.Length - 1]);
-            withZero[0] = '0';
-            s.AsSpan(2).CopyTo(withZero.Slice(1));
-            
-            return BigInteger.Parse(withZero, NumberStyles.AllowHexSpecifier);
+
+            if (s.StartsWith("0x"))
+            {
+                Span<char> withZero = new Span<char>(new char[s.Length - 1]);
+                withZero[0] = '0';
+                s.AsSpan(2).CopyTo(withZero.Slice(1));
+                return BigInteger.Parse(withZero, NumberStyles.AllowHexSpecifier);
+            }
+
+            return BigInteger.Parse(s, NumberStyles.Integer);
         }
     }
 }
