@@ -68,6 +68,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
                 notSecuredHere.AppendChar(c);
             }
 
+            notSecuredHere.MakeReadOnly();
             return ResultWrapper<Address>.Success(_bridge.NewAccount(notSecuredHere));
         }
 
