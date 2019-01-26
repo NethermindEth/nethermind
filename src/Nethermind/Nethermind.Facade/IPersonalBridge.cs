@@ -26,5 +26,7 @@ namespace Nethermind.Facade
         Address[] ListAccounts();
         
         Address NewAccount(SecureString passphrase);
+        void UnlockAccount(Address address, SecureString notSecuredHere);
+        void LockAccount(Address address);
     }
 }

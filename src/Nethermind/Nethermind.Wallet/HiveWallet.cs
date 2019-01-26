@@ -42,12 +42,12 @@ namespace Nethermind.Wallet
             throw new System.NotImplementedException();
         }
 
-        public void UnlockAccount(Address address, SecureString passphrase)
+        public bool UnlockAccount(Address address, SecureString passphrase)
         {
             throw new System.NotImplementedException();
         }
 
-        public void UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
+        public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
         {
             throw new NotImplementedException();
         }

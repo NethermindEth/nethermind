@@ -50,13 +50,25 @@ namespace Nethermind.JsonRpc.Modules.Personal
 
         public ResultWrapper<bool> personal_lockAccount(Address address)
         {
-            throw new NotImplementedException();
+            _bridge.LockAccount(address);
+
+            return ResultWrapper<bool>.Success(true);
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<bool> personal_unlockAccount(Address address, string passphrase)
         {
-            throw new NotImplementedException();
+            var notSecuredHere = new SecureString();
+            foreach (char c in passphrase)
+            {
+                notSecuredHere.AppendChar(c);
+            }
+            
+            notSecuredHere.MakeReadOnly();
+
+            _bridge.UnlockAccount(address, notSecuredHere);
+
+            return ResultWrapper<bool>.Success(true);
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
@@ -67,7 +79,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             {
                 notSecuredHere.AppendChar(c);
             }
-
+            
             notSecuredHere.MakeReadOnly();
             return ResultWrapper<Address>.Success(_bridge.NewAccount(notSecuredHere));
         }

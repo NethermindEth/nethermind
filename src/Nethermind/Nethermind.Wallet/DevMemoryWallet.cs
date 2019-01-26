@@ -75,12 +75,12 @@ namespace Nethermind.Wallet
             return key.Address;
         }
 
-        public void UnlockAccount(Address address, SecureString passphrase)
+        public bool UnlockAccount(Address address, SecureString passphrase)
         {
-            UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
+            return UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
         }
         
-        public void UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
+        public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
         {
             if (!_passwords.ContainsKey(address))
             {
@@ -93,6 +93,7 @@ namespace Nethermind.Wallet
             }
 
             _isUnlocked[address] = true;
+            return true;
         }
 
         public void LockAccount(Address address)

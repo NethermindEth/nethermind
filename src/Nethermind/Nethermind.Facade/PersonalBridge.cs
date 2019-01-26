@@ -41,5 +41,15 @@ namespace Nethermind.Facade
         {
             return _wallet.NewAccount(passphrase);
         }
+
+        public void UnlockAccount(Address address, SecureString notSecuredHere)
+        {
+            _wallet.UnlockAccount(address, notSecuredHere);
+        }
+
+        public void LockAccount(Address address)
+        {
+            _wallet.LockAccount(address);
+        }
     }
 }

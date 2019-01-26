@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
+using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 using Nethermind.Secp256k1;
 
@@ -79,16 +80,23 @@ namespace Nethermind.Wallet
             return privateKey.Address;
         }
 
-        public void UnlockAccount(Address address, SecureString passphrase)
+        public bool UnlockAccount(Address address, SecureString passphrase)
         {
-            UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
+            return UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
         }
 
-        public void UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
+        public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
         {
-            if (!_unlockedAccounts.ContainsKey(address)) return;
+            if (_unlockedAccounts.ContainsKey(address)) return true;
 
-            _unlockedAccounts.Add(address, _keyStore.GetKey(address, passphrase).PrivateKey);
+            (PrivateKey key, Result result) = _keyStore.GetKey(address, passphrase);
+            if (result.ResultType == ResultType.Success)
+            {
+                _unlockedAccounts.Add(key.Address, key);
+                return true;
+            }
+
+            return false;
         }
 
         public void LockAccount(Address address)
@@ -126,7 +134,7 @@ namespace Nethermind.Wallet
             }
             else
             {
-                if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a messge");
+                if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a message");
 
                 key = _keyStore.GetKey(address, passphrase).PrivateKey;
             }

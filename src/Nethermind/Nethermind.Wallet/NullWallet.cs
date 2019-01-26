@@ -34,12 +34,14 @@ namespace Nethermind.Wallet
             throw new NotImplementedException();
         }
 
-        public void UnlockAccount(Address address, SecureString passphrase)
+        public bool UnlockAccount(Address address, SecureString passphrase)
         {
+            return true;
         }
 
-        public void UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
+        public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
         {
+            return true;
         }
 
         public void LockAccount(Address address)
