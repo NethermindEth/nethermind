@@ -126,7 +126,7 @@ namespace Nethermind.Overseer.Test.Framework
         
         public TestBuilder SwitchNode(string node)
         {
-            CurrentNode = _processes[node];
+            CurrentNode = Nodes[node];
             return this;
         }
 
@@ -156,10 +156,10 @@ namespace Nethermind.Overseer.Test.Framework
 
         private NethermindProcessWrapper GetOrCreateNode(string name, string baseConfigFile)
         {
-            if (!_processes.ContainsKey(name))
+            if (!Nodes.ContainsKey(name))
             {
                 string bootnodes = string.Empty;
-                foreach ((_, NethermindProcessWrapper process) in _processes)
+                foreach ((_, NethermindProcessWrapper process) in Nodes)
                 {
                     bootnodes += $",{process.Enode}";
                 }
@@ -177,14 +177,14 @@ namespace Nethermind.Overseer.Test.Framework
                 int p2pPort = _startPort + _nodeCounter;
                 int httpPort = _startHttpPort + _nodeCounter;
                 TestContext.WriteLine($"Creating {name} at {p2pPort}, http://localhost:{httpPort}");
-                _processes[name] = _processBuilder.Create(name, _runnerDir, configPath, dbDir, httpPort, p2pPort, nodeKey, bootnodes);
+                Nodes[name] = _processBuilder.Create(name, _runnerDir, configPath, dbDir, httpPort, p2pPort, nodeKey, bootnodes);
                 _nodeCounter++;
             }
 
-            return _processes[name];
+            return Nodes[name];
         }
 
-        private Dictionary<string, NethermindProcessWrapper> _processes = new Dictionary<string, NethermindProcessWrapper>();
+        public Dictionary<string, NethermindProcessWrapper> Nodes { get; } = new Dictionary<string, NethermindProcessWrapper>();
 
         public TestBuilder Kill()
         {
@@ -193,8 +193,19 @@ namespace Nethermind.Overseer.Test.Framework
 
         public TestBuilder Kill(string name)
         {
-            var step = new KillProcessTestStep($"Kill {name}", _processes[name]);
+            var step = new KillProcessTestStep($"Kill {name}", Nodes[name]);
             QueueWork(step);
+            return this;
+        }
+        
+        public TestBuilder KillAll()
+        {
+            foreach (KeyValuePair<string,NethermindProcessWrapper> keyValuePair in Nodes)
+            {
+                var step = new KillProcessTestStep($"Kill {keyValuePair.Value}", Nodes[keyValuePair.Key]);
+                QueueWork(step);
+            }
+            
             return this;
         }
 

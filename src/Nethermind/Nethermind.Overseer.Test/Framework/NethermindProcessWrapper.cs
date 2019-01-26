@@ -18,6 +18,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Core;
 using Nethermind.Overseer.Test.JsonRpc;
 
 namespace Nethermind.Overseer.Test.Framework
@@ -29,9 +30,12 @@ namespace Nethermind.Overseer.Test.Framework
         public string Name { get; }
         public Process Process { get; }
         public bool IsRunning { get; private set; }
+        
+        public Address Address { get; private set; }
 
-        public NethermindProcessWrapper(string name, Process process, string enode, IJsonRpcClient jsonRpcClient)
+        public NethermindProcessWrapper(string name, Process process, Address address, string enode, IJsonRpcClient jsonRpcClient)
         {
+            Address = address;
             Enode = enode;
             JsonRpcClient = jsonRpcClient;
             Name = name;

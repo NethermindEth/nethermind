@@ -51,7 +51,7 @@ namespace Nethermind.Overseer.Test.Framework
             process.StartInfo.CreateNoWindow = false;
             process.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
             
-            return new NethermindProcessWrapper(name, process, $"enode://{new PrivateKey(nodeKey).PublicKey.ToString(false)}@127.0.0.1:{p2pPort}",new JsonRpcClient($"http://localhost:{httpPort}"));
+            return new NethermindProcessWrapper(name, process, new PrivateKey(nodeKey).Address,  $"enode://{new PrivateKey(nodeKey).PublicKey.ToString(false)}@127.0.0.1:{p2pPort}",new JsonRpcClient($"http://localhost:{httpPort}"));
         }
 
         private static void ProcessOnExited(object sender, EventArgs eventArgs)

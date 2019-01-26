@@ -9,13 +9,23 @@ namespace Nethermind.Overseer.Test.Framework
 {
     public abstract class TestContextBase<TContext, TState> : ITestContext where TState : ITestState where TContext : TestContextBase<TContext, TState>
     {
+        private TState _state;
         protected TestBuilder TestBuilder;
-        protected TState _state;
 
-        public TContext SetState(TState state)
+        protected TestContextBase(TState state)
         {
             _state = state;
+        }
+
+        public TContext SwitchNode(string node)
+        {
+            TestBuilder.SwitchNode(node);
             return (TContext)this;
+        }
+        
+        public TestBuilder LeaveContext()
+        {
+            return TestBuilder;
         }
         
         public TContext Wait(int delay = 5000, string name = "Wait")
