@@ -216,22 +216,6 @@ namespace Nethermind.Runner.Runners
             ITracer tracer = new Tracer(rpcChain.Processor, _receiptStorage, _blockTree, _dbProvider.TraceDb);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, _blockProcessor, _transactionPool, _logManager);
-
-            switch (_initConfig)
-            {
-                case var _ when HiveEnabled:
-                    _wallet = new HiveWallet();
-                    break;
-                case var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory:
-                    _wallet = new DevMemoryWallet(_logManager);
-                    break;
-                case var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory:
-                    _wallet = new DevKeyStoreWallet(_keyStore, _logManager);
-                    break;
-                default:
-                    _wallet = new NullWallet();
-                    break;
-            }
             
             RpcState rpcState = new RpcState(_blockTree, _specProvider, rpcDbProvider, _logManager);
 
@@ -610,6 +594,22 @@ namespace Nethermind.Runner.Runners
                 encrypter,
                 _cryptoRandom,
                 _logManager);
+            
+            switch (_initConfig)
+            {
+                case var _ when HiveEnabled:
+                    _wallet = new HiveWallet();
+                    break;
+                case var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory:
+                    _wallet = new DevMemoryWallet(_logManager);
+                    break;
+                case var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory:
+                    _wallet = new DevKeyStoreWallet(_keyStore, _logManager);
+                    break;
+                default:
+                    _wallet = new NullWallet();
+                    break;
+            }
 
             if (_initConfig.IsMining)
             {

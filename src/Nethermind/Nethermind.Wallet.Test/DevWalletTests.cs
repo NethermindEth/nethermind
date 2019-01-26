@@ -21,13 +21,24 @@ namespace Nethermind.Wallet.Test
             Memory
         }
 
-        [TearDown]
-        public void TearDown()
+        [SetUp]
+        public void SetUp()
+        {
+            DeleteTestKeyStore();
+        }
+
+        private void DeleteTestKeyStore()
         {
             if (Directory.Exists(_keyStorePath))
             {
                 Directory.Delete(_keyStorePath, true);
             }
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            DeleteTestKeyStore();
         }
 
         private string _keyStorePath = Path.Combine(Path.GetTempPath(), "DevWalletTests_keystore");
@@ -63,7 +74,7 @@ namespace Nethermind.Wallet.Test
         public void Has_10_dev_accounts(DevWalletType walletType)
         {
             IWallet wallet = SetupWallet(walletType);
-            Assert.AreEqual(10, wallet.GetAccounts().Length);
+            Assert.AreEqual((walletType == DevWalletType.Memory ? 10 : 3), wallet.GetAccounts().Length);
         }
         
         [TestCase(DevWalletType.KeyStore)]
@@ -72,7 +83,7 @@ namespace Nethermind.Wallet.Test
         {
             IWallet wallet = SetupWallet(walletType);
 
-            for (int i = 1; i <= 10; i++)
+            for (int i = 1; i <= (walletType == DevWalletType.Memory ? 10 : 3); i++)
             {
                 byte[] keyBytes = new byte[32];
                 keyBytes[31] = (byte) i;
@@ -89,7 +100,7 @@ namespace Nethermind.Wallet.Test
             EthereumSigner signer = new EthereumSigner(new SingleReleaseSpecProvider(LatestRelease.Instance, networkId), NullLogManager.Instance);
             IWallet wallet = SetupWallet(walletType);
 
-            for (int i = 1; i <= 10; i++)
+            for (int i = 1; i <= (walletType == DevWalletType.Memory ? 10 : 3); i++)
             {
                 Address signerAddress = wallet.GetAccounts()[0];
                 Transaction tx = new Transaction();
