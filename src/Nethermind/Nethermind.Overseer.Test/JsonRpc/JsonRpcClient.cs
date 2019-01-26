@@ -17,9 +17,11 @@
  */
 
 using System;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Json;
 using Newtonsoft.Json;
 
@@ -49,10 +51,27 @@ namespace Nethermind.Overseer.Test.JsonRpc
             Console.WriteLine($"Sending {methodToCall} to {_host}");
             var request = new JsonRpcRequest(methodToCall, @params);
             var payload = GetPayload(request);
-            var response = await _client.PostAsync("/", payload);
-            if (!response.IsSuccessStatusCode)
+            string errorMessage = null;
+            HttpResponseMessage response = await _client.PostAsync("/", payload).ContinueWith((t) =>
             {
-                return null;
+                if (t.IsFaulted)
+                {
+                    errorMessage = t.Exception.Unwrap().Message;
+                    return null;
+                }
+                else if (t.IsCanceled)
+                {
+                    return null;
+                }
+
+                return t.Result;
+            });
+
+            if (!(response?.IsSuccessStatusCode ?? false))
+            {
+                var result = new JsonRpcResponse<T>();
+                result.Error = new JsonRpcResponse<T>.ErrorResponse{Message = errorMessage};
+                return result;
             }
 
             return await response.Content.ReadAsStringAsync()

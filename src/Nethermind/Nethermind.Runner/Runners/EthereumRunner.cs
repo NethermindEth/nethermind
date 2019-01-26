@@ -161,6 +161,7 @@ namespace Nethermind.Runner.Runners
             {
                 await InitHive();
             }
+            
             if (_logger.IsDebug) _logger.Debug("Ethereum initialization completed");
         }
 
@@ -216,9 +217,22 @@ namespace Nethermind.Runner.Runners
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, _blockProcessor, _transactionPool, _logManager);
 
-            _wallet = HiveEnabled
-                ? new HiveWallet()
-                : _initConfig.EnableUnsecuredDevWallet ? new DevKeyStoreWallet(_keyStore, _logManager) : (IWallet)new NullWallet();
+            switch (_initConfig)
+            {
+                case var _ when HiveEnabled:
+                    _wallet = new HiveWallet();
+                    break;
+                case var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory:
+                    _wallet = new DevMemoryWallet(_logManager);
+                    break;
+                case var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory:
+                    _wallet = new DevKeyStoreWallet(_keyStore, _logManager);
+                    break;
+                default:
+                    _wallet = new NullWallet();
+                    break;
+            }
+            
             RpcState rpcState = new RpcState(_blockTree, _specProvider, rpcDbProvider, _logManager);
 
             //creating blockchain bridge

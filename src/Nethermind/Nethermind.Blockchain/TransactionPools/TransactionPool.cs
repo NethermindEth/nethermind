@@ -24,6 +24,7 @@ using System.Threading;
 using System.Timers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
@@ -94,8 +95,7 @@ namespace Nethermind.Blockchain.TransactionPools
             {
                 foreach ((_, Transaction tx) in _ownTransactions)
                 {
-                    var peers = SelectPeers(tx);
-                    NotifyPeers(peers, tx);
+                    NotifyAllPeers(tx);
                 }
 
                 _ownTimer.Enabled = true;
@@ -160,8 +160,15 @@ namespace Nethermind.Blockchain.TransactionPools
 
             // check nonce
 
-            List<ISynchronizationPeer> selectedPeers = SelectPeers(transaction);
-            NotifyPeers(selectedPeers, transaction);
+            if (transaction.DeliveredBy == null)
+            {
+                _ownTransactions.TryAdd(transaction.Hash, transaction);
+                _ownTimer.Enabled = true;
+
+                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+            }
+            
+            NotifySelectedPeers(transaction);
 
             FilterAndStoreTransaction(transaction, blockNumber);
             NewPending?.Invoke(this, new TransactionEventArgs(transaction));
@@ -236,46 +243,40 @@ namespace Nethermind.Blockchain.TransactionPools
         public event EventHandler<TransactionEventArgs> NewPending;
         public event EventHandler<TransactionEventArgs> RemovedPending;
 
-        private void NotifyPeers(List<ISynchronizationPeer> peers, Transaction transaction)
+        private void Notify(ISynchronizationPeer peer, Transaction transaction)
         {
-            if (peers.Count == 0)
-            {
-                return;
-            }
-
             var timestamp = new UInt256(_timestamp.EpochSeconds);
             if (_pendingTransactionThresholdValidator.IsObsolete(timestamp, transaction.Timestamp))
             {
                 return;
             }
 
-            for (var i = 0; i < peers.Count; i++)
-            {
-                var peer = peers[i];
-                Metrics.PendingTransactionsSent++;
-                peer.SendNewTransaction(transaction);
-            }
+            Metrics.PendingTransactionsSent++;
+            peer.SendNewTransaction(transaction);
 
-            if (_logger.IsTrace) _logger.Trace($"Notified {peers.Count} peers about a transaction: {transaction.Hash}");
+            if (_logger.IsTrace) _logger.Trace($"Notified {peer.NodeId} about a transaction: {transaction.Hash}");
         }
 
         private ConcurrentDictionary<Keccak, Transaction> _ownTransactions = new ConcurrentDictionary<Keccak, Transaction>();
 
-        private List<ISynchronizationPeer> SelectPeers(Transaction transaction)
+        private void NotifyAllPeers(Transaction transaction)
         {
-            var selectedPeers = new List<ISynchronizationPeer>();
-
-            if (transaction.DeliveredBy == null)
+            foreach ((_, ISynchronizationPeer peer) in _peers)
             {
-                _ownTransactions.TryAdd(transaction.Hash, transaction);
-                _ownTimer.Enabled = true;
-                
-                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
-                return _peers.Values.ToList();
+                Notify(peer, transaction);
             }
-
-            foreach (var peer in _peers.Values)
+        }
+        
+        private void NotifySelectedPeers(Transaction transaction)
+        {
+            foreach ((_, ISynchronizationPeer peer) in _peers)
             {
+                if (transaction.DeliveredBy == null)
+                {
+                    Notify(peer, transaction);
+                    continue;
+                }
+                
                 if (transaction.DeliveredBy.Equals(peer.NodeId.PublicKey))
                 {
                     continue;
@@ -286,10 +287,8 @@ namespace Nethermind.Blockchain.TransactionPools
                     continue;
                 }
 
-                selectedPeers.Add(peer);
+                Notify(peer, transaction);
             }
-
-            return selectedPeers;
         }
     }
 }

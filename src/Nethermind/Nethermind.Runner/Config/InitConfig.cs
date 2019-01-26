@@ -21,6 +21,8 @@ namespace Nethermind.Runner.Config
     public class InitConfig : IInitConfig
     {
         public bool EnableUnsecuredDevWallet { get; set; } = false;
+        
+        public bool KeepDevWalletInMemory { get; set; } = false;
         public bool JsonRpcEnabled { get; set; } = false;
         public bool DiscoveryEnabled { get; set; } = true;
         public bool SynchronizationEnabled { get; set; } = true;

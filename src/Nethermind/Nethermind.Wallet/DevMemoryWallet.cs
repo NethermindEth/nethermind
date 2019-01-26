@@ -30,7 +30,7 @@ using Nethermind.Secp256k1;
 namespace Nethermind.Wallet
 {
     [DoNotUseInSecuredContext("For dev purposes only")]
-    public class DevWallet : IWallet
+    public class DevMemoryWallet : IWallet
     {
         private const string SignatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
         private static byte[] _keySeed = new byte[32];
@@ -41,7 +41,7 @@ namespace Nethermind.Wallet
 
         private Encoding _messageEncoding = Encoding.UTF8;
 
-        public DevWallet(ILogManager logManager)
+        public DevMemoryWallet(ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 

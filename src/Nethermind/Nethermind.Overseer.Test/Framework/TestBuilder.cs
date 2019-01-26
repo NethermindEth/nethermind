@@ -202,7 +202,7 @@ namespace Nethermind.Overseer.Test.Framework
         {
             foreach (KeyValuePair<string,NethermindProcessWrapper> keyValuePair in Nodes)
             {
-                var step = new KillProcessTestStep($"Kill {keyValuePair.Value}", Nodes[keyValuePair.Key]);
+                var step = new KillProcessTestStep($"Kill {keyValuePair.Key}", Nodes[keyValuePair.Key]);
                 QueueWork(step);
             }
             

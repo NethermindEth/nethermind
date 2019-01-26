@@ -48,7 +48,7 @@ namespace Nethermind.Wallet
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _keySeed[31] = 1;
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 3; i++)
             {
                 PrivateKey key = new PrivateKey(_keySeed);
                 if (GetAccounts().All(a => a != key.Address))

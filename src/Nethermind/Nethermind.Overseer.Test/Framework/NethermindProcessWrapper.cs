@@ -32,9 +32,12 @@ namespace Nethermind.Overseer.Test.Framework
         public bool IsRunning { get; private set; }
         
         public Address Address { get; private set; }
+        
+        public int HttpPort { get; private set; }
 
-        public NethermindProcessWrapper(string name, Process process, Address address, string enode, IJsonRpcClient jsonRpcClient)
+        public NethermindProcessWrapper(string name, Process process, int httpPort, Address address, string enode, IJsonRpcClient jsonRpcClient)
         {
+            HttpPort = httpPort;
             Address = address;
             Enode = enode;
             JsonRpcClient = jsonRpcClient;

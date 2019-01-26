@@ -661,12 +661,6 @@ namespace Nethermind.Blockchain
 
         private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
         {
-            // this is not critical (just beneficial) not to run in parallel with sync so the race condition here is totally acceptable
-            if (_currentSyncingPeerInfo != null)
-            {
-                return;
-            }
-
             Block block = blockEventArgs.Block;
             foreach ((_, PeerInfo peerInfo) in _peers)
             {

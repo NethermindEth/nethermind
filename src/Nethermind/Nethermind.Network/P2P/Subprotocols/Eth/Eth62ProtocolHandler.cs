@@ -51,7 +51,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private bool _statusReceived;
         private Keccak _remoteHeadBlockHash;
-        private BigInteger _remoteHeadBlockDifficulty;
         private IPerfService _perfService;
         private readonly IBlockTree _blockTree;
         private readonly ITransactionPool _transactionPool;
@@ -86,7 +85,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 100)
             {
                 if (Logger.IsDebug) Logger.Debug($"Disconnecting {NodeId} due to tx flooding");
-                Disconnect(DisconnectReason.UselessPeer);   
+                Disconnect(DisconnectReason.UselessPeer);
+            }
+            
+            if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 10)
+            {
+                if (Logger.IsDebug) Logger.Debug($"Downgrading {NodeId} due to tx flooding");
+                _isDowngradedDueToTxFlooding = true;
             }
 
             _notAcceptedTxsSinceLastCheck = 0;
@@ -99,10 +104,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public NodeId NodeId => P2PSession.RemoteNodeId;
         public INodeStats NodeStats => P2PSession.NodeStats;
         public string ClientId { get; set; }
-        
+
         public UInt256 TotalDifficultyOnSessionStart { get; private set; }
 
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+
         event EventHandler<ProtocolEventArgs> IProtocolHandler.SubprotocolRequested
         {
             add { }
@@ -137,7 +143,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 }
             });
         }
-        
+
+        private bool _isDowngradedDueToTxFlooding = false;
+
         private Random _random = new Random();
 
         public virtual void HandleMessage(Packet message)
@@ -163,11 +171,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     break;
                 case Eth62MessageCode.Transactions:
                     Metrics.Eth62TransactionsReceived++;
-                    if (10 > _random.Next(0, 99)) // TODO: disable that when IsMining is set to true
+                    if (!_isDowngradedDueToTxFlooding || 10 > _random.Next(0, 99)) // TODO: disable that when IsMining is set to true
                     {
                         Handle(Deserialize<TransactionsMessage>(message.Data));    
                     }
-                    
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     Metrics.Eth62GetBlockHeadersReceived++;
@@ -257,7 +264,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                              Environment.NewLine + $" difficulty\t{status.TotalDifficulty}");
 
             _remoteHeadBlockHash = status.BestHash;
-            _remoteHeadBlockDifficulty = status.TotalDifficulty;
 
             ReceivedProtocolInitMsg(status);
 
@@ -289,8 +295,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 {
                     _notAcceptedTxsSinceLastCheck++;
                 }
-                
-                if(Logger.IsTrace) Logger.Trace($"{NodeId} sent {transaction.Hash} and it was {result} (chain ID = {transaction.Signature.GetChainId})");
+
+                if (Logger.IsTrace) Logger.Trace($"{NodeId} sent {transaction.Hash} and it was {result} (chain ID = {transaction.Signature.GetChainId})");
             }
         }
 
@@ -390,7 +396,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(NewBlockMessage newBlockMessage)
         {
-            newBlockMessage.Block.TotalDifficulty = (UInt256)newBlockMessage.TotalDifficulty;
+            newBlockMessage.Block.TotalDifficulty = (UInt256) newBlockMessage.TotalDifficulty;
             SyncManager.AddNewBlock(newBlockMessage.Block, P2PSession.RemoteNodeId);
         }
 
@@ -529,7 +535,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             _headersRequests?.Dispose();
             _bodiesRequests?.Dispose();
-            
+
             _txFloodCheckTimer.Elapsed -= CheckTxFlooding;
             _txFloodCheckTimer?.Dispose();
         }

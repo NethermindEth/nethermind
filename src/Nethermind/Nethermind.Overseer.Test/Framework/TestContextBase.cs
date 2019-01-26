@@ -37,6 +37,7 @@ namespace Nethermind.Overseer.Test.Framework
             => Add(new JsonRpcTestStep<TResult>(name,
                 async () =>
                 {
+                    
                     var result = await ExecuteJsonRpcAsync(methodName, func);
                     if (result.IsValid)
                     {
@@ -55,20 +56,20 @@ namespace Nethermind.Overseer.Test.Framework
         private async Task<JsonRpcResponse<TResult>> ExecuteJsonRpcAsync<TResult>(
             string methodName, Func<Task<JsonRpcResponse<TResult>>> func)
         {
-            TestContext.WriteLine($"Sending NDM JSON RPC call: '{methodName}'.");
+            TestContext.WriteLine($"Sending JSON RPC call: '{methodName}'.");
             var delay = Task.Delay(20000);
             var funcTask = func();
             var first = await Task.WhenAny(delay, funcTask);
             if (first == delay)
             {
-                string message = $"NDM JSON RPC call '{methodName}' timed out";
+                string message = $"JSON RPC call '{methodName}' timed out";
                 TestContext.WriteLine(message);
                 throw new TimeoutException(message);
             }
 
             var result = await funcTask;
 
-            TestContext.WriteLine($"Received a response for NDM JSON RPC call '{methodName}'." +
+            TestContext.WriteLine($"Received a response for JSON RPC call '{methodName}'." +
                                    $"{Environment.NewLine}{JsonConvert.SerializeObject(result)}");
 
             return await funcTask;
