@@ -70,11 +70,11 @@ namespace Nethermind.Network.Discovery.RoutingTable
         
         private Topic[] _regQueue;
 
-        private List<Topic> _regSet;
+        private List<Topic> _regSet = new List<Topic>();
 
-        private Dictionary<Node, Ticket> _nodes;
+        private Dictionary<Node, Ticket> _nodes = new Dictionary<Node, Ticket>();
 
-        private Dictionary<Node, ReqInfo> _nodeLastReq;
+        private Dictionary<Node, ReqInfo> _nodeLastReq = new Dictionary<Node, ReqInfo>();
 
         private int _lastBucketFetched;
 
@@ -82,11 +82,11 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         private long nextTicketReg; // What's this for?
 
-        private ConcurrentDictionary<Topic, SearchTopic> _searchTopicMap;
+        private ConcurrentDictionary<Topic, SearchTopic> _searchTopicMap = new ConcurrentDictionary<Topic, SearchTopic>();
 
         private long _nextTopicQueryCleanup;
 
-        private ConcurrentDictionary<Node, Dictionary<Keccak, SentQuery>> _queriesSent;
+        private ConcurrentDictionary<Node, Dictionary<Keccak, SentQuery>> _queriesSent = new ConcurrentDictionary<Node, Dictionary<Keccak, SentQuery>>();
 
         private readonly Stopwatch _timestamp = new Stopwatch();
 
@@ -514,7 +514,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             _nextTopicQueryCleanup = now + topicQueryTimeout.Ticks;
         }
 
-        //TODO: merge this class's RpcNode with Nethermind.Stats.Model.Node with discoveryNode = True or IPEndpoint;
+        //TODO: merge this class's RpcNode with Nethermind.Stats.Model.Node with discoveryNode = True or IPEndpoint;reg
         public async Task gotTopicNodes(Node from, Keccak hash, ICollection<Node> nodes) {
             long now = _timestamp.GetTimestamp();
             _logger.Trace($"got {from.Address.ToString()} {hash} {nodes.Count}");
@@ -533,7 +533,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             if (searchTopicMap.ContainsKey(q.lookup.topic)) {
                 ConcurrentQueue<Node> chn = searchTopicMap[q.lookup.topic].foundChn;
             foreach (Node n in nodes) {
-                chn.Enqueue(n);
+               await chn.Enqueue(n);
             }
             
             

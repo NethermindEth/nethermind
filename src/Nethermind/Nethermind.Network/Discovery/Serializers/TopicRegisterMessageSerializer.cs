@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
+using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -53,20 +54,21 @@ namespace Nethermind.Network.Discovery.Serializers
         {
             var results = PrepareForDeserialization<TopicRegisterMessage>(msg);
 
-            var rlp = results.Data.AsRlpContext();
+            DecoderContext rlp = results.Data.AsRlpContext();
 
             rlp.ReadSequenceLength();
             rlp.ReadSequenceLength();
 
-            var topics = Array.ConvertAll(rlp.DecodeArray<string>(rlp), t => new Topic(t));
-            var idx = rlp.DecodeShort();
+            string[] array = rlp.DecodeArray<string>(rlp);
+            var topics = Array.ConvertAll(array, t => new Topic(t));
+            var idx = rlp.DecodeUInt256();
             var pongFarAddress = rlp.DecodeByteArray();
             var pongFarAddressPort = rlp.DecodeInt();
 
             var pongFarAddressUDPPort = rlp.DecodeInt();
             var pingMdc = rlp.DecodeByteArray();
-            var pongExpirationTime = rlp.DecodeUInt256();
-            var pongWaitPeriods = rlp.DecodeArray(ctx => ctx.DecodeUInt256());
+            var pongExpirationTime = rlp.DecodeUBigInt();
+            var pongWaitPeriods = rlp.DecodeArray(ctx => ctx.DecodeUBigInt());
 
             var message = results.Message;
             message.Topics = topics;
@@ -74,7 +76,7 @@ namespace Nethermind.Network.Discovery.Serializers
             message.Pong = MessageFactory.CreateIncomingMessage<PongMessage>(message.FarPublicKey);
             message.Pong.PingMdc = pingMdc;
             message.Pong.ExpirationTime = pongExpirationTime;
-            message.Pong.WaitPeriod = pongWaitPeriods;
+            message.Pong.WaitPeriods = pongWaitPeriods;
 
             return message;
         }

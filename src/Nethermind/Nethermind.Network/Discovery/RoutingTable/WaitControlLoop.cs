@@ -36,27 +36,30 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
     public class WaitControlLoop : IWaitControlLoop
     {
-        private readonly TimeSpan MINUTE = new TimeSpan(0, 1, 0);
-
-        private readonly TimeSpan SECOND = new TimeSpan(0, 0, 1);
-        private readonly TimeSpan minWaitPeriod = MINUTE;
+        private readonly TimeSpan minWaitPeriod = new TimeSpan(0, 1, 0);
         
-        private readonly TimeSpan regTimeWindow  = 10 * SECOND; // seconds
+        private readonly TimeSpan regTimeWindow  = new TimeSpan(0, 0, 10); // seconds
         
         
-        private readonly TimeSpan avgnoRegTimeout = MINUTE * 10;
+        private readonly TimeSpan avgnoRegTimeout = new TimeSpan(0, 10, 0);
         // target average interval between two incoming ad requests
-        private readonly TimeSpan wcTargetRegInterval = (MINUTE * 10) / maxEntriesPerTopic;
+        private readonly TimeSpan _wcTargetRegInterval;
         //
-        private readonly TimeSpan wcTimeConst = MINUTE * 10;
+        private readonly TimeSpan _wcTimeConst = new TimeSpan(0, 10, 0);
 
         private long _lastIncoming;
 
         private TimeSpan _waitPeriod;
 
-        private readonly Stopwatch timestamp = new Stopwatch();
-
         private readonly Random RandomNumberGenerator = new Random();
+
+        private readonly ITopicTable _topicTable;
+
+        public WaitControlLoop(ITopicTable topicTable)
+        {
+            _topicTable = topicTable;
+            _wcTargetRegInterval = new TimeSpan(0, 10, 0) / maxEntriesPerTopic;
+        }
         public void registered(long time) {
             _waitPeriod = nextWaitPeriod(time);
             _lastIncoming = time;
@@ -67,7 +70,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             long frequency = Stopwatch.Frequency;
             long nanosecPerTick = (1000L*1000L*1000L) / frequency;
             // The Go mclock library measures in nanoseconds, so keep the calculations the same
-            TimeSpan wp = _waitPeriod * (new TimeSpan(math.Exp(new TimeSpan((wcTargetRegInterval.Ticks-period.Ticks)/wcTimeConst.Ticks).TotalMilliseconds*1000000)*nanosecPerTick));
+            TimeSpan wp = _waitPeriod * (new TimeSpan(math.Exp(new TimeSpan((_wcTargetRegInterval.Ticks-period.Ticks)/_wcTimeConst.Ticks).TotalMilliseconds*1000000)*nanosecPerTick));
 
             if (wp < minWaitPeriod) {
                 wp = minWaitPeriod;
@@ -76,7 +79,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         }
 
         public bool hasMinimumWaitPeriod() {
-            return nextWaitPeriod(timestamp.GetTimestamp()) == minWaitPeriod;
+            return nextWaitPeriod(Stopwatch.GetTimestamp()) == minWaitPeriod;
         }
         
         public TimeSpan noRegTimeout() {

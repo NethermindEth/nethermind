@@ -43,7 +43,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         private Dictionary<Topic, TopicInfo> _topics;
         private ulong _globalEntries = 0;
-        private TopicRequestQueue _requested;
+        private TopicRequestQueue _requested = new TopicRequestQueue();
 
         private ulong _requestCnt = 0;
 
@@ -91,8 +91,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
            }
            if (ti.entries.Length == 0 && ti.wcl.hasMinimumWaitPeriod()) {
                _topics.Remove(topic);
-               return true;
                _requested.Remove(ti.rqItem.index);
+               return true;
            }
         } 
 

@@ -29,7 +29,7 @@ namespace Nethermind.Network.Discovery.Messages
 
         public byte[] TopicHash { get; set; } //TODO: Should be Keccak?
 
-        public int TicketSerial { get; set; }
+        public uint TicketSerial { get; set; }
 
         public uint[] WaitPeriods { get; set; }
 

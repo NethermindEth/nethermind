@@ -23,7 +23,10 @@ namespace Nethermind.Network.Discovery.Messages
 {
     public class FindNodeHashMessage : DiscoveryMessage
     {
-        public byte[] Target { get; set; }
+        public byte[] SearchedNodeIdHash { get; set; }
+        
+        //time in seconds x seconds from now
+        public long ExpirationTime { get; set; } 
 
         public override string ToString()
         {

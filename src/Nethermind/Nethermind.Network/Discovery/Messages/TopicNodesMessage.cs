@@ -19,6 +19,7 @@
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
+
 namespace Nethermind.Network.Discovery.Messages
 {
     public class TopicNodesMessage : DiscoveryMessage
