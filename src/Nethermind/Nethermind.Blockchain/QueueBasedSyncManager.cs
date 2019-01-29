@@ -186,11 +186,11 @@ namespace Nethermind.Blockchain
                     {
                         if (t.IsFaulted)
                         {
-                            if (_logger.IsError)
+                            if (_logger.IsDebug) // only reports this error when viewed in the Debug mode
                             {
                                 if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
                                 {
-                                    if (_logger.IsDebug) _logger.Debug($"Stopping sync with node: {currentPeerNodeId}. {t.Exception?.Message}");
+                                    _logger.Debug($"Stopping sync with node: {currentPeerNodeId}. {t.Exception?.Message}");
                                 }
                                 else
                                 {
