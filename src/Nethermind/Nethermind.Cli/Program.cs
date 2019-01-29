@@ -17,8 +17,10 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using System.Threading.Tasks;
 using Jint;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,11 +34,11 @@ using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Cli
-{
+{   
     static class Program
     {
         private static IJsonSerializer _serializer = new EthereumJsonSerializer();
-        private static IJsonRpcClient _client;
+        private static JsonRpcClientWrapper _client;
         private static ILogManager _logManager;
         private static Engine _engine;
         private static PrivateKey _nodeKey;
@@ -49,7 +51,8 @@ namespace Nethermind.Cli
             string privateKeyPath = args.Length > 0 ? args[0] : "node.key.plain";
 
             _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
-            _client = new BasicJsonRpcClient(new Uri("http://localhost:8545"), _serializer, _logManager);
+            _client = new JsonRpcClientWrapper(_serializer, _logManager);
+            _client.SwitchUri(new Uri("http://localhost:8545"));
 
             _engine = new Engine();
             _engine.SetValue("gasPrice", (double) 20.GWei());
@@ -144,6 +147,9 @@ namespace Nethermind.Cli
         {
             Console.WriteLine("Enabling node operations");
             Build.Api("node")
+                .WithProperty("uri", () => _client.CurrentUri)
+                .WithAction("switch", (string uri) => _client.SwitchUri(new Uri(uri)))
+                .WithAction("switchLocal", (string uri) => _client.SwitchUri(new Uri($"http://localhost:{uri}")))
                 .WithFunc("sendEth", (string address, decimal amount) => SendEth(new Address(address), amount))
                 .WithProperty<string>("address", () => _nodeKey.Address.ToString())
                 .Build();
