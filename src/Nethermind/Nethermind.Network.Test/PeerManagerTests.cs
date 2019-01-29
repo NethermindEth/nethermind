@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
@@ -289,16 +290,16 @@ namespace Nethermind.Network.Test
             var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
 
             _discoveryManager.GetNodeLifecycleManager(node);
-            var task = _peerManager.Start();
-            task.Wait();
-
+            _peerManager.Start();
+            Thread.Sleep(200); // TODO: test properly without Thread.Sleep
             //verify new peer is added
             Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
             Assert.AreEqual(node.Id, _peerManager.CandidatePeers.First().Node.Id);
 
             //trigger connection start
-            task = _peerManager.RunPeerUpdate();
-            task.Wait();
+            _peerManager.RunPeerUpdate();
+            
+            Thread.Sleep(200); // TODO: test properly without Thread.Sleep
             Assert.AreEqual(1, _localPeer.ConnectionAsyncCallsCounter);
             Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
             Assert.AreEqual(1, _peerManager.ActivePeers.Count);

@@ -24,7 +24,7 @@ namespace Nethermind.Network
     public interface IPeerManager
     {
         void Init(bool isDiscoveryEnabled);
-        Task Start();
+        void Start();
         Task StopAsync(ExitType exitType);
         void LogSessionStats(bool logEventDetails);
     }
