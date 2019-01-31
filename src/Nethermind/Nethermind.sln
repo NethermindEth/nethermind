@@ -90,9 +90,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\rinkeby.json = Chains\rinkeby.json
 		Chains\goerli.json = Chains\goerli.json
 		Chains\stureby.json = Chains\stureby.json
-		Chains\goerli_private_validator.json = Chains\goerli_private_validator.json
-		Chains\goerli_private.json = Chains\goerli_private.json
 		Chains\genesis.json = Chains\genesis.json
+		Chains\pre-goerli.json = Chains\pre-goerli.json
+		Chains\pre-goerli_private.json = Chains\pre-goerli_private.json
+		Chains\pre-goerli_private_validator.json = Chains\pre-goerli_private_validator.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DiagTools", "Nethermind.DiagTools\Nethermind.DiagTools.csproj", "{B8F7A931-EF2F-4107-8F9B-6C66053A8833}"

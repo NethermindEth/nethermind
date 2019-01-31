@@ -19,12 +19,15 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
+using ILogger = Nethermind.Core.Logging.ILogger;
 
 namespace Nethermind.Clique
 {

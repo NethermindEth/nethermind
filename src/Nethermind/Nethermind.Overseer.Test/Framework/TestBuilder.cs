@@ -145,6 +145,16 @@ namespace Nethermind.Overseer.Test.Framework
         {
             return StartNode(name, "configs/cliqueMiner.cfg");
         }
+        
+        public TestBuilder StartGoerliNode(string name)
+        {
+            return StartNode(name, "configs/goerliNode.cfg");
+        }
+        
+        public TestBuilder StartGoerliMiner(string name)
+        {
+            return StartNode(name, "configs/goerliMiner.cfg");
+        }
 
         public TestBuilder StartNode(string name, string baseConfigFile)
         {

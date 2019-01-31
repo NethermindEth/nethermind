@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -63,7 +64,7 @@ namespace Nethermind.Clique
             {
                 return null;
             }
-            
+
             sealedBlock.Hash = BlockHeader.CalculateHash(sealedBlock.Header);
             return await Task.FromResult(sealedBlock);
         }
@@ -120,7 +121,7 @@ namespace Nethermind.Clique
             if (_config.BlockPeriod == 0 && block.Transactions.Length == 0)
             {
                 // TODO: exception here?
-                if(_logger.IsInfo) _logger.Info($"Not sealing empty block on 0-period chain {block.Number}");
+                if (_logger.IsInfo) _logger.Info($"Not sealing empty block on 0-period chain {block.Number}");
                 return null;
             }
 
@@ -332,7 +333,15 @@ namespace Nethermind.Clique
                 headers[i].Author = headers[i].Author ?? GetBlockSealer(headers[i]);
             }
 
+            int countBefore = snapshot.Signers.Count;
             snapshot = snapshot.Apply(headers, _config.Epoch);
+            int countAfter = snapshot.Signers.Count;
+
+            if (countAfter != countBefore)
+            {
+                string word = countAfter > countBefore ? "added to" : "removed from";
+                _logger.Warn($"A signer has been {word} the signer list - {string.Join(", ", snapshot.Signers.OrderBy(s => s.Key, CliqueAddressComparer.Instance).Select(s => s.Key.ToString()))}");
+            }
 
             _recent.Set(snapshot.Hash, snapshot);
             // If we've generated a new checkpoint snapshot, save to disk

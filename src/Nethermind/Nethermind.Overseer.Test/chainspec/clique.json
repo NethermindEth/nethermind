@@ -1,6 +1,6 @@
 {
   "name": "CliqueTest",
-  "dataDir": "goerli_private",
+  "dataDir": "clique_test",
   "engine": {
     "clique": {
       "params": {

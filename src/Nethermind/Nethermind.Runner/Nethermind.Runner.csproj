@@ -74,6 +74,26 @@
     <_ContentIncludedByDefault Remove="out\linux-x64\Data\genesis.json" />
     <_ContentIncludedByDefault Remove="out\linux-x64\Nethermind.Runner.deps.json" />
     <_ContentIncludedByDefault Remove="out\linux-x64\Nethermind.Runner.runtimeconfig.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\NLog.config" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\web.config" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\foundation.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\genesis.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\goerli.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\goerli_private.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\goerli_private_validator.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\hive.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\kovan.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\private_bootnode.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\private_client.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\private_miner1.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\private_miner2.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\rinkeby.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\ropsten.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\spaceneth.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\chainspec\stureby.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\Data\genesis.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\Nethermind.Runner.deps.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\Nethermind.Runner.runtimeconfig.json" />
   </ItemGroup>
   <Target Name="StoreGitHash" BeforeTargets="Build">
     <Exec Command="git describe --all --long &gt; git-hash" />
