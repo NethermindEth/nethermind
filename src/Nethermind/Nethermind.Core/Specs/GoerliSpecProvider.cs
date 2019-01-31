@@ -28,13 +28,13 @@ namespace Nethermind.Core.Specs
         {
         }
 
-        public IReleaseSpec CurrentSpec => Constantinople.Instance;
+        public IReleaseSpec CurrentSpec => ConstantinopleFix.Instance;
 
-        public IReleaseSpec GenesisSpec => Constantinople.Instance;
+        public IReleaseSpec GenesisSpec => ConstantinopleFix.Instance;
 
         public IReleaseSpec GetSpec(UInt256 blockNumber)
         {
-            return Constantinople.Instance;
+            return ConstantinopleFix.Instance;
         }
 
         public UInt256? DaoBlockNumber { get; } = null;
