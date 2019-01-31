@@ -83,8 +83,8 @@ namespace Nethermind.Core.Test.Specs
             byte[] data = File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/goerli.json"));
             ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new EthereumJsonSerializer());
             ChainSpec chainSpec = chainSpecLoader.Load(data);
-            Assert.AreEqual(6284, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
-            Assert.AreEqual("Görli", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual(5, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual("Görli Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual("goerli", chainSpec.DataDir, $"{nameof(chainSpec.DataDir)}");
             Assert.AreEqual(SealEngineType.Clique, chainSpec.SealEngineType, "engine");
             

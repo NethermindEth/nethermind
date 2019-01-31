@@ -89,7 +89,7 @@ namespace Nethermind.Core.Specs.ChainSpec
                 chainSpec.SealEngineType = SealEngineType.Clique;
                 chainSpec.CliqueEpoch = chainSpecJson.Engine.Clique.Epoch;
                 chainSpec.CliquePeriod = chainSpecJson.Engine.Clique.Period;
-                chainSpec.CliqueReward = chainSpecJson.Engine.Clique.BlockReward;
+                chainSpec.CliqueReward = chainSpecJson.Engine.Clique.BlockReward ?? UInt256.Zero;
             }
             else if (chainSpecJson.Engine?.Ethash != null)
             {
