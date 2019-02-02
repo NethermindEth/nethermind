@@ -17,6 +17,7 @@
  */
 
 using BenchmarkDotNet.Running;
+using Nethermind.Benchmarks.Core;
 using Nethermind.Benchmarks.Rlp;
 
 namespace Nethermind.Benchmarks
@@ -25,10 +26,14 @@ namespace Nethermind.Benchmarks
     {
         public static void Main(string[] args)
         {
-//            BenchmarkRunner.Run<KeccakQuest>();
-//            BenchmarkRunner.Run<BytesCompare>();
-//            BenchmarkRunner.Run<BytesIsZero>();
-            BenchmarkRunner.Run<RlpEncodeAddress>();
+            BenchmarkRunner.Run<BytesCompare>();
+            BenchmarkRunner.Run<BytesIsZero>();
+            BenchmarkRunner.Run<BytesPadLeft>();
+            BenchmarkRunner.Run<BytesPadRight>();
+            BenchmarkRunner.Run<Keccak256>();
+            BenchmarkRunner.Run<Keccak512>();
+           
+//            BenchmarkRunner.Run<RlpEncodeAddress>();
 //            BenchmarkRunner.Run<BigIntegerVsUInt256Add>();
 //            BenchmarkRunner.Run<BigIntegerVsUInt256FromBytes>();
 //            BenchmarkRunner.Run<NodeStatsCtorBenchmark>();

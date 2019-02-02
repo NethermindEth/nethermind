@@ -18,7 +18,10 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Benchmarks.Core
 {
@@ -26,28 +29,32 @@ namespace Nethermind.Benchmarks.Core
     [CoreJob(baseline: true)]
     public class BytesIsZero
     {
-        private static Random _random = new Random(0);
-
         private byte[] _a;
 
-        [Params(true, false)] public bool AllZeros { get; set; }
+        private byte[][] _scenarios = new byte[][]
+        {
+            Keccak.Zero.Bytes,
+            Keccak.EmptyTreeHash.Bytes,
+            Keccak.OfAnEmptyString.Bytes,
+            TestObject.AddressA.Bytes,
+            Address.Zero.Bytes,
+        };
+
+        [Params(0, 1, 2, 3, 4)]
+        public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            _a = new byte[64];
-            if (!AllZeros)
-            {
-                _random.NextBytes(_a);
-            }
+            _a = _scenarios[ScenarioIndex];
         }
-        
+
         [Benchmark]
         public bool Improved()
         {
             throw new NotImplementedException();
         }
-        
+
         [Benchmark]
         public bool Current()
         {
