@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void No_uncles()
         {
-            Block block = Build.A.Block.WithNumber(3).WithOmmers().TestObject;
+            Block block = Build.A.Block.WithNumber(3).TestObject;
             
             RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
