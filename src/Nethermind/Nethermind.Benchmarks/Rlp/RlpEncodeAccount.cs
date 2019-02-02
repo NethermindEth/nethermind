@@ -17,9 +17,12 @@
  */
 
 using System;
+using System.Globalization;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Benchmarks.Rlp
 {
@@ -29,24 +32,25 @@ namespace Nethermind.Benchmarks.Rlp
     {
         private static Account _account;
 
-        [Params(true, false)] public bool Empty { get; set; }
+        private Account[] _scenarios =
+        {
+            Account.TotallyEmpty,
+            Build.An.Account.WithBalance(UInt256.Parse("0x1000000000000000000000", NumberStyles.HexNumber)).WithNonce(123).TestObject,
+        };
+
+        [Params(0, 1)]
+        public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            if (!Empty)
-            {
-                _account = new Account(12, 1234567890123456789ul, Keccak.Compute("a"), Keccak.Compute("b"));
-                return;
-            }
-            
-            _account = Account.TotallyEmpty;
+            _account = _scenarios[ScenarioIndex];
         }
         
         [Benchmark]
         public byte[] Improved()
         {
-            throw new NotImplementedException();
+            return Nethermind.Core.Encoding.Rlp.Encode(_account).Bytes;
         }
         
         [Benchmark]

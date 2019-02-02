@@ -16,10 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Benchmarks.Rlp
 {
@@ -27,32 +30,44 @@ namespace Nethermind.Benchmarks.Rlp
     [CoreJob(baseline: true)]
     public class RlpDecodeBlock
     {
-        private static Account _account;
+        private static byte[] _block;
 
-        [Params(true, false)] public bool Empty { get; set; }
+        private byte[][] _scenarios;
+
+        public RlpDecodeBlock()
+        {
+            var transactions = new Transaction[100];
+            for (int i = 0; i < 100; i++)
+            {
+                transactions[i] = Build.A.Transaction.WithData(new byte[] {(byte) i}).WithNonce((UInt256) i).WithValue((UInt256) i).Signed(new EthereumSigner(MainNetSpecProvider.Instance, NullLogManager.Instance), TestObject.PrivateKeyA, UInt256.One).TestObject;
+            }
+
+            _scenarios = new[]
+            {
+                Nethermind.Core.Encoding.Rlp.Encode(Build.A.Block.WithNumber(1).TestObject).Bytes,
+                Nethermind.Core.Encoding.Rlp.Encode(Build.A.Block.WithNumber(1).WithTransactions(transactions).WithOmmers(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject).Bytes
+            };
+        }
+
+        [Params(0, 1)]
+        public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            if (!Empty)
-            {
-                _account = new Account(12, 1234567890123456789ul, Keccak.Compute("a"), Keccak.Compute("b"));
-                return;
-            }
-            
-            _account = Account.TotallyEmpty;
+            _block = _scenarios[ScenarioIndex];
         }
-        
+
         [Benchmark]
-        public byte[] Improved()
+        public Block Improved()
         {
-            throw new NotImplementedException();
+            return Nethermind.Core.Encoding.Rlp.Decode<Block>(_block);
         }
-        
+
         [Benchmark]
-        public byte[] Current()
+        public Block Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Encode(_account).Bytes;
+            return Nethermind.Core.Encoding.Rlp.Decode<Block>(_block);
         }
     }
 }

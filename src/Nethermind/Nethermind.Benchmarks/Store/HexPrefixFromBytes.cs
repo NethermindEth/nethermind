@@ -16,10 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Store;
 
 namespace Nethermind.Benchmarks.Store
 {
@@ -27,32 +27,34 @@ namespace Nethermind.Benchmarks.Store
     [CoreJob(baseline: true)]
     public class HexPrefixFromBytes
     {
-        private static Account _account;
+        private byte[] _a;
 
-        [Params(true, false)] public bool Empty { get; set; }
+        private byte[][] _scenarios = new byte[][]
+        {
+            Keccak.EmptyTreeHash.Bytes,
+            Keccak.Zero.Bytes,
+            TestObject.AddressA.Bytes,
+        };
+
+        [Params(0, 1, 2)]
+        public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            if (!Empty)
-            {
-                _account = new Account(12, 1234567890123456789ul, Keccak.Compute("a"), Keccak.Compute("b"));
-                return;
-            }
-            
-            _account = Account.TotallyEmpty;
+            _a = _scenarios[ScenarioIndex];
         }
-        
+
         [Benchmark]
-        public byte[] Improved()
+        public HexPrefix Improved()
         {
-            throw new NotImplementedException();
+            return HexPrefix.FromBytes(_a);
         }
-        
+
         [Benchmark]
-        public byte[] Current()
+        public HexPrefix Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Encode(_account).Bytes;
+            return HexPrefix.FromBytes(_a);
         }
     }
 }

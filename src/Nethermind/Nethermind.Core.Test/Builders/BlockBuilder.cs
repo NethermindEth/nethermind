@@ -109,6 +109,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Ommers = ommers.Select(o => o.Header).ToArray();
             return this;
         }
+        
+        public BlockBuilder WithOmmers(params BlockHeader[] ommers)
+        {
+            TestObjectInternal.Ommers = ommers;
+            return this;
+        }
 
         public BlockBuilder WithParentHash(Keccak parent)
         {

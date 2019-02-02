@@ -32,5 +32,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = TestObjectInternal.WithChangedBalance(balance);
             return this;
         }
+        
+        public AccountBuilder WithNonce(UInt256 nonce)
+        {
+            TestObjectInternal = TestObjectInternal.WithChangedNonce(nonce);
+            return this;
+        }
     }
 }
