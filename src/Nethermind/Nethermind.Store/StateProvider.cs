@@ -27,6 +27,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
 [assembly: InternalsVisibleTo("Nethermind.Store.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmarks")]
 
 namespace Nethermind.Store
 {

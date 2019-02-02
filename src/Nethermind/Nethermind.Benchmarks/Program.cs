@@ -70,7 +70,7 @@ namespace Nethermind.Benchmarks
             BenchmarkRunner.Run<RlpEncodeBlock>();
             
             BenchmarkRunner.Run<HexPrefixFromBytes>();
-            BenchmarkRunner.Run<PatriciaTreeLookup>(); // potentially a bigger rewrite
+            BenchmarkRunner.Run<PatriciaTree>(); // potentially a bigger rewrite
         }
     }
 }
