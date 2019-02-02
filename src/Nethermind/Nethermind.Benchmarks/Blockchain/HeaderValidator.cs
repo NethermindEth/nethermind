@@ -16,21 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using BenchmarkDotNet.Running;
+using System;
+using BenchmarkDotNet.Attributes;
 
-namespace Nethermind.Evm.Benchmark
+namespace Nethermind.Benchmarks.Blockchain
 {
-    public class Program
+    [MemoryDiagnoser]
+    [CoreJob(baseline: true)]
+    public class HeaderValidator
     {
-        public static void Main(string[] args)
+        [GlobalSetup]
+        public void Setup()
         {
-//            BenchmarkRunner.Run<KeccakQuest>();
-//            BenchmarkRunner.Run<BytesCompare>();
-//            BenchmarkRunner.Run<BytesIsZero>();
-            BenchmarkRunner.Run<RlpEncodeAddress>();
-//            BenchmarkRunner.Run<BigIntegerVsUInt256Add>();
-//            BenchmarkRunner.Run<BigIntegerVsUInt256FromBytes>();
-//            BenchmarkRunner.Run<NodeStatsCtorBenchmark>();
+        }
+        
+        [Benchmark]
+        public bool Improved()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Benchmark]
+        public bool Current()
+        {
+            throw new NotImplementedException();
         }
     }
 }

@@ -13,7 +13,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Evm.Benchmark
+namespace Nethermind.Benchmarks.Core
 {
     public class MeadowHash
     {

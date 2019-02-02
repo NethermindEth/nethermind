@@ -118,7 +118,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Dirichlet.Numeri
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Benchmarks", "Benchmarks", "{AE494DDC-4577-46C6-8AC1-4F6254FDA31D}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Evm.Benchmark", "Nethermind.Evm.Benchmark\Nethermind.Evm.Benchmark.csproj", "{E74D4CB5-1F66-4224-A775-494F05C35816}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Benchmarks", "Nethermind.Benchmarks\Nethermind.Benchmarks.csproj", "{E74D4CB5-1F66-4224-A775-494F05C35816}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Stats", "Nethermind.Stats\Nethermind.Stats.csproj", "{9BEFCE4E-8814-42F4-B405-16195F9E1244}"
 EndProject

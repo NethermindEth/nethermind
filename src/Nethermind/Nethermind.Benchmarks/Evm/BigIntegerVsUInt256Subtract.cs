@@ -21,7 +21,7 @@ using System.Numerics;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Benchmark
+namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]

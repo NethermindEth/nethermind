@@ -17,50 +17,42 @@
  */
 
 using System;
-using System.Linq;
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Benchmark
+namespace Nethermind.Benchmarks.Rlp
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class RlpEncodeAddress
+    public class RlpEncodeAccount
     {
-        private static Address _address;
+        private static Account _account;
 
-        [Params(true, false)] public bool AllZeros { get; set; }
+        [Params(true, false)] public bool Empty { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            byte[] a = new byte[20];
-            if (!AllZeros)
+            if (!Empty)
             {
-                a = new CryptoRandom().GenerateRandomBytes(20);
+                _account = new Account(12, 1234567890123456789ul, Keccak.Compute("a"), Keccak.Compute("b"));
+                return;
             }
             
-            _address = new Address(a);
+            _account = Account.TotallyEmpty;
         }
         
         [Benchmark]
         public byte[] Improved()
         {
-            Span<byte> bytes = new byte[21];
-            _address.Bytes.AsSpan().CopyTo(bytes.Slice(1));
-            bytes[0] = 148;
-            return bytes.ToArray();
+            throw new NotImplementedException();
         }
         
         [Benchmark]
         public byte[] Current()
         {
-            return Rlp.Encode(_address).Bytes;
+            return Nethermind.Core.Encoding.Rlp.Encode(_account).Bytes;
         }
     }
 }

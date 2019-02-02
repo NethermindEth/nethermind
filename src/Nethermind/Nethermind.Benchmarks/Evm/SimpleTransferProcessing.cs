@@ -17,35 +17,17 @@
  */
 
 using System;
-using System.Linq;
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Benchmark
+namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class BytesCompare
+    public class SimpleTransferProcessing
     {
-        private static Random _random = new Random(0);
-
-        private byte[] _a;
-        private byte[] _b;
-
-        [Params(true, false)] public bool AllZeros { get; set; }
-
         [GlobalSetup]
         public void Setup()
         {
-            _a = new byte[64];
-            _b = new byte[64];
-            if (!AllZeros)
-            {
-                _random.NextBytes(_a);
-                _a.CopyTo(_b.AsSpan());
-            }
         }
         
         [Benchmark]
@@ -57,7 +39,8 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark]
         public bool Current()
         {
-            return Bytes.AreEqual(_a, _b);
+            throw new NotImplementedException();
+            // TransactionProcessor.Process / simple transfer case
         }
     }
 }

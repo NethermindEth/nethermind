@@ -17,48 +17,42 @@
  */
 
 using System;
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Evm.Benchmark
+namespace Nethermind.Benchmarks.Rlp
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class BigIntegerVsUInt256FromBytes
+    public class RlpEncodeAddress
     {
-        private static Random _random = new Random(0);
-
-        private byte[] _stack;
+        private static Address _address;
 
         [Params(true, false)] public bool AllZeros { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            _stack = new byte[64];
+            byte[] a = new byte[20];
             if (!AllZeros)
             {
-                _random.NextBytes(_stack);
+                a = new CryptoRandom().GenerateRandomBytes(20);
             }
+            
+            _address = new Address(a);
         }
-
+        
         [Benchmark]
-        public (BigInteger, BigInteger) BigInteger()
+        public byte[] Improved()
         {
-            Span<byte> span = _stack.AsSpan();
-            BigInteger a = new BigInteger(span.Slice(0, 32), true, true);
-            BigInteger b = new BigInteger(span.Slice(32, 32), true, true);
-            return (a, b);
+            throw new NotImplementedException();
         }
-
+        
         [Benchmark]
-        public (UInt256, UInt256) UInt256()
+        public byte[] Current()
         {
-            Span<byte> span = _stack.AsSpan();
-            Dirichlet.Numerics.UInt256.CreateFromBigEndian2(out UInt256 a, span.Slice(0, 32));
-            Dirichlet.Numerics.UInt256.CreateFromBigEndian2(out UInt256 b, span.Slice(32, 32));
-            return (a, b);
+            return Nethermind.Core.Encoding.Rlp.Encode(_address).Bytes;
         }
     }
 }
