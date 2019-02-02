@@ -19,33 +19,50 @@
 using System;
 using System.Numerics;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class BigIntegerVsUInt256Multiply
+    public class UInt256Multiply
     {
-        private static Random _random = new Random(0);
+        private byte[] _stack = new byte[64];
 
-        private byte[] _stack;
+        private (byte[] A, byte[] B)[] _scenarios = new[]
+        {
+            (Bytes.FromHexString("0x00"), Bytes.FromHexString("0x00")),
+            (Bytes.FromHexString("0x00"), Bytes.FromHexString("0x01")),
+            (Bytes.FromHexString("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE"), Bytes.FromHexString("0x01")),
+            (Bytes.FromHexString("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), Bytes.FromHexString("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")),
+            (Bytes.FromHexString("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), Bytes.FromHexString("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")),
+            (Bytes.FromHexString("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"), Bytes.FromHexString("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")),
+        };
 
-        [Params(true, false)]
-        public bool AllZeros { get; set; }
+        [Params(0, 1, 2, 3, 4, 5)]
+        public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            _stack = new byte[64];
-            if (!AllZeros)
-            {
-                _random.NextBytes(_stack);
-            }
+            _scenarios[ScenarioIndex].A.PadLeft(32).AsSpan().CopyTo(_stack.AsSpan().Slice(0, 32));
+            _scenarios[ScenarioIndex].B.PadLeft(32).AsSpan().CopyTo(_stack.AsSpan().Slice(32, 64));
         }
-
+        
         [Benchmark]
-        public void BigInteger()
+        public void Improved()
+        {
+            Span<byte> span = _stack.AsSpan();
+            UInt256.CreateFromBigEndian(out UInt256 a, span.Slice(0, 32));
+            UInt256.CreateFromBigEndian(out UInt256 b, span.Slice(32, 32));
+            UInt256.Multiply(out UInt256 c, ref a, ref b);
+            c.ToBigEndian(span.Slice(0, 32));
+        }
+        
+        [Benchmark]
+        public void Current()
         {
             Span<byte> span = _stack.AsSpan();
             BigInteger a = new BigInteger(span.Slice(0, 32), true, true);
@@ -63,16 +80,6 @@ namespace Nethermind.Benchmarks.Evm
             }
 
             value.TryWriteBytes(target, out int bytesWritten, true, true);
-        }
-
-        [Benchmark]
-        public void UInt256()
-        {
-            Span<byte> span = _stack.AsSpan();
-            Dirichlet.Numerics.UInt256.CreateFromBigEndian(out UInt256 a, span.Slice(0, 32));
-            Dirichlet.Numerics.UInt256.CreateFromBigEndian(out UInt256 b, span.Slice(32, 32));
-            Dirichlet.Numerics.UInt256.Multiply(out UInt256 c, ref a, ref b);
-            c.ToBigEndian(span.Slice(0, 32));
         }
     }
 }

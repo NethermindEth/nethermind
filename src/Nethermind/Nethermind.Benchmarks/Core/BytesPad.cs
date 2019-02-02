@@ -17,48 +17,47 @@
  */
 
 using System;
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 
-namespace Nethermind.Benchmarks.Evm
+namespace Nethermind.Benchmarks.Core
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class BigIntegerVsUInt256FromBytes
+    public class BytesPad
     {
-        private static Random _random = new Random(0);
+        private byte[] _a;
 
-        private byte[] _stack;
+        private byte[][] _scenarios = new byte[][]
+        {
+            new byte[]{0},
+            new byte[]{1},
+            Keccak.Zero.Bytes,
+            TestObject.AddressA.Bytes
+        };
 
-        [Params(true, false)] public bool AllZeros { get; set; }
+        [Params(0, 1, 2, 3)]
+        public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            _stack = new byte[64];
-            if (!AllZeros)
-            {
-                _random.NextBytes(_stack);
-            }
+            _a = _scenarios[ScenarioIndex];
         }
 
         [Benchmark]
-        public (BigInteger, BigInteger) BigInteger()
+        public (byte[], byte[]) Improved()
         {
-            Span<byte> span = _stack.AsSpan();
-            BigInteger a = new BigInteger(span.Slice(0, 32), true, true);
-            BigInteger b = new BigInteger(span.Slice(32, 32), true, true);
-            return (a, b);
+            return (_a.PadLeft(32), _a.PadRight(32));
         }
 
         [Benchmark]
-        public (UInt256, UInt256) UInt256()
+        public (byte[], byte[]) Current()
         {
-            Span<byte> span = _stack.AsSpan();
-            Dirichlet.Numerics.UInt256.CreateFromBigEndian2(out UInt256 a, span.Slice(0, 32));
-            Dirichlet.Numerics.UInt256.CreateFromBigEndian2(out UInt256 b, span.Slice(32, 32));
-            return (a, b);
+            return (_a.PadLeft(32), _a.PadRight(32));
         }
     }
 }

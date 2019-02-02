@@ -29,8 +29,6 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
 {
-    // TODO: move to ByteArrayExtensions and ByteExtensions
-    //[DebuggerStepThrough]
     public static class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
@@ -436,18 +434,6 @@ namespace Nethermind.Core.Extensions
             }
 
             return sb.ToString();
-        }
-
-        public static BitArray ToBigEndianBitArray256(this byte[] bytes)
-        {
-            byte[] inverted = new byte[32];
-            int startIndex = 32 - bytes.Length;
-            for (int i = startIndex; i < inverted.Length; i++)
-            {
-                inverted[i] = Reverse(bytes[i - startIndex]);
-            }
-
-            return new BitArray(inverted);
         }
 
         public static BitArray ToBigEndianBitArray256(this Span<byte> bytes)

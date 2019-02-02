@@ -52,7 +52,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public bool Improved()
         {
-            throw new NotImplementedException();
+            return _a.IsZero();
         }
 
         [Benchmark]

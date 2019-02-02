@@ -34,10 +34,6 @@ namespace Nethermind.Core.Logging
         {
         }
 
-        public void Log(string text)
-        {
-        }
-
         public void Info(string text)
         {
         }

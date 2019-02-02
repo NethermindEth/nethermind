@@ -40,7 +40,6 @@ namespace Nethermind.Benchmarks.Evm
         public bool Current()
         {
             throw new NotImplementedException();
-            // IntrinsicGasCalculator
         }
     }
 }

@@ -18,6 +18,8 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 
 namespace Nethermind.Benchmarks.Evm
 {
@@ -25,22 +27,39 @@ namespace Nethermind.Benchmarks.Evm
     [CoreJob(baseline: true)]
     public class CalculateMemoryCost
     {
+        private IEvmMemory _current = new EvmPooledMemory();
+        private IEvmMemory _improved = new EvmPooledMemory();
+
+        private UInt256 _location;
+        private UInt256 _length;
+
+        private (UInt256 Location, UInt256 Length)[] _scenarios = new[]
+        {
+            (UInt256.Zero, (UInt256)32),
+            (UInt256.Zero, UInt256.MaxValue),
+            ((UInt256)1000, (UInt256)72)
+        };
+
+        [Params(0, 1, 2)]
+        public int ScenarioIndex { get; set; }
+
         [GlobalSetup]
         public void Setup()
         {
+            _location = _scenarios[ScenarioIndex].Location;
+            _length = _scenarios[ScenarioIndex].Length;
         }
-        
+
         [Benchmark]
-        public bool Improved()
+        public long Improved()
         {
-            throw new NotImplementedException();
+            return _improved.CalculateMemoryCost(_location, _length);
         }
-        
+
         [Benchmark]
-        public bool Current()
+        public long Current()
         {
-            throw new NotImplementedException();
-            // EvmPooledMemory.CalculateMemoryCost
+            return _current.CalculateMemoryCost(_location, _length);
         }
     }
 }

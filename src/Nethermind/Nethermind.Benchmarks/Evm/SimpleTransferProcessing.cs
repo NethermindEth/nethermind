@@ -39,8 +39,7 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark]
         public bool Current()
         {
-            throw new NotImplementedException();
-            // TransactionProcessor.Process / simple transfer case
+            throw new NotImplementedException();            
         }
     }
 }

@@ -42,15 +42,15 @@ namespace Nethermind.Mining
         private readonly LruCache<uint, IEthashDataSet> _cacheCache = new LruCache<uint, IEthashDataSet>(2);
 
         public const int WordBytes = 4; // bytes in word
-        public static uint DatasetBytesInit = (uint)BigInteger.Pow(2, 30); // bytes in dataset at genesis
-        public static uint DatasetBytesGrowth = (uint)BigInteger.Pow(2, 23); // dataset growth per epoch
+        public static uint DataSetBytesInit = (uint)BigInteger.Pow(2, 30); // bytes in dataset at genesis
+        public static uint DataSetBytesGrowth = (uint)BigInteger.Pow(2, 23); // dataset growth per epoch
         public static uint CacheBytesInit = (uint)BigInteger.Pow(2, 24); // bytes in cache at genesis
         public static uint CacheBytesGrowth = (uint)BigInteger.Pow(2, 17); // cache growth per epoch
         public const int CacheMultiplier = 1024; // Size of the DAG relative to the cache
         public const ulong EpochLength = 30000; // blocks per epoch
         public const uint MixBytes = 128; // width of mix
         public const int HashBytes = 64; // hash length in bytes
-        public const uint DatasetParents = 256; // blockNumber of parents of each dataset element
+        public const uint DataSetParents = 256; // blockNumber of parents of each dataset element
         public const int CacheRounds = 3; // blockNumber of rounds in cache production
         public const int Accesses = 64; // blockNumber of accesses in hashimoto loop
 
@@ -61,7 +61,7 @@ namespace Nethermind.Mining
 
         public static ulong GetDataSize(uint epoch)
         {
-            ulong size = DatasetBytesInit + DatasetBytesGrowth * (ulong)epoch;
+            ulong size = DataSetBytesInit + DataSetBytesGrowth * (ulong)epoch;
             size -= MixBytes;
             while (!IsPrime(size / MixBytes))
             {

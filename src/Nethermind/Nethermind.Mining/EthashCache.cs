@@ -66,7 +66,7 @@ namespace Nethermind.Mining
             mixInts[0] = i ^ mixInts[0];
             mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
 
-            for (uint j = 0; j < Ethash.DatasetParents; j++)
+            for (uint j = 0; j < Ethash.DataSetParents; j++)
             {
                 ulong cacheIndex = Ethash.Fnv(i ^ j, mixInts[j % r]);
                 Ethash.Fnv(mixInts, Data[cacheIndex % n]);

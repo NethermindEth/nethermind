@@ -18,41 +18,28 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Benchmarks.Rlp
+namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class RlpEncodeAddress
+    public class PrecompileEcRecover
     {
-        private static Address _address;
-
-        [Params(true, false)] public bool AllZeros { get; set; }
-
         [GlobalSetup]
         public void Setup()
         {
-            byte[] a = new byte[20];
-            if (!AllZeros)
-            {
-                a = new CryptoRandom().GenerateRandomBytes(20);
-            }
-            
-            _address = new Address(a);
         }
         
         [Benchmark]
-        public byte[] Improved()
+        public bool Improved()
         {
             throw new NotImplementedException();
         }
         
         [Benchmark]
-        public byte[] Current()
+        public bool Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Encode(_address).Bytes;
+            throw new NotImplementedException();
         }
     }
 }

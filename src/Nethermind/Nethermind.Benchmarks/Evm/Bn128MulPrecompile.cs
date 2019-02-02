@@ -18,6 +18,8 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Benchmarks.Evm
 {
@@ -25,21 +27,39 @@ namespace Nethermind.Benchmarks.Evm
     [CoreJob(baseline: true)]
     public class Bn128MulPrecompile
     {
+        private IPrecompiledContract _precompile = Bn128MulPrecompiledContract.Instance;
+        
+        private byte[] _data;
+
+        private (byte[] A, byte[] B)[] _scenarios = new[]
+        {
+            (Bytes.FromHexString("0x030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd3"), Bytes.FromHexString("0x15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4")),            
+            // valid scenarios to be added
+        };
+
+        [Params(0)]
+        public int ScenarioIndex { get; set; }
+
         [GlobalSetup]
         public void Setup()
         {
+            _ = Bn128AddPrecompiledContract.Instance;
+            Span<byte> bytes = new byte[64];
+            _scenarios[ScenarioIndex].A.AsSpan().CopyTo(bytes.Slice(0, 32));
+            _scenarios[ScenarioIndex].B.AsSpan().CopyTo(bytes.Slice(32, 32));
+            _data = bytes.ToArray();
         }
         
         [Benchmark]
-        public bool Improved()
+        public (byte[], bool) Improved()
         {
-            throw new NotImplementedException();
+            return _precompile.Run(_data);
         }
         
         [Benchmark]
-        public bool Current()
+        public (byte[], bool) Current()
         {
-            throw new NotImplementedException();
+            return _precompile.Run(_data);
         }
     }
 }

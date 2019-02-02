@@ -18,45 +18,48 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Precompiles;
 
-namespace Nethermind.Benchmarks.Core
+namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class BytesPadRight
+    public class Bn128PairingPrecompile
     {
-        private byte[] _a;
+        private IPrecompiledContract _precompile = Bn128PairingPrecompiledContract.Instance;
+        
+        private byte[] _data;
 
-        private byte[][] _scenarios = new byte[][]
+        private (byte[] A, byte[] B)[] _scenarios = new[]
         {
-            new byte[]{0},
-            new byte[]{1},
-            Keccak.Zero.Bytes,
-            TestObject.AddressA.Bytes
+            (Bytes.FromHexString("0x030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd3"), Bytes.FromHexString("0x15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4")),            
+            // valid scenarios to be added
         };
 
-        [Params(0, 1, 2, 3, 4)]
+        [Params(0)]
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            _a = _scenarios[ScenarioIndex];
+            _ = Bn128AddPrecompiledContract.Instance;
+            Span<byte> bytes = new byte[64];
+            _scenarios[ScenarioIndex].A.AsSpan().CopyTo(bytes.Slice(0, 32));
+            _scenarios[ScenarioIndex].B.AsSpan().CopyTo(bytes.Slice(32, 32));
+            _data = bytes.ToArray();
         }
-
+        
         [Benchmark]
-        public bool Improved()
+        public (byte[], bool) Improved()
         {
-            throw new NotImplementedException();
+            return _precompile.Run(_data);
         }
-
+        
         [Benchmark]
-        public byte[] Current()
+        public (byte[], bool) Current()
         {
-            return _a.PadRight(32);
+            return _precompile.Run(_data);
         }
     }
 }

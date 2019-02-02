@@ -23,7 +23,7 @@ namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class ModExpPrecompile
+    public class PrecompileModExp
     {
         [GlobalSetup]
         public void Setup()

@@ -23,7 +23,7 @@ using Nethermind.Core.Model;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Evm.Benchmark.Network
+namespace Nethermind.Benchmarks.Network
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]

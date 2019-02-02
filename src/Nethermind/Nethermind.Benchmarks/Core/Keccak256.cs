@@ -40,7 +40,7 @@ namespace Nethermind.Benchmarks.Core
             TestObject.AddressA.Bytes
         };
 
-        [Params(0, 1, 2, 3, 4)]
+        [Params(0, 1, 2, 3)]
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]

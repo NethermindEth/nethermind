@@ -18,7 +18,11 @@
 
 using BenchmarkDotNet.Running;
 using Nethermind.Benchmarks.Core;
+using Nethermind.Benchmarks.Evm;
+using Nethermind.Benchmarks.Mining;
+using Nethermind.Benchmarks.Network;
 using Nethermind.Benchmarks.Rlp;
+using Nethermind.Benchmarks.Store;
 
 namespace Nethermind.Benchmarks
 {
@@ -28,15 +32,47 @@ namespace Nethermind.Benchmarks
         {
             BenchmarkRunner.Run<BytesCompare>();
             BenchmarkRunner.Run<BytesIsZero>();
-            BenchmarkRunner.Run<BytesPadLeft>();
-            BenchmarkRunner.Run<BytesPadRight>();
+            BenchmarkRunner.Run<BytesPad>();
             BenchmarkRunner.Run<Keccak256>();
             BenchmarkRunner.Run<Keccak512>();
-           
-//            BenchmarkRunner.Run<RlpEncodeAddress>();
-//            BenchmarkRunner.Run<BigIntegerVsUInt256Add>();
-//            BenchmarkRunner.Run<BigIntegerVsUInt256FromBytes>();
-//            BenchmarkRunner.Run<NodeStatsCtorBenchmark>();
+            
+            BenchmarkRunner.Run<Bn128AddPrecompile>(); // complex, may require experimenting with other libraries
+            BenchmarkRunner.Run<Bn128MulPrecompile>(); // complex, may require experimenting with other libraries
+            BenchmarkRunner.Run<Bn128PairingPrecompile>(); // complex, may require experimenting with other libraries
+            BenchmarkRunner.Run<CalculateJumpDestinations>(); // less important now, since mainly cached
+            BenchmarkRunner.Run<CalculateMemoryCost>();
+            BenchmarkRunner.Run<Int256Add>();
+            BenchmarkRunner.Run<Int256Subtract>();
+            BenchmarkRunner.Run<Int256Multiply>();
+            BenchmarkRunner.Run<Int256Divide>();
+            BenchmarkRunner.Run<IntrinsicGasCalculator>(); // less important but might be simple and fun
+            BenchmarkRunner.Run<PrecompileEcRecover>();
+            BenchmarkRunner.Run<PrecompileModExp>();
+            BenchmarkRunner.Run<PrecompileSha2>();
+            BenchmarkRunner.Run<PrecompileRipemd>();
+            BenchmarkRunner.Run<SimpleTransferProcessing>();
+            BenchmarkRunner.Run<UInt256Add>();
+            BenchmarkRunner.Run<UInt256Subtract>();
+            BenchmarkRunner.Run<UInt256Multiply>();
+            BenchmarkRunner.Run<UInt256Divide>();
+            
+            BenchmarkRunner.Run<EthashHashimoto>();
+            
+            // the following ones may require bigger structural changes to ciphers
+            BenchmarkRunner.Run<NettyFrameEncoder>();
+            BenchmarkRunner.Run<NettyFrameMerger>();
+            BenchmarkRunner.Run<NettyPacketSplitter>();
+            
+            // here we can try some structural changes to RLP design where allocations are limited and performance improved
+            BenchmarkRunner.Run<RlpDecodeAccount>();
+            BenchmarkRunner.Run<RlpEncodeAccount>();
+            BenchmarkRunner.Run<RlpDecodeBlock>();
+            BenchmarkRunner.Run<RlpEncodeBlock>();
+            BenchmarkRunner.Run<RlpDecodeTransaction>();
+            BenchmarkRunner.Run<RlpEncodeTransaction>();
+            
+            BenchmarkRunner.Run<HexPrefixFromBytes>();
+            BenchmarkRunner.Run<PatriciaTreeLookup>(); // potentially a bigger rewrite
         }
     }
 }

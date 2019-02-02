@@ -19,7 +19,7 @@
 using System;
 using BenchmarkDotNet.Attributes;
 
-namespace Nethermind.Evm.Benchmark.Network
+namespace Nethermind.Benchmarks.Network
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
@@ -34,7 +34,6 @@ namespace Nethermind.Evm.Benchmark.Network
         public bool Improved()
         {
             throw new NotImplementedException();
-            // NettyFrameMerger.Decode
         }
         
         [Benchmark]

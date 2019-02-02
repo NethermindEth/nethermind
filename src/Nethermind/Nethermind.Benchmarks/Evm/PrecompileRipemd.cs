@@ -23,7 +23,7 @@ namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class Bn128PairPrecompile
+    public class PrecompileRipemd
     {
         [GlobalSetup]
         public void Setup()

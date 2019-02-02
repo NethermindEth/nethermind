@@ -55,7 +55,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public bool Improved()
         {
-            throw new NotImplementedException();
+            return Bytes.AreEqual(_a, _b);
         }
 
         [Benchmark]

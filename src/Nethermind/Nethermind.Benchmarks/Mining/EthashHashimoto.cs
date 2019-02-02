@@ -16,10 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Mining;
 
 namespace Nethermind.Benchmarks.Mining
 {
@@ -27,32 +29,36 @@ namespace Nethermind.Benchmarks.Mining
     [CoreJob(baseline: true)]
     public class EthashHashimoto
     {
-        private static Account _account;
+        private Ethash _ethash = new Ethash(NullLogManager.Instance);
+        
+        private BlockHeader _header;
 
-        [Params(true, false)] public bool Empty { get; set; }
+        private BlockHeader[] _scenarios =
+        {
+            Build.A.BlockHeader.WithNumber(1).WithDifficulty(100).TestObject,
+            Build.A.BlockHeader.WithNumber(1).WithDifficulty(100).TestObject,
+        };
+
+        [Params(0, 1)]
+        public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            if (!Empty)
-            {
-                _account = new Account(12, 1234567890123456789ul, Keccak.Compute("a"), Keccak.Compute("b"));
-                return;
-            }
-            
-            _account = Account.TotallyEmpty;
+            _ethash.PrecomputeCache(0);
+            _header = _scenarios[ScenarioIndex];
         }
         
         [Benchmark]
-        public byte[] Improved()
+        public (Keccak, ulong) Improved()
         {
-            throw new NotImplementedException();
+            return _ethash.Mine(_header, 0UL);
         }
         
         [Benchmark]
-        public byte[] Current()
+        public (Keccak, ulong) Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Encode(_account).Bytes;
+            return _ethash.Mine(_header, 0UL);
         }
     }
 }

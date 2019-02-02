@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,7 +33,7 @@ namespace Nethermind.Core.Test
             Bloom bloom = new Bloom();
             bloom.Set(Keccak.OfAnEmptyString.Bytes);
             byte[] bytes = bloom.Bytes;
-            BitArray bits = bytes.ToBigEndianBitArray2048();
+            BitArray bits = bytes.AsSpan().ToBigEndianBitArray2048();
             Bloom bloom2 = new Bloom(bits);
             Assert.AreEqual(bloom.ToString(), bloom2.ToString());
         }
