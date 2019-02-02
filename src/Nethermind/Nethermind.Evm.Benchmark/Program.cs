@@ -26,9 +26,11 @@ namespace Nethermind.Evm.Benchmark
         {
 //            BenchmarkRunner.Run<KeccakQuest>();
 //            BenchmarkRunner.Run<BytesCompare>();
+//            BenchmarkRunner.Run<BytesIsZero>();
+            BenchmarkRunner.Run<RlpEncodeAddress>();
 //            BenchmarkRunner.Run<BigIntegerVsUInt256Add>();
 //            BenchmarkRunner.Run<BigIntegerVsUInt256FromBytes>();
-            BenchmarkRunner.Run<NodeStatsCtorBenchmark>();
+//            BenchmarkRunner.Run<NodeStatsCtorBenchmark>();
         }
     }
 }

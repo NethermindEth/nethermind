@@ -25,13 +25,14 @@ namespace Nethermind.Evm.Benchmark
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class BigIntegerVsUInt256FromBytes
+    public class BigIntegerVsUInt256Multiply
     {
         private static Random _random = new Random(0);
 
         private byte[] _stack;
 
-        [Params(true, false)] public bool AllZeros { get; set; }
+        [Params(true, false)]
+        public bool AllZeros { get; set; }
 
         [GlobalSetup]
         public void Setup()
@@ -44,21 +45,34 @@ namespace Nethermind.Evm.Benchmark
         }
 
         [Benchmark]
-        public (BigInteger, BigInteger) BigInteger()
+        public void BigInteger()
         {
             Span<byte> span = _stack.AsSpan();
             BigInteger a = new BigInteger(span.Slice(0, 32), true, true);
             BigInteger b = new BigInteger(span.Slice(32, 32), true, true);
-            return (a, b);
+
+            BigInteger value = a * b;
+            Span<byte> target = span.Slice(0, 32);
+            int bytesToWrite = value.GetByteCount(true);
+            if (bytesToWrite > 32)
+                bytesToWrite = 32;
+            if (bytesToWrite != 32)
+            {
+                target.Clear();
+                target = target.Slice(32 - bytesToWrite, bytesToWrite);
+            }
+
+            value.TryWriteBytes(target, out int bytesWritten, true, true);
         }
 
         [Benchmark]
-        public (UInt256, UInt256) UInt256()
+        public void UInt256()
         {
             Span<byte> span = _stack.AsSpan();
-            Dirichlet.Numerics.UInt256.CreateFromBigEndian2(out UInt256 a, span.Slice(0, 32));
-            Dirichlet.Numerics.UInt256.CreateFromBigEndian2(out UInt256 b, span.Slice(32, 32));
-            return (a, b);
+            Dirichlet.Numerics.UInt256.CreateFromBigEndian(out UInt256 a, span.Slice(0, 32));
+            Dirichlet.Numerics.UInt256.CreateFromBigEndian(out UInt256 b, span.Slice(32, 32));
+            Dirichlet.Numerics.UInt256.Multiply(out UInt256 c, ref a, ref b);
+            c.ToBigEndian(span.Slice(0, 32));
         }
     }
 }

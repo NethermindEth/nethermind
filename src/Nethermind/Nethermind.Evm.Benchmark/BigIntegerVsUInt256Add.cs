@@ -23,6 +23,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Benchmark
 {
+    [MemoryDiagnoser]
     [CoreJob(baseline: true)]
     public class BigIntegerVsUInt256Add
     {
@@ -30,7 +31,8 @@ namespace Nethermind.Evm.Benchmark
 
         private byte[] _stack;
 
-        [Params(true, false)] public bool AllZeros { get; set; }
+        [Params(true, false)]
+        public bool AllZeros { get; set; }
 
         [GlobalSetup]
         public void Setup()
@@ -69,7 +71,8 @@ namespace Nethermind.Evm.Benchmark
             Span<byte> span = _stack.AsSpan();
             Dirichlet.Numerics.UInt256.CreateFromBigEndian(out UInt256 a, span.Slice(0, 32));
             Dirichlet.Numerics.UInt256.CreateFromBigEndian(out UInt256 b, span.Slice(32, 32));
-            (a + b).ToBigEndian(span.Slice(0, 32));
+            Dirichlet.Numerics.UInt256.Add(out UInt256 c, ref a, ref b, false);
+            c.ToBigEndian(span.Slice(0, 32));
         }
 
         [Benchmark]

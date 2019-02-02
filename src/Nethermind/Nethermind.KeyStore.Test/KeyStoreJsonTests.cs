@@ -89,13 +89,6 @@ namespace Nethermind.KeyStore.Test
             var testModel = _testsModel.EvilNonce;
             RunTest(testModel);
         }
-        
-        [Test]
-        public void Sealer0Test()
-        {
-            var testModel = _testsModel.Sealer0;
-            RunTest(testModel);
-        }
 
         private void RunTest(KeyStoreTestModel testModel)
         {
@@ -107,6 +100,7 @@ namespace Nethermind.KeyStore.Test
             {
                 var securedPass = new SecureString();
                 testModel.Password.ToCharArray().ToList().ForEach(x => securedPass.AppendChar(x));
+                securedPass.MakeReadOnly();
                 (PrivateKey key, Result result) = _store.GetKey(address, securedPass);
 
                 Assert.AreEqual(ResultType.Success, result.ResultType, result.Error);

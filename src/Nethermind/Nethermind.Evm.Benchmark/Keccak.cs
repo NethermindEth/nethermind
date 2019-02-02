@@ -23,6 +23,7 @@ using Nethermind.HashLib;
 
 namespace Nethermind.Evm.Benchmark
 {
+    [MemoryDiagnoser]
     [CoreJob(baseline: true)]
     public class KeccakQuest
     {

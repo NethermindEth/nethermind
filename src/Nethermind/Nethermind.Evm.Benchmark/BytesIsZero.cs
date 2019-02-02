@@ -17,48 +17,44 @@
  */
 
 using System;
+using System.Linq;
 using System.Numerics;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Benchmark
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class BigIntegerVsUInt256FromBytes
+    public class BytesIsZero
     {
         private static Random _random = new Random(0);
 
-        private byte[] _stack;
+        private byte[] _a;
 
         [Params(true, false)] public bool AllZeros { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            _stack = new byte[64];
+            _a = new byte[64];
             if (!AllZeros)
             {
-                _random.NextBytes(_stack);
+                _random.NextBytes(_a);
             }
         }
-
+        
         [Benchmark]
-        public (BigInteger, BigInteger) BigInteger()
+        public bool Improved()
         {
-            Span<byte> span = _stack.AsSpan();
-            BigInteger a = new BigInteger(span.Slice(0, 32), true, true);
-            BigInteger b = new BigInteger(span.Slice(32, 32), true, true);
-            return (a, b);
+            throw new NotImplementedException();
         }
-
+        
         [Benchmark]
-        public (UInt256, UInt256) UInt256()
+        public bool Current()
         {
-            Span<byte> span = _stack.AsSpan();
-            Dirichlet.Numerics.UInt256.CreateFromBigEndian2(out UInt256 a, span.Slice(0, 32));
-            Dirichlet.Numerics.UInt256.CreateFromBigEndian2(out UInt256 b, span.Slice(32, 32));
-            return (a, b);
+            return _a.IsZero();
         }
     }
 }

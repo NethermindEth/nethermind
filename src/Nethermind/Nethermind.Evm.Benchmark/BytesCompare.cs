@@ -25,6 +25,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Benchmark
 {
+    [MemoryDiagnoser]
     [CoreJob(baseline: true)]
     public class BytesCompare
     {
@@ -48,7 +49,7 @@ namespace Nethermind.Evm.Benchmark
         }
         
         [Benchmark]
-        public bool Proposed()
+        public bool Improved()
         {
             throw new NotImplementedException();
         }

@@ -80,6 +80,8 @@ namespace Nethermind.KeyStore.Test
             {
                 securePassword.AppendChar(password[i]);
             }
+            
+            securePassword.MakeReadOnly();
 
             _store.StoreKey(new Address(item.Address), item);
             try
