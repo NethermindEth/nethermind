@@ -18,7 +18,7 @@
 
 using System.Diagnostics;
 
-namespace Nethermind.Core
+namespace Nethermind.Store
 {
     [DebuggerDisplay("{_nibble}")]
     [DebuggerStepThrough]

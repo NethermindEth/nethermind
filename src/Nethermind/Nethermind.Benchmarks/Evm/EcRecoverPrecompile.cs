@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,19 +17,29 @@
  */
 
 using System;
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing;
+using BenchmarkDotNet.Attributes;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Benchmarks.Evm
 {
-    public interface IBlockchainProcessor
+    [MemoryDiagnoser]
+    [CoreJob(baseline: true)]
+    public class EcRecoverPrecompile
     {
-        void Start();
-        Task StopAsync(bool processRemainingBlocks = false);
-        Block Process(Block block, ProcessingOptions options, IBlockTracer listener);
-        void SuggestBlock(Keccak blockHash, ProcessingOptions options);
-        event EventHandler ProcessingQueueEmpty;
+        [GlobalSetup]
+        public void Setup()
+        {
+        }
+        
+        [Benchmark]
+        public bool Improved()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Benchmark]
+        public bool Current()
+        {
+            throw new NotImplementedException();
+        }
     }
 }

@@ -23,7 +23,7 @@ using Nethermind.HashLib;
 
 namespace Nethermind.Core.Crypto
 {
-    // TODO: it is a copypasta from Keccak, consider later a similar structure to Hashlib but compare the perf first
+    // TODO: it is a copy-paste from Keccak, consider later a similar structure to Hashlib but compare the perf first
     public struct Keccak512 : IEquatable<Keccak512>
     {
         private const int Size = 64;

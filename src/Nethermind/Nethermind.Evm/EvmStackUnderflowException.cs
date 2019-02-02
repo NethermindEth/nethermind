@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Blockchain
+namespace Nethermind.Evm
 {
-    // TODO: not used yet, work in progress
-    public interface IChain
+    public class EvmStackUnderflowException : EvmException
     {
-        Keccak Head { get; set; }
-        BigInteger TotalDifficulty { get; set; }
     }
 }

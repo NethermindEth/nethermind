@@ -18,8 +18,9 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Core;
 
-namespace Nethermind.Core.Extensions
+namespace Nethermind.Store
 {
     [DebuggerStepThrough]
     public static class Nibbles

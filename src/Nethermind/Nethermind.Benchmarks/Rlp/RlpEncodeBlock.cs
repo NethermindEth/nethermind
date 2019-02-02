@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,19 +17,42 @@
  */
 
 using System;
-using System.Threading.Tasks;
+using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Benchmarks.Rlp
 {
-    public interface IBlockchainProcessor
+    [MemoryDiagnoser]
+    [CoreJob(baseline: true)]
+    public class RlpEncodeBlock
     {
-        void Start();
-        Task StopAsync(bool processRemainingBlocks = false);
-        Block Process(Block block, ProcessingOptions options, IBlockTracer listener);
-        void SuggestBlock(Keccak blockHash, ProcessingOptions options);
-        event EventHandler ProcessingQueueEmpty;
+        private static Account _account;
+
+        [Params(true, false)] public bool Empty { get; set; }
+
+        [GlobalSetup]
+        public void Setup()
+        {
+            if (!Empty)
+            {
+                _account = new Account(12, 1234567890123456789ul, Keccak.Compute("a"), Keccak.Compute("b"));
+                return;
+            }
+            
+            _account = Account.TotallyEmpty;
+        }
+        
+        [Benchmark]
+        public byte[] Improved()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Benchmark]
+        public byte[] Current()
+        {
+            return Nethermind.Core.Encoding.Rlp.Encode(_account).Bytes;
+        }
     }
 }

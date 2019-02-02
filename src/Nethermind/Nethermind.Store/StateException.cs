@@ -22,7 +22,7 @@ namespace Nethermind.Store
 {
     public class StateException : Exception
     {
-        public StateException()
+        protected StateException()
         {
         }
         

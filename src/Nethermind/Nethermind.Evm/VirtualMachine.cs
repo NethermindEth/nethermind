@@ -653,7 +653,7 @@ namespace Nethermind.Evm
                 if (stackHead == 0)
                 {
                     Metrics.EvmExceptions++;
-                    throw new StackUnderflowException();
+                    throw new EvmStackUnderflowException();
                 }
 
                 stackHead--;
@@ -664,7 +664,7 @@ namespace Nethermind.Evm
                 if (stackHead < depth)
                 {
                     Metrics.EvmExceptions++;
-                    throw new StackUnderflowException();
+                    throw new EvmStackUnderflowException();
                 }
 
                 stack.Slice((stackHead - depth) * 32, 32).CopyTo(stack.Slice(stackHead * 32, 32));
@@ -683,7 +683,7 @@ namespace Nethermind.Evm
                 if (stackHead < depth)
                 {
                     Metrics.EvmExceptions++;
-                    throw new StackUnderflowException();
+                    throw new EvmStackUnderflowException();
                 }
 
                 Span<byte> bottomSpan = stack.Slice((stackHead - depth) * 32, 32);
@@ -699,7 +699,7 @@ namespace Nethermind.Evm
                 if (stackHead == 0)
                 {
                     Metrics.EvmExceptions++;
-                    throw new StackUnderflowException();
+                    throw new EvmStackUnderflowException();
                 }
 
                 stackHead--;
@@ -712,7 +712,7 @@ namespace Nethermind.Evm
                 if (stackHead == 0)
                 {
                     Metrics.EvmExceptions++;
-                    throw new StackUnderflowException();
+                    throw new EvmStackUnderflowException();
                 }
 
                 stackHead--;
@@ -753,7 +753,7 @@ namespace Nethermind.Evm
                 if (stackHead == 0)
                 {
                     Metrics.EvmExceptions++;
-                    throw new StackUnderflowException();
+                    throw new EvmStackUnderflowException();
                 }
 
                 stackHead--;

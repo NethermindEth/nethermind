@@ -22,7 +22,13 @@ using System.Threading;
 namespace Nethermind.Core.Logging
 {
     /// <summary>
-    /// Logger for testing where we want to test whether any test message creation would cause an exception
+    /// LimboLogs redirects logs to nowhere (limbo) and it should be always used in tests as it guarantees that
+    /// we test any potential issues with the log message construction.
+    /// Imagine that we have a construction like if(_logger.IsTrace) _logger.Trace("somethingThatIsNull.ToString()")
+    /// This would not be tested until we switched the logger to Trace level and this, in turn,
+    /// would slow down the tests and increase memory construction due to the log files generation.
+    /// Instead we use LimboLogs that returns a logger that always causes the log message to be created and so we can
+    /// detect somethingThatIsNull.ToString() throwing an error.
     /// </summary>
     public class LimboTraceLogger : ILogger
     {

@@ -18,58 +18,28 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core.Crypto;
-using Nethermind.HashLib;
 
-namespace Nethermind.Benchmarks.Core
+namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class KeccakQuest
+    public class Bn128MulPrecompile
     {
-        private static HashLib.Crypto.SHA3.Keccak256 _hash = HashFactory.Crypto.SHA3.CreateKeccak256();
-        
-        private static Random _random = new Random(0);
-
-        private byte[] _a;
-        private byte[] _b;
-
-        [Params(true, false)] public bool AllZeros { get; set; }
-
         [GlobalSetup]
         public void Setup()
         {
-            _a = new byte[64];
-            _b = new byte[64];
-            if (!AllZeros)
-            {
-                _random.NextBytes(_a);
-                _a.CopyTo(_b.AsSpan());
-            }
         }
         
         [Benchmark]
-        public void MeadowHashSpan()
+        public bool Improved()
         {
-            MeadowHash.ComputeHash(_a);
+            throw new NotImplementedException();
         }
         
         [Benchmark]
-        public byte[] MeadowHashBytes()
+        public bool Current()
         {
-            return MeadowHash.ComputeHashBytes(_a);
-        }
-        
-        [Benchmark]
-        public byte[] Current()
-        {
-            return Keccak.Compute(_a).Bytes;
-        }
-        
-        [Benchmark]
-        public byte[] HashLib()
-        {
-            return _hash.ComputeBytes(_a).GetBytes();
+            throw new NotImplementedException();
         }
     }
 }

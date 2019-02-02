@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,9 +16,42 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Evm
+using System;
+using BenchmarkDotNet.Attributes;
+using Nethermind.Core.Extensions;
+
+namespace Nethermind.Benchmarks.Core
 {
-    public class InsufficientBalanceException : EvmException
+    [MemoryDiagnoser]
+    [CoreJob(baseline: true)]
+    public class BytesPadRight
     {
+        private static Random _random = new Random(0);
+
+        private byte[] _a;
+
+        [Params(true, false)] public bool AllZeros { get; set; }
+
+        [GlobalSetup]
+        public void Setup()
+        {
+            _a = new byte[64];
+            if (!AllZeros)
+            {
+                _random.NextBytes(_a);
+            }
+        }
+        
+        [Benchmark]
+        public bool Improved()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Benchmark]
+        public bool Current()
+        {
+            return _a.IsZero();
+        }
     }
 }

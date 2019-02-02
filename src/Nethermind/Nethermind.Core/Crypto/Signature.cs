@@ -23,9 +23,6 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto
 {
-    /// <summary>
-    /// TODO: can I mark it as a EIP155 signature? otherwise it should not be accepted with V > 28
-    /// </summary>
     public class Signature : IEquatable<Signature>
     {
         public Signature(byte[] bytes, int recoveryId)
