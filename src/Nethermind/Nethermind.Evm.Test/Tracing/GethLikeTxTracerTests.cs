@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             Assert.AreEqual(trace.Failed, true);
-            Assert.AreEqual("StackUnderflowException", trace.Entries[0].Error);
+            Assert.AreEqual("EvmStackUnderflowException", trace.Entries[0].Error);
         }
 
         [Test]
