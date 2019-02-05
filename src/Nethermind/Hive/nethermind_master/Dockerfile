@@ -9,13 +9,13 @@ RUN apt update -y && apt install -y git jq && \
     | jq ".+ {\"commit\":\"$(git rev-parse HEAD)\"}"               \
 	    > /version.json)
 
-FROM microsoft/dotnet:2.1-sdk AS build
+FROM microsoft/dotnet:2.2-sdk AS build
 COPY --from=clone /src .
 COPY --from=clone /version.json .
 RUN cd nethermind/src/Nethermind/Nethermind.Runner && \
     dotnet publish -c release -o out
 
-FROM microsoft/dotnet:2.1-aspnetcore-runtime
+FROM microsoft/dotnet:2.2-aspnetcore-runtime
 RUN apt update -y && apt install -y libsnappy-dev libc6-dev libc6 unzip jq
 
 COPY --from=build /nethermind/src/Nethermind/Nethermind.Runner/out .

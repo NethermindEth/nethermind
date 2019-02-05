@@ -1,7 +1,8 @@
 language: csharp
 mono: none
-dotnet: 2.1.402
 sudo: required
+dist: xenial
+dotnet: 2.2
 git:
   depth: 3
 before_script:

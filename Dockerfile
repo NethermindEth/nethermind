@@ -1,9 +1,9 @@
-FROM microsoft/dotnet:2.1-sdk AS build
+FROM microsoft/dotnet:2.2-sdk AS build
 COPY . .
 RUN git submodule update --init
 RUN cd src/Nethermind/Nethermind.Runner && dotnet publish -c release -o out
 
-FROM microsoft/dotnet:2.1-aspnetcore-runtime
+FROM microsoft/dotnet:2.2-aspnetcore-runtime
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 unzip
 WORKDIR /nethermind
 COPY --from=build /src/Nethermind/Nethermind.Runner/out .

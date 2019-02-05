@@ -209,6 +209,8 @@ namespace Nethermind.Runner.Runners
             {
                 return;
             }
+            
+            if(_logger.IsDebug) _logger.Debug($"Resolving CLI ({nameof(Cli.CliApiBuilder)})");
 
             IReadOnlyDbProvider rpcDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             AlternativeChain rpcChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, _transactionPool, _receiptStorage);
@@ -737,13 +739,14 @@ namespace Nethermind.Runner.Runners
                 }
             });
 
-            await StartPeer().ContinueWith(initPeerManagerTask =>
+            try
             {
-                if (initPeerManagerTask.IsFaulted)
-                {
-                    _logger.Error("Unable to start peer manager.", initPeerManagerTask.Exception);
-                }
-            });
+                StartPeer();
+            }
+            catch (Exception e)
+            {
+                    _logger.Error("Unable to start peer manager.", e);
+            };
 
             if (_logger.IsInfo) _logger.Info($"Node is up and listening on {_enode.IpAddress}:{_enode.P2PPort}");
             if (_logger.IsInfo) _logger.Info($"{ClientVersion.Description}");
@@ -866,12 +869,11 @@ namespace Nethermind.Runner.Runners
             _peerManager.Init(_initConfig.DiscoveryEnabled);
         }
 
-        private async Task StartPeer()
+        private void StartPeer()
         {
             if (!_initConfig.PeerManagerEnabled)
             {
                 if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(_initConfig.PeerManagerEnabled)} set to false)");
-                return;
             }
 
             if (_logger.IsDebug) _logger.Debug("Initializing peer manager");

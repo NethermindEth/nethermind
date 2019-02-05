@@ -1,4 +1,4 @@
-FROM microsoft/dotnet:2.1-aspnetcore-runtime
+FROM microsoft/dotnet:2.2-aspnetcore-runtime
 
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 unzip
 

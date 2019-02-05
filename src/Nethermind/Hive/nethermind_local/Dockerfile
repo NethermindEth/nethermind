@@ -1,5 +1,5 @@
 # Docker container spec for Nethermind Ethereum Client
-FROM microsoft/dotnet:2.1-aspnetcore-runtime
+FROM microsoft/dotnet:2.2-aspnetcore-runtime
 RUN apt update -y && apt install -y libsnappy-dev libc6-dev libc6 unzip jq
 
 COPY Nethermind/ .
