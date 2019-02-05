@@ -124,7 +124,7 @@ namespace Nethermind.Clique
                 
                 if (HasSignedRecently(snapshot, number, signer))
                 {
-                    throw new InvalidOperationException("Recently signed");
+                    throw new InvalidOperationException($"Recently signed (trying to sign {number} when last signed {Signers[signer]} with {Signers.Count} signers)");
                 }
                 
                 snapshot.Signers[signer] = number;
@@ -255,7 +255,7 @@ namespace Nethermind.Clique
         {
             UInt256 signedAt = snapshot.Signers[signer];
             if (signedAt.IsZero)
-            {
+            {               
                 return false;
             }
             
