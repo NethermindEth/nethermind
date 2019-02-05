@@ -58,8 +58,6 @@ jobs:
       name: "Nethermind.Config.Test"
     - script: dotnet test src/Nethermind/Nethermind.Core.Test
       name: "Nethermind.Core.Test"
-    - script: dotnet test src/Nethermind/Nethermind.DataStreams.Test
-      name: "Nethermind.DataStreams.Test"
     #- script: dotnet test src/Nethermind/Nethermind.Db.Test
     #  name: "Nethermind.Db.Test.Linux"
     #- script: dotnet test src/Nethermind/Nethermind.Db.Test
@@ -82,8 +80,6 @@ jobs:
       - sudo apt-get install libsnappy-dev 
       - dotnet test src/Nethermind/Nethermind.Network.Test
       name: "Nethermind.Network.Test"
-    - script: dotnet test src/Nethermind/Nethermind.Runner.Test
-      name: "Nethermind.Runner.Test"
     - script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
       name: "Nethermind.Secp256k1.Test.Linux"
     - script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
