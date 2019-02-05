@@ -39,6 +39,6 @@ namespace Nethermind.Core.Specs
 
         public UInt256? DaoBlockNumber { get; } = null;
 
-        public int ChainId => 0x188c;
+        public int ChainId => 0x5;
     }
 }
