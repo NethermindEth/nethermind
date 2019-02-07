@@ -32,6 +32,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
+using Nethermind.Wallet;
 using NUnit.Framework;
 
 namespace Nethermind.Clique.Test
@@ -52,7 +53,9 @@ namespace Nethermind.Clique.Test
             new PrivateKey("9BD8E918E3176E86D406BFCE261D4CD2589167E3DBD0236B08B0B285783D7553"),
             new PrivateKey("7DC56B10FD1EC64A8BF7547D3BAA254ACB96E8F2AD5A006DD2EBF9C40409A2CE")
         };
-        private CliqueSealEngine _clique;
+        private CliqueSealer _clique;
+        private CliqueSealValidator _sealValidator;
+        private SnapshotManager _snapshotManager;
         private Block _lastBlock;
         private PrivateKey _currentSigner;
         private BlockTree _blockTree;
@@ -76,7 +79,7 @@ namespace Nethermind.Clique.Test
             MineBlock(_blockTree, block3);
             MineBlock(_blockTree, block4);           
             MineBlock(_blockTree, block5);
-            IEthereumSigner signer = new EthereumSigner(RinkebySpecProvider.Instance, NullLogManager.Instance);
+            IEthereumSigner signer = new EthereumSigner(RinkebySpecProvider.Instance, LimboLogs.Instance);
             // Init snapshot db
             IDb db = new MemDb();
             CliqueConfig config = new CliqueConfig();
@@ -84,7 +87,9 @@ namespace Nethermind.Clique.Test
             int currentBlock = 6;
             int currentSignerIndex = (currentBlock % _signers.Count);
             _currentSigner = _signers[currentSignerIndex];
-            _clique = new CliqueSealEngine(config, signer, _currentSigner, db, _blockTree, NullLogManager.Instance);
+            _snapshotManager = new SnapshotManager(config, db, _blockTree, signer, LimboLogs.Instance);
+            _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
+            _clique = new CliqueSealer(new BasicWallet(_currentSigner), config, _snapshotManager, _currentSigner.Address, LimboLogs.Instance);
         }
 
         [Test]
@@ -92,8 +97,8 @@ namespace Nethermind.Clique.Test
         {
             Block block6 = CreateBlock(2, 6, _lastBlock);
             Block signed = await _clique.SealBlock(block6, CancellationToken.None);
-            bool validHeader = _clique.ValidateParams(_blockTree.FindBlock(signed.ParentHash, false), signed.Header);
-            bool validSeal = _clique.ValidateSeal(signed.Header);
+            bool validHeader = _sealValidator.ValidateParams(_blockTree.FindBlock(signed.ParentHash, false), signed.Header);
+            bool validSeal = _sealValidator.ValidateSeal(signed.Header);
             Assert.True(validHeader);
             Assert.True(validSeal);
         }
@@ -162,7 +167,7 @@ namespace Nethermind.Clique.Test
             BlockHeader header = BuildCliqueBlock();
 
             Address expectedBlockSealer = new Address("0xb279182d99e65703f0076e4812653aab85fca0f0");
-            Address blockSealer = _clique.GetBlockSealer(header);
+            Address blockSealer = _snapshotManager.GetBlockSealer(header);
             Assert.AreEqual(expectedBlockSealer, blockSealer);
         }
 

@@ -48,12 +48,7 @@ namespace Nethermind.Wallet
         {
         }
 
-        public Signature Sign(byte[] message, Address address, SecureString passphrase = null)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Signature Sign(Keccak hash, Address address, SecureString passphrase = null)
+        public Signature Sign(Keccak message, Address address, SecureString passphrase)
         {
             throw new NotImplementedException();
         }
@@ -64,6 +59,11 @@ namespace Nethermind.Wallet
         }
 
         public void Sign(Transaction tx, int chainId)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Signature Sign(Keccak message, Address address)
         {
             throw new NotImplementedException();
         }

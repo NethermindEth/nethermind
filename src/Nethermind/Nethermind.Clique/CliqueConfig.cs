@@ -20,12 +20,10 @@ namespace Nethermind.Clique
 {
     public class CliqueConfig : ICliqueConfig
     {
+        public static ICliqueConfig Default = new CliqueConfig(); 
+        
         public ulong BlockPeriod { get; set; } = 15;
 
         public ulong Epoch { get; set; } = 30000;
-        
-        public int SignerAccount { get; set; }
-        
-        public string SignerPassFile { get; set; }
     }
 }

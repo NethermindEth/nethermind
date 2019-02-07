@@ -16,34 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.Mining
 {
-    public abstract class Validator
+    public interface ISealer
     {
-        private static readonly BigInteger P256 = BigInteger.Pow(2, 256);
-        
-        private static readonly BigInteger P64 = BigInteger.Pow(2, 64);
-
-        private static readonly BigInteger P5 = BigInteger.Pow(2, 5);
-
-        public static bool IsInP256(UInt256 value) => true;
-        
-        public static bool IsInP256(BigInteger value)
-        {
-            return value >= BigInteger.Zero && value < P256;
-        }
-        
-        public static bool IsInP64(BigInteger value)
-        {
-            return value >= BigInteger.Zero && value < P64;
-        }
-
-        public static bool IsInP5(BigInteger value)
-        {
-            return value >= BigInteger.Zero && value < P5;
-        }
+        Task<Block> SealBlock(Block block, CancellationToken cancellationToken);
+        bool CanSeal(UInt256 blockNumber, Keccak parentHash);
+    }
+    
+    public interface ISealValidator
+    {
+        bool ValidateParams(Block parent, BlockHeader header);
+        bool ValidateSeal(BlockHeader header);
     }
 }

@@ -308,7 +308,7 @@ namespace Nethermind.PerfTest
 
             var specProvider = RopstenSpecProvider.Instance;
             var difficultyCalculator = new DifficultyCalculator(specProvider);
-            var sealEngine = new EthashSealEngine(new Ethash(_logManager), difficultyCalculator, _logManager);
+            var sealEngine = new EthashSealValidator(_logManager, difficultyCalculator, new Ethash(_logManager));
 
             var dbProvider = new RocksDbProvider(DbBasePath, DbConfig.Default, _logManager, true, true);
             var stateDb = dbProvider.StateDb;

@@ -36,6 +36,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Store;
+using Nethermind.Wallet;
 using NUnit.Framework;
 
 namespace Nethermind.Clique.Test
@@ -83,10 +84,10 @@ namespace Nethermind.Clique.Test
 
                 BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
                 _blockTrees.Add(privateKey, blockTree);
-
-                EthereumSigner ethereumSigner = new EthereumSigner(GoerliSpecProvider.Instance, NullLogManager.Instance);
-                CliqueSealEngine cliqueSealEngine = new CliqueSealEngine(_cliqueConfig, ethereumSigner, privateKey, new MemDb(), blockTree, NullLogManager.Instance);
-                cliqueSealEngine.CanSeal = true;
+                
+                IBasicWallet wallet = new BasicWallet(privateKey);
+                SnapshotManager snapshotManager = new SnapshotManager(_cliqueConfig, blocksDb, blockTree, _ethereumSigner, LimboLogs.Instance);
+                CliqueSealer cliqueSealer = new CliqueSealer(wallet, _cliqueConfig, snapshotManager, privateKey.Address, NullLogManager.Instance);
 
                 ISnapshotableDb stateDb = new StateDb();
                 ISnapshotableDb codeDb = new StateDb();
@@ -102,23 +103,23 @@ namespace Nethermind.Clique.Test
                 
                 StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, NullLogManager.Instance);
                 TransactionProcessor transactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, NullLogManager.Instance), NullLogManager.Instance);
-                BlockProcessor blockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, TestBlockValidator.AlwaysValid, new NoBlockRewards(), transactionProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, NullReceiptStorage.Instance, NullLogManager.Instance);
-                BlockchainProcessor processor = new BlockchainProcessor(blockTree, blockProcessor, new AuthorRecoveryStep(cliqueSealEngine), NullLogManager.Instance, false, false);
+                BlockProcessor blockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, TestBlockValidator.AlwaysValid, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, NullReceiptStorage.Instance, NullLogManager.Instance);
+                BlockchainProcessor processor = new BlockchainProcessor(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), NullLogManager.Instance, false, false);
                 processor.Start();
 
                 StateProvider minerStateProvider = new StateProvider(new StateTree(stateDb), codeDb, NullLogManager.Instance);
                 StorageProvider minerStorageProvider = new StorageProvider(stateDb, minerStateProvider, NullLogManager.Instance);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, NullLogManager.Instance);
                 TransactionProcessor minerTransactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, minerStateProvider, minerStorageProvider, minerVirtualMachine, NullLogManager.Instance);
-                BlockProcessor minerBlockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, TestBlockValidator.AlwaysValid, new NoBlockRewards(), minerTransactionProcessor, stateDb, codeDb, traceDb, minerStateProvider, minerStorageProvider, transactionPool, NullReceiptStorage.Instance, NullLogManager.Instance);
-                BlockchainProcessor minerProcessor = new BlockchainProcessor(blockTree, minerBlockProcessor, new AuthorRecoveryStep(cliqueSealEngine), NullLogManager.Instance, false, false);
+                BlockProcessor minerBlockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, TestBlockValidator.AlwaysValid, NoBlockRewards.Instance, minerTransactionProcessor, stateDb, codeDb, traceDb, minerStateProvider, minerStorageProvider, transactionPool, NullReceiptStorage.Instance, NullLogManager.Instance);
+                BlockchainProcessor minerProcessor = new BlockchainProcessor(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), NullLogManager.Instance, false, false);
 
                 if (withGenesisAlreadyProcessed)
                 {
                     ProcessGenesis(privateKey);
                 }
                 
-                CliqueBlockProducer blockProducer = new CliqueBlockProducer(transactionPool, minerProcessor, blockTree, minerStateProvider, _timestamp, new CryptoRandom(), cliqueSealEngine, _cliqueConfig, privateKey.Address, NullLogManager.Instance);
+                CliqueBlockProducer blockProducer = new CliqueBlockProducer(transactionPool, minerProcessor, blockTree, _timestamp, new CryptoRandom(), minerStateProvider, snapshotManager, cliqueSealer, privateKey.Address, _cliqueConfig, NullLogManager.Instance);
                 blockProducer.Start();
 
                 _producers.Add(privateKey, blockProducer);

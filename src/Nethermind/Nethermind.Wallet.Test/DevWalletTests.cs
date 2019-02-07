@@ -55,7 +55,7 @@ namespace Nethermind.Wallet.Test
                         new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance),
                         LimboLogs.Instance);
                 case DevWalletType.Memory:
-                    return new DevMemoryWallet(LimboLogs.Instance);
+                    return new DevWallet(LimboLogs.Instance);
                 default:
                     throw new ArgumentOutOfRangeException(nameof(devWalletType), devWalletType, null);
             }

@@ -21,15 +21,16 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Mining
-{
-    public class FakeSealEngine : ISealEngine
+{  
+    public class FakeSealer : ISealer, ISealValidator
     {
         private readonly TimeSpan _miningDelay;
         private readonly bool _exact;
 
-        public FakeSealEngine(TimeSpan miningDelay, bool exact = true)
+        public FakeSealer(TimeSpan miningDelay, bool exact = true)
         {
             _miningDelay = miningDelay;
             _exact = exact;
@@ -53,6 +54,11 @@ namespace Nethermind.Mining
                     .ContinueWith(t => block, cancellationToken);
         }
 
+        public bool CanSeal(UInt256 blockNumber, Keccak parentHash)
+        {
+            return true;
+        }
+
         public bool ValidateParams(Block parent, BlockHeader header)
         {
             return true;
@@ -62,7 +68,5 @@ namespace Nethermind.Mining
         {
             return true;
         }
-
-        public bool CanSeal { get; set; }
     }
 }

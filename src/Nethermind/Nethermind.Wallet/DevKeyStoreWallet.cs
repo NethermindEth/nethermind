@@ -34,12 +34,9 @@ namespace Nethermind.Wallet
     [DoNotUseInSecuredContext("For dev purposes only")]
     public class DevKeyStoreWallet : IWallet
     {
-        private const string SignatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
         private static byte[] _keySeed = new byte[32];
         private readonly IKeyStore _keyStore;
         private readonly ILogger _logger;
-
-        private Encoding _messageEncoding = Encoding.UTF8;
 
         private Dictionary<Address, PrivateKey> _unlockedAccounts = new Dictionary<Address, PrivateKey>();
 
@@ -104,28 +101,15 @@ namespace Nethermind.Wallet
             _unlockedAccounts.Remove(address);
         }
 
-        public Signature Sign(byte[] message, Address address, SecureString passphrase = null)
-        {
-            string messageText = _messageEncoding.GetString(message);
-            string signatureText = string.Format(SignatureTemplate, messageText.Length, messageText);
-            Signature signature = Sign(address, Keccak.Compute(signatureText), passphrase);
-            return signature;
-        }
-
-        public Signature Sign(Keccak hash, Address address, SecureString passphrase = null)
-        {
-            return Sign(address, hash, passphrase);
-        }
-
         public void Sign(Transaction tx, int chainId)
         {
             if (_logger.IsDebug) _logger?.Debug($"Signing transaction: {tx.Value} to {tx.To}");
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId));
-            tx.Signature = Sign(tx.SenderAddress, hash, null);
+            tx.Signature = Sign(hash, tx.SenderAddress);
             tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
         }
 
-        private Signature Sign(Address address, Keccak message, SecureString passphrase)
+        public Signature Sign(Keccak message, Address address, SecureString passphrase)
         {
             PrivateKey key;
             if (_unlockedAccounts.ContainsKey(address))
@@ -137,6 +121,22 @@ namespace Nethermind.Wallet
                 if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a message");
 
                 key = _keyStore.GetKey(address, passphrase).PrivateKey;
+            }
+
+            var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            return new Signature(rs, v);
+        }
+        
+        public Signature Sign(Keccak message, Address address)
+        {
+            PrivateKey key;
+            if (_unlockedAccounts.ContainsKey(address))
+            {
+                key = _unlockedAccounts[address];
+            }
+            else
+            {
+                throw new SecurityException("can only sign without passphrase when account is unlocked.");
             }
 
             var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);

@@ -46,8 +46,8 @@ namespace Nethermind.Mining.Test
             header.Bloom = Bloom.Empty;
 
             Block block = new Block(header);
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(LimboLogs.Instance), Substitute.For<IDifficultyCalculator>(), LimboLogs.Instance);
-            await ethashSealEngine.MineAsync(new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token, block, validNonce - 10);
+            EthashSealer ethashSealer = new EthashSealer(new Ethash(LimboLogs.Instance), LimboLogs.Instance);
+            await ethashSealer.MineAsync(new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token, block, validNonce - 10);
 
             Assert.AreEqual(validNonce, block.Header.Nonce);
             Assert.AreEqual(new Keccak("0xff2c80283f139148a9b3f2a9dd19d698475937a85296225a96857599cce6d1e2"), block.Header.MixHash);
@@ -68,8 +68,8 @@ namespace Nethermind.Mining.Test
             header.Bloom = Bloom.Empty;
 
             Block block = new Block(header);
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(LimboLogs.Instance), Substitute.For<IDifficultyCalculator>(), LimboLogs.Instance);
-            await ethashSealEngine.MineAsync(new CancellationTokenSource(TimeSpan.FromMilliseconds(2000)).Token, block, badNonce).ContinueWith(t =>
+            EthashSealer ethashSealer = new EthashSealer(new Ethash(LimboLogs.Instance), LimboLogs.Instance);
+            await ethashSealer.MineAsync(new CancellationTokenSource(TimeSpan.FromMilliseconds(2000)).Token, block, badNonce).ContinueWith(t =>
             {
                 Assert.True(t.IsCanceled);
             });
@@ -89,8 +89,8 @@ namespace Nethermind.Mining.Test
             Block block = new Block(blockHeader);
 
             IEthash ethash = new Ethash(LimboLogs.Instance);
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(ethash, Substitute.For<IDifficultyCalculator>(), LimboLogs.Instance);
-            await ethashSealEngine.MineAsync(CancellationToken.None, block, 7217048144105167954);
+            EthashSealer ethashSealer = new EthashSealer(ethash, LimboLogs.Instance);
+            await ethashSealer.MineAsync(CancellationToken.None, block, 7217048144105167954);
 
             Assert.True(ethash.Validate(block.Header));
 

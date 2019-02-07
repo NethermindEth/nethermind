@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,17 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
-
-namespace Nethermind.Mining
+namespace Nethermind.Core
 {
-    public interface ISealEngine
+    public interface ICache<in TKey, TValue>
     {
-        Task<Block> SealBlock(Block block, CancellationToken cancellationToken);
-        bool ValidateParams(Block parent, BlockHeader header);
-        bool ValidateSeal(BlockHeader header);
-        bool CanSeal { get; set; }
+        TValue Get(TKey key);
+        void Set(TKey key, TValue val);
+        void Delete(TKey key);
     }
 }

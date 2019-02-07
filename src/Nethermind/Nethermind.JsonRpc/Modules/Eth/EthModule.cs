@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Security;
 using System.Text;
 using System.Threading;
 using Nethermind.Blockchain.Filters;
@@ -337,6 +338,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
+
         public ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message)
         {
             try
@@ -346,7 +348,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 try
                 {
                     Address address = addressData;
-                    sig = _blockchainBridge.Sign(address, message);
+                    string messageText = _messageEncoding.GetString(message);
+                    const string signatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
+                    string signatureText = string.Format(signatureTemplate, messageText.Length, messageText);
+                    sig = _blockchainBridge.Sign(address, Keccak.Compute(signatureText));
                 }
                 catch (Exception)
                 {
@@ -370,10 +375,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Transaction tx = transactionForRpc.ToTransaction();
                 if (tx.Signature == null)
                 {
-                    tx.Nonce = (UInt256)_blockchainBridge.GetNonce(tx.SenderAddress);
+                    tx.Nonce = (UInt256) _blockchainBridge.GetNonce(tx.SenderAddress);
                     _blockchainBridge.Sign(tx);
                 }
-                
+
                 Keccak txHash = _blockchainBridge.SendTransaction(tx);
                 return ResultWrapper<Keccak>.Success(txHash);
             }
@@ -410,7 +415,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     return ResultWrapper<byte[]>.Fail($"VM Exception while processing transaction: {result.Error}", ErrorType.ExecutionError, result.OutputData);
                 }
-                
+
                 return ResultWrapper<byte[]>.Success(result.OutputData);
             }
             finally

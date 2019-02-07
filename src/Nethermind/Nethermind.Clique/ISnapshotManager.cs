@@ -16,12 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
+
 namespace Nethermind.Clique
 {
-    public interface ICliqueConfig
+    public interface ISnapshotManager
     {
-        ulong BlockPeriod { get; set; }
-
-        ulong Epoch { get; set; }
+        Snapshot GetOrCreateSnapshot(UInt256 number, Keccak hash);
+        Address GetBlockSealer(BlockHeader header);
     }
 }

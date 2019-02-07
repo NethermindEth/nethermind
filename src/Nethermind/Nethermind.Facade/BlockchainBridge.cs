@@ -81,7 +81,7 @@ namespace Nethermind.Facade
             return _wallet.GetAccounts();
         }
 
-        public Signature Sign(Address address, byte[] message)
+        public Signature Sign(Address address, Keccak message)
         {
             return _wallet.Sign(message, address);
         }

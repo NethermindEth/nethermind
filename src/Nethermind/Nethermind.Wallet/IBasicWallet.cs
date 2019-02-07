@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,15 +17,12 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.Wallet
 {
-    public static class AccountValidator
+    public interface IBasicWallet
     {
-        public static bool IsValid(Account account)
-        {
-            return Validator.IsInP256(account.Nonce) &&
-                   Validator.IsInP256(account.Balance);
-        }
+        Signature Sign(Keccak message, Address address);
     }
 }

@@ -19,10 +19,12 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Mining
 {
-    public class NullSealEngine : ISealEngine
+    public class NullSealEngine : ISealer, ISealValidator
     {
         private NullSealEngine()
         {
@@ -35,6 +37,11 @@ namespace Nethermind.Mining
             return Task.FromResult(block);
         }
 
+        public bool CanSeal(UInt256 blockNumber, Keccak parentHash)
+        {
+            return true;
+        }
+
         public bool ValidateParams(Block parent, BlockHeader header)
         {
             return true;
@@ -44,7 +51,5 @@ namespace Nethermind.Mining
         {
             return true;
         }
-
-        public bool CanSeal { get; set; }
     }
 }

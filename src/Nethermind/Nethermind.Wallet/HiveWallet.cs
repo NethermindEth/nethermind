@@ -34,37 +34,37 @@ namespace Nethermind.Wallet
 
         public void Import(byte[] keyData, SecureString passphrase)
         {
-            throw new System.NotImplementedException();
+            throw new System.NotSupportedException();
         }
 
         public Address NewAccount(SecureString passphrase)
         {
-            throw new System.NotImplementedException();
+            throw new System.NotSupportedException();
         }
 
         public bool UnlockAccount(Address address, SecureString passphrase)
         {
-            throw new System.NotImplementedException();
+            throw new System.NotSupportedException();
         }
 
         public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public void LockAccount(Address address)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public Signature Sign(byte[] message, Address address, SecureString passphrase = null)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
-        public Signature Sign(Keccak hash, Address address, SecureString passphrase = null)
+        public Signature Sign(Keccak message, Address address, SecureString passphrase)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public Address[] GetAccounts()
@@ -72,7 +72,12 @@ namespace Nethermind.Wallet
 
         public void Sign(Transaction tx, int chainId)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
+        }
+
+        public Signature Sign(Keccak message, Address address)
+        {
+            throw new NotImplementedException();
         }
     }
 }

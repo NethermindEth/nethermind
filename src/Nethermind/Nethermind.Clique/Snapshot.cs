@@ -31,16 +31,16 @@ using ILogger = Nethermind.Core.Logging.ILogger;
 
 namespace Nethermind.Clique
 {
-    internal class Snapshot
+    public class Snapshot
     {
-        internal LruCache<Keccak, Address> SigCache { get; private set; }
+        internal ICache<Keccak, Address> SigCache { get; private set; }
         internal UInt256 Number { get; private set; }
         internal Keccak Hash { get; private set; }
         internal SortedList<Address, UInt256> Signers { get; }
         internal List<Vote> Votes;
         internal Dictionary<Address, Tally> Tally { get; private set; }
 
-        internal Snapshot(LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, SortedList<Address, UInt256> signers, Dictionary<Address, Tally> tally)
+        internal Snapshot(ICache<Keccak, Address> sigCache, UInt256 number, Keccak hash, SortedList<Address, UInt256> signers, Dictionary<Address, Tally> tally)
         {
             SigCache = sigCache;
             Number = number;
@@ -50,7 +50,7 @@ namespace Nethermind.Clique
             Tally = tally;
         }
 
-        internal Snapshot(LruCache<Keccak, Address> sigCache, UInt256 number, Keccak hash, SortedList<Address, UInt256> signers)
+        internal Snapshot(ICache<Keccak, Address> sigCache, UInt256 number, Keccak hash, SortedList<Address, UInt256> signers)
             : this(sigCache, number, hash, signers, new Dictionary<Address, Tally>())
         {
         }
@@ -62,7 +62,7 @@ namespace Nethermind.Clique
             return clone;
         }
 
-        public static Snapshot LoadSnapshot(LruCache<Keccak, Address> sigCache, IDb db, Keccak hash)
+        public static Snapshot LoadSnapshot(ICache<Keccak, Address> sigCache, IDb db, Keccak hash)
         {
             Keccak key = GetSnapshotKey(hash);
             byte[] blob = db.Get(key);

@@ -43,15 +43,11 @@ namespace Nethermind.Blockchain.Validators
         public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, bool ignoreSignature = false)
         {
             return 
-                   Validator.IsInP256(transaction.Nonce) &&
-                   Validator.IsInP256(transaction.GasPrice) &&
-                   Validator.IsInP256(transaction.GasLimit) &&
                    /* This is unnecessarily calculated twice - at validation and execution times. */
                    transaction.GasLimit >= _intrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */
                    (transaction.To != null || transaction.Init != null) &&
-                   Validator.IsInP256(transaction.Value) &&
                    /* can be a simple transfer, a call, or an init but not both an init and a call */
                    !(transaction.Data != null && transaction.Init != null) &&
                    (ignoreSignature || _signatureValidator.Validate(transaction.Signature, releaseSpec));

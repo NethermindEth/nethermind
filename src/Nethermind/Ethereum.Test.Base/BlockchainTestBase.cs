@@ -52,12 +52,12 @@ namespace Ethereum.Test.Base
         private static ILogger _logger = new SimpleConsoleLogger();
 
         private static DifficultuCalculatorWrapper DifficultyCalculator { get; }
-        private static ISealEngine SealEngine { get; }
+        private static ISealValidator Sealer { get; }
 
         static BlockchainTestBase()
         {
             DifficultyCalculator = new DifficultuCalculatorWrapper();
-            SealEngine = new EthashSealEngine(new Ethash(_logManager), DifficultyCalculator, _logManager); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
+            Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new Ethash(_logManager)); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
         }
 
         [SetUp]
@@ -248,7 +248,7 @@ namespace Ethereum.Test.Base
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
-            IHeaderValidator headerValidator = new HeaderValidator(blockTree, SealEngine, specProvider, _logManager);
+            IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
             IStateProvider stateProvider = new StateProvider(stateTree, codeDb, _logManager);
