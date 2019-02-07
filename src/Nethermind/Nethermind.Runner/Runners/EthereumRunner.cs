@@ -490,7 +490,7 @@ namespace Nethermind.Runner.Runners
                     _recoveryStep = new CompositeDataRecoveryStep(_recoveryStep, new AuthorRecoveryStep(_snapshotManager));
                     if (_initConfig.IsMining)
                     {
-                        _sealer = new CliqueSealer(_wallet, cliqueConfig, _snapshotManager, _nodeKey.Address, _logManager);
+                        _sealer = new CliqueSealer(new BasicWallet(_nodeKey), cliqueConfig, _snapshotManager, _nodeKey.Address, _logManager);
                     }
                     else
                     {
