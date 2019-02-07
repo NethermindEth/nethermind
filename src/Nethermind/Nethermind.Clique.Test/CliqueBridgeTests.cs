@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Store;
+using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -40,15 +41,18 @@ namespace Nethermind.Clique.Test
                 Substitute.For<ITransactionPool>(),
                 Substitute.For<IBlockchainProcessor>(),
                 blockTree,
-                Substitute.For<IStateProvider>(),
                 Substitute.For<ITimestamp>(),
                 Substitute.For<ICryptoRandom>(),
-                new CliqueSealEngine(cliqueConfig, Substitute.For<IEthereumSigner>(), TestObject.PrivateKeyA, new MemDb(), blockTree, NullLogManager.Instance),
-                cliqueConfig,
+                Substitute.For<IStateProvider>(),
+                Substitute.For<ISnapshotManager>(),
+                new CliqueSealer(new BasicWallet(TestObject.PrivateKeyA), cliqueConfig, Substitute.For<ISnapshotManager>(), TestObject.PrivateKeyA.Address, NullLogManager.Instance),
                 TestObject.AddressA,
+                cliqueConfig,
                 NullLogManager.Instance);
             
-            CliqueBridge bridge = new CliqueBridge(producer, blockTree);
+            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumSigner.Instance, LimboLogs.Instance);
+            
+            CliqueBridge bridge = new CliqueBridge(producer, snapshotManager, blockTree);
             Assert.DoesNotThrow(() => bridge.CastVote(TestObject.AddressB, true));
             Assert.DoesNotThrow(() => bridge.UncastVote(TestObject.AddressB));
             Assert.DoesNotThrow(() => bridge.CastVote(TestObject.AddressB, false));

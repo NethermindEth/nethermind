@@ -25,7 +25,7 @@ namespace Nethermind.Core
     /// <summary>
     /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
     /// </summary>
-    public class LruCache<TKey, TValue>
+    public class LruCache<TKey, TValue> : ICache<TKey, TValue>
     {
         private readonly int _capacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;

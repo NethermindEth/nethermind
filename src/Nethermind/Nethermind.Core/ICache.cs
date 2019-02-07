@@ -16,12 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Clique
+namespace Nethermind.Core
 {
-    public interface ICliqueConfig
+    public interface ICache<in TKey, TValue>
     {
-        ulong BlockPeriod { get; set; }
-
-        ulong Epoch { get; set; }
+        TValue Get(TKey key);
+        void Set(TKey key, TValue val);
+        void Delete(TKey key);
     }
 }

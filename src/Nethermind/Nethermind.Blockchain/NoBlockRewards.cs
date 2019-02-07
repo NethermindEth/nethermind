@@ -23,6 +23,12 @@ namespace Nethermind.Blockchain
 {
     public class NoBlockRewards : IRewardCalculator
     {   
+        private NoBlockRewards()
+        {
+        }
+
+        public static NoBlockRewards Instance { get; } = new NoBlockRewards();
+        
         private static BlockReward[] _noRewards = Array.Empty<BlockReward>();
 
         public BlockReward[] CalculateRewards(Block block) => _noRewards;

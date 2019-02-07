@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test
             BlockProcessor processor = new BlockProcessor(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
-                new NoBlockRewards(),
+                NoBlockRewards.Instance,
                 transactionProcessor,
                 stateDb,
                 codeDb,

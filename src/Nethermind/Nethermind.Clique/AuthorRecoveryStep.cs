@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 
@@ -23,18 +24,18 @@ namespace Nethermind.Clique
 {
     public class AuthorRecoveryStep : IBlockDataRecoveryStep
     {
-        private readonly CliqueSealEngine _clique;
+        private readonly ISnapshotManager _snapshotManager;
 
         [Todo(Improve.Refactor, "Strong coupling here")]
-        public AuthorRecoveryStep(CliqueSealEngine clique)
+        public AuthorRecoveryStep(ISnapshotManager snapshotManager)
         {
-            _clique = clique;
+            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         }
 
         public void RecoverData(Block block)
         {
             if (block.Header.Author != null) return;
-            block.Author = _clique.GetBlockSealer(block.Header);
+            block.Author = _snapshotManager.GetBlockSealer(block.Header);
         }
     }
 }

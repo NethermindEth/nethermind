@@ -56,8 +56,7 @@ namespace Nethermind.Blockchain.Test
             ILogger logger = logManager.GetClassLogger();
 
             /* spec */
-            FakeSealEngine sealEngine = new FakeSealEngine(miningDelay);
-            sealEngine.CanSeal = true;
+            FakeSealer sealer = new FakeSealer(miningDelay);
 
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
 
@@ -72,7 +71,7 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, logManager);
             Timestamp timestamp = new Timestamp();
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
-            HeaderValidator headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, logManager);
+            HeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, logManager);
             OmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, logManager);
             TransactionValidator transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
             BlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logManager);
@@ -112,7 +111,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
 
-            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(difficultyCalculator, transactionPool, blockchainProcessor, sealEngine, blockTree, timestamp, NullLogManager.Instance);
+            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(difficultyCalculator, transactionPool, blockchainProcessor, sealer, blockTree, timestamp, NullLogManager.Instance);
             minedBlockProducer.Start();
 
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);

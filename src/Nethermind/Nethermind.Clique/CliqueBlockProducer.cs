@@ -33,11 +33,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
+using Nethermind.Mining;
 using Nethermind.Store;
 
 namespace Nethermind.Clique
 {
-    public class CliqueBlockProducer : IBlockProducer, IDisposable
+    public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     {
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockTree _blockTree;
@@ -48,7 +49,8 @@ namespace Nethermind.Clique
 
         private readonly IBlockchainProcessor _processor;
         private readonly ITransactionPool _transactionPool;
-        private CliqueSealEngine _sealEngine;
+        private ISealer _sealer;
+        private readonly ISnapshotManager _snapshotManager;
         private ICliqueConfig _config;
         private Address _address;
         private ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
@@ -56,36 +58,34 @@ namespace Nethermind.Clique
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private System.Timers.Timer _timer = new System.Timers.Timer();
 
-        public CliqueBlockProducer(
-            ITransactionPool transactionPool,
-            IBlockchainProcessor devProcessor,
+        public CliqueBlockProducer(ITransactionPool transactionPool,
+            IBlockchainProcessor blockchainProcessor,
             IBlockTree blockTree,
-            IStateProvider stateProvider,
             ITimestamp timestamp,
             ICryptoRandom cryptoRandom,
-            CliqueSealEngine cliqueSealEngine,
-            ICliqueConfig config,
+            IStateProvider stateProvider,
+            ISnapshotManager snapshotManager,
+            ISealer cliqueSealer,
             Address address,
+            ICliqueConfig config,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
-            _processor = devProcessor ?? throw new ArgumentNullException(nameof(devProcessor));
+            _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _timestamp = timestamp ?? throw new ArgumentNullException(nameof(_timestamp));
-            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(_cryptoRandom));
-            _sealEngine = cliqueSealEngine ?? throw new ArgumentNullException(nameof(_sealEngine));
-            _config = config ?? throw new ArgumentNullException(nameof(_config));
-            _address = address ?? throw new ArgumentNullException(nameof(_address));
+            _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
+            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+            _sealer = cliqueSealer ?? throw new ArgumentNullException(nameof(cliqueSealer));
+            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+            _address = address ?? throw new ArgumentNullException(nameof(address));
 
-            if (_sealEngine.CanSeal)
-            {
-                _timer.AutoReset = false;
-                _timer.Elapsed += TimerOnElapsed;
-                _timer.Interval = 100;
-                _timer.Start();
-            }
+            _timer.AutoReset = false;
+            _timer.Elapsed += TimerOnElapsed;
+            _timer.Interval = 100;
+            _timer.Start();
         }
 
         private readonly BlockingCollection<Block> _signalsQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
@@ -120,24 +120,25 @@ namespace Nethermind.Clique
             {
                 if (_blockTree.Head == null)
                 {
+                    _timer.Enabled = true;
                     return;
                 }
-                
+
                 if (_scheduledBlock == null)
                 {
                     if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamp.EpochSeconds)
                     {
                         _signalsQueue.Add(_blockTree.FindBlock(_blockTree.Head.Hash, false));
                     }
-                    
+
                     _timer.Enabled = true;
                     return;
                 }
-                
+
                 ulong extraDelayMilliseconds = 0;
                 if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
                 {
-                    int wiggle = _scheduledBlock.Header.CalculateSignersCount() / 2 + 1 * Clique.WiggleTime;
+                    int wiggle = _snapshotManager.GetOrCreateSnapshot(_scheduledBlock.Header.Number - 1, _scheduledBlock.Header.ParentHash).Signers.Count / 2 + 1 * Clique.WiggleTime;
                     extraDelayMilliseconds += (ulong) _cryptoRandom.NextInt(wiggle);
                 }
 
@@ -193,7 +194,6 @@ namespace Nethermind.Clique
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
             _signalsQueue.Add(e.Block);
-            
         }
 
         private void ConsumeSignal()
@@ -208,14 +208,9 @@ namespace Nethermind.Clique
                         parentBlock = nextSignal;
                     }
                 }
-                
-                try
-                {   
-                    if (!_sealEngine.CanSeal)
-                    {
-                        continue;
-                    }
 
+                try
+                {
                     Block block = PrepareBlock(parentBlock);
                     if (block == null)
                     {
@@ -230,10 +225,10 @@ namespace Nethermind.Clique
                         if (_logger.IsInfo) _logger.Info($"Prepared block has lost the race");
                         continue;
                     }
-                    
+
                     if (_logger.IsDebug) _logger.Debug($"Sealing prepared block {processedBlock.Number}");
 
-                    _sealEngine.SealBlock(processedBlock, _cancellationTokenSource.Token).ContinueWith(t =>
+                    _sealer.SealBlock(processedBlock, _cancellationTokenSource.Token).ContinueWith(t =>
                     {
                         if (t.IsCompletedSuccessfully)
                         {
@@ -249,7 +244,7 @@ namespace Nethermind.Clique
                         }
                         else if (t.IsFaulted)
                         {
-                            if(_logger.IsError) _logger.Error("Mining failed", t.Exception);
+                            if (_logger.IsError) _logger.Error("Mining failed", t.Exception);
                         }
                         else if (t.IsCanceled)
                         {
@@ -259,7 +254,7 @@ namespace Nethermind.Clique
                 }
                 catch (Exception e)
                 {
-                    if(_logger.IsError) _logger.Error($"Block producer could not produce block on top of {parentBlock.ToString(Block.Format.HashAndNumber)}", e);
+                    if (_logger.IsError) _logger.Error($"Block producer could not produce block on top of {parentBlock.ToString(Block.Format.HashAndNumber)}", e);
                 }
             }
         }
@@ -272,7 +267,7 @@ namespace Nethermind.Clique
         }
 
         private Keccak _recentNotAllowedParent;
-        
+
         private Block PrepareBlock(Block parentBlock)
         {
             BlockHeader parentHeader = parentBlock.Header;
@@ -287,7 +282,7 @@ namespace Nethermind.Clique
                 return null;
             }
 
-            if (!_sealEngine.CanSignBlock(parentHeader.Number + 1, parentHeader.Hash))
+            if (!_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
             {
                 if (_logger.IsInfo) _logger.Info($"Not allowed to sign block ({parentBlock.Number + 1})");
                 _recentNotAllowedParent = parentHeader.Hash;
@@ -311,7 +306,7 @@ namespace Nethermind.Clique
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
             UInt256 number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
-            Snapshot snapshot = _sealEngine.GetOrCreateSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
             bool isEpochBlock = (ulong) number % 30000 == 0;
             if (!isEpochBlock)
             {
@@ -321,7 +316,7 @@ namespace Nethermind.Clique
                 {
                     Address address = proposal.Key;
                     bool authorize = proposal.Value;
-                    if (snapshot.ValidVote(address, authorize))
+                    if (_snapshotManager.IsValidVote(snapshot, address, authorize))
                     {
                         addresses.Add(address);
                     }
@@ -377,7 +372,7 @@ namespace Nethermind.Clique
 
             int total = 0;
             _stateProvider.StateRoot = parentHeader.StateRoot;
-            
+
             Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
             foreach (Transaction transaction in transactions)
             {
@@ -421,7 +416,7 @@ namespace Nethermind.Clique
 
         private UInt256 CalculateDifficulty(Snapshot snapshot, Address signer)
         {
-            if (snapshot.InTurn(snapshot.Number + 1, signer))
+            if (_snapshotManager.IsInTurn(snapshot, snapshot.Number + 1, signer))
             {
                 if (_logger.IsInfo) _logger.Info("Producing in turn block");
                 return new UInt256(Clique.DifficultyInTurn);

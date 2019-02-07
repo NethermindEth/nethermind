@@ -23,16 +23,14 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Wallet
 {
-    public interface IWallet
+    public interface IWallet : IBasicWallet
     {
         void Import(byte[] keyData, SecureString passphrase);
         Address NewAccount(SecureString passphrase);
         bool UnlockAccount(Address address, SecureString passphrase);
-        
-        bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan );
+        bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan);
         void LockAccount(Address address);
-        Signature Sign(byte[] message, Address address, SecureString passphrase = null);
-        Signature Sign(Keccak hash, Address address, SecureString passphrase = null);
+        Signature Sign(Keccak message, Address address, SecureString passphrase = null);
         Address[] GetAccounts();
         void Sign(Transaction tx, int chainId);
     }

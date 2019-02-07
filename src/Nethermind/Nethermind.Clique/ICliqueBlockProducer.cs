@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,17 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
+
+using Nethermind.Blockchain;
 using Nethermind.Core;
 
-namespace Nethermind.Mining
+namespace Nethermind.Clique
 {
-    public interface ISealEngine
+    public interface ICliqueBlockProducer : IBlockProducer
     {
-        Task<Block> SealBlock(Block block, CancellationToken cancellationToken);
-        bool ValidateParams(Block parent, BlockHeader header);
-        bool ValidateSeal(BlockHeader header);
-        bool CanSeal { get; set; }
+        void CastVote(Address signer, bool vote);
+        void UncastVote(Address signer);
     }
 }

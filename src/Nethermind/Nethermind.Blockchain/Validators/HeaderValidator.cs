@@ -30,22 +30,22 @@ namespace Nethermind.Blockchain.Validators
     {
         private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
 
-        private readonly ISealEngine _sealEngine;
+        private readonly ISealValidator _sealValidator;
         private readonly BigInteger? _daoBlockNumber;
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 
-        public HeaderValidator(IBlockTree blockTree, ISealEngine sealEngine, ISpecProvider specProvider, ILogManager logManager)
+        public HeaderValidator(IBlockTree blockTree, ISealValidator sealValidator, ISpecProvider specProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _sealEngine = sealEngine ?? throw new ArgumentNullException(nameof(sealEngine));
+            _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _daoBlockNumber = specProvider?.DaoBlockNumber;
         }
         
         public bool Validate(BlockHeader header, bool isOmmer = false)
         {
-            bool areNonceValidAndMixHashValid = header.Number == 0 || header.SealEngineType == SealEngineType.None || _sealEngine.ValidateSeal(header);
+            bool areNonceValidAndMixHashValid = header.Number == 0 || header.SealEngineType == SealEngineType.None || _sealValidator.ValidateSeal(header);
             if (!areNonceValidAndMixHashValid)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            bool sealParamsCorrect = _sealEngine.ValidateParams(parent, header);
+            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
             if (!sealParamsCorrect)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");

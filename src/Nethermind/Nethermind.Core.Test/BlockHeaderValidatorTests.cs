@@ -39,7 +39,7 @@ namespace Nethermind.Core.Test
     public class BlockHeaderValidatorTests
     {
         private IHeaderValidator _validator;
-        private ISealEngine _ethash;
+        private ISealValidator _ethash;
         private TestLogger _testLogger;
         private Block _parentBlock;
         private Block _block;
@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test
         public void Setup()
         {
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));
-            _ethash = new EthashSealEngine(new Ethash(NullLogManager.Instance), calculator, NullLogManager.Instance);
+            _ethash = new EthashSealValidator(NullLogManager.Instance, calculator, new Ethash(NullLogManager.Instance));
             _testLogger = new TestLogger();
             BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, Substitute.For<ITransactionPool>(), NullLogManager.Instance);
             

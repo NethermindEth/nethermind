@@ -16,12 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Clique
-{
-    public interface ICliqueConfig
-    {
-        ulong BlockPeriod { get; set; }
+using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Secp256k1;
 
-        ulong Epoch { get; set; }
+namespace Nethermind.Wallet
+{
+    public class BasicWallet : IBasicWallet
+    {
+        private readonly PrivateKey _privateKey;
+
+        public BasicWallet(PrivateKey privateKey)
+        {
+            _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
+        }
+        
+        public Signature Sign(Keccak message, Address address)
+        {
+            var rs = Proxy.SignCompact(message.Bytes, _privateKey.KeyBytes, out int v);
+            return new Signature(rs, v);
+        }
     }
 }

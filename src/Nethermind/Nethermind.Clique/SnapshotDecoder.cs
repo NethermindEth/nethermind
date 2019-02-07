@@ -29,9 +29,7 @@ namespace Nethermind.Clique
         public Snapshot Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             context.ReadSequenceLength();
-            
-            // Signature cache
-            LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(Clique.InMemorySignatures);
+                       
             // Block number
             UInt256 number = context.DecodeUInt256();
             // Hash
@@ -42,7 +40,7 @@ namespace Nethermind.Clique
             List<Vote> votes = DecodeVotes(context);
             // Tally
             Dictionary<Address, Tally> tally = DecodeTally(context);
-            Snapshot snapshot = new Snapshot(sigCache, number, hash, signers, tally);
+            Snapshot snapshot = new Snapshot(number, hash, signers, tally);
             snapshot.Votes = votes;
 
             return snapshot;

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,15 +17,18 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.Clique
 {
-    public static class AccountValidator
+    public interface ISnapshotManager
     {
-        public static bool IsValid(Account account)
-        {
-            return Validator.IsInP256(account.Nonce) &&
-                   Validator.IsInP256(account.Balance);
-        }
+        Snapshot GetOrCreateSnapshot(UInt256 number, Keccak hash);
+        Address GetBlockSealer(BlockHeader header);
+        bool IsValidVote(Snapshot snapshot, Address address, bool authorize);
+        bool IsInTurn(Snapshot snapshot, UInt256 number, Address signer);
+        bool HasSignedRecently(Snapshot snapshot, UInt256 number, Address signer);
+        Keccak CalculateCliqueHeaderHash(BlockHeader blockHeader);
     }
 }

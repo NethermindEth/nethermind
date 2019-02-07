@@ -30,7 +30,7 @@ namespace Nethermind.Facade
     public interface IBlockchainBridge
     {
         IReadOnlyCollection<Address> GetWalletAccounts();
-        Signature Sign(Address address, byte[] message);
+        Signature Sign(Address address, Keccak message);
         
         void Sign(Transaction tx);
 

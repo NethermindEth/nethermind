@@ -28,20 +28,17 @@ using Nethermind.Core.Logging;
 using Nethermind.Secp256k1;
 
 namespace Nethermind.Wallet
-{
+{   
     [DoNotUseInSecuredContext("For dev purposes only")]
-    public class DevMemoryWallet : IWallet
+    public class DevWallet : IWallet
     {
-        private const string SignatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
         private static byte[] _keySeed = new byte[32];
         private readonly ILogger _logger;
         private Dictionary<Address, bool> _isUnlocked = new Dictionary<Address, bool>();
         private Dictionary<Address, string> _passwords = new Dictionary<Address, string>();
         private Dictionary<Address, PrivateKey> _keys = new Dictionary<Address, PrivateKey>();
 
-        private Encoding _messageEncoding = Encoding.UTF8;
-
-        public DevMemoryWallet(ILogManager logManager)
+        public DevWallet(ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -106,25 +103,7 @@ namespace Nethermind.Wallet
             _isUnlocked[address] = false;
         }
 
-        public Signature Sign(byte[] message, Address address, SecureString passphrase = null)
-        {   
-                    if (!_isUnlocked.ContainsKey(address))
-                    {
-                        throw new SecurityException("Account does not exist.");
-                    }
-        
-            if (!_isUnlocked[address] && passphrase?.Unsecure() != _passwords[address])
-            {
-                throw new SecurityException("Cannot sign without password or unlocked account.");
-            }
-
-            string messageText = _messageEncoding.GetString(message);
-            string signatureText = string.Format(SignatureTemplate, messageText.Length, messageText);
-            Signature signature = Sign(address, Keccak.Compute(signatureText));
-            return signature;
-        }
-
-        public Signature Sign(Keccak hash, Address address, SecureString passphrase = null)
+        public Signature Sign(Keccak message, Address address, SecureString passphrase)
         {
             if (!_isUnlocked.ContainsKey(address))
             {
@@ -136,18 +115,18 @@ namespace Nethermind.Wallet
                 throw new SecurityException("Cannot sign without password or unlocked account.");
             }
             
-            return Sign(address, hash);
+            return Sign(message, address);
         }
         
         public void Sign(Transaction tx, int chainId)
         {   
             if (_logger.IsDebug) _logger?.Debug($"Signing transaction: {tx.Value} to {tx.To}");
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId));
-            tx.Signature = Sign(tx.SenderAddress, hash);
+            tx.Signature = Sign(hash, tx.SenderAddress);
             tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
         }
 
-        private Signature Sign(Address address, Keccak message)
+        public Signature Sign(Keccak message, Address address)
         {
             var rs = Proxy.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
             return new Signature(rs, v);

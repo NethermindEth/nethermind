@@ -16,12 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Clique
-{
-    public interface ICliqueConfig
-    {
-        ulong BlockPeriod { get; set; }
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-        ulong Epoch { get; set; }
+namespace Nethermind.Wallet
+{
+    public interface IBasicWallet
+    {
+        Signature Sign(Keccak message, Address address);
     }
 }

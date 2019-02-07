@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain
         private static readonly BigInteger MinGasPriceForMining = 1;
 
         private readonly IBlockchainProcessor _processor;
-        private readonly ISealEngine _sealEngine;
+        private readonly ISealer _sealer;
         private readonly IBlockTree _blockTree;
         private readonly ITimestamp _timestamp;
         private readonly IDifficultyCalculator _difficultyCalculator;
@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain
             IDifficultyCalculator difficultyCalculator,
             ITransactionPool transactionPool,
             IBlockchainProcessor processor,
-            ISealEngine sealEngine,
+            ISealer sealer,
             IBlockTree blockTree,
             ITimestamp timestamp,
             ILogManager logManager)
@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
-            _sealEngine = sealEngine ?? throw new ArgumentNullException(nameof(sealEngine));
+            _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _timestamp = timestamp;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -86,11 +86,6 @@ namespace Nethermind.Blockchain
                 _cancellationTokenSource = new CancellationTokenSource();
                 token = _cancellationTokenSource.Token;
             }
-
-            if (!_sealEngine.CanSeal)
-            {
-                return;
-            }
             
             Block block = PrepareBlock();
             if (block == null)
@@ -100,7 +95,7 @@ namespace Nethermind.Blockchain
             }
 
             Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullBlockTracer.Instance);
-            _sealEngine.SealBlock(processedBlock, token).ContinueWith(t =>
+            _sealer.SealBlock(processedBlock, token).ContinueWith(t =>
             {
                 if (t.IsCompletedSuccessfully)
                 {

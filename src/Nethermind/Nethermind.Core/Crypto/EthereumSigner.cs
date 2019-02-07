@@ -59,15 +59,6 @@ namespace Nethermind.Core.Crypto
             _logger?.Debug("Transaction signed");
         }
 
-        public void RecoverAddresses(Block block)
-        {
-            for (int i = 0; i < block.Transactions.Length; i++)
-            {
-                var tx = block.Transactions[i];
-                tx.SenderAddress = RecoverAddress(tx, block.Number);
-            }
-        }
-
         public bool Verify(Address sender, Transaction transaction, UInt256 blockNumber)
         {
             bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
