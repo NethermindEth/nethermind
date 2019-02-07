@@ -125,12 +125,12 @@ namespace Nethermind.Runner.Runners
         private ISealer _sealer;
         private ISealValidator _sealValidator;
         private IBlockProducer _blockProducer;
+        private ISnapshotManager _snapshotManager;
         private IRlpxPeer _rlpxPeer;
         private IDbProvider _dbProvider;
         private readonly ITimestamp _timestamp = new Timestamp();
         private IStateProvider _stateProvider;
         private IWallet _wallet;
-        private IWallet _sealerWallet;
         private IEnode _enode;
         private HiveRunner _hiveRunner;
 
@@ -260,7 +260,7 @@ namespace Nethermind.Runner.Runners
 
             if (_sealer is CliqueSealer)
             {
-                CliqueModule cliqueModule = new CliqueModule(_configProvider, _logManager, _jsonSerializer, new CliqueBridge(_blockProducer as CliqueBlockProducer, _blockTree));
+                CliqueModule cliqueModule = new CliqueModule(_configProvider, _logManager, _jsonSerializer, new CliqueBridge(_blockProducer as ICliqueBlockProducer, _snapshotManager, _blockTree));
                 _rpcModuleProvider.Register<ICliqueModule>(cliqueModule);
             }
 
@@ -472,7 +472,7 @@ namespace Nethermind.Runner.Runners
             _recoveryStep = new TxSignaturesRecoveryStep(_ethereumSigner, _transactionPool);
 
             CliqueConfig cliqueConfig = null;
-            ISnapshotManager snapshotManager = null;
+            _snapshotManager = null;
             switch (_chainSpec.SealEngineType)
             {
                 case SealEngineType.None:
@@ -485,12 +485,12 @@ namespace Nethermind.Runner.Runners
                     cliqueConfig = new CliqueConfig();
                     cliqueConfig.BlockPeriod = _chainSpec.CliquePeriod;
                     cliqueConfig.Epoch = _chainSpec.CliqueEpoch;
-                    snapshotManager = new SnapshotManager(cliqueConfig, _dbProvider.BlocksDb, _blockTree, _ethereumSigner, _logManager);
-                    _sealValidator = new CliqueSealValidator(cliqueConfig, snapshotManager, _logManager);
-                    _recoveryStep = new CompositeDataRecoveryStep(_recoveryStep, new AuthorRecoveryStep(snapshotManager));
+                    _snapshotManager = new SnapshotManager(cliqueConfig, _dbProvider.BlocksDb, _blockTree, _ethereumSigner, _logManager);
+                    _sealValidator = new CliqueSealValidator(cliqueConfig, _snapshotManager, _logManager);
+                    _recoveryStep = new CompositeDataRecoveryStep(_recoveryStep, new AuthorRecoveryStep(_snapshotManager));
                     if (_initConfig.IsMining)
                     {
-                        _sealer = new CliqueSealer(_wallet, cliqueConfig, snapshotManager, _nodeKey.Address, _logManager);
+                        _sealer = new CliqueSealer(_wallet, cliqueConfig, _snapshotManager, _nodeKey.Address, _logManager);
                     }
                     else
                     {
@@ -641,7 +641,7 @@ namespace Nethermind.Runner.Runners
                         // TODO: need to introduce snapshot provider for clique and pass it here instead of CliqueSealEngine
                         if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
                         _blockProducer = new CliqueBlockProducer(_transactionPool, producerChain.Processor,
-                            _blockTree, _timestamp, _cryptoRandom, producerChain.StateProvider, snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
+                            _blockTree, _timestamp, _cryptoRandom, producerChain.StateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
                         break;
                     }
                     case SealEngineType.NethDev:

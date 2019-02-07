@@ -20,6 +20,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Clique
 {
@@ -27,16 +28,14 @@ namespace Nethermind.Clique
     {
         private const string CannotVoteOnNonValidatorMessage = "Cannot vote on non-validator node";
         
-        private readonly CliqueBlockProducer _cliqueBlockProducer;
+        private readonly ICliqueBlockProducer _cliqueBlockProducer;
+        private readonly ISnapshotManager _snapshotManager;
         private readonly IBlockTree _blockTree;
 
-        public CliqueBridge(CliqueBlockProducer cliqueBlockProducer, IBlockTree blockTree)
+        public CliqueBridge(ICliqueBlockProducer cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockTree blockTree)
         {
-            if (cliqueBlockProducer != null)
-            {
-                _cliqueBlockProducer = cliqueBlockProducer;
-            }
-            
+            _cliqueBlockProducer = cliqueBlockProducer ?? throw new ArgumentNullException(nameof(cliqueBlockProducer));
+            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
@@ -59,17 +58,29 @@ namespace Nethermind.Clique
             
             _cliqueBlockProducer.UncastVote(signer);
         }
+        
+        public static Address[] ExtractSigners(BlockHeader blockHeader)
+        {
+            Span<byte> signersData = blockHeader.ExtraData.AsSpan().Slice(Clique.ExtraVanityLength, blockHeader.ExtraData.Length - Clique.ExtraSealLength - Clique.ExtraVanityLength);
+            Address[] signers = new Address[signersData.Length / Address.ByteLength];
+            for (int i = 0; i < signers.Length; i++)
+            {
+                signers[i] = new Address(signersData.Slice(i * 20, 20).ToArray());
+            }
+
+            return signers;
+        }
 
         public Address[] GetSigners()
         {
             BlockHeader header = _blockTree.Head;
-            return header.ExtractSigners();
+            return ExtractSigners(header);
         }
         
         public Address[] GetSigners(Keccak hash)
         {
             Block block = _blockTree.FindBlock(hash, false);
-            return block.Header.ExtractSigners();
+            return ExtractSigners(block.Header);
         }
     }
 }

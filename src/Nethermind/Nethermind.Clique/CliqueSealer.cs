@@ -83,7 +83,7 @@ namespace Nethermind.Clique
             }
 
             // Sign all the things!
-            Keccak headerHash = header.HashCliqueHeader();
+            Keccak headerHash = _snapshotManager.CalculateCliqueHeaderHash(header);
             Signature signature = _wallet.Sign(headerHash, _sealerAddress);
             // Copy signature bytes (R and S)
             var signatureBytes = signature.Bytes;
@@ -104,8 +104,17 @@ namespace Nethermind.Clique
                 return false;
             }
 
+            if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _sealerAddress))
+            {
+                if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _sealerAddress))
+                {
+                    if (_logger.IsTrace) _logger.Trace("Signed recently");
+                    return false;
+                }
+            }
+            
             // If we're amongst the recent signers, wait for the next block
-            if (snapshot.HasSignedRecently(blockNumber, _sealerAddress))
+            if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _sealerAddress))
             {
                 if (_logger.IsTrace) _logger.Trace("Signed recently");
                 return false;

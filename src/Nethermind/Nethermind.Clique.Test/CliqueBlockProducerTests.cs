@@ -49,6 +49,7 @@ namespace Nethermind.Clique.Test
             private static Timestamp _timestamp = new Timestamp(new DateTimeProvider());
             private CliqueConfig _cliqueConfig;
             private EthereumSigner _ethereumSigner = new EthereumSigner(GoerliSpecProvider.Instance, NullLogManager.Instance);
+            private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new Dictionary<PrivateKey, ISnapshotManager>();
             private Dictionary<PrivateKey, BlockTree> _blockTrees = new Dictionary<PrivateKey, BlockTree>();
             private Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new Dictionary<PrivateKey, AutoResetEvent>();
             private Dictionary<PrivateKey, CliqueBlockProducer> _producers = new Dictionary<PrivateKey, CliqueBlockProducer>();
@@ -77,16 +78,17 @@ namespace Nethermind.Clique.Test
                 MemDb blockInfoDb = new MemDb();
 
                 TransactionPool transactionPool = new TransactionPool(new InMemoryTransactionStorage(), new PendingTransactionThresholdValidator(), _timestamp, _ethereumSigner, GoerliSpecProvider.Instance, NullLogManager.Instance);
-                _pools[privateKey] = transactionPool; 
+                _pools[privateKey] = transactionPool;
 
                 BlockTree blockTree = new BlockTree(blocksDb, blockInfoDb, GoerliSpecProvider.Instance, transactionPool, NullLogManager.Instance);
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
 
                 BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
                 _blockTrees.Add(privateKey, blockTree);
-                
+
                 IBasicWallet wallet = new BasicWallet(privateKey);
                 SnapshotManager snapshotManager = new SnapshotManager(_cliqueConfig, blocksDb, blockTree, _ethereumSigner, LimboLogs.Instance);
+                _snapshotManager[privateKey] = snapshotManager;
                 CliqueSealer cliqueSealer = new CliqueSealer(wallet, _cliqueConfig, snapshotManager, privateKey.Address, NullLogManager.Instance);
 
                 ISnapshotableDb stateDb = new StateDb();
@@ -100,7 +102,7 @@ namespace Nethermind.Clique.Test
                 _genesis.StateRoot = _genesis3Validators.StateRoot = stateProvider.StateRoot;
                 _genesis.Hash = BlockHeader.CalculateHash(_genesis.Header);
                 _genesis3Validators.Hash = BlockHeader.CalculateHash(_genesis3Validators.Header);
-                
+
                 StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, NullLogManager.Instance);
                 TransactionProcessor transactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, NullLogManager.Instance), NullLogManager.Instance);
                 BlockProcessor blockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, TestBlockValidator.AlwaysValid, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, NullReceiptStorage.Instance, NullLogManager.Instance);
@@ -118,7 +120,7 @@ namespace Nethermind.Clique.Test
                 {
                     ProcessGenesis(privateKey);
                 }
-                
+
                 CliqueBlockProducer blockProducer = new CliqueBlockProducer(transactionPool, minerProcessor, blockTree, _timestamp, new CryptoRandom(), minerStateProvider, snapshotManager, cliqueSealer, privateKey.Address, _cliqueConfig, NullLogManager.Instance);
                 blockProducer.Start();
 
@@ -132,7 +134,7 @@ namespace Nethermind.Clique.Test
             public static On FastGoerli => new On(1);
 
             private Block _genesis3Validators;
-            
+
             private Block _genesis;
 
             private Block GetGenesis(int validatorsCount = 2)
@@ -149,11 +151,11 @@ namespace Nethermind.Clique.Test
                 extraDataHex += TestObject.PrivateKeyB.Address.ToString(false).Replace("0x", string.Empty);
                 if (validatorsCount > 2)
                 {
-                    extraDataHex += TestObject.PrivateKeyC.Address.ToString(false).Replace("0x", string.Empty);    
+                    extraDataHex += TestObject.PrivateKeyC.Address.ToString(false).Replace("0x", string.Empty);
                 }
 
                 extraDataHex += "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
-                
+
                 byte[] extraData = Bytes.FromHexString(extraDataHex);
                 BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
                 Block genesis = new Block(header);
@@ -192,7 +194,7 @@ namespace Nethermind.Clique.Test
 
                 return this;
             }
-            
+
             public On ProcessGenesis3Validators()
             {
                 foreach (KeyValuePair<PrivateKey, BlockTree> node in _blockTrees)
@@ -202,7 +204,7 @@ namespace Nethermind.Clique.Test
 
                 return this;
             }
-            
+
             public On ProcessBadGenesis()
             {
                 foreach (KeyValuePair<PrivateKey, BlockTree> node in _blockTrees)
@@ -219,7 +221,7 @@ namespace Nethermind.Clique.Test
                 _blockEvents[nodeKey].WaitOne(_timeout);
                 return this;
             }
-            
+
             public On ProcessGenesis3Validators(PrivateKey nodeKey)
             {
                 _blockTrees[nodeKey].SuggestBlock(_genesis3Validators);
@@ -262,13 +264,13 @@ namespace Nethermind.Clique.Test
                 Assert.AreEqual(number, _blockTrees[nodeKey].Head.Number, nodeKey.Address + " head number");
                 return this;
             }
-            
+
             public On AssertTotalTxCount(PrivateKey nodeKey, int count)
             {
-                Assert.AreEqual((UInt256)count, _blockTrees[nodeKey].Head.TotalTransactions, nodeKey.Address + " total tx count");
+                Assert.AreEqual((UInt256) count, _blockTrees[nodeKey].Head.TotalTransactions, nodeKey.Address + " total tx count");
                 return this;
             }
-            
+
             public On AssertHeadBlockTimestamp(PrivateKey nodeKey)
             {
                 Assert.LessOrEqual(_blockTrees[nodeKey].FindBlock(_blockTrees[nodeKey].Head.Number - 1).Timestamp + _cliqueConfig.BlockPeriod, _blockTrees[nodeKey].Head.Timestamp + 1);
@@ -280,6 +282,23 @@ namespace Nethermind.Clique.Test
                 WaitForNumber(nodeKey, number);
                 Assert.AreEqual(vote ? Clique.NonceAuthVote : Clique.NonceDropVote, _blockTrees[nodeKey].FindBlock(number).Header.Nonce, nodeKey + " vote nonce");
                 Assert.AreEqual(address, _blockTrees[nodeKey].FindBlock(number).Beneficiary, nodeKey.Address + " vote nonce");
+                return this;
+            }
+            
+            public On AssertSignersCount(PrivateKey nodeKey, UInt256 number, int count)
+            {
+                WaitForNumber(nodeKey, number);
+                var header = _blockTrees[nodeKey].FindBlock(number).Header;
+                Assert.AreEqual(count,  _snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Signers.Count, nodeKey + " signers count");
+                return this;
+            }
+            
+            
+            public On AssertTallyEmpty(PrivateKey nodeKey, UInt256 number, PrivateKey privateKeyB)
+            {
+                WaitForNumber(nodeKey, number);
+                var header = _blockTrees[nodeKey].FindBlock(number).Header;
+                Assert.AreEqual(false,  _snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Tally.ContainsKey(privateKeyB.Address), nodeKey + " tally empty");
                 return this;
             }
 
@@ -330,7 +349,7 @@ namespace Nethermind.Clique.Test
             }
 
             private UInt256 _currentNonce = 0;
-            
+
             public On AddPendingTransaction(PrivateKey nodeKey)
             {
                 Transaction transaction = new Transaction();
@@ -343,10 +362,10 @@ namespace Nethermind.Clique.Test
                 transaction.Hash = Transaction.CalculateHash(transaction);
                 _ethereumSigner.Sign(TestObject.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
-                
+
                 return this;
             }
-            
+
             public On AddAllBadTransactions(PrivateKey nodeKey)
             {
                 Transaction transaction = new Transaction();
@@ -359,7 +378,7 @@ namespace Nethermind.Clique.Test
                 transaction.Hash = Transaction.CalculateHash(transaction);
                 _ethereumSigner.Sign(TestObject.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
-                
+
                 transaction = new Transaction();
                 transaction.Value = 1;
                 transaction.To = TestObject.AddressC;
@@ -370,7 +389,7 @@ namespace Nethermind.Clique.Test
                 transaction.Hash = Transaction.CalculateHash(transaction);
                 _ethereumSigner.Sign(TestObject.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
-                
+
                 transaction = new Transaction();
                 transaction.Value = 1;
                 transaction.To = TestObject.AddressC;
@@ -381,10 +400,10 @@ namespace Nethermind.Clique.Test
                 transaction.Hash = Transaction.CalculateHash(transaction);
                 _ethereumSigner.Sign(TestObject.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
-                
+
                 return this;
             }
-            
+
             public On AddQueuedTransaction(PrivateKey nodeKey)
             {
                 Transaction transaction = new Transaction();
@@ -397,7 +416,13 @@ namespace Nethermind.Clique.Test
                 transaction.Hash = Transaction.CalculateHash(transaction);
                 _ethereumSigner.Sign(TestObject.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
-                
+
+                return this;
+            }
+
+            public On Wait(int i)
+            {
+                Thread.Sleep(i);
                 return this;
             }
         }
@@ -414,7 +439,7 @@ namespace Nethermind.Clique.Test
                 .AssertHeadBlockIs(TestObject.PrivateKeyA, 1)
                 .AssertTotalTxCount(TestObject.PrivateKeyA, 1);
         }
-        
+
         [Test]
         public void When_producing_blocks_skips_queued_and_bad_transactions()
         {
@@ -429,7 +454,7 @@ namespace Nethermind.Clique.Test
                 .AssertHeadBlockIs(TestObject.PrivateKeyA, 1)
                 .AssertTotalTxCount(TestObject.PrivateKeyA, 3);
         }
-        
+
         [Test]
         public void Produces_block_on_top_of_genesis()
         {
@@ -481,7 +506,7 @@ namespace Nethermind.Clique.Test
                 .ProcessGenesis()
                 .AssertVote(TestObject.PrivateKeyA, 1, TestObject.AddressC, true);
         }
-        
+
         [Test]
         public void Can_uncast_vote_to()
         {
@@ -491,6 +516,88 @@ namespace Nethermind.Clique.Test
                 .UncastVote(TestObject.PrivateKeyA, TestObject.AddressC)
                 .ProcessGenesis()
                 .AssertVote(TestObject.PrivateKeyA, 1, Address.Zero, false);
+        }
+
+        [Test]
+        public void Can_vote_a_validator_in()
+        {
+            var goerli = On.FastGoerli;
+            goerli
+                .CreateNode(TestObject.PrivateKeyA)
+                .CreateNode(TestObject.PrivateKeyB)
+                .CreateNode(TestObject.PrivateKeyC)
+                .VoteToInclude(TestObject.PrivateKeyB, TestObject.AddressD)
+                .ProcessGenesis3Validators()
+                .AssertHeadBlockIs(TestObject.PrivateKeyA, 1)
+                .AssertHeadBlockIs(TestObject.PrivateKeyB, 1)
+                .AssertHeadBlockIs(TestObject.PrivateKeyC, 1)
+                .VoteToInclude(TestObject.PrivateKeyA, TestObject.AddressD)
+                .Process(TestObject.PrivateKeyA, goerli.GetBlock(TestObject.PrivateKeyB, 1))
+                .Process(TestObject.PrivateKeyC, goerli.GetBlock(TestObject.PrivateKeyB, 1))
+                .AssertHeadBlockIs(TestObject.PrivateKeyA, 2)
+                .AssertHeadBlockIs(TestObject.PrivateKeyC, 2)
+                .Process(TestObject.PrivateKeyB, goerli.GetBlock(TestObject.PrivateKeyA, 2))
+                .Process(TestObject.PrivateKeyC, goerli.GetBlock(TestObject.PrivateKeyA, 2))
+                .Wait(1000)
+                .AssertSignersCount(TestObject.PrivateKeyC, 2, 4);
+        }
+        
+        [Test]
+        public void Can_vote_a_validator_out()
+        {
+            var goerli = On.FastGoerli;
+            goerli
+                .CreateNode(TestObject.PrivateKeyA)
+                .CreateNode(TestObject.PrivateKeyB)
+                .CreateNode(TestObject.PrivateKeyC)
+                .VoteToExclude(TestObject.PrivateKeyA, TestObject.AddressC)
+                .VoteToExclude(TestObject.PrivateKeyA, TestObject.AddressB)
+                .ProcessGenesis3Validators()
+                .AssertHeadBlockIs(TestObject.PrivateKeyA, 1)
+                .AssertHeadBlockIs(TestObject.PrivateKeyB, 1)
+                .AssertHeadBlockIs(TestObject.PrivateKeyC, 1)
+                
+                .Process(TestObject.PrivateKeyA, goerli.GetBlock(TestObject.PrivateKeyB, 1))
+                .Process(TestObject.PrivateKeyC, goerli.GetBlock(TestObject.PrivateKeyB, 1))
+                .AssertHeadBlockIs(TestObject.PrivateKeyA, 2)
+                .AssertHeadBlockIs(TestObject.PrivateKeyC, 2)
+                
+                .Process(TestObject.PrivateKeyB, goerli.GetBlock(TestObject.PrivateKeyA, 2))
+                .Process(TestObject.PrivateKeyC, goerli.GetBlock(TestObject.PrivateKeyA, 2))
+                .AssertHeadBlockIs(TestObject.PrivateKeyB, 3)
+                .AssertHeadBlockIs(TestObject.PrivateKeyC, 3)
+                
+                .Process(TestObject.PrivateKeyA, goerli.GetBlock(TestObject.PrivateKeyC, 3))
+                .Process(TestObject.PrivateKeyB, goerli.GetBlock(TestObject.PrivateKeyC, 3))
+                .AssertHeadBlockIs(TestObject.PrivateKeyA, 4)
+                .AssertHeadBlockIs(TestObject.PrivateKeyB, 4)
+                
+                .VoteToExclude(TestObject.PrivateKeyB, TestObject.AddressA)
+                .VoteToExclude(TestObject.PrivateKeyC, TestObject.AddressA)
+                
+                .Process(TestObject.PrivateKeyA, goerli.GetBlock(TestObject.PrivateKeyB, 4))
+                .Process(TestObject.PrivateKeyC, goerli.GetBlock(TestObject.PrivateKeyB, 4))
+                .AssertHeadBlockIs(TestObject.PrivateKeyA, 5)
+                .AssertHeadBlockIs(TestObject.PrivateKeyC, 5)
+                
+                
+                .Process(TestObject.PrivateKeyB, goerli.GetBlock(TestObject.PrivateKeyA, 5))
+                .Process(TestObject.PrivateKeyC, goerli.GetBlock(TestObject.PrivateKeyA, 5))
+                .AssertHeadBlockIs(TestObject.PrivateKeyB, 6)
+                .AssertHeadBlockIs(TestObject.PrivateKeyC, 6)
+                
+                .Process(TestObject.PrivateKeyA, goerli.GetBlock(TestObject.PrivateKeyC, 6))
+                .Process(TestObject.PrivateKeyB, goerli.GetBlock(TestObject.PrivateKeyC, 6))
+                .AssertHeadBlockIs(TestObject.PrivateKeyA, 6)
+                .AssertHeadBlockIs(TestObject.PrivateKeyB, 7)
+                
+                .Process(TestObject.PrivateKeyA, goerli.GetBlock(TestObject.PrivateKeyB, 7))
+                .Process(TestObject.PrivateKeyC, goerli.GetBlock(TestObject.PrivateKeyB, 7))
+                .Wait(1000)
+                .AssertSignersCount(TestObject.PrivateKeyA, 7, 2)
+                .AssertTallyEmpty(TestObject.PrivateKeyA, 7, TestObject.PrivateKeyB)
+                .AssertTallyEmpty(TestObject.PrivateKeyA, 7, TestObject.PrivateKeyA)
+                .AssertTallyEmpty(TestObject.PrivateKeyA, 7, TestObject.PrivateKeyC);
         }
 
         [Test]
@@ -536,7 +643,7 @@ namespace Nethermind.Clique.Test
                 .Process(TestObject.PrivateKeyB, goerli.GetBlock(TestObject.PrivateKeyA, 1))
                 .AssertHeadBlockIs(TestObject.PrivateKeyB, 2);
         }
-        
+
         [Test]
         public void Ignores_blocks_from_bad_network()
         {
@@ -555,7 +662,7 @@ namespace Nethermind.Clique.Test
                 .Process(TestObject.PrivateKeyB, goerli.GetBlock(TestObject.PrivateKeyA, 1))
                 .AssertHeadBlockIs(TestObject.PrivateKeyB, 1);
         }
-        
+
         [Test]
         public void Waits_for_block_timestamp_before_broadcasting()
         {
@@ -572,19 +679,19 @@ namespace Nethermind.Clique.Test
                 .Process(TestObject.PrivateKeyB, goerli.GetBlock(TestObject.PrivateKeyA, 1))
                 .AssertHeadBlockIs(TestObject.PrivateKeyB, 1);
         }
-        
+
         [Test]
         public void Creates_blocks_without_signals_from_block_tree()
         {
             On.Goerli
                 .CreateNode(TestObject.PrivateKeyA, true)
                 .AssertHeadBlockIs(TestObject.PrivateKeyA, 1);
-            
+
             On.Goerli
                 .CreateNode(TestObject.PrivateKeyB, true)
                 .AssertHeadBlockIs(TestObject.PrivateKeyB, 1);
         }
-        
+
         [Test]
         public async Task Can_stop()
         {
@@ -597,11 +704,11 @@ namespace Nethermind.Clique.Test
             await Task.Delay(1000);
             goerli.AssertHeadBlockIs(TestObject.PrivateKeyA, 0);
         }
-        
+
         [Test]
         public void Many_validators_can_process_blocks()
         {
-            PrivateKey[] keys = new [] {TestObject.PrivateKeyA, TestObject.PrivateKeyB, TestObject.PrivateKeyC}.OrderBy(pk => pk.Address, CliqueAddressComparer.Instance).ToArray();
+            PrivateKey[] keys = new[] {TestObject.PrivateKeyA, TestObject.PrivateKeyB, TestObject.PrivateKeyC}.OrderBy(pk => pk.Address, CliqueAddressComparer.Instance).ToArray();
 
             var goerli = On.FastGoerli;
             for (int i = 0; i < keys.Length; i++)
@@ -618,21 +725,21 @@ namespace Nethermind.Clique.Test
                 goerli.AddPendingTransaction(keys[(i + 1) % 3]);
                 for (int j = 0; j < keys.Length; j++)
                 {
-                    var nodeKey = keys[j]; 
+                    var nodeKey = keys[j];
                     if (!nodeKey.Equals(inTurnKey))
                     {
-                        goerli.Process(nodeKey, goerli.GetBlock(inTurnKey, (UInt256)i));
-                        goerli.AssertHeadBlockIs(keys[j], (UInt256)i + 1);
+                        goerli.Process(nodeKey, goerli.GetBlock(inTurnKey, (UInt256) i));
+                        goerli.AssertHeadBlockIs(keys[j], (UInt256) i + 1);
                         goerli.AssertHeadBlockTimestamp(keys[j]);
                     }
                     else
                     {
-                        goerli.AssertHeadBlockIs(keys[j], (UInt256)i);
+                        goerli.AssertHeadBlockIs(keys[j], (UInt256) i);
                         goerli.AssertHeadBlockTimestamp(keys[j]);
                     }
                 }
             }
-            
+
             goerli.AssertTotalTxCount(keys[0], 9);
         }
     }

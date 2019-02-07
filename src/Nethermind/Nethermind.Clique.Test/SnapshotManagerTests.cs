@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
@@ -30,7 +31,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Clique.Test
 {
-    public class SnapshotTests
+    public class SnapshotManagerTests
     {
         private IDb _snapshotDb = new MemDb();
 
@@ -44,11 +45,13 @@ namespace Nethermind.Clique.Test
         private readonly Address _signer2 = new Address("0xb279182d99e65703f0076e4812653aab85fca0f0");
         private readonly Address _signer3 = new Address("0x42eb768f2244c8811c63729a21a3569731535f06");
         
+        private BlockTree _blockTree;
+        
         [OneTimeSetUp]
         public void Setup_chain()
         {
             // Import blocks
-            BlockTree blockTree = Build.A.BlockTree().TestObject;
+            _blockTree = Build.A.BlockTree().TestObject;
             Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
             Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
             Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
@@ -56,38 +59,30 @@ namespace Nethermind.Clique.Test
             Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
             Block genesisBlock = GetRinkebyGenesis();
             // Add blocks
-            MineBlock(blockTree, genesisBlock);
-            MineBlock(blockTree, block1);
-            MineBlock(blockTree, block2);
-            MineBlock(blockTree, block3);
-            MineBlock(blockTree, block4);
-            MineBlock(blockTree, block5);
+            MineBlock(_blockTree, genesisBlock);
+            MineBlock(_blockTree, block1);
+            MineBlock(_blockTree, block2);
+            MineBlock(_blockTree, block3);
+            MineBlock(_blockTree, block4);
+            MineBlock(_blockTree, block5);
         }
 
         [Test]
         public void Creates_new_snapshot()
         {
-            LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
+            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumSigner.Instance, LimboLogs.Instance);
             Block genesis = GetRinkebyGenesis();
-            SortedList<Address, UInt256> signers = new SortedList<Address, UInt256>(CliqueAddressComparer.Instance)
-            {
-                {_signer1, 0},
-                {_signer2, 0},
-                {_signer3, 0},
-            };
-            Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
-            Snapshot snapshot = new Snapshot(sigCache, genesis.Number, genesis.Hash, signers, tally);
-            snapshot.Store(_snapshotDb);
+            Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
+            Assert.AreEqual(genesis.Hash, snapshot.Hash);
         }
 
         [Test]
         public void Loads_snapshot()
         {
-            LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
+            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumSigner.Instance, LimboLogs.Instance);
             Block genesis = GetRinkebyGenesis();
-            Snapshot snapshot = Snapshot.LoadSnapshot(sigCache, _snapshotDb, genesis.Hash);
+            Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
             Assert.NotNull(snapshot);
-            Assert.AreEqual(sigCache, snapshot.SigCache);
             Assert.AreEqual(genesis.Hash, snapshot.Hash);
             Assert.AreEqual(genesis.Number, snapshot.Number);
             // Check signers
@@ -95,58 +90,37 @@ namespace Nethermind.Clique.Test
             Assert.IsTrue(snapshot.Signers.ContainsKey(_signer2));
             Assert.IsTrue(snapshot.Signers.ContainsKey(_signer3));
         }
-
+        
         [Test]
-        public void Recognises_signer_turn()
+        public void Can_calculate_clique_header_hash()
         {
-            LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
-            Block genesis = GetRinkebyGenesis();
-            Snapshot snapshot = Snapshot.LoadSnapshot(sigCache, _snapshotDb, genesis.Hash);
-            // Block 1
-            Assert.IsTrue(snapshot.InTurn(1, _signer1));
-            Assert.IsFalse(snapshot.InTurn(1, _signer2));
-            Assert.IsFalse(snapshot.InTurn(1, _signer3));
-            // Block 2
-            Assert.IsFalse(snapshot.InTurn(2, _signer1));
-            Assert.IsTrue(snapshot.InTurn(2, _signer2));
-            Assert.IsFalse(snapshot.InTurn(2, _signer3));
-            // Block 3
-            Assert.IsFalse(snapshot.InTurn(3, _signer1));
-            Assert.IsFalse(snapshot.InTurn(3, _signer2));
-            Assert.IsTrue(snapshot.InTurn(3, _signer3));
+            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumSigner.Instance, LimboLogs.Instance);
+            BlockHeader header = BuildCliqueBlock();
+
+            Keccak expectedHeaderHash = new Keccak("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
+            Keccak headerHash = snapshotManager.CalculateCliqueHeaderHash(header);
+            Assert.AreEqual(expectedHeaderHash, headerHash);
         }
 
         [Test]
-        public void Encodes()
-        {
-            SnapshotDecoder decoder = new SnapshotDecoder();
-            // Prepare snapshot
-            Keccak hash = new Keccak("0xa33ea6f6c0f1c80a6c7af308a30cb7a7affa4d0d51e6639b739727af0518b50e");
-            UInt256 number = new UInt256(3305206);
-            Address candidate = new Address("0xbe1085bc3e0812f3df63deced87e29b3bc2db524");
-            Snapshot expected = GenerateSnapshot(hash, number, candidate);
-            // Encode snapshot
-            Rlp rlp = decoder.Encode(expected);
-            // Decode snapshot
-            Snapshot actual = decoder.Decode(rlp.Bytes.AsRlpContext());
-            // Validate fields
-            Assert.AreEqual(expected.Number, actual.Number);
-            Assert.AreEqual(expected.Hash, actual.Hash);
-            Assert.AreEqual(expected.Signers, actual.Signers);
-            Assert.AreEqual(expected.Votes.Count, actual.Votes.Count);
-            for (int i = 0; i < expected.Votes.Count; i++)
-            {
-                Assert.AreEqual(expected.Votes[i].Signer, actual.Votes[i].Signer);
-                Assert.AreEqual(expected.Votes[i].Block, actual.Votes[i].Block);
-                Assert.AreEqual(expected.Votes[i].Address, actual.Votes[i].Address);
-                Assert.AreEqual(expected.Votes[i].Authorize, actual.Votes[i].Authorize);
-            }
-            Assert.AreEqual(expected.Tally.Count, actual.Tally.Count);
-            foreach (Address address in expected.Tally.Keys)
-            {
-                Assert.AreEqual(expected.Tally[address].Votes, actual.Tally[address].Votes);
-                Assert.AreEqual(expected.Tally[address].Authorize, actual.Tally[address].Authorize);
-            }
+        public void Recognises_signer_turn()
+        {           
+            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumSigner.Instance, LimboLogs.Instance);
+            Block genesis = GetRinkebyGenesis();
+            Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
+            SnapshotManager manager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumSigner(GoerliSpecProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
+            // Block 1
+            Assert.IsTrue(manager.IsInTurn(snapshot, 1, _signer1));
+            Assert.IsFalse(manager.IsInTurn(snapshot, 1, _signer2));
+            Assert.IsFalse(manager.IsInTurn(snapshot, 1, _signer3));
+            // Block 2
+            Assert.IsFalse(manager.IsInTurn(snapshot,2, _signer1));
+            Assert.IsTrue(manager.IsInTurn(snapshot,2, _signer2));
+            Assert.IsFalse(manager.IsInTurn(snapshot,2, _signer3));
+            // Block 3
+            Assert.IsFalse(manager.IsInTurn(snapshot,3, _signer1));
+            Assert.IsFalse(manager.IsInTurn(snapshot,3, _signer2));
+            Assert.IsTrue(manager.IsInTurn(snapshot,3, _signer3));
         }
 
         private Block GetRinkebyGenesis()
@@ -164,31 +138,33 @@ namespace Nethermind.Clique.Test
             genesis.Hash = new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177");
             return genesis;
         }
+        
+        private static BlockHeader BuildCliqueBlock()
+        {
+            BlockHeader header = Build.A.BlockHeader
+                .WithParentHash(new Keccak("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
+                .WithOmmersHash(Keccak.OfAnEmptySequenceRlp)
+                .WithBeneficiary(Address.Zero)
+                .WithBloom(Bloom.Empty)
+                .WithStateRoot(new Keccak("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
+                .WithTransactionsRoot(PatriciaTree.EmptyTreeHash)
+                .WithReceiptsRoot(PatriciaTree.EmptyTreeHash)
+                .WithDifficulty(2)
+                .WithNumber(269)
+                .WithGasLimit(4712388)
+                .WithGasUsed(0)
+                .WithTimestamp(1492014479)
+                .WithExtraData(Bytes.FromHexString("0xd783010600846765746887676f312e372e33856c696e757800000000000000004e2b663c52c4c1ef0db29649f1f4addd93257f33d6fe0ae6bd365e63ac9aac4169e2b761aa245fabbf0302055f01b8b5391fa0a134bab19710fd225ffac3afdf01"))
+                .WithMixHash(Keccak.Zero)
+                .WithNonce(0UL)
+                .TestObject;
+            return header;
+        }
 
         private void MineBlock(BlockTree tree, Block block)
         {
             tree.SuggestBlock(block);
             tree.UpdateMainChain(block);
-        }
-
-        private Snapshot GenerateSnapshot(Keccak hash, UInt256 number, Address candidate)
-        {
-            SortedList<Address, UInt256> signers = new SortedList<Address, UInt256>(CliqueAddressComparer.Instance);
-            signers.Add(_signer1, number - 2);
-            signers.Add(_signer2, number - 1);
-            signers.Add(_signer3, number - 3);
-            List<Vote> votes = new List<Vote>();
-            votes.Add(new Vote(_signer1, number - 2, candidate, true));
-            votes.Add(new Vote(_signer3, number - 3, candidate, true));
-            votes.Add(new Vote(_signer3, number - 6, _signer2, false));
-            Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
-            tally[candidate] = new Tally(true);
-            tally[candidate].Votes = 2;
-            tally[_signer2] = new Tally(false);
-            tally[_signer2].Votes = 1;
-            Snapshot snapshot = new Snapshot(null, number, hash, signers, tally);
-            snapshot.Votes = votes;
-            return snapshot;
         }
     }
 }

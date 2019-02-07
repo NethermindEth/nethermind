@@ -125,14 +125,14 @@ namespace Nethermind.Clique
                 return false;
             }
 
-            if (snapshot.HasSignedRecently(number, signer))
+            if (_snapshotManager.HasSignedRecently(snapshot, number, signer))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block signer {signer} - the signer is among recents");
                 return false;
             }
 
             // Ensure that the difficulty corresponds to the turn-ness of the signer
-            bool inTurn = snapshot.InTurn(header.Number, signer);
+            bool inTurn = _snapshotManager.IsInTurn(snapshot, header.Number, signer);
             if (inTurn && header.Difficulty != Clique.DifficultyInTurn)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {Clique.DifficultyInTurn}");

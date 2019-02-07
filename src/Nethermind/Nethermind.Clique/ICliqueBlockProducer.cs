@@ -16,19 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+
+using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Clique
 {
-    public interface ISnapshotManager
+    public interface ICliqueBlockProducer : IBlockProducer
     {
-        Snapshot GetOrCreateSnapshot(UInt256 number, Keccak hash);
-        Address GetBlockSealer(BlockHeader header);
-        bool IsValidVote(Snapshot snapshot, Address address, bool authorize);
-        bool IsInTurn(Snapshot snapshot, UInt256 number, Address signer);
-        bool HasSignedRecently(Snapshot snapshot, UInt256 number, Address signer);
-        Keccak CalculateCliqueHeaderHash(BlockHeader blockHeader);
+        void CastVote(Address signer, bool vote);
+        void UncastVote(Address signer);
     }
 }

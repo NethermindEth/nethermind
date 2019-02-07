@@ -38,7 +38,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Clique
 {
-    public class CliqueBlockProducer : IBlockProducer, IDisposable
+    public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     {
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockTree _blockTree;
@@ -120,6 +120,7 @@ namespace Nethermind.Clique
             {
                 if (_blockTree.Head == null)
                 {
+                    _timer.Enabled = true;
                     return;
                 }
 
@@ -137,7 +138,7 @@ namespace Nethermind.Clique
                 ulong extraDelayMilliseconds = 0;
                 if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
                 {
-                    int wiggle = _scheduledBlock.Header.CalculateSignersCount() / 2 + 1 * Clique.WiggleTime;
+                    int wiggle = _snapshotManager.GetOrCreateSnapshot(_scheduledBlock.Header.Number - 1, _scheduledBlock.Header.ParentHash).Signers.Count / 2 + 1 * Clique.WiggleTime;
                     extraDelayMilliseconds += (ulong) _cryptoRandom.NextInt(wiggle);
                 }
 
@@ -315,7 +316,7 @@ namespace Nethermind.Clique
                 {
                     Address address = proposal.Key;
                     bool authorize = proposal.Value;
-                    if (snapshot.ValidVote(address, authorize))
+                    if (_snapshotManager.IsValidVote(snapshot, address, authorize))
                     {
                         addresses.Add(address);
                     }
@@ -415,7 +416,7 @@ namespace Nethermind.Clique
 
         private UInt256 CalculateDifficulty(Snapshot snapshot, Address signer)
         {
-            if (snapshot.InTurn(snapshot.Number + 1, signer))
+            if (_snapshotManager.IsInTurn(snapshot, snapshot.Number + 1, signer))
             {
                 if (_logger.IsInfo) _logger.Info("Producing in turn block");
                 return new UInt256(Clique.DifficultyInTurn);

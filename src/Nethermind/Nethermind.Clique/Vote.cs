@@ -21,7 +21,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Clique
 {
-    internal class Vote
+    public class Vote
     {
         public Address Signer { get; }
         public UInt256 Block { get; }
