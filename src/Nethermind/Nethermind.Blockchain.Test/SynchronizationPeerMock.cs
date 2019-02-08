@@ -35,11 +35,11 @@ namespace Nethermind.Blockchain.Test
         public SynchronizationPeerMock(IBlockTree blockTree, PublicKey publicKey = null)
         {
             _blockTree = blockTree;
-            NodeId = new NodeId(publicKey ?? TestObject.PublicKeyA);
+            NodeId = publicKey ?? TestObject.PublicKeyA;
         }
 
         public bool IsFastSyncSupported => false;
-        public NodeId NodeId { get; set; }
+        public PublicKey NodeId { get; set; }
         public INodeStats NodeStats { get; set; }
         public string ClientId { get; set; }
         public UInt256 TotalDifficultyOnSessionStart => _blockTree.Head.TotalDifficulty ?? 0;

@@ -16,28 +16,72 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Net;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 
 namespace Nethermind.Stats.Model
 {
     public class Node
     {
-        public Node(NodeId id)
+        private PublicKey _id;
+
+        public PublicKey Id
         {
-            Id = id;
-            IdHash = Keccak.Compute(id.PublicKey.PrefixedBytes);
+            get => _id;
+            set
+            {
+                if (_id != null)
+                {
+                    throw new InvalidOperationException($"ID already set for the node {Id}");
+                }
+
+                _id = value;
+                IdHash = Keccak.Compute(_id.PrefixedBytes);
+            }
         }
 
-        //id is bytes without prefix byte - 64 bytes
-        public NodeId Id { get; }
-        public Keccak IdHash { get; }
+        public Keccak IdHash { get; private set; }
         public string Host { get; private set; }
         public int Port { get; set; }
         public IPEndPoint Address { get; private set; }
         public bool IsDiscoveryNode { get; set; }
         public string Description { get; set; }
+
+        public Node(PublicKey id)
+        {
+            Id = id;
+        }
+
+        public Node(PublicKey id, IPEndPoint address)
+        {
+            Id = id;
+            IsDiscoveryNode = false;
+            InitializeAddress(address);
+        }
+
+        public Node(PublicKey id, string host, int port, bool isDiscovery = false)
+        {
+            Id = id;
+            IsDiscoveryNode = isDiscovery;
+
+            try
+            {
+                InitializeAddress(host, port);
+            }
+            catch (Exception e)
+            {
+                // if(_logger.IsError) _logger.Error($"Unable to create node for host: {host}, port: {port} - {e.Message}");
+            }
+        }
+
+        public Node(string host, int port)
+        {
+            Keccak512 socketHash = Keccak512.Compute($"{host}:{port}");
+            Id = new PublicKey(socketHash.Bytes);
+            IsDiscoveryNode = true;
+            InitializeAddress(host, port);
+        }
 
         public void InitializeAddress(IPEndPoint address)
         {
@@ -59,7 +103,7 @@ namespace Nethermind.Stats.Model
             {
                 return true;
             }
-            
+
             if (obj is Node item)
             {
                 return IdHash.Equals(item.IdHash);

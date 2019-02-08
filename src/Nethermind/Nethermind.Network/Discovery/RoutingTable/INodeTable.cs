@@ -16,14 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Model;
+using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
     public interface INodeTable
     {
-        void Initialize(NodeId masterNodeKey = null);
+        void Initialize(PublicKey masterNodeKey);
         Node MasterNode { get; }
         NodeBucket[] Buckets { get; }
         NodeAddResult AddNode(Node node);

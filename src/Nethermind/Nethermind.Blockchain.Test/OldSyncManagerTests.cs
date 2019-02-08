@@ -271,7 +271,7 @@ namespace Nethermind.Blockchain.Test
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(CancellationToken.None));
-            miner2.NodeId.Returns(new NodeId(TestObject.PublicKeyB));
+            miner2.NodeId.Returns(TestObject.PublicKeyB);
 
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()), "number as expected");
 
@@ -308,7 +308,7 @@ namespace Nethermind.Blockchain.Test
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(CancellationToken.None));
-            miner2.NodeId.Returns(new NodeId(TestObject.PublicKeyB));
+            miner2.NodeId.Returns(TestObject.PublicKeyB);
 
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()), "number as expected");
 

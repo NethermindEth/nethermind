@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Model;
+using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
@@ -24,6 +24,6 @@ namespace Nethermind.Stats
     public interface INodeStatsProvider
     {
         INodeStats GetOrAddNodeStats(Node node);
-        INodeStats GetOrAddNodeStats(NodeId nodeId, string host, int port);
+        INodeStats GetOrAddNodeStats(PublicKey nodeId, string host, int port);
     }
 }

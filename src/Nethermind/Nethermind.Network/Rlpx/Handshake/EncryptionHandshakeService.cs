@@ -60,13 +60,13 @@ namespace Nethermind.Network.Rlpx.Handshake
             _ephemeralGenerator = new PrivateKeyGenerator(_cryptoRandom);
         }
 
-        public Packet Auth(NodeId remoteNodeId, EncryptionHandshake handshake)
+        public Packet Auth(PublicKey remoteNodeId, EncryptionHandshake handshake)
         {
             handshake.RemoteNodeId = remoteNodeId;
             handshake.InitiatorNonce = _cryptoRandom.GenerateRandomBytes(32);
             handshake.EphemeralPrivateKey = _ephemeralGenerator.Generate();
 
-            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, remoteNodeId.PublicKey);
+            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, remoteNodeId);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
             AuthEip8Message authMessage = new AuthEip8Message();
@@ -78,7 +78,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             int size = authData.Length + 32 + 16 + 65; // data + MAC + IV + pub
             byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
             byte[] packetData = _eciesCipher.Encrypt(
-                remoteNodeId.PublicKey,
+                remoteNodeId,
                 authData,
                 sizeBytes);
 
@@ -115,7 +115,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 authMessage = _messageSerializationService.Deserialize<AuthMessage>(plainText);
             }
             
-            var nodeId = new NodeId(authMessage.PublicKey);
+            var nodeId = authMessage.PublicKey;
             if(_logger.IsTrace) _logger.Trace($"Received AUTH v{authMessage.Version} from {nodeId}");
 
             handshake.RemoteNodeId = nodeId;
@@ -123,7 +123,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.EphemeralPrivateKey = _ephemeralGenerator.Generate();
 
             handshake.InitiatorNonce = authMessage.Nonce;
-            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, handshake.RemoteNodeId.PublicKey);
+            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, handshake.RemoteNodeId);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
             handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
@@ -148,7 +148,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             
             int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
             byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-            byte[] packetData = _eciesCipher.Encrypt(handshake.RemoteNodeId.PublicKey, ackData, sizeBytes);
+            byte[] packetData = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, sizeBytes);
             handshake.AckPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
             SetSecrets(handshake, HandshakeRole.Recipient);
             return handshake.AckPacket;

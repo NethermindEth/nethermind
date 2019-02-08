@@ -109,7 +109,7 @@ namespace Nethermind.Blockchain.TransactionPools
 
         public void AddPeer(ISynchronizationPeer peer)
         {
-            if (!_peers.TryAdd(peer.NodeId.PublicKey, peer))
+            if (!_peers.TryAdd(peer.NodeId, peer))
             {
                 return;
             }
@@ -117,9 +117,9 @@ namespace Nethermind.Blockchain.TransactionPools
             if (_logger.IsTrace) _logger.Trace($"Added a peer: {peer.ClientId}");
         }
 
-        public void RemovePeer(NodeId nodeId)
+        public void RemovePeer(PublicKey nodeId)
         {
-            if (!_peers.TryRemove(nodeId.PublicKey, out _))
+            if (!_peers.TryRemove(nodeId, out _))
             {
                 return;
             }
@@ -277,7 +277,7 @@ namespace Nethermind.Blockchain.TransactionPools
                     continue;
                 }
                 
-                if (transaction.DeliveredBy.Equals(peer.NodeId.PublicKey))
+                if (transaction.DeliveredBy.Equals(peer.NodeId))
                 {
                     continue;
                 }

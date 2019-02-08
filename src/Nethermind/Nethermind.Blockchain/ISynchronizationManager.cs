@@ -27,13 +27,13 @@ namespace Nethermind.Blockchain
 {
     public interface ISynchronizationManager
     {
-        void HintBlock(Keccak hash, UInt256 number, NodeId receivedFrom);
+        void HintBlock(Keccak hash, UInt256 number, PublicKey receivedFrom);
         byte[][] GetNodeData(Keccak[] keys);
         TransactionReceipt[][] GetReceipts(Keccak[] blockHashes);
         Block Find(Keccak hash);
         Block Find(UInt256 number);
         Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);
-        void AddNewBlock(Block block, NodeId nodeWhoSentTheBlock);
+        void AddNewBlock(Block block, PublicKey nodeWhoSentTheBlock);
         Task AddPeer(ISynchronizationPeer synchronizationPeer);
         void RemovePeer(ISynchronizationPeer synchronizationPeer);
         int GetPeerCount();

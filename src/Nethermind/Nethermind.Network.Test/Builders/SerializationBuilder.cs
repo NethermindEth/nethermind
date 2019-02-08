@@ -82,10 +82,10 @@ namespace Nethermind.Network.Test.Builders
             Signer signer = new Signer();
             SameKeyGenerator privateKeyProvider = new SameKeyGenerator(privateKey);
 
-            PingMessageSerializer pingSerializer = new PingMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(networkConfig, _timestamp), new NodeIdResolver(signer), new NodeFactory(LimboLogs.Instance));
-            PongMessageSerializer pongSerializer = new PongMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(networkConfig, _timestamp), new NodeIdResolver(signer), new NodeFactory(LimboLogs.Instance));
-            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(networkConfig, _timestamp), new NodeIdResolver(signer), new NodeFactory(LimboLogs.Instance));
-            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(networkConfig, _timestamp), new NodeIdResolver(signer), new NodeFactory(LimboLogs.Instance));
+            PingMessageSerializer pingSerializer = new PingMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(networkConfig, _timestamp), new NodeIdResolver(signer));
+            PongMessageSerializer pongSerializer = new PongMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(networkConfig, _timestamp), new NodeIdResolver(signer));
+            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(networkConfig, _timestamp), new NodeIdResolver(signer));
+            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(networkConfig, _timestamp), new NodeIdResolver(signer));
 
             return With(pingSerializer)
                 .With(pongSerializer)

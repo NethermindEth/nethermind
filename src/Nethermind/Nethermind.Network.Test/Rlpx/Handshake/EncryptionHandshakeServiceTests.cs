@@ -88,7 +88,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
         private void Auth()
         {
-            _auth = _initiatorService.Auth(new NodeId(NetTestVectors.StaticKeyB.PublicKey), _initiatorHandshake);
+            _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake);
         }
 
         private void Ack()
@@ -107,7 +107,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Aes_and_mac_secrets_as_in_test_vectors()
         {
-            Packet auth = _initiatorService.Auth(new NodeId(NetTestVectors.StaticKeyB.PublicKey), _initiatorHandshake);
+            Packet auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake);
             // TODO: cannot recover signature from this one...
             auth.Data = Bytes.FromHexString(
                 "01b304ab7578555167be8154d5cc456f567d5ba302662433674222360f08d5f1534499d3678b513b" +

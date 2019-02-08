@@ -106,7 +106,6 @@ namespace Nethermind.Runner.Runners
         private IDiscoveryApp _discoveryApp;
         private IDiscoveryManager _discoveryManager;
         private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
-        private INodeFactory _nodeFactory;
         private INodeStatsProvider _nodeStatsProvider;
         private IPerfService _perfService;
         private ITransactionPool _transactionPool;
@@ -347,7 +346,7 @@ namespace Nethermind.Runner.Runners
                 : new GenesisFileLoader(_ethereumJsonSerializer);
 
             _chainSpec = loader.LoadFromFile(_initConfig.ChainSpecPath);
-            _chainSpec.Bootnodes = _chainSpec.Bootnodes?.Where(n => !n.NodeId.PublicKey?.Equals(_nodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
+            _chainSpec.Bootnodes = _chainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_nodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
         }
 
         [Todo("This will be replaced with a bigger rewrite of state management so we can create a state at will")]
@@ -597,9 +596,8 @@ namespace Nethermind.Runner.Runners
                 _initConfig.StoreTraces);
 
             // create shared objects between discovery and peer manager
-            _nodeFactory = new NodeFactory(_logManager);
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
-            _nodeStatsProvider = new NodeStatsProvider(statsConfig, _nodeFactory, _logManager, !statsConfig.CaptureNodeStatsEventHistory);
+            _nodeStatsProvider = new NodeStatsProvider(statsConfig, _logManager, !statsConfig.CaptureNodeStatsEventHistory);
 
             var encrypter = new AesEncrypter(
                 _configProvider.GetConfig<IKeyStoreConfig>(),
@@ -866,7 +864,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new GetReceiptsMessageSerializer());
             _messageSerializationService.Register(new ReceiptsMessageSerializer());
 
-            _rlpxPeer = new RlpxPeer(new NodeId(_nodeKey.PublicKey), _initConfig.P2PPort,
+            _rlpxPeer = new RlpxPeer(_nodeKey.PublicKey, _initConfig.P2PPort,
                 _syncManager,
                 _messageSerializationService,
                 encryptionHandshakeServiceA,
@@ -881,7 +879,7 @@ namespace Nethermind.Runner.Runners
             var peerSessionLogger = new PeerSessionLogger(_logManager, _configProvider, _perfService);
             peerSessionLogger.Init(_initConfig.LogDirectory);
 
-            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _syncManager, _nodeStatsProvider, peerStorage, _nodeFactory, _configProvider, _perfService, _transactionPool, _logManager, peerSessionLogger);
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _syncManager, _nodeStatsProvider, peerStorage, _configProvider.GetConfig<INetworkConfig>(), _perfService, _transactionPool, _logManager, peerSessionLogger);
             _peerManager.Init(_initConfig.DiscoveryEnabled);
         }
 
@@ -911,15 +909,13 @@ namespace Nethermind.Runner.Runners
                 _signer,
                 privateKeyProvider,
                 discoveryMessageFactory,
-                nodeIdResolver,
-                _nodeFactory);
+                nodeIdResolver);
 
             msgSerializersProvider.RegisterDiscoverySerializers();
 
             var nodeDistanceCalculator = new NodeDistanceCalculator(networkConfig);
 
             var nodeTable = new NodeTable(
-                _nodeFactory,
                 _keyStore,
                 nodeDistanceCalculator,
                 networkConfig,
@@ -930,7 +926,6 @@ namespace Nethermind.Runner.Runners
                 _logManager);
 
             var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(
-                _nodeFactory,
                 nodeTable,
                 discoveryMessageFactory,
                 evictionManager,
@@ -946,7 +941,6 @@ namespace Nethermind.Runner.Runners
 
             _discoveryManager = new DiscoveryManager(
                 nodeLifeCycleFactory,
-                _nodeFactory,
                 nodeTable,
                 discoveryStorage,
                 networkConfig,
@@ -961,7 +955,6 @@ namespace Nethermind.Runner.Runners
             _discoveryApp = new DiscoveryApp(
                 nodesLocator,
                 _discoveryManager,
-                _nodeFactory,
                 nodeTable,
                 _messageSerializationService,
                 _cryptoRandom,

@@ -51,7 +51,7 @@ namespace Nethermind.Network.Test.P2P
             return new P2PProtocolHandler(
                 _p2PSession,
                 _serializer,
-                new NodeId(NetTestVectors.StaticKeyA.PublicKey), 
+                NetTestVectors.StaticKeyA.PublicKey, 
                 ListenPort,
                 NullLogManager.Instance, new PerfService(NullLogManager.Instance));
         }

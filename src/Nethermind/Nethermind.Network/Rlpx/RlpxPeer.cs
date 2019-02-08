@@ -28,8 +28,8 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats;
@@ -44,7 +44,7 @@ namespace Nethermind.Network.Rlpx
         private IEventLoopGroup _workerGroup;
 
         private bool _isInitialized;
-        internal readonly NodeId LocalNodeId;
+        public PublicKey LocalNodeId { get; private set; }
         private readonly int _localPort;
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
         private readonly INodeStatsProvider _nodeStatsProvider;
@@ -57,7 +57,7 @@ namespace Nethermind.Network.Rlpx
         private readonly ITransactionPool _transactionPool;
         private readonly ITimestamp _timestamp;
 
-        public RlpxPeer(NodeId localNodeId, int localPort, ISynchronizationManager synchronizationManager,
+        public RlpxPeer(PublicKey localNodeId, int localPort, ISynchronizationManager synchronizationManager,
             IMessageSerializationService messageSerializationService,
             IEncryptionHandshakeService encryptionHandshakeService, INodeStatsProvider nodeStatsProvider,
             ILogManager logManager, IPerfService perfService,
@@ -102,8 +102,10 @@ namespace Nethermind.Network.Rlpx
                     .ChildOption(ChannelOption.SoBacklog, 100)
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
+                    {
                         InitializeChannel(ch, ConnectionDirection.In, null,
-                            ((IPEndPoint) ch.RemoteAddress).Address.ToString(), ((IPEndPoint) ch.RemoteAddress).Port)));
+                            ((IPEndPoint) ch.RemoteAddress).Address.ToString(), ((IPEndPoint) ch.RemoteAddress).Port);
+                    }));
 
                 _bootstrapChannel = await bootstrap.BindAsync(_localPort).ContinueWith(t =>
                 {
@@ -130,7 +132,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        public async Task ConnectAsync(NodeId remoteId, string host, int port, INodeStats nodeStats)
+        public async Task ConnectAsync(PublicKey remoteId, string host, int port, INodeStats nodeStats)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connecting to {remoteId}@{host}:{port}");
 
@@ -143,7 +145,10 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
             clientBootstrap.RemoteAddress(host, port);
             
-            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, ConnectionDirection.Out, remoteId, host, port, nodeStats)));
+            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
+            {
+                InitializeChannel(ch, ConnectionDirection.Out, remoteId, host, port, nodeStats);
+            }));
 
             var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
             var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10))));
@@ -167,9 +172,8 @@ namespace Nethermind.Network.Rlpx
         }
 
         public event EventHandler<SessionEventArgs> SessionCreated;
-        public event EventHandler<SessionEventArgs> SessionClosing;
         
-        private void InitializeChannel(IChannel channel, ConnectionDirection connectionDirection, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
+        private void InitializeChannel(IChannel channel, ConnectionDirection connectionDirection, PublicKey remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
         {
             if (connectionDirection == ConnectionDirection.In)
             {
@@ -179,7 +183,7 @@ namespace Nethermind.Network.Rlpx
             {
                 Metrics.OutgoingConnections++;    
             }
-            
+
             P2PSession session = new P2PSession(
                 LocalNodeId,
                 remoteId,
@@ -203,7 +207,8 @@ namespace Nethermind.Network.Rlpx
                 session.RemoteHost = remoteHost;
                 session.RemotePort = remotePort;
             }
-
+            
+            session.SessionDisconnected += SessionOnPeerDisconnected;
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = connectionDirection == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
@@ -220,12 +225,18 @@ namespace Nethermind.Network.Rlpx
                 {
                     _logger.Trace($"Channel disconnected: {session.RemoteNodeId}");
                 }
-
+                
                 await session.DisconnectAsync(DisconnectReason.ClientQuitting, DisconnectType.Remote);
-                SessionClosing?.Invoke(this, new SessionEventArgs(session));
             });
         }
-        
+
+        private void SessionOnPeerDisconnected(object sender, DisconnectEventArgs e)
+        {
+            IP2PSession session = (P2PSession) sender;
+            session.SessionDisconnected -= SessionOnPeerDisconnected;
+            session.Dispose();
+        }
+
         public async Task Shutdown()
         {
             var key = _perfService.StartPerfCalc();

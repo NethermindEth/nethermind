@@ -26,6 +26,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Discovery
@@ -135,15 +136,14 @@ namespace Nethermind.Network.Test.Discovery
         [Test]
         public void NeighborsMessageTest()
         {
-            var nodeFactory = new NodeFactory(LimboLogs.Instance);
-
             var message = new NeighborsMessage
             {
                 FarAddress = _farAddress,
                 Nodes = new[]
                 {
-                    nodeFactory.CreateNode("192.168.1.2", 1), nodeFactory.CreateNode("192.168.1.3", 2),
-                    nodeFactory.CreateNode("192.168.1.4", 3)
+                    new Node("192.168.1.2", 1),
+                    new Node("192.168.1.3", 2),
+                    new Node("192.168.1.4", 3)
                 },
                 FarPublicKey = _privateKey.PublicKey,
                 ExpirationTime = _config.DiscoveryMsgExpiryTime + (long) _timestamp.EpochMilliseconds

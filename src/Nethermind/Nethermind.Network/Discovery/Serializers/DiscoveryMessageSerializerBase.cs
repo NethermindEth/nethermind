@@ -34,20 +34,17 @@ namespace Nethermind.Network.Discovery.Serializers
 
         protected readonly IDiscoveryMessageFactory MessageFactory;
         protected readonly INodeIdResolver NodeIdResolver;
-        protected readonly INodeFactory NodeFactory;
 
         protected DiscoveryMessageSerializerBase(
             ISigner signer,
             IPrivateKeyGenerator privateKeyGenerator,
             IDiscoveryMessageFactory messageFactory,
-            INodeIdResolver nodeIdResolver,
-            INodeFactory nodeFactory)
+            INodeIdResolver nodeIdResolver)
         {
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _privateKey = privateKeyGenerator.Generate() ?? throw new ArgumentNullException(nameof(_privateKey));
             MessageFactory = messageFactory ?? throw new ArgumentNullException(nameof(messageFactory));
             NodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
-            NodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
         }
 
         protected byte[] Serialize(byte[] type, byte[] data)
@@ -79,7 +76,7 @@ namespace Nethermind.Network.Discovery.Serializers
             }
 
             var nodeId = NodeIdResolver.GetNodeId(signature.Slice(0, 64), signature[64], type, data);
-            var message = MessageFactory.CreateIncomingMessage<T>(nodeId.PublicKey);
+            var message = MessageFactory.CreateIncomingMessage<T>(nodeId);
             return (message, mdc, data);
         }
 

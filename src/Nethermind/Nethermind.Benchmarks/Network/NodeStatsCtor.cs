@@ -36,7 +36,7 @@ namespace Nethermind.Benchmarks.Network
         [GlobalSetup]
         public void Setup()
         {
-            _node = new Node(new NodeId(new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f")));
+            _node = new Node(new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f"));
             _statsConfig = new StatsConfig();
             _statsConfig.CaptureNodeStatsEventHistory = true;
             _statsConfig.CaptureNodeLatencyStatsEventHistory = true;

@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Numerics;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
@@ -50,8 +51,8 @@ namespace Nethermind.Blockchain
         private readonly IHeaderValidator _headerValidator;
         private readonly IPerfService _perfService;
         private readonly IReceiptStorage _receiptStorage;
-        private readonly ConcurrentDictionary<NodeId, PeerInfo> _peers = new ConcurrentDictionary<NodeId, PeerInfo>();
-        private readonly ConcurrentDictionary<NodeId, CancellationTokenSource> _initCancelTokens = new ConcurrentDictionary<NodeId, CancellationTokenSource>();
+        private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
+        private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _initCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
 
         private readonly ITransactionValidator _transactionValidator;
         private readonly IDb _stateDb;
@@ -174,7 +175,7 @@ namespace Nethermind.Blockchain
 
                     if (_logger.IsDebug)
                         _logger.Debug(
-                            $"Starting sync process with {peer}, FullNodeId: {peer.Peer.NodeId.PublicKey} " +
+                            $"Starting sync process with {peer}, FullNodeId: {peer.Peer.NodeId} " +
                             $"best known block #: {_blockTree.BestKnownNumber}, " +
                             $"best peer block #: {peer.HeadNumber}");
 
@@ -250,7 +251,7 @@ namespace Nethermind.Blockchain
 
         private bool AnyPeersWorthSyncingWithAreKnown()
         {
-            foreach (KeyValuePair<NodeId, PeerInfo> peer in _peers)
+            foreach (KeyValuePair<PublicKey, PeerInfo> peer in _peers)
             {
                 if (peer.Value.TotalDifficulty > _blockTree.BestSuggested.TotalDifficulty)
                 {
@@ -320,7 +321,7 @@ namespace Nethermind.Blockchain
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
         private object _dummyValue = new object();
 
-        public void AddNewBlock(Block block, NodeId nodeWhoSentTheBlock)
+        public void AddNewBlock(Block block, PublicKey nodeWhoSentTheBlock)
         {
             _peers.TryGetValue(nodeWhoSentTheBlock, out PeerInfo peer);
             if (peer == null)
@@ -380,7 +381,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void HintBlock(Keccak hash, UInt256 number, NodeId receivedFrom)
+        public void HintBlock(Keccak hash, UInt256 number, PublicKey receivedFrom)
         {
             if (!_peers.TryGetValue(receivedFrom, out PeerInfo peerInfo))
             {
@@ -553,7 +554,7 @@ namespace Nethermind.Blockchain
                     if (DateTime.Now - _lastFullInfo > TimeSpan.FromSeconds(120) && _logger.IsDebug)
                     {
                         _logger.Debug("Sync peers list:");
-                        foreach (KeyValuePair<NodeId, PeerInfo> peer in _peers)
+                        foreach (KeyValuePair<PublicKey, PeerInfo> peer in _peers)
                         {
                             _logger.Debug($"{peer.Value}");
                         }

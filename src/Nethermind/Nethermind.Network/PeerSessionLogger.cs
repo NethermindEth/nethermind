@@ -192,13 +192,13 @@ namespace Nethermind.Network
         private string GetNodeLog(INodeStats nodeStats)
         {
             var isBootnode = NetworkNode.ParseNodes(_networkConfig.Bootnodes).Any(x => x.NodeId == nodeStats.Node.Id);
-            return $"Node: {nodeStats.Node.Id.PublicKey.ToString(false)}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Desc: {nodeStats.Node.Description}, Trusted: {nodeStats.IsTrustedPeer}, Bootnode: {isBootnode}";
+            return $"Node: {nodeStats.Node.Id.ToString(false)}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Desc: {nodeStats.Node.Description}, Trusted: {nodeStats.IsTrustedPeer}, Bootnode: {isBootnode}";
         }
         
         private void LogPeerEventHistory(Peer peer)
         {
             var log = GetEventHistoryLog(peer.NodeStats);
-            var fileName = Path.Combine(_eventLogsDirectoryPath, $"{peer.Node.Id.PublicKey.ToString(false)}.log");
+            var fileName = Path.Combine(_eventLogsDirectoryPath, $"{peer.Node.Id.ToString(false)}.log");
             File.AppendAllText(fileName, log);
             if (_logger.IsTrace) _logger.Trace(log);
         }

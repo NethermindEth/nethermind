@@ -158,16 +158,6 @@ namespace Nethermind.Network.Config
         bool IsPeersPersistenceOn { get; set; }
 
         /// <summary>
-        /// Time between running peer update in milliseconds
-        /// </summary>
-        int ActivePeerUpdateInterval { get; }
-
-        /// <summary>
-        /// On/Off for active peer timer - provides reconnections
-        /// </summary>
-        bool IsActivePeerTimerEnabled { get; set; }
-
-        /// <summary>
         /// Max amount of active peers on the tcp level 
         /// </summary>
         int ActivePeersMaxCount { get; }

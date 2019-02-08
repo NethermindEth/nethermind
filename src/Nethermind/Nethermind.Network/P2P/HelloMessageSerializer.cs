@@ -59,7 +59,7 @@ namespace Nethermind.Network.P2P
             }).ToList();
             
             helloMessage.ListenPort = context.DecodeInt();
-            helloMessage.NodeId = new NodeId(new PublicKey(context.DecodeByteArray()));
+            helloMessage.NodeId = new PublicKey(context.DecodeByteArray());
             return helloMessage;
         }
     }

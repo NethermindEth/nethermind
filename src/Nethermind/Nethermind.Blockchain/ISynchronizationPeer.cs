@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain
     public interface ISynchronizationPeer
     {
         bool IsFastSyncSupported { get; }
-        NodeId NodeId { get; }
+        PublicKey NodeId { get; }
         INodeStats NodeStats { get; }
         string ClientId { get; }
         UInt256 TotalDifficultyOnSessionStart { get; }

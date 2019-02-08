@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
@@ -40,7 +41,7 @@ namespace Nethermind.Network.Rlpx
 
         private readonly IEncryptionHandshakeService _service;
         private readonly IP2PSession _p2PSession;
-        private NodeId _remoteId;
+        private PublicKey _remoteId;
         private readonly TaskCompletionSource<object> _initCompletionSource;
         private IChannel _channel;
 
@@ -48,7 +49,7 @@ namespace Nethermind.Network.Rlpx
             IEncryptionHandshakeService service,
             IP2PSession p2PSession,
             HandshakeRole role,
-            NodeId remoteId,
+            PublicKey remoteId,
             ILogManager logManager)
         {
             _handshake.RemoteNodeId = remoteId;

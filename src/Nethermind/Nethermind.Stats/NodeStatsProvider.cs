@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Stats.Model;
@@ -27,15 +28,13 @@ namespace Nethermind.Stats
     public class NodeStatsProvider : INodeStatsProvider
     {
         private readonly IStatsConfig _statsConfig;
-        private readonly INodeFactory _nodeFactory;
         private readonly ILogManager _logManager;
         private readonly bool _useLightStats;
-        private readonly ConcurrentDictionary<NodeId, INodeStats> _nodeStats = new ConcurrentDictionary<NodeId, INodeStats>();
+        private readonly ConcurrentDictionary<PublicKey, INodeStats> _nodeStats = new ConcurrentDictionary<PublicKey, INodeStats>();
 
-        public NodeStatsProvider(IStatsConfig statsConfig, INodeFactory nodeFactory, ILogManager logManager, bool useLightStats)
+        public NodeStatsProvider(IStatsConfig statsConfig, ILogManager logManager, bool useLightStats)
         {
             _statsConfig = statsConfig ?? throw new ArgumentNullException(nameof(statsConfig));
-            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _useLightStats = useLightStats;
         }
@@ -45,9 +44,9 @@ namespace Nethermind.Stats
             return _nodeStats.GetOrAdd(node.Id, x => _useLightStats ? new NodeStatsLight(node, _statsConfig, _logManager) : (INodeStats)new NodeStats(node, _statsConfig, _logManager));
         }
 
-        public INodeStats GetOrAddNodeStats(NodeId nodeId, string host, int port)
+        public INodeStats GetOrAddNodeStats(PublicKey nodeId, string host, int port)
         {
-            var node = _nodeFactory.CreateNode(nodeId, host, port);
+            var node = new Node(nodeId, host, port);
             return GetOrAddNodeStats(node);
         }
     }

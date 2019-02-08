@@ -46,8 +46,8 @@ namespace Nethermind.Network.Test.P2P
             IMessageSerializationService service = Build.A.SerializationService().WithP2P().TestObject;
 
             P2PSession factory = new P2PSession(
-                new NodeId(NetTestVectors.StaticKeyA.PublicKey),
-                new NodeId(NetTestVectors.StaticKeyA.PublicKey),
+                NetTestVectors.StaticKeyA.PublicKey,
+                NetTestVectors.StaticKeyA.PublicKey,
                 ListenPort,
                 ConnectionDirection.Out,
                 service,

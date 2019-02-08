@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Test
 
             public bool IsFastSyncSupported => false;
 
-            public NodeId NodeId { get; } = new NodeId(Build.A.PrivateKey.TestObject.PublicKey);
+            public PublicKey NodeId { get; } = Build.A.PrivateKey.TestObject.PublicKey;
 
             public INodeStats NodeStats { get; }
 

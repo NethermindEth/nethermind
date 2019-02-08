@@ -19,6 +19,7 @@
 using System;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -28,16 +29,19 @@ namespace Nethermind.Network.P2P
 {
     public interface IP2PSession : IDisposable
     {
-        NodeId RemoteNodeId { get; set; }
-        NodeId ObsoleteRemoteNodeId { get; set; }
+        SessionState SessionState { get; }
+        
+        PublicKey RemoteNodeId { get; set; }
+        PublicKey ObsoleteRemoteNodeId { get; set; }
         string RemoteHost { get; set; }
         int? RemotePort { get; set; }
         ConnectionDirection ConnectionDirection { get; }
         string SessionId { get; }
         INodeStats NodeStats { get; }
-
         void ReceiveMessage(Packet packet);
-        void DeliverMessage(Packet packet, bool priority = false);
+        void DeliverMessage(Packet packet);
+      
+        IP2PMessageSender P2PMessageSender { get; set; }
         
         void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender);
 
@@ -51,9 +55,9 @@ namespace Nethermind.Network.P2P
         /// </summary>     
         Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType);
 
-        void Handshake(NodeId handshakeRemoteNodeId);
+        void Handshake(PublicKey handshakeRemoteNodeId);
 
-        event EventHandler<DisconnectEventArgs> PeerDisconnected;
+        event EventHandler<DisconnectEventArgs> SessionDisconnected;
         event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         event EventHandler<EventArgs> HandshakeComplete;
     }

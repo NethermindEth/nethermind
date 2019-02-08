@@ -101,7 +101,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public string ProtocolCode => "eth";
         public virtual int MessageIdSpaceSize => 8;
         public virtual bool IsFastSyncSupported => false;
-        public NodeId NodeId => P2PSession.RemoteNodeId;
+        public PublicKey NodeId => P2PSession.RemoteNodeId;
         public INodeStats NodeStats => P2PSession.NodeStats;
         public string ClientId { get; set; }
 
@@ -288,7 +288,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             for (int i = 0; i < msg.Transactions.Length; i++)
             {
                 var transaction = msg.Transactions[i];
-                transaction.DeliveredBy = NodeId.PublicKey;
+                transaction.DeliveredBy = NodeId;
                 transaction.Timestamp = _timestamp.EpochSeconds;
                 AddTransactionResult result = _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
                 if (result == AddTransactionResult.AlreadyKnown)
