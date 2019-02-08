@@ -18,7 +18,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
@@ -40,6 +39,7 @@ namespace Nethermind.Network.P2P
         }
 
         protected ILogger Logger { get; }
+        
         protected abstract TimeSpan InitTimeout { get; }
 
         protected T Deserialize<T>(byte[] data) where T : P2PMessage

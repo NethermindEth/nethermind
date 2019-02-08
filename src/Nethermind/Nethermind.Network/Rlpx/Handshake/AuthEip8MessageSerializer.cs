@@ -51,13 +51,12 @@ namespace Nethermind.Network.Rlpx.Handshake
             Rlp.DecoderContext context = data.AsRlpContext();
             AuthEip8Message authMessage = new AuthEip8Message();
             context.ReadSequenceLength();
-            byte[] sigAllbytes = context.DecodeByteArray();
-            Signature signature = new Signature(sigAllbytes.Slice(0, 64), sigAllbytes[64]); // since Signature class is Ethereum style it expects V as the 64th byte, hence we use RecoveryID constructor
+            byte[] sigAllBytes = context.DecodeByteArray();
+            Signature signature = new Signature(sigAllBytes.Slice(0, 64), sigAllBytes[64]); // since Signature class is Ethereum style it expects V as the 64th byte, hence we use RecoveryID constructor
             authMessage.Signature = signature;
             authMessage.PublicKey = new PublicKey(context.DecodeByteArray());
             authMessage.Nonce = context.DecodeByteArray();
             int version = context.DecodeInt();
-            Debug.Assert(version >= 4, $"Expected {nameof(AuthEip8Message.Version)} to be greater than 4");
             return authMessage;
         }
     }

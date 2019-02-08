@@ -120,7 +120,7 @@ namespace Nethermind.Network.Rlpx
 
                 if (_bootstrapChannel == null)
                 {
-                    throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}", NetwokExceptionType.Other);
+                    throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}", NetworkExceptionType.Other);
                 }
             }
             catch (Exception ex)
@@ -155,7 +155,7 @@ namespace Nethermind.Network.Rlpx
             if (firstTask != connectTask)
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connection timed out: {remoteId}@{host}:{port}");
-                throw new NetworkingException($"Failed to connect to {remoteId} (timeout)", NetwokExceptionType.Timeout);
+                throw new NetworkingException($"Failed to connect to {remoteId} (timeout)", NetworkExceptionType.Timeout);
             }
 
             if (connectTask.IsFaulted)
@@ -165,7 +165,7 @@ namespace Nethermind.Network.Rlpx
                     _logger.Trace($"Error when connecting to {remoteId}@{host}:{port}, error: {connectTask.Exception}");
                 }
 
-                throw new NetworkingException($"Failed to connect to {remoteId}", NetwokExceptionType.TargetUnreachable,connectTask.Exception);
+                throw new NetworkingException($"Failed to connect to {remoteId}", NetworkExceptionType.TargetUnreachable,connectTask.Exception);
             }
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connected to {remoteId}@{host}:{port}");

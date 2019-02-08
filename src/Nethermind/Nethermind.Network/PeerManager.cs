@@ -451,7 +451,7 @@ namespace Nethermind.Network
             }
             catch (NetworkingException ex)
             {
-                if (_logger.IsTrace) _logger.Trace($"Cannot connect to Peer [{ex.NetwokExceptionType.ToString()}]: {candidate.Node.Id}");
+                if (_logger.IsTrace) _logger.Trace($"Cannot connect to Peer [{ex.NetworkExceptionType.ToString()}]: {candidate.Node.Id}");
                 return false;
             }
             catch (Exception e)
