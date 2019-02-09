@@ -20,21 +20,25 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
     public abstract class ProtocolHandlerBase
     {
+        protected INodeStatsManager StatsManager { get; }
         private readonly IMessageSerializationService _serializer;
         protected IP2PSession P2PSession { get; }
         private readonly TaskCompletionSource<MessageBase> _initCompletionSource;
 
-        protected ProtocolHandlerBase(IP2PSession p2PSession, IMessageSerializationService serializer, ILogManager logManager)
+        protected ProtocolHandlerBase(IP2PSession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
         {
             Logger = logManager?.GetClassLogger(GetType()) ?? throw new ArgumentNullException(nameof(logManager));
+            StatsManager = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
+            P2PSession = session ?? throw new ArgumentNullException(nameof(session));
+            
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
-            P2PSession = p2PSession ?? throw new ArgumentNullException(nameof(p2PSession));
             _initCompletionSource = new TaskCompletionSource<MessageBase>();
         }
 

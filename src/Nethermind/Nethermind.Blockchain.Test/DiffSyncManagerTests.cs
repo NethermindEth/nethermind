@@ -58,16 +58,13 @@ namespace Nethermind.Blockchain.Test
             {
                 _causeTimeoutOnInit = causeTimeoutOnInit;
                 _causeTimeoutOnBlocks = causeTimeoutOnBlocks;
-                NodeStats = new NodeStatsLight(new Node(NodeId, "host", 1234), new StatsConfig());
                 Blocks.Add(_genesisBlock);
                 ClientId = peerName;
             }
 
             public bool IsFastSyncSupported => false;
 
-            public PublicKey NodeId { get; } = Build.A.PrivateKey.TestObject.PublicKey;
-
-            public INodeStats NodeStats { get; }
+            public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "host", 1234);
 
             public string ClientId { get; }
 
@@ -228,6 +225,7 @@ namespace Nethermind.Blockchain.Test
                     TestTransactionValidator.AlwaysValid,
                     LimboLogs.Instance,
                     new BlockchainConfig(),
+                    new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), 
                     new PerfService(LimboLogs.Instance),
                     NullReceiptStorage.Instance);
 
@@ -335,13 +333,13 @@ namespace Nethermind.Blockchain.Test
             public SyncingContext AfterNewBlockMessage(Block block, ISynchronizationPeer peer)
             {
                 block.TotalDifficulty = (UInt256)(block.Difficulty * ((BigInteger)block.Number + 1));
-                SyncManager.AddNewBlock(block, peer.NodeId);
+                SyncManager.AddNewBlock(block, peer.Node.Id);
                 return this;
             }
             
             public SyncingContext AfterHintBlockMessage(Block block, ISynchronizationPeer peer)
             {
-                SyncManager.HintBlock(block.Hash, block.Number, peer.NodeId);
+                SyncManager.HintBlock(block.Hash, block.Number, peer.Node.Id);
                 return this;
             }
 

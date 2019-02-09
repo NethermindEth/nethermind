@@ -175,8 +175,6 @@ namespace Nethermind.Stats
 
         public long NewPersistedNodeReputation => IsReputationPenalized() ? -100 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
 
-        public bool IsTrustedPeer { get; set; }
-
         public P2PNodeDetails P2PNodeDetails { get; private set; }
 
         public EthNodeDetails EthNodeDetails { get; private set; }
@@ -274,7 +272,7 @@ namespace Nethermind.Stats
             return IsReputationPenalized()
                 ? -100
                 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation() +
-                  (IsTrustedPeer ? _statsConfig.PredefinedReputation : 0);
+                  (Node.IsTrusted ? _statsConfig.PredefinedReputation : 0);
         }
 
         private long CalculateSessionReputation()
@@ -376,7 +374,6 @@ namespace Nethermind.Stats
         {
             _eventHistory = new ConcurrentBag<NodeStatsEvent>();
             
-            IsTrustedPeer = false;
             _statCounters = new ConcurrentDictionary<NodeStatsEventType, AtomicLong>();
             foreach (NodeStatsEventType statType in Enum.GetValues(typeof(NodeStatsEventType)))
             {

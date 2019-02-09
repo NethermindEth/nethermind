@@ -35,34 +35,39 @@ namespace Nethermind.Stats
         private readonly bool _useLightStats;
         private readonly ConcurrentDictionary<PublicKey, INodeStats> _nodeStats = new ConcurrentDictionary<PublicKey, INodeStats>();
 
-        public NodeStatsManager(IStatsDumper statsDumper, IStatsConfig statsConfig, ILogManager logManager, bool useLightStats)
+        public NodeStatsManager(IStatsConfig statsConfig, ILogManager logManager, bool useLightStats = true)
         {
-            _statsDumper = statsDumper ?? throw new ArgumentNullException(nameof(statsDumper));
+            _statsDumper = new StatsDumper(logManager, statsConfig);
             _statsConfig = statsConfig ?? throw new ArgumentNullException(nameof(statsConfig));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _useLightStats = useLightStats;
         }
 
-        public INodeStats GetOrAddNodeStats(Node node)
+        public INodeStats GetOrAdd(Node node)
         {
+            if (node == null)
+            {
+                return null;
+            }
+            
             return _nodeStats.GetOrAdd(node.Id, x => _useLightStats ? new NodeStatsLight(node, _statsConfig) : (INodeStats) new NodeStats(node, _statsConfig));
         }
 
-        public INodeStats GetOrAddNodeStats(PublicKey nodeId, string host, int port)
+        public INodeStats GetOrAdd(PublicKey nodeId, string host, int port)
         {
             var node = new Node(nodeId, host, port);
-            return GetOrAddNodeStats(node);
+            return GetOrAdd(node);
         }
 
         public void ReportHandshakeEvent(Node node, ConnectionDirection direction)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             stats.AddNodeStatsHandshakeEvent(direction);
         }
 
         public void ReportEvent(Node node, NodeStatsEventType eventType)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             stats.AddNodeStatsEvent(eventType);
         }
 
@@ -73,74 +78,80 @@ namespace Nethermind.Stats
 
         public void DumpNodeStats(Node node)
         {
-            INodeStats nodeStats = GetOrAddNodeStats(node);
+            INodeStats nodeStats = GetOrAdd(node);
             _statsDumper.DumpNodeStats(nodeStats);
         }
 
         public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(Node node)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             return stats.IsConnectionDelayed();
         }
 
         public CompatibilityValidationType? FindCompatibilityValidationResult(Node node)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             return stats.FailedCompatibilityValidation;
         }
 
         public long GetCurrentReputation(Node node)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             return stats.CurrentNodeReputation;
         }
 
         public void ReportP2PInitializationEvent(Node node, P2PNodeDetails p2PNodeDetails)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             stats.AddNodeStatsP2PInitializedEvent(p2PNodeDetails);
         }
 
         public void ReportEthInitializeEvent(Node node, EthNodeDetails ethNodeDetails)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             stats.AddNodeStatsEth62InitializedEvent(ethNodeDetails);
         }
 
         public void ReportFailedValidation(Node node, CompatibilityValidationType validationType)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             stats.FailedCompatibilityValidation = validationType;
         }
 
         public void ReportDisconnect(Node node, DisconnectType disconnectType, DisconnectReason disconnectReason)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             stats.AddNodeStatsDisconnectEvent(disconnectType, disconnectReason);
         }
 
         public long GetNewPersistedReputation(Node node)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             return stats.NewPersistedNodeReputation;
         }
 
         public long GetCurrentPersistedReputation(Node node)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             return stats.CurrentPersistedNodeReputation;
         }
 
         public void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent, SyncNodeDetails syncNodeDetails)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             stats.AddNodeStatsSyncEvent(nodeStatsEvent, syncNodeDetails);
         }
 
         public bool HasFailedValidation(Node node)
         {
-            INodeStats stats = GetOrAddNodeStats(node);
+            INodeStats stats = GetOrAdd(node);
             return stats.FailedCompatibilityValidation != null;
+        }
+
+        public void ReportLatencyCaptureEvent(Node node, NodeLatencyStatType latencyType, long value)
+        {
+            INodeStats stats = GetOrAdd(node);
+            stats.AddLatencyCaptureEvent(latencyType, value);
         }
     }
 }

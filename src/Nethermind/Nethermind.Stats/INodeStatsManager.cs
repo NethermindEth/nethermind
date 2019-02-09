@@ -23,8 +23,8 @@ namespace Nethermind.Stats
 {
     public interface INodeStatsManager
     {
-        INodeStats GetOrAddNodeStats(Node node);
-        INodeStats GetOrAddNodeStats(PublicKey nodeId, string host, int port);
+        INodeStats GetOrAdd(Node node);
+        INodeStats GetOrAdd(PublicKey nodeId, string host, int port);
         void ReportHandshakeEvent(Node node, ConnectionDirection direction);
         void ReportEvent(Node node, NodeStatsEventType eventType);
         void DumpStats(bool logEventDetails);
@@ -40,5 +40,6 @@ namespace Nethermind.Stats
         long GetCurrentPersistedReputation(Node node);
         void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent, SyncNodeDetails syncNodeDetails);
         bool HasFailedValidation(Node node);
+        void ReportLatencyCaptureEvent(Node node, NodeLatencyStatType latencyType, long value);
     }
 }

@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P
         public List<Capability> Capabilities { get; set; }
         public int ListenPort { get; set; }
 
-        public P2PProtocolInitializedEventArgs(P2PProtocolHandler protocolHandler) : base(protocolHandler)
+        public P2PProtocolInitializedEventArgs(IProtocolHandler handler) : base(handler)
         {
         }
     }

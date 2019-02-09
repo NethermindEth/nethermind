@@ -29,6 +29,7 @@ namespace Nethermind.Network.P2P
 {
     public interface IP2PSession : IDisposable
     {
+        byte P2PVersion { get; }
         SessionState SessionState { get; }
         bool IsClosing { get; }
         PublicKey RemoteNodeId { get; set; }
@@ -44,6 +45,8 @@ namespace Nethermind.Network.P2P
       
         IP2PMessageSender P2PMessageSender { get; set; }
         
+        void AddProtocolHandler(IProtocolHandler handler);
+        
         void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender);
 
         /// <summary>
@@ -58,8 +61,9 @@ namespace Nethermind.Network.P2P
 
         void Handshake(PublicKey handshakeRemoteNodeId);
 
-        event EventHandler<DisconnectEventArgs> SessionDisconnected;
+        event EventHandler<DisconnectEventArgs> Disconnected;
         event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        event EventHandler<EventArgs> Initialized;
         event EventHandler<EventArgs> HandshakeComplete;
     }
 }

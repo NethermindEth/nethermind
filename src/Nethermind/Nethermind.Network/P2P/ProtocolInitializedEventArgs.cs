@@ -24,9 +24,9 @@ namespace Nethermind.Network.P2P
     {
         public IProtocolHandler Subprotocol { get; }
 
-        protected ProtocolInitializedEventArgs(IProtocolHandler protocolHandler)
+        protected ProtocolInitializedEventArgs(IProtocolHandler handler)
         {
-            Subprotocol = protocolHandler;
+            Subprotocol = handler;
         }
     }
 }

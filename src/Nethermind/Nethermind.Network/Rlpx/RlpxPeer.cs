@@ -47,42 +47,25 @@ namespace Nethermind.Network.Rlpx
         public PublicKey LocalNodeId { get; private set; }
         private readonly int _localPort;
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
-        private readonly IMessageSerializationService _serializationService;
-        private readonly ISynchronizationManager _synchronizationManager;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IPerfService _perfService;
-        private readonly IBlockTree _blockTree;
         private readonly ISessionMonitor _sessionMonitor;
-        private readonly ITransactionPool _transactionPool;
-        private readonly ITimestamp _timestamp;
 
         public RlpxPeer(
             PublicKey localNodeId,
             int localPort,
-            ISynchronizationManager synchronizationManager,
-            IMessageSerializationService messageSerializationService,
             IEncryptionHandshakeService encryptionHandshakeService,
             ILogManager logManager,
             IPerfService perfService,
-            IBlockTree blockTree,
-            ISessionMonitor sessionMonitor,
-            ITransactionPool transactionPool)
+            ISessionMonitor sessionMonitor)
         {
             _encryptionHandshakeService = encryptionHandshakeService ??
                                           throw new ArgumentNullException(nameof(encryptionHandshakeService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
-            _timestamp = new Timestamp();
             _logger = logManager.GetClassLogger();
-            _serializationService = messageSerializationService ??
-                                    throw new ArgumentNullException(nameof(messageSerializationService));
-            _synchronizationManager =
-                synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
-
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             _localPort = localPort;
         }
@@ -195,9 +178,8 @@ namespace Nethermind.Network.Rlpx
                 remoteId,
                 _localPort,
                 connectionDirection,
-                _serializationService,
-                _synchronizationManager,
-                _logManager, channel, _perfService, _blockTree, _transactionPool, _timestamp);
+                _logManager,
+                channel);
 
             if (connectionDirection == ConnectionDirection.Out)
             {
@@ -213,7 +195,7 @@ namespace Nethermind.Network.Rlpx
             }
             
             _sessionMonitor.AddSession(session);
-            session.SessionDisconnected += SessionOnPeerDisconnected;
+            session.Disconnected += SessionOnPeerDisconnected;
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = connectionDirection == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
@@ -238,7 +220,7 @@ namespace Nethermind.Network.Rlpx
         private void SessionOnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
             IP2PSession session = (P2PSession) sender;
-            session.SessionDisconnected -= SessionOnPeerDisconnected;
+            session.Disconnected -= SessionOnPeerDisconnected;
             session.Dispose();
         }
 

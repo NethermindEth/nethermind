@@ -113,7 +113,7 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            string clientId = _p2PSession.NodeStats?.P2PNodeDetails?.ClientId ?? $"unknown {_p2PSession?.RemoteHost}";
+            string clientId = _p2PSession.Node?.ClientId ?? $"unknown {_p2PSession?.RemoteHost}";
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {

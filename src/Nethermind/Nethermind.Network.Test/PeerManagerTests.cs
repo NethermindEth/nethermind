@@ -374,7 +374,7 @@ namespace Nethermind.Network.Test
                         throw new Exception("Cannot get NodeStats without NodeId");
                     }
 
-                    _nodeStats = _nodeStatsManager.GetOrAddNodeStats(RemoteNodeId, RemoteHost, RemotePort ?? 0);
+                    _nodeStats = _nodeStatsManager.GetOrAdd(RemoteNodeId, RemoteHost, RemotePort ?? 0);
                 }
 
                 return _nodeStats;
@@ -403,7 +403,7 @@ namespace Nethermind.Network.Test
         public void TriggerPeerDisconnected()
         {
             SessionState = SessionState.Disconnected;
-            SessionDisconnected?.Invoke(this, new DisconnectEventArgs(DisconnectReason.TooManyPeers, DisconnectType.Local));
+            Disconnected?.Invoke(this, new DisconnectEventArgs(DisconnectReason.TooManyPeers, DisconnectType.Local));
         }
 
         public void DeliverMessage(Packet packet)
@@ -427,7 +427,7 @@ namespace Nethermind.Network.Test
         public Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType)
         {
             SessionState = SessionState.Disconnected;
-            SessionDisconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
+            Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
             return Task.CompletedTask;
         }
 
@@ -439,13 +439,13 @@ namespace Nethermind.Network.Test
             SessionState = SessionState.HandshakeComplete;
         }
 
-        public event EventHandler<DisconnectEventArgs> SessionDisconnected;
+        public event EventHandler<DisconnectEventArgs> Disconnected;
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public event EventHandler<EventArgs> HandshakeComplete;
 
         public void TriggerPeerDisconnected(DisconnectReason reason, DisconnectType disconnectType)
         {
-            SessionDisconnected?.Invoke(this, new DisconnectEventArgs(reason, disconnectType));
+            Disconnected?.Invoke(this, new DisconnectEventArgs(reason, disconnectType));
             var task = Task.Delay(1000);
             task.Wait();
         }

@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Test
 
             foreach ((ISynchronizationPeer peer, _) in peers)
             {
-                _transactionPool.RemovePeer(peer.NodeId);
+                _transactionPool.RemovePeer(peer.Node.Id);
             }
         }
 

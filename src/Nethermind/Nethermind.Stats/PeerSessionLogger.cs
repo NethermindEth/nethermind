@@ -37,10 +37,10 @@ namespace Nethermind.Stats
         private readonly IStatsConfig _statsConfig;
         private string _eventLogsDirectoryPath;
 
-        public StatsDumper(ILogManager logManager, IConfigProvider configProvider)
+        public StatsDumper(ILogManager logManager, IStatsConfig statsConfig)
         {
             _logger = logManager.GetClassLogger();
-            _statsConfig = configProvider.GetConfig<IStatsConfig>();
+            _statsConfig = statsConfig ?? throw new ArgumentNullException(nameof(statsConfig));
         }
 
         public void Init(string logsDirectory)
@@ -185,7 +185,7 @@ namespace Nethermind.Stats
 
         private string GetNodeLog(INodeStats nodeStats)
         {
-            return $"Node: {nodeStats.Node.Id.ToString(false)}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Trusted: {nodeStats.IsTrustedPeer}, Bootnode: {nodeStats.Node.IsBootnode}";
+            return $"Node: {nodeStats.Node.Id.ToString(false)}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Trusted: {nodeStats.Node.IsTrusted}, Bootnode: {nodeStats.Node.IsBootnode}";
         }
 
         private void LogPeerEventHistory(INodeStats nodeStats)

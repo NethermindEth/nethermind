@@ -113,5 +113,25 @@ namespace Nethermind.Core.Crypto
             var value = Bytes.ToHexString(false);
             return value.Substring(value.Length - 12);
         }
+        
+        public static bool operator ==(PublicKey a, PublicKey b)
+        {
+            if (ReferenceEquals(a, null))
+            {
+                return ReferenceEquals(b, null);
+            }
+
+            if (ReferenceEquals(b, null))
+            {
+                return false;
+            }
+
+            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+        }
+
+        public static bool operator !=(PublicKey a, PublicKey b)
+        {
+            return !(a == b);
+        }
     }
 }

@@ -57,7 +57,7 @@ namespace Nethermind.Network
         {
             lock (_sessions)
             {
-                session.SessionDisconnected += SessionOnSessionDisconnected;
+                session.Disconnected += OnDisconnected;
                 if (session.SessionState < SessionState.DisconnectingProtocols)
                 {
                     _sessions.Add(session);
@@ -65,7 +65,7 @@ namespace Nethermind.Network
             }
         }
 
-        private void SessionOnSessionDisconnected(object sender, DisconnectEventArgs e)
+        private void OnDisconnected(object sender, DisconnectEventArgs e)
         {
             lock (_sessions)
             {

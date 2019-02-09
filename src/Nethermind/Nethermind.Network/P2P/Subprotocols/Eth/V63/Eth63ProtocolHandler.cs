@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
@@ -38,11 +39,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             = new BlockingCollection<Request<GetReceiptsMessage, TransactionReceipt[][]>>();
 
         public Eth63ProtocolHandler(
-            IP2PSession p2PSession,
+            IP2PSession session,
             IMessageSerializationService serializer,
+            INodeStatsManager nodeStatsManager,
             ISynchronizationManager syncManager,
             ILogManager logManager, IPerfService perfService,
-            IBlockTree blockTree, ITransactionPool transactionPool, ITimestamp timestamp) : base(p2PSession, serializer,
+            IBlockTree blockTree, ITransactionPool transactionPool, ITimestamp timestamp) : base(session, serializer, nodeStatsManager,
             syncManager, logManager, perfService, blockTree, transactionPool, timestamp)
         {
         }

@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Stats;
 using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
@@ -51,7 +52,7 @@ namespace Nethermind.Blockchain.Test
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
             ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 
-            _manager = new QueueBasedSyncManager(_stateDb, _blockTree, blockValidator, headerValidator, transactionValidator, NullLogManager.Instance, quickConfig, new PerfService(NullLogManager.Instance), _receiptStorage);
+            _manager = new QueueBasedSyncManager(_stateDb, _blockTree, blockValidator, headerValidator, transactionValidator, NullLogManager.Instance, quickConfig, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),  new PerfService(NullLogManager.Instance), _receiptStorage);
         }
 
         [TearDown]
@@ -137,7 +138,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreSame(addPeerTask, firstToComplete);
 
             BlockTreeBuilder.ExtendTree(_remoteBlockTree, QueueBasedSyncManager.MaxBatchSize * 2);
-            _manager.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.NodeId);
+            _manager.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.Node.Id);
             
             semaphore.Wait(_standardTimeoutUnit);
             semaphore.Wait(_standardTimeoutUnit);
@@ -163,7 +164,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreSame(addPeerTask, firstToComplete);
 
             Block block = Build.A.Block.WithParent(_remoteBlockTree.Head).TestObject;
-            _manager.AddNewBlock(block, peer.NodeId);
+            _manager.AddNewBlock(block, peer.Node.Id);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -204,7 +205,7 @@ namespace Nethermind.Blockchain.Test
 
             resetEvent.Reset();
 
-            _manager.AddNewBlock(splitBlockChild, miner1.NodeId);
+            _manager.AddNewBlock(splitBlockChild, miner1.Node.Id);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -239,7 +240,7 @@ namespace Nethermind.Blockchain.Test
 
             resetEvent.Reset();
 
-            _manager.AddNewBlock(miner1Tree.RetrieveHeadBlock(), miner1.NodeId);
+            _manager.AddNewBlock(miner1Tree.RetrieveHeadBlock(), miner1.Node.Id);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -271,7 +272,7 @@ namespace Nethermind.Blockchain.Test
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(CancellationToken.None));
-            miner2.NodeId.Returns(TestObject.PublicKeyB);
+            miner2.Node.Id.Returns(TestObject.PublicKeyB);
 
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()), "number as expected");
 
@@ -308,7 +309,7 @@ namespace Nethermind.Blockchain.Test
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(CancellationToken.None));
-            miner2.NodeId.Returns(TestObject.PublicKeyB);
+            miner2.Node.Id.Returns(TestObject.PublicKeyB);
 
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()), "number as expected");
 

@@ -57,15 +57,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly ITimestamp _timestamp;
 
         public Eth62ProtocolHandler(
-            IP2PSession p2PSession,
+            IP2PSession session,
             IMessageSerializationService serializer,
+            INodeStatsManager statsManager,
             ISynchronizationManager syncManager,
             ILogManager logManager,
             IPerfService perfService,
             IBlockTree blockTree,
             ITransactionPool transactionPool,
             ITimestamp timestamp)
-            : base(p2PSession, serializer, logManager)
+            : base(session, statsManager, serializer, logManager)
         {
             SyncManager = syncManager;
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
@@ -84,13 +85,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 100)
             {
-                if (Logger.IsDebug) Logger.Debug($"Disconnecting {NodeId} due to tx flooding");
+                if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node.Id} due to tx flooding");
                 Disconnect(DisconnectReason.UselessPeer);
             }
             
             if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 10)
             {
-                if (Logger.IsDebug) Logger.Debug($"Downgrading {NodeId} due to tx flooding");
+                if (Logger.IsDebug) Logger.Debug($"Downgrading {Node.Id} due to tx flooding");
                 _isDowngradedDueToTxFlooding = true;
             }
 
@@ -101,8 +102,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public string ProtocolCode => "eth";
         public virtual int MessageIdSpaceSize => 8;
         public virtual bool IsFastSyncSupported => false;
-        public PublicKey NodeId => P2PSession.RemoteNodeId;
-        public INodeStats NodeStats => P2PSession.NodeStats;
+        public Node Node => P2PSession.Node;
         public string ClientId { get; set; }
 
         public UInt256 TotalDifficultyOnSessionStart { get; private set; }
@@ -288,7 +288,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             for (int i = 0; i < msg.Transactions.Length; i++)
             {
                 var transaction = msg.Transactions[i];
-                transaction.DeliveredBy = NodeId;
+                transaction.DeliveredBy = Node.Id;
                 transaction.Timestamp = _timestamp.EpochSeconds;
                 AddTransactionResult result = _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
                 if (result == AddTransactionResult.AlreadyKnown)
@@ -296,7 +296,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     _notAcceptedTxsSinceLastCheck++;
                 }
 
-                if (Logger.IsTrace) Logger.Trace($"{NodeId} sent {transaction.Hash} and it was {result} (chain ID = {transaction.Signature.GetChainId})");
+                if (Logger.IsTrace) Logger.Trace($"{Node.Id} sent {transaction.Hash} and it was {result} (chain ID = {transaction.Signature.GetChainId})");
             }
         }
 
@@ -390,7 +390,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             foreach ((Keccak Hash, UInt256 Number) hint in newBlockHashes.BlockHashes)
             {
-                SyncManager.HintBlock(hint.Hash, hint.Number, NodeId);
+                SyncManager.HintBlock(hint.Hash, hint.Number, Node.Id);
             }
         }
 
@@ -442,7 +442,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 var latency = _perfService.EndPerfCalc(perfCalcId);
                 if (latency.HasValue)
                 {
-                    P2PSession?.NodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, latency.Value);
+                    StatsManager.ReportLatencyCaptureEvent(P2PSession.Node, NodeLatencyStatType.BlockHeaders, latency.Value);
                 }
 
                 return task.Result;
@@ -478,7 +478,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 var latency = _perfService.EndPerfCalc(perfCalcId);
                 if (latency.HasValue)
                 {
-                    P2PSession?.NodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockBodies, latency.Value);
+                    StatsManager.ReportLatencyCaptureEvent(P2PSession.Node, NodeLatencyStatType.BlockBodies, latency.Value);
                 }
 
                 return task.Result;

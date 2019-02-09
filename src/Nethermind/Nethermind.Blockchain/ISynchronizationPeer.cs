@@ -23,14 +23,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain
 {
     public interface ISynchronizationPeer
     {
         bool IsFastSyncSupported { get; }
-        PublicKey NodeId { get; }
-        INodeStats NodeStats { get; }
+        Node Node { get; }
         string ClientId { get; }
         UInt256 TotalDifficultyOnSessionStart { get; }
         

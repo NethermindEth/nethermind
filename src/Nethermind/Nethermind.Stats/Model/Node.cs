@@ -18,6 +18,7 @@
 
 using System;
 using System.Net;
+using Microsoft.VisualBasic.CompilerServices;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Stats.Model
@@ -50,6 +51,8 @@ namespace Nethermind.Stats.Model
         public bool IsTrusted { get; set; }
 
         public bool IsStatic { get; set; }
+
+        public string ClientId { get; set; }
 
         public Node(PublicKey id, IPEndPoint address)
         {
@@ -111,6 +114,26 @@ namespace Nethermind.Stats.Model
         public override string ToString()
         {
             return $"Id: {Id}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {IsDiscoveryNode}";
+        }
+        
+        public static bool operator ==(Node a, Node b)
+        {
+            if (ReferenceEquals(a, null))
+            {
+                return ReferenceEquals(b, null);
+            }
+
+            if (ReferenceEquals(b, null))
+            {
+                return false;
+            }
+
+            return a.Id.Equals(b.Id);
+        }
+
+        public static bool operator !=(Node a, Node b)
+        {
+            return !(a == b);
         }
     }
 }

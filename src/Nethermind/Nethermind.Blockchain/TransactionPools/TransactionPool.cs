@@ -109,7 +109,7 @@ namespace Nethermind.Blockchain.TransactionPools
 
         public void AddPeer(ISynchronizationPeer peer)
         {
-            if (!_peers.TryAdd(peer.NodeId, peer))
+            if (!_peers.TryAdd(peer.Node.Id, peer))
             {
                 return;
             }
@@ -254,7 +254,7 @@ namespace Nethermind.Blockchain.TransactionPools
             Metrics.PendingTransactionsSent++;
             peer.SendNewTransaction(transaction);
 
-            if (_logger.IsTrace) _logger.Trace($"Notified {peer.NodeId} about a transaction: {transaction.Hash}");
+            if (_logger.IsTrace) _logger.Trace($"Notified {peer.Node.Id} about a transaction: {transaction.Hash}");
         }
 
         private ConcurrentDictionary<Keccak, Transaction> _ownTransactions = new ConcurrentDictionary<Keccak, Transaction>();
@@ -277,7 +277,7 @@ namespace Nethermind.Blockchain.TransactionPools
                     continue;
                 }
                 
-                if (transaction.DeliveredBy.Equals(peer.NodeId))
+                if (transaction.DeliveredBy.Equals(peer.Node.Id))
                 {
                     continue;
                 }
