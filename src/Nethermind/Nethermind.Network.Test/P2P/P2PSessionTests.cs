@@ -43,13 +43,18 @@ namespace Nethermind.Network.Test.P2P
         {
             IPacketSender sender = Substitute.For<IPacketSender>();
 
-            P2PSession factory = new P2PSession(
+            P2PSession session = new P2PSession(
                 NetTestVectors.StaticKeyA.PublicKey,
                 NetTestVectors.StaticKeyA.PublicKey,
                 ListenPort,
                 ConnectionDirection.Out,
                 NullLogManager.Instance, Substitute.For<IChannel>());
-            factory.Init(4, Substitute.For<IChannelHandlerContext>(), sender);
+
+            session.RemoteHost = "127.0.0.1";
+            session.Handshake(TestObject.PublicKeyA);
+            session.AddProtocolHandler(new P2PProtocolHandler(session, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), new MessageSerializationService(), new PerfService(LimboLogs.Instance), LimboLogs.Instance));
+            
+            session.Init(4, Substitute.For<IChannelHandlerContext>(), sender);
 
             sender.Received().Enqueue(Arg.Is<Packet>(p => p.PacketType == 0 && p.Protocol == "p2p"));
         }

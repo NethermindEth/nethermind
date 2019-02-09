@@ -161,7 +161,7 @@ namespace Nethermind.Network
 
             await Task.WhenAll(closingTasks);
 
-            if (_logger.IsInfo) LogSessionStats(exitType == ExitType.DetailLogExit);
+            if (_logger.IsTrace) LogSessionStats(exitType == ExitType.DetailLogExit);
 
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
         }
