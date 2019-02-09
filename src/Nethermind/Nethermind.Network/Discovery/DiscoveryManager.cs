@@ -132,7 +132,7 @@ namespace Nethermind.Network.Discovery
                 var manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
                 if (!isPersisted)
                 {
-                    _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.ManagedNode.Description, manager.NodeStats.NewPersistedNodeReputation)});
+                    _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation)});
                 }
                 OnNewNode(manager);
                 return manager;
@@ -258,7 +258,7 @@ namespace Nethermind.Network.Discovery
                 var item = items[i];
                 if (_nodeLifecycleManagers.TryRemove(item.Key, out _))
                 {
-                    _discoveryStorage.RemoveNodes(new[] { new NetworkNode(item.Value.ManagedNode.Id, item.Value.ManagedNode.Host, item.Value.ManagedNode.Port, item.Value.ManagedNode.Description, item.Value.NodeStats.NewPersistedNodeReputation),  });
+                    _discoveryStorage.RemoveNodes(new[] { new NetworkNode(item.Value.ManagedNode.Id, item.Value.ManagedNode.Host, item.Value.ManagedNode.Port, item.Value.NodeStats.NewPersistedNodeReputation),  });
                     removeCount++;
                 }
             }

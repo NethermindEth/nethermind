@@ -106,7 +106,7 @@ namespace Nethermind.Runner.Runners
         private IDiscoveryApp _discoveryApp;
         private IDiscoveryManager _discoveryManager;
         private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
-        private INodeStatsProvider _nodeStatsProvider;
+        private INodeStatsManager _nodeStatsManager;
         private IPerfService _perfService;
         private ITransactionPool _transactionPool;
         private ITransactionPoolInfoProvider _transactionPoolInfoProvider;
@@ -597,7 +597,7 @@ namespace Nethermind.Runner.Runners
 
             // create shared objects between discovery and peer manager
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
-            _nodeStatsProvider = new NodeStatsProvider(statsConfig, _logManager, !statsConfig.CaptureNodeStatsEventHistory);
+            _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager, !statsConfig.CaptureNodeStatsEventHistory);
 
             var encrypter = new AesEncrypter(
                 _configProvider.GetConfig<IKeyStoreConfig>(),
@@ -864,22 +864,24 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new GetReceiptsMessageSerializer());
             _messageSerializationService.Register(new ReceiptsMessageSerializer());
 
+            var networkConfig = _configProvider.GetConfig<INetworkConfig>();
+            ISessionMonitor sessionMonitor = new SessionMonitor(networkConfig, _logManager);
             _rlpxPeer = new RlpxPeer(_nodeKey.PublicKey, _initConfig.P2PPort,
                 _syncManager,
                 _messageSerializationService,
                 encryptionHandshakeServiceA,
-                _nodeStatsProvider,
+                _nodeStatsManager,
                 _logManager, _perfService,
-                _blockTree, _transactionPool);
+                _blockTree, sessionMonitor, _transactionPool);
 
             await _rlpxPeer.Init();
 
-            var networkConfig = _configProvider.GetConfig<INetworkConfig>();
+            
             var peerStorage = new NetworkStorage(PeersDbPath, networkConfig, _logManager, _perfService);
-            var peerSessionLogger = new PeerSessionLogger(_logManager, _configProvider, _perfService);
+            var peerSessionLogger = new StatsDumper(_logManager, _configProvider, _perfService);
             peerSessionLogger.Init(_initConfig.LogDirectory);
 
-            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _syncManager, _nodeStatsProvider, peerStorage, _configProvider.GetConfig<INetworkConfig>(), _perfService, _transactionPool, _logManager, peerSessionLogger);
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _syncManager, _nodeStatsManager, peerStorage, _configProvider.GetConfig<INetworkConfig>(), _perfService, _transactionPool, _logManager, peerSessionLogger);
             _peerManager.Init(_initConfig.DiscoveryEnabled);
         }
 
@@ -929,7 +931,7 @@ namespace Nethermind.Runner.Runners
                 nodeTable,
                 discoveryMessageFactory,
                 evictionManager,
-                _nodeStatsProvider,
+                _nodeStatsManager,
                 networkConfig,
                 _logManager);
 

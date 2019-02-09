@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test.P2P
                 ConnectionDirection.Out,
                 service,
                 Substitute.For<ISynchronizationManager>(),
-                Substitute.For<INodeStatsProvider>(),
+                Substitute.For<INodeStatsManager>(),
                 Substitute.For<INodeStats>(),
                 NullLogManager.Instance, Substitute.For<IChannel>(), Substitute.For<IPerfService>(),
                 Substitute.For<IBlockTree>(), Substitute.For<ITransactionPool>(), Substitute.For<ITimestamp>());

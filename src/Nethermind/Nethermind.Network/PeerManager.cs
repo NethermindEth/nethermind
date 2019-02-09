@@ -49,11 +49,10 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly IRlpxPeer _rlpxPeer;
         private readonly ISynchronizationManager _synchronizationManager;
-        private readonly INodeStatsProvider _nodeStatsProvider;
+        private readonly INodeStatsManager _nodeStatsManager;
         private readonly INetworkStorage _peerStorage;
-        private readonly IPeerSessionLogger _peerSessionLogger;
         private System.Timers.Timer _peerPersistenceTimer;
-        private System.Timers.Timer _pingTimer;
+        
         private int _logCounter = 1;
         private bool _isStarted;
         private readonly IPerfService _perfService;
@@ -71,29 +70,27 @@ namespace Nethermind.Network
             IRlpxPeer rlpxPeer,
             IDiscoveryApp discoveryApp,
             ISynchronizationManager synchronizationManager,
-            INodeStatsProvider nodeStatsProvider,
+            INodeStatsManager nodeStatsManager,
             INetworkStorage peerStorage,
             INetworkConfig networkConfig,
             IPerfService perfService,
             ITransactionPool transactionPool,
-            ILogManager logManager,
-            IPeerSessionLogger peerSessionLogger)
+            ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             
             _rlpxPeer = rlpxPeer ?? throw new ArgumentNullException(nameof(rlpxPeer));
             _synchronizationManager =
                 synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
-            _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
+            _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
-            _peerSessionLogger = peerSessionLogger ?? throw new ArgumentNullException(nameof(peerSessionLogger));
             _peerStorage.StartBatch();
 
-            _nodeStatsProvider = nodeStatsProvider;
+            _nodeStatsManager = nodeStatsManager;
             _logger = logManager.GetClassLogger();
         }
 
@@ -130,7 +127,7 @@ namespace Nethermind.Network
         public void Start()
         {
             StartPeerPersistenceTimer();
-            StartPingTimer();
+            
 
             _peerUpdateLoopTask = Task.Factory.StartNew(
                 RunPeerUpdateLoop,
@@ -161,7 +158,6 @@ namespace Nethermind.Network
             _cancellationTokenSource.Cancel();
 
             StopPeerPersistenceTimer();
-            StopPingTimer();
 
             var closingTasks = new List<Task>();
 
@@ -188,7 +184,7 @@ namespace Nethermind.Network
 
         public void LogSessionStats(bool logEventDetails)
         {
-            _peerSessionLogger.LogSessionStats(ActivePeers, CandidatePeers, logEventDetails);
+            _nodeStatsManager.DumpStats(logEventDetails);
         }
 
         internal void RunPeerUpdate()
@@ -273,7 +269,7 @@ namespace Nethermind.Network
                         bool result = await InitializePeerConnection(peer);
                         if (!result)
                         {
-                            peer.NodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
+                            _nodeStatsManager.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
                             Interlocked.Increment(ref failedInitialConnect);
                             if (peer.OutSession != null)
                             {
@@ -382,7 +378,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                var delayResult = candidate.Value.NodeStats.IsConnectionDelayed();
+                var delayResult = _nodeStatsManager.IsConnectionDelayed(candidate.Value.Node);
                 if (delayResult.Result)
                 {
                     if (delayResult.DelayReason == NodeStatsEventType.Disconnect)
@@ -397,7 +393,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (candidate.Value.NodeStats.FailedCompatibilityValidation.HasValue)
+                if (_nodeStatsManager.FindCompatibilityValidationResult(candidate.Value.Node).HasValue)
                 {
                     incompatiblePeers.Add(candidate.Value);
                     continue;
@@ -411,8 +407,8 @@ namespace Nethermind.Network
 
                 candidates.Add(candidate.Value);
             }
-
-            return (candidates.OrderBy(x => x.NodeStats.IsTrustedPeer).ThenByDescending(x => x.NodeStats.CurrentNodeReputation).ToList(), counters, incompatiblePeers);
+            
+            return (candidates.OrderBy(x => x.Node.IsTrusted).ThenByDescending(x => _nodeStatsManager.GetCurrentReputation(x.Node)).ToList(), counters, incompatiblePeers);
         }
 
 //        private void LogPeerEventHistory(Peer peer)
@@ -438,7 +434,7 @@ namespace Nethermind.Network
                 return "0";
             }
 
-            var validationGroups = incompatibleNodes.GroupBy(x => x.NodeStats.FailedCompatibilityValidation).ToArray();
+            var validationGroups = incompatibleNodes.GroupBy(x => _nodeStatsManager.FindCompatibilityValidationResult(x.Node)).ToArray();
             return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
         }
 
@@ -446,7 +442,7 @@ namespace Nethermind.Network
         {
             try
             {
-                await _rlpxPeer.ConnectAsync(candidate.Node.Id, candidate.Node.Host, candidate.Node.Port, candidate.NodeStats);
+                await _rlpxPeer.ConnectAsync(candidate.Node);
                 return true;
             }
             catch (NetworkingException ex)
@@ -480,10 +476,10 @@ namespace Nethermind.Network
                 }
 
                 var node = new Node(persistedPeer.NodeId, persistedPeer.Host, persistedPeer.Port);
-                var nodeStats = _nodeStatsProvider.GetOrAddNodeStats(node);
+                var nodeStats = _nodeStatsManager.GetOrAddNodeStats(node);
                 nodeStats.CurrentPersistedNodeReputation = persistedPeer.Reputation;
 
-                var peer = new Peer(node, nodeStats);
+                var peer = new Peer(node);
                 if (!_candidatePeers.TryAdd(node.Id, peer))
                 {
                     continue;
@@ -530,12 +526,11 @@ namespace Nethermind.Network
         private void AddConfigNode(NetworkNode networkNode, bool isTrustedPeer = false)
         {
             var node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
-            node.Description = networkNode.Description;
 
-            var nodeStats = _nodeStatsProvider.GetOrAddNodeStats(node);
+            var nodeStats = _nodeStatsManager.GetOrAddNodeStats(node);
             nodeStats.IsTrustedPeer = isTrustedPeer;
 
-            var peer = new Peer(node, nodeStats);
+            var peer = new Peer(node);
             if (_candidatePeers.TryAdd(node.Id, peer))
             {
                 if (_logger.IsDebug) _logger.Debug($"Adding config peer ({(isTrustedPeer ? "trusted" : "bootnode")}) to New collection {node.Id}@{node.Host}:{node.Port}");
@@ -581,13 +576,14 @@ namespace Nethermind.Network
                 case P2PProtocolHandler p2PProtocolHandler:
                     var p2PEventArgs = (P2PProtocolInitializedEventArgs) e;
                     AddNodeToDiscovery(peer, p2PEventArgs);
-                    peer.NodeStats.AddNodeStatsP2PInitializedEvent(new P2PNodeDetails
+                    _nodeStatsManager.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
                     {
                         ClientId = p2PEventArgs.ClientId,
                         Capabilities = p2PEventArgs.Capabilities.ToArray(),
                         P2PVersion = p2PEventArgs.P2PVersion,
                         ListenPort = p2PEventArgs.ListenPort
                     });
+                    
                     var result = await ValidateProtocol(Protocol.P2P, session, e);
                     if (!result)
                     {
@@ -598,7 +594,7 @@ namespace Nethermind.Network
                     break;
                 case Eth62ProtocolHandler ethProtocolHandler: // note that this covers eth63 as well
                     var ethEventArgs = (EthProtocolInitializedEventArgs) e;
-                    peer.NodeStats.AddNodeStatsEth62InitializedEvent(new EthNodeDetails
+                    _nodeStatsManager.ReportEthInitializeEvent(session.Node, new EthNodeDetails
                     {
                         ChainId = ethEventArgs.ChainId,
                         BestHash = ethEventArgs.BestHash,
@@ -620,7 +616,7 @@ namespace Nethermind.Network
                     if (_logger.IsTrace) _logger.Trace($"Eth version {ethProtocolHandler.ProtocolVersion} initialized, adding sync peer: {peer.Node.Id}");
 
                     //Add/Update peer to the storage and to sync manager
-                    _peerStorage.UpdateNodes(new[] {new NetworkNode(peer.Node.Id, peer.Node.Host, peer.Node.Port, peer.Node.Description, peer.NodeStats.NewPersistedNodeReputation)});
+                    _peerStorage.UpdateNodes(new[] {new NetworkNode(peer.Node.Id, peer.Node.Host, peer.Node.Port, peer.NodeStats.NewPersistedNodeReputation)});
                     await _synchronizationManager.AddPeer(ethProtocolHandler);
                     _transactionPool.AddPeer(ethProtocolHandler);
 
@@ -679,7 +675,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            peer.NodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionEstablished);
+            _nodeStatsManager.ReportEvent(peer.Node, NodeStatsEventType.ConnectionEstablished);
             peer.OutSession = session;
 
             if (_logger.IsTrace) _logger.Trace($"Initializing OUT connection (PeerManager) for peer: {session.RemoteNodeId}");
@@ -714,7 +710,7 @@ namespace Nethermind.Network
                 if (SessionDirectionToKeep(session.RemoteNodeId) == ConnectionDirection.In)
                 {
                     existingPeer.InSession = session;
-                    existingPeer.NodeStats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
+                    _nodeStatsManager.ReportHandshakeEvent(existingPeer.Node, ConnectionDirection.In);
                     if (_logger.IsTrace) _logger.Trace($"Disconnecting OUT session, IN session already connected: {session.RemoteNodeId}");
                     await existingPeer.OutSession.InitiateDisconnectAsync(DisconnectReason.AlreadyConnected);
                     return;
@@ -744,7 +740,7 @@ namespace Nethermind.Network
             else
             {
                 var node = new Node(session.RemoteNodeId, session.RemoteHost, session.RemotePort ?? 0);
-                peer = new Peer(node, _nodeStatsProvider.GetOrAddNodeStats(node))
+                peer = new Peer(node)
                 {
                     InSession = session
                 };
@@ -752,7 +748,7 @@ namespace Nethermind.Network
 
             if (AddActivePeer(session.RemoteNodeId, peer, "incoming connection"))
             {
-                peer.NodeStats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
+                _nodeStatsManager.ReportHandshakeEvent(peer.Node, ConnectionDirection.In);
                 // we also add this node to candidates for future connection (if we dont have it yet)
                 _candidatePeers.TryAdd(session.RemoteNodeId, peer);
             }
@@ -771,7 +767,7 @@ namespace Nethermind.Network
                     if (!ValidateP2PVersion(args.P2PVersion))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, incorrect P2PVersion: {args.P2PVersion}");
-                        session.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.P2PVersion;
+                        _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.P2PVersion);
                         await session.InitiateDisconnectAsync(DisconnectReason.IncompatibleP2PVersion);
                         return false;
                     }
@@ -779,7 +775,7 @@ namespace Nethermind.Network
                     if (!ValidateCapabilities(args.Capabilities))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, no Eth62 capability, supported capabilities: [{string.Join(",", args.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"))}]");
-                        session.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.Capabilities;
+                        _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.Capabilities);
                         await session.InitiateDisconnectAsync(DisconnectReason.UselessPeer);
                         return false;
                     }
@@ -791,7 +787,7 @@ namespace Nethermind.Network
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName((int) ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_synchronizationManager.ChainId)}");
 
-                        session.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.ChainId;
+                        _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
                         await session.InitiateDisconnectAsync(DisconnectReason.UselessPeer);
                         return false;
                     }
@@ -800,7 +796,7 @@ namespace Nethermind.Network
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {ethArgs.GenesisHash}, our: {_synchronizationManager.Genesis?.Hash}");
 
-                        session.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.DifferentGenesis;
+                        _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.DifferentGenesis);
                         await session.InitiateDisconnectAsync(DisconnectReason.BreachOfProtocol);
                         return false;
                     }
@@ -856,7 +852,7 @@ namespace Nethermind.Network
             if (_activePeers.TryGetValue(session.RemoteNodeId, out var activePeer))
             {
                 //we want to update reputation always
-                activePeer.NodeStats.AddNodeStatsDisconnectEvent(e.DisconnectType, e.DisconnectReason);
+                _nodeStatsManager.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
 
                 if (activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId)
                 {
@@ -866,12 +862,7 @@ namespace Nethermind.Network
 
                 RemovePeerIfDisconnected(activePeer, "session disconnected");
 
-                if (_logger.IsTrace)
-                {
-                    var log = _peerSessionLogger.GetEventHistoryLog(activePeer.NodeStats);
-                    //var log = GetEventHistoryLog(activePeer.NodeStats);
-                    _logger.Trace(log);
-                }
+                if (_logger.IsTrace) _nodeStatsManager.DumpNodeStats(activePeer.Node);
 
                 if (_isStarted)
                 {
@@ -906,7 +897,7 @@ namespace Nethermind.Network
             }
 
             var node = new Node(session.RemoteNodeId, session.RemoteHost, session.RemotePort ?? 0);
-            newPeer = new Peer(node, _nodeStatsProvider.GetOrAddNodeStats(node));
+            newPeer = new Peer(node);
             if (session.ConnectionDirection == ConnectionDirection.In)
             {
                 newPeer.InSession = session;
@@ -943,7 +934,7 @@ namespace Nethermind.Network
                     return;
                 }
 
-                peer.NodeStats.AddNodeStatsHandshakeEvent(ConnectionDirection.Out);
+                _nodeStatsManager.ReportHandshakeEvent(peer.Node, ConnectionDirection.Out);
             }
 
             if (_logger.IsTrace) _logger.Trace($"Handshake initialized for peer: {session.RemoteNodeId}");
@@ -959,7 +950,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            var peer = new Peer(nodeEventArgs.Node, nodeEventArgs.NodeStats)
+            var peer = new Peer(nodeEventArgs.Node)
             {
                 AddedToDiscovery = true
             };
@@ -969,7 +960,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            peer.NodeStats.AddNodeStatsEvent(NodeStatsEventType.NodeDiscovered);
+            _nodeStatsManager.ReportEvent(peer.Node, NodeStatsEventType.NodeDiscovered);
 
             if (_logger.IsTrace) _logger.Trace($"Adding newly discovered node to Candidates collection {id}@{nodeEventArgs.Node.Host}:{nodeEventArgs.Node.Port}");
 
@@ -1015,44 +1006,6 @@ namespace Nethermind.Network
             catch (Exception e)
             {
                 _logger.Error("Error during peer persistence timer stop", e);
-            }
-        }
-
-        private void StartPingTimer()
-        {
-            if (_logger.IsDebug) _logger.Debug("Starting ping timer");
-
-            _pingTimer = new System.Timers.Timer(_networkConfig.P2PPingInterval) {AutoReset = false};
-            _pingTimer.Elapsed += (sender, e) =>
-            {
-                try
-                {
-                    _pingTimer.Enabled = false;
-                    SendPingMessages();
-                }
-                catch (Exception exception)
-                {
-                    if (_logger.IsDebug) _logger.Error("Ping timer failed", exception);
-                }
-                finally
-                {
-                    _pingTimer.Enabled = true;
-                }
-            };
-
-            _pingTimer.Start();
-        }
-
-        private void StopPingTimer()
-        {
-            try
-            {
-                if (_logger.IsDebug) _logger.Debug("Stopping ping timer");
-                _pingTimer?.Stop();
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error during ping timer stop", e);
             }
         }
 
@@ -1105,7 +1058,7 @@ namespace Nethermind.Network
                 }
 
                 var peer = peers[node.NodeId];
-                var newRep = peer.NodeStats.NewPersistedNodeReputation;
+                long newRep = _nodeStatsManager.GetNewPersistedReputation(peer.Node);
                 if (newRep != node.Reputation)
                 {
                     node.Reputation = newRep;
@@ -1153,9 +1106,9 @@ namespace Nethermind.Network
             }
 
             var countToRemove = candidates.Length - _networkConfig.MaxCandidatePeerCount;
-            var failedValidationCandidates = candidates.Where(x => x.NodeStats?.FailedCompatibilityValidation.HasValue ?? false)
-                .OrderBy(x => x.NodeStats.CurrentNodeReputation).ToArray();
-            var otherCandidates = candidates.Except(failedValidationCandidates).OrderBy(x => x.NodeStats?.CurrentNodeReputation ?? -200).ToArray();
+            var failedValidationCandidates = candidates.Where(x => _nodeStatsManager.HasFailedValidation(x.Node))
+                .OrderBy(x => _nodeStatsManager.GetCurrentReputation(x.Node)).ToArray();
+            var otherCandidates = candidates.Except(failedValidationCandidates).OrderBy(x => _nodeStatsManager.GetCurrentReputation(x.Node)).ToArray();
             var nodesToRemove = failedValidationCandidates.Take(countToRemove).ToArray();
             var failedValidationRemovedCount = nodesToRemove.Length;
             var remainingCount = countToRemove - failedValidationRemovedCount;
@@ -1178,67 +1131,6 @@ namespace Nethermind.Network
             //_logger.Info($"nodesToRemove: \n{string.Join("\n", nodesToRemove.Select(x => $"{x.Node.Id}: {x.NodeStats.CurrentNodeReputation}"))}");
         }
 
-        private void SendPingMessages()
-        {
-            var task = Task.Run(SendPingMessagesAsync).ContinueWith(x =>
-            {
-                if (x.IsFaulted && _logger.IsError)
-                {
-                    _logger.Error($"Error during send ping messages: {x.Exception}");
-                }
-            });
-            task.Wait();
-        }
-
-        private async Task SendPingMessagesAsync()
-        {
-            var pingTasks = new List<(Peer peer, Task<bool> pingTask)>();
-            foreach (var activePeer in _activePeers.Values)
-            {
-                if (activePeer.InSession?.SessionState == SessionState.Initialized)
-                {
-                    var pingTask = SendPingMessage(activePeer.InSession);
-                    pingTasks.Add((activePeer, pingTask));
-                }
-
-                if (activePeer.OutSession?.SessionState == SessionState.Initialized)
-                {
-                    var pingTask = SendPingMessage(activePeer.OutSession);
-                    pingTasks.Add((activePeer, pingTask));
-                }
-            }
-
-            if (pingTasks.Any())
-            {
-                var tasks = await Task.WhenAll(pingTasks.Select(x => x.pingTask));
-                if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasks.Length} peers. Disconnected: {tasks.Count(x => x == false)}");
-            }
-            else if (_logger.IsTrace) _logger.Trace("Sent no ping messages.");
-        }
-
-        private async Task<bool> SendPingMessage(IP2PSession session)
-        {
-            if (session.P2PMessageSender == null)
-            {
-                // this would happen when session is initialized already but protocol is not yet initialized
-                // we do not have a separate session state for it at the moment
-                return true;
-            }
-            
-            for (var i = 0; i < _networkConfig.P2PPingRetryCount; i++)
-            {
-                var inSessionResult = await session.P2PMessageSender.SendPing();
-                if (inSessionResult)
-                {
-                    return true;
-                }
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"Disconnecting due to missed ping messages: {session.RemoteNodeId}");
-            await (session?.InitiateDisconnectAsync(DisconnectReason.ReceiveMessageTimeout) ?? Task.CompletedTask);
-            return false;
-        }
-
         private void OnSyncEvent(object sender, SyncEventArgs e)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Sync Event: {e.SyncStatus.ToString()}, NodeId: {e.Peer.NodeId}");
@@ -1246,7 +1138,7 @@ namespace Nethermind.Network
             if (_activePeers.TryGetValue(e.Peer.NodeId, out var activePeer) && !IsPeerDisconnected(activePeer))
             {
                 var nodeStatsEvent = GetSyncEventType(e.SyncStatus);
-                activePeer.NodeStats.AddNodeStatsSyncEvent(nodeStatsEvent, new SyncNodeDetails
+                _nodeStatsManager.ReportSyncEvent(activePeer.Node, nodeStatsEvent, new SyncNodeDetails
                 {
                     NodeBestBlockNumber = e.NodeBestBlockNumber,
                     OurBestBlockNumber = e.OurBestBlockNumber

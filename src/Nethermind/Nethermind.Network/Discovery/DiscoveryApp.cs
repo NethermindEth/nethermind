@@ -497,7 +497,7 @@ namespace Nethermind.Network.Discovery
             {
                 var managers = _discoveryManager.GetOrAddNodeLifecycleManagers();
                 //we need to update all notes to update reputation
-                _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host, x.ManagedNode.Port, x.ManagedNode.Description, x.NodeStats.NewPersistedNodeReputation)).ToArray());
+                _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host, x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation)).ToArray());
 
                 if (!_discoveryStorage.AnyPendingChange())
                 {

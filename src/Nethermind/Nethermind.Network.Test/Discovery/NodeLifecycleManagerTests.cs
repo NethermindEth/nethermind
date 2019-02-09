@@ -81,7 +81,7 @@ namespace Nethermind.Network.Test.Discovery
             _timestamp = new Timestamp();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(networkConfig, _timestamp), evictionManager, new NodeStatsProvider(statsConfig, logManager, true), networkConfig, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(networkConfig, _timestamp), evictionManager, new NodeStatsManager(statsConfig, logManager, true), networkConfig, logManager);
 
             _udpClient = Substitute.For<IMessageSender>();
 

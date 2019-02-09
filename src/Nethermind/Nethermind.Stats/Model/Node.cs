@@ -46,12 +46,10 @@ namespace Nethermind.Stats.Model
         public int Port { get; set; }
         public IPEndPoint Address { get; private set; }
         public bool IsDiscoveryNode { get; set; }
-        public string Description { get; set; }
+        public bool IsBootnode { get; set; }
+        public bool IsTrusted { get; set; }
 
-        public Node(PublicKey id)
-        {
-            Id = id;
-        }
+        public bool IsStatic { get; set; }
 
         public Node(PublicKey id, IPEndPoint address)
         {
@@ -64,15 +62,7 @@ namespace Nethermind.Stats.Model
         {
             Id = id;
             IsDiscoveryNode = isDiscovery;
-
-            try
-            {
-                InitializeAddress(host, port);
-            }
-            catch (Exception e)
-            {
-                // if(_logger.IsError) _logger.Error($"Unable to create node for host: {host}, port: {port} - {e.Message}");
-            }
+            InitializeAddress(host, port);
         }
 
         public Node(string host, int port)
@@ -83,14 +73,14 @@ namespace Nethermind.Stats.Model
             InitializeAddress(host, port);
         }
 
-        public void InitializeAddress(IPEndPoint address)
+        private void InitializeAddress(IPEndPoint address)
         {
             Host = address.Address.ToString();
             Port = address.Port;
             Address = address;
         }
 
-        public void InitializeAddress(string host, int port)
+        private void InitializeAddress(string host, int port)
         {
             Host = host;
             Port = port;
@@ -114,6 +104,7 @@ namespace Nethermind.Stats.Model
 
         public override int GetHashCode()
         {
+            // ReSharper disable once NonReadonlyMemberInGetHashCode
             return IdHash.GetHashCode();
         }
 

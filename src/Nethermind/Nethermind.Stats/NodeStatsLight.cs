@@ -50,7 +50,7 @@ namespace Nethermind.Stats
 
         private static int _statsLength = Enum.GetValues(typeof(NodeStatsEventType)).Length;
         
-        public NodeStatsLight(Node node, IStatsConfig statsConfig, ILogManager logManager)
+        public NodeStatsLight(Node node, IStatsConfig statsConfig)
         {
             _statCountersArray = new int[_statsLength];
             _statsConfig = statsConfig;

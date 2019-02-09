@@ -41,10 +41,9 @@ namespace Nethermind.Network.P2P
             IMessageSerializationService serializer,
             PublicKey localNodeId,
             int listenPort,
-            ILogManager logManager, IPerfService perfService)
+            ILogManager logManager)
             : base(p2PSession, serializer, logManager)
         {
-            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             LocalNodeId = localNodeId;
             ListenPort = listenPort;
             AgreedCapabilities = new List<Capability>();

@@ -21,13 +21,14 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Rlpx
 {
     public interface IRlpxPeer
     {
         Task Init();
-        Task ConnectAsync(PublicKey remoteId, string host, int port, INodeStats nodeStats);
+        Task ConnectAsync(Node node);
         Task Shutdown();
         PublicKey LocalNodeId { get; }
 

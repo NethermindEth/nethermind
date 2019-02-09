@@ -30,16 +30,17 @@ namespace Nethermind.Network.P2P
     public interface IP2PSession : IDisposable
     {
         SessionState SessionState { get; }
-        
+        bool IsClosing { get; }
         PublicKey RemoteNodeId { get; set; }
         PublicKey ObsoleteRemoteNodeId { get; set; }
         string RemoteHost { get; set; }
         int? RemotePort { get; set; }
         ConnectionDirection ConnectionDirection { get; }
-        string SessionId { get; }
-        INodeStats NodeStats { get; }
+        Guid SessionId { get; }
+        Node Node { get; }
         void ReceiveMessage(Packet packet);
         void DeliverMessage(Packet packet);
+        void EnableSnappy();
       
         IP2PMessageSender P2PMessageSender { get; set; }
         

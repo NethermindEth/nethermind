@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test
     {
         private TestRlpxPeer _localPeer;
         private PeerManager _peerManager;
-        private INodeStatsProvider _nodeStatsProvider;
+        private INodeStatsManager _nodeStatsManager;
         private IConfigProvider _configurationProvider;
         private IDiscoveryManager _discoveryManager;
         private ISynchronizationManager _synchronizationManager;
@@ -93,18 +93,18 @@ namespace Nethermind.Network.Test
             var nodeTable = new NodeTable(Substitute.For<IKeyStore>(), new NodeDistanceCalculator(networkConfig), networkConfig, _logManager);
             nodeTable.Initialize(key);
             
-            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(nodeTable, new DiscoveryMessageFactory(networkConfig, _timestamp), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _logManager, true), networkConfig, _logManager), nodeTable, new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager)), networkConfig, _logManager);
+            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(nodeTable, new DiscoveryMessageFactory(networkConfig, _timestamp), Substitute.For<IEvictionManager>(), new NodeStatsManager(_configurationProvider.GetConfig<IStatsConfig>(), _logManager, true), networkConfig, _logManager), nodeTable, new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager)), networkConfig, _logManager);
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
             _transactionPool = NullTransactionPool.Instance;
             _blockTree = Substitute.For<IBlockTree>();
             var app = new DiscoveryApp(new NodesLocator(nodeTable, _discoveryManager, _configurationProvider, _logManager), _discoveryManager, nodeTable, Substitute.For<IMessageSerializationService>(), new CryptoRandom(), Substitute.For<INetworkStorage>(), networkConfig, _logManager, new PerfService(_logManager));
             app.Initialize(key);
 
-            _nodeStatsProvider = new NodeStatsProvider(statsConfig, _logManager, true);
-            var sessionLogger = new PeerSessionLogger(_logManager, _configurationProvider, new PerfService(_logManager));
+            _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager, true);
+            var sessionLogger = new StatsDumper(_logManager, _configurationProvider, new PerfService(_logManager));
             sessionLogger.Init(Path.GetTempPath());
             var networkStorage = new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager));
-            _peerManager = new PeerManager(_localPeer, app, _synchronizationManager, _nodeStatsProvider, networkStorage, networkConfig, new PerfService(_logManager), _transactionPool, _logManager, sessionLogger);
+            _peerManager = new PeerManager(_localPeer, app, _synchronizationManager, _nodeStatsManager, networkStorage, networkConfig, new PerfService(_logManager), _transactionPool, _logManager, sessionLogger);
             _peerManager.Init(true);
         }
 
@@ -156,7 +156,7 @@ namespace Nethermind.Network.Test
             var node = new Node("192.1.1.1", 3333);
 
             //trigger connection initialized
-            var p2pSession = new TestP2PSession(_nodeStatsProvider);
+            var p2pSession = new TestP2PSession(_nodeStatsManager);
             p2pSession.RemoteNodeId = node.Id;
             p2pSession.RemoteHost = node.Host;
             p2pSession.RemotePort = node.Port;
@@ -269,7 +269,7 @@ namespace Nethermind.Network.Test
             ((NetworkConfig) _configurationProvider.GetConfig<INetworkConfig>()).ActivePeersMaxCount = 0;
 
             //trigger connection initialized
-            var p2pSession = new TestP2PSession(_nodeStatsProvider);
+            var p2pSession = new TestP2PSession(_nodeStatsManager);
             p2pSession.RemoteNodeId = node.Id;
             p2pSession.ConnectionDirection = ConnectionDirection.In;
             _localPeer.TriggerSessionCreated(p2pSession);
@@ -299,7 +299,7 @@ namespace Nethermind.Network.Test
             Assert.AreEqual(1, _peerManager.ActivePeers.Count);
 
             //trigger connection initialized
-            var p2pSession = new TestP2PSession(_nodeStatsProvider);
+            var p2pSession = new TestP2PSession(_nodeStatsManager);
             p2pSession.RemoteNodeId = node.Id;
             p2pSession.ConnectionDirection = connectionDirection;
             _localPeer.TriggerSessionCreated(p2pSession);
@@ -348,11 +348,11 @@ namespace Nethermind.Network.Test
 
     public class TestP2PSession : IP2PSession
     {
-        private readonly INodeStatsProvider _nodeStatsProvider;
+        private readonly INodeStatsManager _nodeStatsManager;
         public DisconnectReason DisconnectReason { get; set; }
 
         public SessionState SessionState { get; private set; }
-        public bool IsNdmConnection { get; set; }
+        public bool IsClosing { get; }
         public PublicKey RemoteNodeId { get; set; }
         public PublicKey ObsoleteRemoteNodeId { get; set; }
         public string RemoteHost { get; set; }
@@ -374,7 +374,7 @@ namespace Nethermind.Network.Test
                         throw new Exception("Cannot get NodeStats without NodeId");
                     }
 
-                    _nodeStats = _nodeStatsProvider.GetOrAddNodeStats(RemoteNodeId, RemoteHost, RemotePort ?? 0);
+                    _nodeStats = _nodeStatsManager.GetOrAddNodeStats(RemoteNodeId, RemoteHost, RemotePort ?? 0);
                 }
 
                 return _nodeStats;
@@ -382,9 +382,9 @@ namespace Nethermind.Network.Test
             set => _nodeStats = value;
         }
 
-        public TestP2PSession(INodeStatsProvider nodeStatsProvider)
+        public TestP2PSession(INodeStatsManager nodeStatsManager)
         {
-            _nodeStatsProvider = nodeStatsProvider;
+            _nodeStatsManager = nodeStatsManager;
             SessionId = Guid.NewGuid().ToString();
             SessionState = SessionState.New;
         }

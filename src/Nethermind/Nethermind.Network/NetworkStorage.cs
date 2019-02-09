@@ -72,7 +72,7 @@ namespace Nethermind.Network
                 var node = nodes[i];
                 _db[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
                 _updateCounter++;
-                if (_logger.IsTrace) _logger.Trace($"[{_dbDirectory}] Node update: {node.NodeId}, data: {node.Host}:{node.Port}, {node.Description}, {node.Reputation}");
+                if (_logger.IsTrace) _logger.Trace($"[{_dbDirectory}] Node update: {node.NodeId}, data: {node.Host}:{node.Port}, {node.Reputation}");
             }
         }
 
@@ -120,7 +120,7 @@ namespace Nethermind.Network
             foreach (var value in values)
             {
                 var node = GetNode(value);
-                sb.AppendLine($"{node.NodeId}@{node.Host}:{node.Port}, Desc: {node.Description}, Rep: {node.Reputation}");
+                sb.AppendLine($"{node.NodeId}@{node.Host}:{node.Port}, Rep: {node.Reputation}");
             }
 
             _logger.Trace(sb.ToString());

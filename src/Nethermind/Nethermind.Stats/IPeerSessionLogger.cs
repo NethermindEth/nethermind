@@ -16,14 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-using Nethermind.Stats.Model;
+using System.Collections.Generic;
+using Nethermind.Stats;
 
 namespace Nethermind.Stats
 {
-    public interface INodeStatsProvider
+    public interface IStatsDumper
     {
-        INodeStats GetOrAddNodeStats(Node node);
-        INodeStats GetOrAddNodeStats(PublicKey nodeId, string host, int port);
+        void Init(string logsDirectory);
+        void DumpStats(IReadOnlyCollection<INodeStats> nodes, bool logEventDetails);
+        void DumpNodeStats(INodeStats nodeStats);
     }
 }

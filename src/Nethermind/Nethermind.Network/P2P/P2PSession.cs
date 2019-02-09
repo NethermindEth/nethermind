@@ -42,7 +42,6 @@ namespace Nethermind.Network.P2P
         private readonly ILogger _logger;
         private readonly IMessageSerializationService _serializer;
         private readonly ISynchronizationManager _syncManager;
-        private readonly INodeStatsProvider _nodeStatsProvider;
         private readonly IPerfService _perfService;
         private readonly IBlockTree _blockTree;
         private readonly ITransactionPool _transactionPool;
@@ -55,7 +54,7 @@ namespace Nethermind.Network.P2P
 
         private Func<int, (string, int)> _adaptiveCodeResolver;
         private Func<(string ProtocolCode, int PacketType), int> _adaptiveEncoder;
-        private INodeStats _nodeStats;
+        private Node _node;
 
         public P2PSession(PublicKey localNodeId,
             PublicKey remoteId,
@@ -63,8 +62,6 @@ namespace Nethermind.Network.P2P
             ConnectionDirection connectionDirection,
             IMessageSerializationService serializer,
             ISynchronizationManager syncManager,
-            INodeStatsProvider nodeStatsProvider,
-            INodeStats nodeStats,
             ILogManager logManager,
             IChannel channel,
             IPerfService perfService,
@@ -75,7 +72,6 @@ namespace Nethermind.Network.P2P
             SessionState = SessionState.New;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
-            _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _blockTree = blockTree;
             _transactionPool = transactionPool;
@@ -83,15 +79,14 @@ namespace Nethermind.Network.P2P
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
             _logger = logManager.GetClassLogger<P2PSession>();
-
-            NodeStats = nodeStats;
             LocalNodeId = localNodeId;
             RemoteNodeId = remoteId;
             LocalPort = localPort;
-            SessionId = Guid.NewGuid().ToString();
+            SessionId = Guid.NewGuid();
             ConnectionDirection = connectionDirection;
         }
 
+        public bool IsClosing => SessionState > SessionState.Initialized;
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
         public PublicKey RemoteNodeId { get; set; }
@@ -99,28 +94,28 @@ namespace Nethermind.Network.P2P
         public string RemoteHost { get; set; }
         public int? RemotePort { get; set; }
         public ConnectionDirection ConnectionDirection { get; }
-        public string SessionId { get; }
-        
+        public Guid SessionId { get; }
+
         public IP2PMessageSender P2PMessageSender { get; set; }
 
-        public INodeStats NodeStats
+        public Node Node
         {
             get
             {
-                //It is needed for lazy creation of NodeStats, in case  IN connections, publicKey is available only after handshake
-                if (_nodeStats == null)
+                //It is needed for lazy creation of Node, in case  IN connections, publicKey is available only after handshake
+                if (_node == null)
                 {
                     if (RemoteNodeId == null)
                     {
                         throw new Exception("Cannot get NodeStats without NodeId");
                     }
 
-                    _nodeStats = _nodeStatsProvider.GetOrAddNodeStats(RemoteNodeId, RemoteHost, RemotePort ?? 0);
+                    _node = new Node(RemoteNodeId, RemoteHost, RemotePort ?? 0);
                 }
 
-                return _nodeStats;
+                return _node;
             }
-            set => _nodeStats = value;
+            set => _node = value;
         }
 
         // TODO: this should be one level up
@@ -273,7 +268,6 @@ namespace Nethermind.Network.P2P
         private object _sessionStateLock = new object();
 
         public SessionState SessionState { get; private set; }
-        public bool IsNdmConnection { get; set; }
 
         public async Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType)
         {

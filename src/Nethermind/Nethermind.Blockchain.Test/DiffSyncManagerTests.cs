@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Test
             {
                 _causeTimeoutOnInit = causeTimeoutOnInit;
                 _causeTimeoutOnBlocks = causeTimeoutOnBlocks;
-                NodeStats = new NodeStatsLight(new Node(NodeId), new StatsConfig(), LimboLogs.Instance);
+                NodeStats = new NodeStatsLight(new Node(NodeId, "host", 1234), new StatsConfig());
                 Blocks.Add(_genesisBlock);
                 ClientId = peerName;
             }

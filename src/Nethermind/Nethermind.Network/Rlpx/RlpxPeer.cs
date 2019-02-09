@@ -47,29 +47,35 @@ namespace Nethermind.Network.Rlpx
         public PublicKey LocalNodeId { get; private set; }
         private readonly int _localPort;
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
-        private readonly INodeStatsProvider _nodeStatsProvider;
         private readonly IMessageSerializationService _serializationService;
         private readonly ISynchronizationManager _synchronizationManager;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IPerfService _perfService;
         private readonly IBlockTree _blockTree;
+        private readonly ISessionMonitor _sessionMonitor;
         private readonly ITransactionPool _transactionPool;
         private readonly ITimestamp _timestamp;
 
-        public RlpxPeer(PublicKey localNodeId, int localPort, ISynchronizationManager synchronizationManager,
+        public RlpxPeer(
+            PublicKey localNodeId,
+            int localPort,
+            ISynchronizationManager synchronizationManager,
             IMessageSerializationService messageSerializationService,
-            IEncryptionHandshakeService encryptionHandshakeService, INodeStatsProvider nodeStatsProvider,
-            ILogManager logManager, IPerfService perfService,
-            IBlockTree blockTree, ITransactionPool transactionPool)
+            IEncryptionHandshakeService encryptionHandshakeService,
+            ILogManager logManager,
+            IPerfService perfService,
+            IBlockTree blockTree,
+            ISessionMonitor sessionMonitor,
+            ITransactionPool transactionPool)
         {
             _encryptionHandshakeService = encryptionHandshakeService ??
                                           throw new ArgumentNullException(nameof(encryptionHandshakeService));
-            _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _perfService = perfService;
-            _blockTree = blockTree;
-            _transactionPool = transactionPool;
+            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _timestamp = new Timestamp();
             _logger = logManager.GetClassLogger();
             _serializationService = messageSerializationService ??
@@ -132,9 +138,9 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        public async Task ConnectAsync(PublicKey remoteId, string host, int port, INodeStats nodeStats)
+        public async Task ConnectAsync(Node node)
         {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connecting to {remoteId}@{host}:{port}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connecting to {node.Id}@{node.Port}:{node.Host}");
 
             Bootstrap clientBootstrap = new Bootstrap();
             clientBootstrap.Group(_workerGroup);
@@ -143,32 +149,32 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Option(ChannelOption.TcpNodelay, true);
             clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
             clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
-            clientBootstrap.RemoteAddress(host, port);
+            clientBootstrap.RemoteAddress(node.Host, node.Port);
             
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
             {
-                InitializeChannel(ch, ConnectionDirection.Out, remoteId, host, port, nodeStats);
+                InitializeChannel(ch, ConnectionDirection.Out, node.Id, node.Host, node.Port);
             }));
 
-            var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
+            var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(node.Host), node.Port));
             var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10))));
             if (firstTask != connectTask)
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connection timed out: {remoteId}@{host}:{port}");
-                throw new NetworkingException($"Failed to connect to {remoteId} (timeout)", NetworkExceptionType.Timeout);
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connection timed out: {node.Id}@{node.Port}:{node.Host}");
+                throw new NetworkingException($"Failed to connect to {node.Id}@{node.Port}:{node.Host} (timeout)", NetworkExceptionType.Timeout);
             }
 
             if (connectTask.IsFaulted)
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Error when connecting to {remoteId}@{host}:{port}, error: {connectTask.Exception}");
+                    _logger.Trace($"Error when connecting to {node.Id}@{node.Port}:{node.Host}, error: {connectTask.Exception}");
                 }
 
-                throw new NetworkingException($"Failed to connect to {remoteId}", NetworkExceptionType.TargetUnreachable,connectTask.Exception);
+                throw new NetworkingException($"Failed to connect to {node.Id}@{node.Port}:{node.Host}", NetworkExceptionType.TargetUnreachable,connectTask.Exception);
             }
 
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connected to {remoteId}@{host}:{port}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connected to {node.Id}@{node.Port}:{node.Host}");
         }
 
         public event EventHandler<SessionEventArgs> SessionCreated;
@@ -191,8 +197,6 @@ namespace Nethermind.Network.Rlpx
                 connectionDirection,
                 _serializationService,
                 _synchronizationManager,
-                _nodeStatsProvider,
-                nodeStats,
                 _logManager, channel, _perfService, _blockTree, _transactionPool, _timestamp);
 
             if (connectionDirection == ConnectionDirection.Out)
@@ -208,6 +212,7 @@ namespace Nethermind.Network.Rlpx
                 session.RemotePort = remotePort;
             }
             
+            _sessionMonitor.AddSession(session);
             session.SessionDisconnected += SessionOnPeerDisconnected;
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 

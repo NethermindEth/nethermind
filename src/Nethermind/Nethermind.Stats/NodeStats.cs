@@ -20,19 +20,20 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Stats.Model;
 
+[assembly: InternalsVisibleTo("Nethermind.Benchmarks")]
 namespace Nethermind.Stats
 {
     /// <summary>
     /// Initial version of Reputation calculation mostly based on EthereumJ impl
     /// </summary>
-    public class NodeStats : INodeStats
+    internal class NodeStats : INodeStats
     {
         private readonly IStatsConfig _statsConfig;
-        private readonly ILogger _logger;
         private ConcurrentDictionary<NodeLatencyStatType, ConcurrentBag<NodeLatencyStatsEvent>> _latencyStatsLog;
         private ConcurrentDictionary<NodeLatencyStatType, (long EventCount, decimal? Latency)> _latencyStats;
         private ConcurrentDictionary<NodeLatencyStatType, object> _latencyStatsLocks;
@@ -43,11 +44,10 @@ namespace Nethermind.Stats
         private DateTime? _lastFailedConnectionTime;
         private static readonly Random Random = new Random();
         
-        public NodeStats(Node node, IStatsConfig statsConfig, ILogManager logManager)
+        public NodeStats(Node node, IStatsConfig statsConfig)
         {
             Node = node;
             _statsConfig = statsConfig;
-            _logger = logManager.GetClassLogger<NodeStats>();
             Initialize();
         }
 

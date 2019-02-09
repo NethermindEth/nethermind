@@ -25,15 +25,13 @@ namespace Nethermind.Network
 {
     public class Peer
     {
-        public Peer(Node node, INodeStats nodeStats)
+        public Peer(Node node)
         {
             Node = node;
-            NodeStats = nodeStats;
         }
 
         public Node Node { get; }
         public bool AddedToDiscovery { get; set; }
-        public INodeStats NodeStats { get; }
         public IP2PSession InSession { get; set; }
         public IP2PSession OutSession { get; set; }
         public ISynchronizationPeer SynchronizationPeer { get; set; }
