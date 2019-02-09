@@ -43,19 +43,12 @@ namespace Nethermind.Network.Test.P2P
         {
             IPacketSender sender = Substitute.For<IPacketSender>();
 
-            IMessageSerializationService service = Build.A.SerializationService().WithP2P().TestObject;
-
             P2PSession factory = new P2PSession(
                 NetTestVectors.StaticKeyA.PublicKey,
                 NetTestVectors.StaticKeyA.PublicKey,
                 ListenPort,
                 ConnectionDirection.Out,
-                service,
-                Substitute.For<ISynchronizationManager>(),
-                Substitute.For<INodeStatsManager>(),
-                Substitute.For<INodeStats>(),
-                NullLogManager.Instance, Substitute.For<IChannel>(), Substitute.For<IPerfService>(),
-                Substitute.For<IBlockTree>(), Substitute.For<ITransactionPool>(), Substitute.For<ITimestamp>());
+                NullLogManager.Instance, Substitute.For<IChannel>());
             factory.Init(4, Substitute.For<IChannelHandlerContext>(), sender);
 
             sender.Received().Enqueue(Arg.Is<Packet>(p => p.PacketType == 0 && p.Protocol == "p2p"));

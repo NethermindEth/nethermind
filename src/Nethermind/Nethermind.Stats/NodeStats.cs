@@ -26,6 +26,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Stats.Model;
 
 [assembly: InternalsVisibleTo("Nethermind.Benchmarks")]
+[assembly: InternalsVisibleTo("Nethermind.Network.Test")]
 namespace Nethermind.Stats
 {
     /// <summary>

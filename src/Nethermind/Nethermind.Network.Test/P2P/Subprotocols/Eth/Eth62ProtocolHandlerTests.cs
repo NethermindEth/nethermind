@@ -26,6 +26,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Stats;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -48,7 +49,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, syncManager, LimboLogs.Instance,
+            var handler = new Eth62ProtocolHandler(session, svc, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), syncManager, LimboLogs.Instance,
                 new PerfService(LimboLogs.Instance), blockTree, transactionPool, timestamp);
             handler.Init();
             
@@ -80,7 +81,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, syncManager, LimboLogs.Instance,
+            var handler = new Eth62ProtocolHandler(session, svc, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), syncManager, LimboLogs.Instance,
                 new PerfService(LimboLogs.Instance), blockTree, transactionPool, timestamp);
             handler.Init();
             

@@ -38,6 +38,7 @@ namespace Nethermind.Blockchain.Test
             Node = new Node(publicKey ?? TestObject.PublicKeyA, "host", 1234);
         }
 
+        public Guid Id { get; } = Guid.NewGuid();
         public bool IsFastSyncSupported => false;
         public Node Node { get; set; }
         public INodeStats NodeStats { get; set; }

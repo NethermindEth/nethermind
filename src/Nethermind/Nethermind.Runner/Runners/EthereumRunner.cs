@@ -104,7 +104,6 @@ namespace Nethermind.Runner.Runners
 
         private IBlockchainProcessor _blockchainProcessor;
         private IDiscoveryApp _discoveryApp;
-        private IDiscoveryManager _discoveryManager;
         private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
         private INodeStatsManager _nodeStatsManager;
         private IPerfService _perfService;
@@ -722,6 +721,7 @@ namespace Nethermind.Runner.Runners
                 txValidator,
                 _logManager,
                 _configProvider.GetConfig<IBlockchainConfig>(),
+                _nodeStatsManager,
                 _perfService,
                 receiptStorage);
 
@@ -866,23 +866,21 @@ namespace Nethermind.Runner.Runners
 
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             ISessionMonitor sessionMonitor = new SessionMonitor(networkConfig, _logManager);
-            _rlpxPeer = new RlpxPeer(_nodeKey.PublicKey, _initConfig.P2PPort,
-                _syncManager,
-                _messageSerializationService,
+            _rlpxPeer = new RlpxPeer(
+                _nodeKey.PublicKey,
+                _initConfig.P2PPort,
                 encryptionHandshakeServiceA,
-                _nodeStatsManager,
-                _logManager, _perfService,
-                _blockTree, sessionMonitor, _transactionPool);
+                _logManager,
+                _perfService,
+                sessionMonitor);
 
             await _rlpxPeer.Init();
 
             
             var peerStorage = new NetworkStorage(PeersDbPath, networkConfig, _logManager, _perfService);
-            var peerSessionLogger = new StatsDumper(_logManager, _configProvider, _perfService);
-            peerSessionLogger.Init(_initConfig.LogDirectory);
 
-            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _syncManager, _nodeStatsManager, peerStorage, _configProvider.GetConfig<INetworkConfig>(), _perfService, _transactionPool, _logManager, peerSessionLogger);
-            _peerManager.Init(_initConfig.DiscoveryEnabled);
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, _configProvider.GetConfig<INetworkConfig>(), _logManager);
+            _peerManager.Init();
         }
 
         private void StartPeer()
@@ -899,6 +897,12 @@ namespace Nethermind.Runner.Runners
 
         private void InitDiscovery()
         {
+            if (!_initConfig.DiscoveryEnabled)
+            {
+                _discoveryApp = new NullDiscoveryApp();
+                return;
+            }
+            
             INetworkConfig networkConfig = _configProvider.GetConfig<INetworkConfig>();
             networkConfig.MasterPort = _initConfig.DiscoveryPort;
 
@@ -941,7 +945,7 @@ namespace Nethermind.Runner.Runners
                 _logManager,
                 _perfService);
 
-            _discoveryManager = new DiscoveryManager(
+            var discoveryManager = new DiscoveryManager(
                 nodeLifeCycleFactory,
                 nodeTable,
                 discoveryStorage,
@@ -950,13 +954,13 @@ namespace Nethermind.Runner.Runners
 
             var nodesLocator = new NodesLocator(
                 nodeTable,
-                _discoveryManager,
+                discoveryManager,
                 _configProvider,
                 _logManager);
 
             _discoveryApp = new DiscoveryApp(
                 nodesLocator,
-                _discoveryManager,
+                discoveryManager,
                 nodeTable,
                 _messageSerializationService,
                 _cryptoRandom,

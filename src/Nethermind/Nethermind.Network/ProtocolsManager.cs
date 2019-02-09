@@ -249,18 +249,18 @@ namespace Nethermind.Network
             handler.ProtocolInitialized += (sender, args) =>
             {
                 if (RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
-                var ethEventArgs = (EthProtocolInitializedEventArgs) e;
+                var typedArgs = (EthProtocolInitializedEventArgs)args;
                 _stats.ReportEthInitializeEvent(session.Node, new EthNodeDetails
                 {
-                    ChainId = ethEventArgs.ChainId,
-                    BestHash = ethEventArgs.BestHash,
-                    GenesisHash = ethEventArgs.GenesisHash,
-                    Protocol = ethEventArgs.Protocol,
-                    ProtocolVersion = ethEventArgs.ProtocolVersion,
-                    TotalDifficulty = ethEventArgs.TotalDifficulty
+                    ChainId = typedArgs.ChainId,
+                    BestHash = typedArgs.BestHash,
+                    GenesisHash = typedArgs.GenesisHash,
+                    Protocol = typedArgs.Protocol,
+                    ProtocolVersion = typedArgs.ProtocolVersion,
+                    TotalDifficulty = typedArgs.TotalDifficulty
                 });
 
-                bool isValid = _protocolValidator.DisconnectOnInvalid(Protocol.Eth, session, e);
+                bool isValid = _protocolValidator.DisconnectOnInvalid(Protocol.Eth, session, args);
                 if (isValid)
                 {
                     if (_syncPeers.TryAdd(session.SessionId, handler))

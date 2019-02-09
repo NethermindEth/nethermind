@@ -62,6 +62,7 @@ namespace Nethermind.Blockchain.Test
                 ClientId = peerName;
             }
 
+            public Guid Id { get; } = Guid.NewGuid();
             public bool IsFastSyncSupported => false;
 
             public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "host", 1234);
@@ -318,8 +319,7 @@ namespace Nethermind.Blockchain.Test
             public SyncingContext AfterPeerIsAdded(ISynchronizationPeer syncPeer)
             {
                 _peers.TryAdd(syncPeer.ClientId, syncPeer);
-                var task = new Task(async () => { await SyncManager.AddPeer(syncPeer); });
-                task.RunSynchronously();
+                SyncManager.AddPeer(syncPeer);
                 return this;
             }
 

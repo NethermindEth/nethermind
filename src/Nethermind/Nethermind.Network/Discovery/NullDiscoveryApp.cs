@@ -16,24 +16,33 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Model;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Stats.Model;
-using NUnit.Framework;
 
-namespace Nethermind.Network.Test
+using System;
+using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
+using Nethermind.Stats.Model;
+
+namespace Nethermind.Network.Discovery
 {
-    [TestFixture]
-    public class NodeTests
+    public class NullDiscoveryApp : IDiscoveryApp
     {
-        [Test]
-        public void Can_parse_ipv6_prefixed_ip()
+        public void Initialize(PublicKey masterPublicKey)
         {
-            Node node = new Node(TestObject.PublicKeyA, "host", 1234);
-//            node.InitializeAddress("::ffff:73.224.122.50", 197379);
-            node.InitializeAddress("::ffff:73.224.122.50", 65535);
-            Assert.AreEqual(65535, node.Port);
-            Assert.AreEqual("73.224.122.50", node.Address.Address.MapToIPv4().ToString());
+        }
+
+        public void Start()
+        {
+        }
+
+        public Task StopAsync()
+        {
+            return Task.CompletedTask;
+        }
+
+        public event EventHandler<NodeEventArgs> NodeDiscovered;
+
+        public void AddNodeToDiscovery(Node node)
+        {
         }
     }
 }

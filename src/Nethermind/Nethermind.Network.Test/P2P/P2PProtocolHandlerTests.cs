@@ -21,6 +21,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -50,10 +51,10 @@ namespace Nethermind.Network.Test.P2P
         {
             return new P2PProtocolHandler(
                 _p2PSession,
+                new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), 
                 _serializer,
-                NetTestVectors.StaticKeyA.PublicKey, 
-                ListenPort,
-                NullLogManager.Instance, new PerfService(NullLogManager.Instance));
+                new PerfService(NullLogManager.Instance),
+                NullLogManager.Instance);
         }
 
         [Test]

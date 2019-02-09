@@ -54,7 +54,6 @@ namespace Nethermind.Network
         
         private int _logCounter = 1;
         private bool _isStarted;
-        private readonly IPerfService _perfService;
         private Task _storageCommitTask;
         private long _prevActivePeersCount;
         private readonly ManualResetEventSlim _peerUpdateRequested = new ManualResetEventSlim(false);
@@ -66,22 +65,16 @@ namespace Nethermind.Network
         public PeerManager(
             IRlpxPeer rlpxPeer,
             IDiscoveryApp discoveryApp,
-            ISynchronizationManager synchronizationManager,
             INodeStatsManager nodeStats,
             INetworkStorage peerStorage,
             INetworkConfig networkConfig,
-            IPerfService perfService,
-            ITransactionPool transactionPool,
             ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             
             _rlpxPeer = rlpxPeer ?? throw new ArgumentNullException(nameof(rlpxPeer));
-            _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
             _nodeStats = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
-            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _peerStorage.StartBatch();
@@ -98,7 +91,6 @@ namespace Nethermind.Network
         public void Init()
         {
             _discoveryApp.NodeDiscovered += OnNodeDiscovered;
-            _synchronizationManager.SyncEvent += OnSyncEvent;
 
             LoadConfiguredTrustedPeers();
             LoadPeersFromDb();
@@ -148,7 +140,6 @@ namespace Nethermind.Network
 
         public async Task StopAsync(ExitType exitType)
         {
-            var key = _perfService.StartPerfCalc();
             _cancellationTokenSource.Cancel();
 
             StopPeerPersistenceTimer();
@@ -173,7 +164,6 @@ namespace Nethermind.Network
             if (_logger.IsInfo) LogSessionStats(exitType == ExitType.DetailLogExit);
 
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
-            _perfService.EndPerfCalc(key, "Close: PeerManager");
         }
 
         public void LogSessionStats(bool logEventDetails)
@@ -232,8 +222,6 @@ namespace Nethermind.Network
                         break;
                     }
 
-                    Guid perfCalcKey = _perfService.StartPerfCalc();
-
                     availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
                     int nodesToTry = Math.Min(remainingCandidates.Count, availableActiveCount);
                     if (nodesToTry == 0)
@@ -281,7 +269,6 @@ namespace Nethermind.Network
                         Interlocked.Increment(ref newActiveNodes);
                     });
 
-                    _perfService.EndPerfCalc(perfCalcKey, "RunPeerUpdate");
                     connectionRounds++;
                 }
 

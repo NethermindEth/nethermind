@@ -55,7 +55,7 @@ namespace Nethermind.Network
                     var ethArgs = (EthProtocolInitializedEventArgs) eventArgs;
                     if (!ValidateChainId(ethArgs.ChainId))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName((int) ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_syncManager.ChainId)}");
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName((int) ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_chainId)}");
 
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
                         Disconnect(protocol, session, DisconnectReason.UselessPeer);
@@ -64,7 +64,7 @@ namespace Nethermind.Network
 
                     if (ethArgs.GenesisHash != _genesisHash)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {ethArgs.GenesisHash}, our: {_syncManager.Genesis?.Hash}");
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {ethArgs.GenesisHash}, our: {_genesisHash}");
 
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.DifferentGenesis);
                         Disconnect(protocol, session, DisconnectReason.BreachOfProtocol);
