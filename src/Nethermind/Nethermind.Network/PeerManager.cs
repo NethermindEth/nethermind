@@ -48,7 +48,6 @@ namespace Nethermind.Network
         private readonly IDiscoveryApp _discoveryApp;
         private readonly INetworkConfig _networkConfig;
         private readonly IRlpxPeer _rlpxPeer;
-        private readonly ISynchronizationManager _synchronizationManager;
         private readonly INodeStatsManager _nodeStats;
         private readonly INetworkStorage _peerStorage;
         private System.Timers.Timer _peerPersistenceTimer;
@@ -56,7 +55,6 @@ namespace Nethermind.Network
         private int _logCounter = 1;
         private bool _isStarted;
         private readonly IPerfService _perfService;
-        private readonly ITransactionPool _transactionPool;
         private Task _storageCommitTask;
         private long _prevActivePeersCount;
         private readonly ManualResetEventSlim _peerUpdateRequested = new ManualResetEventSlim(false);
@@ -335,12 +333,6 @@ namespace Nethermind.Network
                 bool success = _activePeers.TryRemove(peer.Node.Id, out Peer removedPeer);
                 if (success)
                 {
-                    if (peer.SynchronizationPeer != null)
-                    {
-                        _synchronizationManager.RemovePeer(peer.SynchronizationPeer);
-                        _transactionPool.RemovePeer(peer.Node.Id);
-                    }
-
                     removedPeer.InSession = null;
                     removedPeer.OutSession = null;
                 }
@@ -547,7 +539,6 @@ namespace Nethermind.Network
             peer.OutSession = session;
 
             if (_logger.IsTrace) _logger.Trace($"Initializing OUT connection (PeerManager) for peer: {session.RemoteNodeId}");
-            AddNodeToDiscovery(peer);
         }
 
         private ConnectionDirection SessionDirectionToKeep(PublicKey remoteNode)
@@ -753,11 +744,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            var peer = new Peer(nodeEventArgs.Node)
-            {
-                AddedToDiscovery = true
-            };
-
+            var peer = new Peer(nodeEventArgs.Node);
             if (!_candidatePeers.TryAdd(id, peer))
             {
                 return;
@@ -932,53 +919,6 @@ namespace Nethermind.Network
 
             //_logger.Info($"candidates: \n{string.Join("\n", candidates.Select(x => $"{x.Node.Id}: {x.NodeStats.CurrentNodeReputation}"))}");
             //_logger.Info($"nodesToRemove: \n{string.Join("\n", nodesToRemove.Select(x => $"{x.Node.Id}: {x.NodeStats.CurrentNodeReputation}"))}");
-        }
-
-        private void OnSyncEvent(object sender, SyncEventArgs e)
-        {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Sync Event: {e.SyncStatus.ToString()}, NodeId: {e.Peer.Node.Id}");
-
-            if (_activePeers.TryGetValue(e.Peer.Node.Id, out var activePeer) && !IsPeerDisconnected(activePeer))
-            {
-                var nodeStatsEvent = GetSyncEventType(e.SyncStatus);
-                _nodeStats.ReportSyncEvent(activePeer.Node, nodeStatsEvent, new SyncNodeDetails
-                {
-                    NodeBestBlockNumber = e.NodeBestBlockNumber,
-                    OurBestBlockNumber = e.OurBestBlockNumber
-                });
-
-                if (new[] {SyncStatus.InitFailed, SyncStatus.InitCancelled, SyncStatus.Failed, SyncStatus.Cancelled}.Contains(e.SyncStatus))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Initializing disconnect on sync {e.SyncStatus.ToString()} with node: {e.Peer.Node.Id}");
-                    //Fire and forget
-                    Task.Run(() => activePeer.InSession?.InitiateDisconnectAsync(DisconnectReason.Other) ?? Task.CompletedTask);
-                    Task.Run(() => activePeer.OutSession?.InitiateDisconnectAsync(DisconnectReason.Other) ?? Task.CompletedTask);
-                }
-            }
-            else if (_logger.IsTrace) _logger.Trace($"Sync failed, peer not in active collection: {e.Peer.Node.Id}");
-        }
-
-        private NodeStatsEventType GetSyncEventType(SyncStatus syncStatus)
-        {
-            switch (syncStatus)
-            {
-                case SyncStatus.InitCompleted:
-                    return NodeStatsEventType.SyncInitCompleted;
-                case SyncStatus.InitCancelled:
-                    return NodeStatsEventType.SyncInitCancelled;
-                case SyncStatus.InitFailed:
-                    return NodeStatsEventType.SyncInitFailed;
-                case SyncStatus.Started:
-                    return NodeStatsEventType.SyncStarted;
-                case SyncStatus.Completed:
-                    return NodeStatsEventType.SyncCompleted;
-                case SyncStatus.Failed:
-                    return NodeStatsEventType.SyncFailed;
-                case SyncStatus.Cancelled:
-                    return NodeStatsEventType.SyncCancelled;
-            }
-
-            throw new Exception($"SyncStatus not supported: {syncStatus.ToString()}");
         }
     }
 }

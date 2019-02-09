@@ -46,7 +46,7 @@ namespace Nethermind.Stats.Model
         public string Host { get; private set; }
         public int Port { get; set; }
         public IPEndPoint Address { get; private set; }
-        public bool IsDiscoveryNode { get; set; }
+        public bool AddedToDiscovery { get; set; }
         public bool IsBootnode { get; set; }
         public bool IsTrusted { get; set; }
 
@@ -57,14 +57,14 @@ namespace Nethermind.Stats.Model
         public Node(PublicKey id, IPEndPoint address)
         {
             Id = id;
-            IsDiscoveryNode = false;
+            AddedToDiscovery = false;
             InitializeAddress(address);
         }
 
-        public Node(PublicKey id, string host, int port, bool isDiscovery = false)
+        public Node(PublicKey id, string host, int port, bool addedToDiscovery = false)
         {
             Id = id;
-            IsDiscoveryNode = isDiscovery;
+            AddedToDiscovery = addedToDiscovery;
             InitializeAddress(host, port);
         }
 
@@ -72,7 +72,7 @@ namespace Nethermind.Stats.Model
         {
             Keccak512 socketHash = Keccak512.Compute($"{host}:{port}");
             Id = new PublicKey(socketHash.Bytes);
-            IsDiscoveryNode = true;
+            AddedToDiscovery = true;
             InitializeAddress(host, port);
         }
 
@@ -113,7 +113,7 @@ namespace Nethermind.Stats.Model
 
         public override string ToString()
         {
-            return $"Id: {Id}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {IsDiscoveryNode}";
+            return $"Id: {Id}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {AddedToDiscovery}";
         }
         
         public static bool operator ==(Node a, Node b)

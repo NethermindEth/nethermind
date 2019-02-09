@@ -16,19 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain
 {
     public interface ISynchronizationPeer
     {
+        Guid Id { get;}
         bool IsFastSyncSupported { get; }
         Node Node { get; }
         string ClientId { get; }

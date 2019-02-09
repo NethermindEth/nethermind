@@ -417,7 +417,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public async Task AddPeer(ISynchronizationPeer synchronizationPeer)
+        public void AddPeer(ISynchronizationPeer synchronizationPeer)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Adding synchronization peer {synchronizationPeer.Node.Id}");
             if (!_isInitialized)
@@ -437,7 +437,6 @@ namespace Nethermind.Blockchain
             Metrics.SyncPeers = _peers.Count;
 
             _peerRefreshQueue.Add(peerInfo);
-            await Task.CompletedTask;
         }
 
         public void RemovePeer(ISynchronizationPeer synchronizationPeer)

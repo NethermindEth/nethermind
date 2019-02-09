@@ -231,6 +231,8 @@ namespace Nethermind.Network.P2P
 
                 SessionState = SessionState.DisconnectingProtocols;
             }
+            
+            Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, DisconnectType.Local));
 
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (_protocols.Any())
@@ -293,6 +295,7 @@ namespace Nethermind.Network.P2P
             else if (_logger.IsWarn) _logger.Warn($"No subscriptions for PeerDisconnected for {RemoteNodeId}");
         }
 
+        public event EventHandler<DisconnectEventArgs> Disconnecting;
         public event EventHandler<DisconnectEventArgs> Disconnected;
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public event EventHandler<EventArgs> HandshakeComplete;

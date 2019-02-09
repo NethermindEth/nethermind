@@ -61,6 +61,7 @@ namespace Nethermind.Network.P2P
 
         void Handshake(PublicKey handshakeRemoteNodeId);
 
+        event EventHandler<DisconnectEventArgs> Disconnecting;
         event EventHandler<DisconnectEventArgs> Disconnected;
         event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         event EventHandler<EventArgs> Initialized;

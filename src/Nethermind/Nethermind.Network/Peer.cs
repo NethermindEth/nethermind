@@ -31,7 +31,6 @@ namespace Nethermind.Network
         }
 
         public Node Node { get; }
-        public bool AddedToDiscovery { get; set; }
         public IP2PSession InSession { get; set; }
         public IP2PSession OutSession { get; set; }
         public ISynchronizationPeer SynchronizationPeer { get; set; }

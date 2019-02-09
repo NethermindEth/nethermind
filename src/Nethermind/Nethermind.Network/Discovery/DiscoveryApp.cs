@@ -529,6 +529,7 @@ namespace Nethermind.Network.Discovery
         
         private void OnNewNodeDiscovered(object sender, NodeEventArgs e)
         {
+            e.Node.AddedToDiscovery = true;
             NodeDiscovered?.Invoke(this, e);
         }
     }
