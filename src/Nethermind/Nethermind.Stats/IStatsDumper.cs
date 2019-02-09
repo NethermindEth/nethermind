@@ -21,7 +21,7 @@ using Nethermind.Stats;
 
 namespace Nethermind.Stats
 {
-    public interface IStatsDumper
+    internal interface IStatsDumper
     {
         void Init(string logsDirectory);
         void DumpStats(IReadOnlyCollection<INodeStats> nodes, bool logEventDetails);
