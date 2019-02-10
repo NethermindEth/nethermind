@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
@@ -40,26 +41,57 @@ namespace Nethermind.Network.P2P
         private Node _node;
 
         public P2PSession(
-            PublicKey localNodeId,
             PublicKey remoteId,
             int localPort,
             ConnectionDirection direction,
             ILogManager logManager,
             IChannel channel)
         {
+            if (direction == ConnectionDirection.Out)
+            {
+                if (remoteId == null)
+                {
+                    throw new ArgumentNullException(nameof(remoteId), $"{nameof(remoteId)} cannot be null for outgoing session");
+                }
+            }
+            else
+            {
+                if (remoteId != null)
+                {
+                    throw new ArgumentException(nameof(remoteId), $"{nameof(remoteId)} cannot be non-null for incoming session before the handshake");
+                }
+            }
+            
             SessionState = SessionState.New;
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
             _logger = logManager.GetClassLogger<P2PSession>();
-            LocalNodeId = localNodeId;
             RemoteNodeId = remoteId;
+            LocalPort = localPort;
+            SessionId = Guid.NewGuid();
+            Direction = direction;
+        }
+        
+        public P2PSession(
+            int localPort,
+            ConnectionDirection direction,
+            ILogManager logManager,
+            IChannel channel,
+            Node node)
+        {
+            SessionState = SessionState.New;
+            _node = node ?? throw new ArgumentNullException(nameof(node));
+            _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+            _logger = logManager.GetClassLogger<P2PSession>();
+            RemoteNodeId = node.Id;
+            RemoteHost = node.Host;
+            RemotePort = node.Port;
             LocalPort = localPort;
             SessionId = Guid.NewGuid();
             Direction = direction;
         }
 
         public bool IsClosing => SessionState > SessionState.Initialized;
-        public PublicKey LocalNodeId { get; }
-        public int LocalPort { get; }
+        public int LocalPort { get; set; }
         public PublicKey RemoteNodeId { get; set; }
         public PublicKey ObsoleteRemoteNodeId { get; set; }
         public string RemoteHost { get; set; }

@@ -42,6 +42,7 @@ namespace Nethermind.Network
         private readonly ITransactionPool _transactionPool;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IMessageSerializationService _serializer;
+        private readonly IRlpxPeer _localPeer;
         private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
         private readonly IPerfService _perfService;
@@ -65,6 +66,7 @@ namespace Nethermind.Network
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _serializer = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
+            _localPeer = localPeer ?? throw new ArgumentNullException(nameof(localPeer));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
@@ -106,9 +108,9 @@ namespace Nethermind.Network
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Sync Event: {e.SyncStatus.ToString()}, NodeId: {e.Peer.Node.Id}");
 
-            if (!_sessions.TryGetValue(e.Peer.Id, out IP2PSession session))
+            if (!_sessions.TryGetValue(e.Peer.SessionId, out IP2PSession session))
             {
-                if (_logger.IsTrace) _logger.Trace($"Sync failed, peer not in active collection: {e.Peer.Node.Id}");
+                if (_logger.IsTrace) _logger.Trace($"Sync failed for an unknown session: {e.Peer.Node.Id} {e.Peer.SessionId}");
                 return;
             }
 
@@ -128,20 +130,9 @@ namespace Nethermind.Network
 
         private void SessionCreated(object sender, SessionEventArgs e)
         {
+            _sessions.TryAdd(e.Session.SessionId, e.Session);
             e.Session.Initialized += SessionInitialized;
             e.Session.Disconnected += SessionDisconnected;
-            e.Session.Disconnecting += SessionDisconnecting;
-        }
-
-        private void SessionDisconnecting(object sender, DisconnectEventArgs e)
-        {
-            IP2PSession session = (IP2PSession) sender;
-            if (_syncPeers.ContainsKey(session.SessionId))
-            {
-                ISynchronizationPeer syncPeer = _syncPeers[session.SessionId];
-                _syncManager.RemovePeer(syncPeer);
-                _transactionPool.AddPeer(syncPeer);
-            }
         }
 
         private void SessionDisconnected(object sender, DisconnectEventArgs e)
@@ -149,7 +140,15 @@ namespace Nethermind.Network
             IP2PSession session = (IP2PSession) sender;
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
-            session.Disconnecting -= SessionDisconnecting;
+            
+            if (_syncPeers.ContainsKey(session.SessionId))
+            {
+                ISynchronizationPeer syncPeer = _syncPeers[session.SessionId];
+                _syncManager.RemovePeer(syncPeer);
+                _transactionPool.RemovePeer(syncPeer.Node.Id);
+            }
+            
+            _sessions.TryRemove(session.SessionId, out session);
         }
 
         private ConcurrentDictionary<Guid, Eth62ProtocolHandler> _syncPeers = new ConcurrentDictionary<Guid, Eth62ProtocolHandler>();
@@ -177,7 +176,7 @@ namespace Nethermind.Network
             switch (protocolCode)
             {
                 case Protocol.P2P:
-                    P2PProtocolHandler handler = new P2PProtocolHandler(session, _stats, _serializer, _perfService, _logManager);
+                    P2PProtocolHandler handler = new P2PProtocolHandler(session, _localPeer.LocalNodeId, _stats, _serializer, _perfService, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
                     protocolHandler = handler;
@@ -195,7 +194,7 @@ namespace Nethermind.Network
                     protocolHandler = ethHandler;
                     break;
                 default:
-                    throw new NotSupportedException();
+                    throw new NotSupportedException($"Protocol {protocolCode} {version} is not supported");
             }
 
             protocolHandler.SubprotocolRequested += (sender, args) => InitProtocol(session, args.ProtocolCode, args.Version);
@@ -207,9 +206,8 @@ namespace Nethermind.Network
         {
             handler.ProtocolInitialized += (sender, args) =>
             {
-                if (RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
                 P2PProtocolInitializedEventArgs typedArgs = (P2PProtocolInitializedEventArgs) args;
-                if (RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
+                if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
 
                 if (handler.ProtocolVersion >= 5)
                 {
@@ -241,14 +239,13 @@ namespace Nethermind.Network
         {
             handler.ProtocolInitialized += (sender, args) =>
             {
-                if (RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
+                if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
                 var typedArgs = (EthProtocolInitializedEventArgs)args;
                 _stats.ReportEthInitializeEvent(session.Node, new EthNodeDetails
                 {
                     ChainId = typedArgs.ChainId,
                     BestHash = typedArgs.BestHash,
                     GenesisHash = typedArgs.GenesisHash,
-                    Protocol = typedArgs.Protocol,
                     ProtocolVersion = typedArgs.ProtocolVersion,
                     TotalDifficulty = typedArgs.TotalDifficulty
                 });
@@ -263,7 +260,7 @@ namespace Nethermind.Network
                     }
                     else
                     {
-                        session.InitiateDisconnect(DisconnectReason.BreachOfProtocol);
+                        session.InitiateDisconnect(DisconnectReason.ClientQuitting);
                     }
 
                     handler.ClientId = session.Node.ClientId;
@@ -283,11 +280,11 @@ namespace Nethermind.Network
             if (session.IsClosing)
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Protocol initialized on closing session {protocolCode} {protocolVersion}, Node: {session.RemoteNodeId}");
-                return true;
+                return false;
             }
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Protocol initialized {protocolCode} {protocolVersion}, Node: {session.RemoteNodeId}");
-            return false;
+            return true;
         }
 
         /// <summary>

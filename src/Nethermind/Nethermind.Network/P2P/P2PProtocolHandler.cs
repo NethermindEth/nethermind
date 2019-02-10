@@ -40,6 +40,7 @@ namespace Nethermind.Network.P2P
 
         public P2PProtocolHandler(
             IP2PSession session,
+            PublicKey localNodeId,
             INodeStatsManager nodeStatsManager,
             IMessageSerializationService serializer,
             IPerfService perfService,
@@ -48,8 +49,8 @@ namespace Nethermind.Network.P2P
         {
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
-            LocalNodeId = P2PSession.Node.Id;
-            ListenPort = P2PSession.Node.Port;
+            LocalNodeId = localNodeId;
+            ListenPort = session.LocalPort;
             AgreedCapabilities = new List<Capability>();
         }
 
@@ -125,7 +126,7 @@ namespace Nethermind.Network.P2P
             }
         }
 
-        public void HandleHello(HelloMessage hello)
+        private void HandleHello(HelloMessage hello)
         {
             bool isInbound = !_sentHello;
             

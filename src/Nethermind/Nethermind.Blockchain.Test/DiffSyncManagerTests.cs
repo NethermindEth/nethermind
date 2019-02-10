@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Test
                 ClientId = peerName;
             }
 
-            public Guid Id { get; } = Guid.NewGuid();
+            public Guid SessionId { get; } = Guid.NewGuid();
             public bool IsFastSyncSupported => false;
 
             public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);

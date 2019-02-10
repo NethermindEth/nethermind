@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain
 {
     public interface ISynchronizationPeer
     {
-        Guid Id { get;}
+        Guid SessionId { get;}
         bool IsFastSyncSupported { get; }
         Node Node { get; }
         string ClientId { get; }

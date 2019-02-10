@@ -19,6 +19,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -49,8 +50,10 @@ namespace Nethermind.Network.Test.P2P
 
         private P2PProtocolHandler CreateSession()
         {
+            _p2PSession.LocalPort.Returns(ListenPort);
             return new P2PProtocolHandler(
                 _p2PSession,
+                TestItem.PublicKeyA,
                 new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), 
                 _serializer,
                 new PerfService(NullLogManager.Instance),
@@ -78,14 +81,14 @@ namespace Nethermind.Network.Test.P2P
         public void Sets_local_node_id_from_constructor()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            Assert.AreEqual(p2PProtocolHandler.LocalNodeId, NetTestVectors.StaticKeyA.PublicKey);
+            Assert.AreEqual(p2PProtocolHandler.LocalNodeId, TestItem.PublicKeyA);
         }
 
         [Test]
         public void Sets_port_from_constructor()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            Assert.AreEqual(p2PProtocolHandler.ListenPort, ListenPort);
+            Assert.AreEqual(ListenPort, p2PProtocolHandler.ListenPort);
         }
     }
 }

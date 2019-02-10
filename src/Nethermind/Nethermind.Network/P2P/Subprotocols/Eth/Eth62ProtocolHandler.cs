@@ -98,7 +98,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public string ProtocolCode => "eth";
         public virtual int MessageIdSpaceSize => 8;
         
-        public Guid Id => P2PSession.SessionId; 
+        public Guid SessionId => P2PSession.SessionId; 
         public virtual bool IsFastSyncSupported => false;
         public Node Node => P2PSession.Node;
         public string ClientId { get; set; }
@@ -115,10 +115,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Init()
         {
-            Logger.Trace($"{P2PSession.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
+            if(Logger.IsTrace) Logger.Trace($"{P2PSession.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
             if (SyncManager.Head == null)
             {
-                throw new InvalidOperationException("Initializing sync protocol without the head block set");
+                throw new InvalidOperationException($"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
             }
 
             BlockHeader head = SyncManager.Head;

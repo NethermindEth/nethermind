@@ -44,8 +44,8 @@ namespace Nethermind.Network.Rlpx
         private IEventLoopGroup _workerGroup;
 
         private bool _isInitialized;
-        public PublicKey LocalNodeId { get; private set; }
-        private readonly int _localPort;
+        public PublicKey LocalNodeId { get; }
+        public int LocalPort { get; }
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
@@ -67,7 +67,7 @@ namespace Nethermind.Network.Rlpx
             _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
             _logger = logManager.GetClassLogger();
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
-            _localPort = localPort;
+            LocalPort = localPort;
         }
 
         public async Task Init()
@@ -92,11 +92,13 @@ namespace Nethermind.Network.Rlpx
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
                     {
-                        InitializeChannel(ch, ConnectionDirection.In, null,
-                            ((IPEndPoint) ch.RemoteAddress).Address.ToString(), ((IPEndPoint) ch.RemoteAddress).Port);
+                        P2PSession session = new P2PSession((PublicKey)null, LocalPort, ConnectionDirection.In, _logManager, ch);
+                        session.RemoteHost = ((IPEndPoint) ch.RemoteAddress).Address.ToString();
+                        session.RemotePort = ((IPEndPoint) ch.RemoteAddress).Port;
+                        InitializeChannel(ch, session);
                     }));
 
-                _bootstrapChannel = await bootstrap.BindAsync(_localPort).ContinueWith(t =>
+                _bootstrapChannel = await bootstrap.BindAsync(LocalPort).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -115,8 +117,7 @@ namespace Nethermind.Network.Rlpx
             catch (Exception ex)
             {
                 _logger.Error($"{nameof(Init)} failed.", ex);
-                // TODO: check what happens on nulls
-                await Task.WhenAll(_bossGroup?.ShutdownGracefullyAsync(), _workerGroup?.ShutdownGracefullyAsync());
+                await Task.WhenAll(_bossGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask, _workerGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask);
                 throw;
             }
         }
@@ -136,7 +137,10 @@ namespace Nethermind.Network.Rlpx
             
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
             {
-                InitializeChannel(ch, ConnectionDirection.Out, node.Id, node.Host, node.Port);
+                P2PSession session = new P2PSession(LocalPort, ConnectionDirection.Out, _logManager, ch, node);
+                session.RemoteHost = ((IPEndPoint) ch.RemoteAddress).Address.ToString();
+                session.RemotePort = ((IPEndPoint) ch.RemoteAddress).Port;
+                InitializeChannel(ch, session);
             }));
 
             var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(node.Host), node.Port));
@@ -162,9 +166,9 @@ namespace Nethermind.Network.Rlpx
 
         public event EventHandler<SessionEventArgs> SessionCreated;
         
-        private void InitializeChannel(IChannel channel, ConnectionDirection connectionDirection, PublicKey remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
+        private void InitializeChannel(IChannel channel, IP2PSession session)
         {
-            if (connectionDirection == ConnectionDirection.In)
+            if (session.Direction == ConnectionDirection.In)
             {
                 Metrics.IncomingConnections++;
             }
@@ -172,41 +176,25 @@ namespace Nethermind.Network.Rlpx
             {
                 Metrics.OutgoingConnections++;    
             }
-
-            P2PSession session = new P2PSession(
-                LocalNodeId,
-                remoteId,
-                _localPort,
-                connectionDirection,
-                _logManager,
-                channel);
-
-            if (connectionDirection == ConnectionDirection.Out)
+            
+            if (_logger.IsTrace)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Initializing {connectionDirection.ToString().ToUpper()} channel{(connectionDirection == ConnectionDirection.Out ? $": {remoteId}@{remoteHost}:{remotePort}" : string.Empty)}");
-                }
-
-                // this is the first moment we get confirmed publicKey of remote node in case of outgoing connections
-                session.RemoteNodeId = remoteId;
-                session.RemoteHost = remoteHost;
-                session.RemotePort = remotePort;
+                _logger.Trace($"Initializing {session.Direction.ToString().ToUpper()} channel{(session.Direction == ConnectionDirection.Out ? $": {session.RemoteNodeId}@{session.RemoteHost}:{session.RemotePort}" : string.Empty)}");
             }
             
             _sessionMonitor.AddSession(session);
             session.Disconnected += SessionOnPeerDisconnected;
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
-            HandshakeRole role = connectionDirection == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, remoteId, _logManager);
+            HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
+            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, session.RemoteNodeId, _logManager);
             
             IChannelPipeline pipeline = channel.Pipeline;
-            pipeline.AddLast(new LoggingHandler(connectionDirection.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
+//            pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
-            channel.CloseCompletion.ContinueWith(async x =>
+            channel.CloseCompletion.ContinueWith(x =>
             {
                 if (_logger.IsTrace)
                 {

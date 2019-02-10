@@ -31,6 +31,7 @@ namespace Nethermind.Network.Rlpx
         Task ConnectAsync(Node node);
         Task Shutdown();
         PublicKey LocalNodeId { get; }
+        int LocalPort { get; }
 
         event EventHandler<SessionEventArgs> SessionCreated;
     }
