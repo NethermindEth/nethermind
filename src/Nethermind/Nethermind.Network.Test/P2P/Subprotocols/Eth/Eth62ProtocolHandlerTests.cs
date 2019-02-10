@@ -43,14 +43,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             var session = Substitute.For<IP2PSession>();
             var syncManager = Substitute.For<ISynchronizationManager>();
-            var blockTree = Substitute.For<IBlockTree>();
             var transactionPool = Substitute.For<ITransactionPool>();
-            var timestamp = Substitute.For<ITimestamp>();
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), syncManager, LimboLogs.Instance,
-                new PerfService(LimboLogs.Instance), blockTree, transactionPool, timestamp);
+            var handler = new Eth62ProtocolHandler(
+                session,
+                svc,
+                new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
+                syncManager,
+                LimboLogs.Instance,
+                new PerfService(LimboLogs.Instance),
+                transactionPool);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
@@ -74,15 +78,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             var session = Substitute.For<IP2PSession>();
             var syncManager = Substitute.For<ISynchronizationManager>();
-            var blockTree = Substitute.For<IBlockTree>();
             var transactionPool = Substitute.For<ITransactionPool>();
-            var timestamp = Substitute.For<ITimestamp>();
             syncManager.Find(null, Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>()).Throws(new ArgumentNullException());
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), syncManager, LimboLogs.Instance,
-                new PerfService(LimboLogs.Instance), blockTree, transactionPool, timestamp);
+            var handler = new Eth62ProtocolHandler(
+                session,
+                svc,
+                new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
+                syncManager,
+                LimboLogs.Instance,
+                new PerfService(LimboLogs.Instance),
+                transactionPool);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();

@@ -39,7 +39,6 @@ namespace Nethermind.Network
     public class ProtocolsManager : IProtocolsManager
     {
         private readonly ISynchronizationManager _syncManager;
-        private readonly IBlockTree _blockTree;
         private readonly ITransactionPool _transactionPool;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IMessageSerializationService _serializer;
@@ -48,24 +47,21 @@ namespace Nethermind.Network
         private readonly IPerfService _perfService;
         private readonly INetworkStorage _peerStorage;
         private readonly ILogManager _logManager;
-        private readonly ITimestamp _timestamp = new Timestamp();
         private readonly ILogger _logger;
 
         public ProtocolsManager(
-            IRlpxPeer localPeer,
             ISynchronizationManager synchronizationManager,
-            IBlockTree blockTree,
             ITransactionPool transactionPool,
             IDiscoveryApp discoveryApp,
             IMessageSerializationService serializationService,
+            IRlpxPeer localPeer,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
-            IPerfService perfService,
             INetworkStorage peerStorage,
+            IPerfService perfService,
             ILogManager logManager)
         {
             _syncManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _serializer = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
@@ -196,8 +192,8 @@ namespace Nethermind.Network
                     }
 
                     Eth62ProtocolHandler ethHandler = version == 62
-                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncManager, _logManager, _perfService, _blockTree, _transactionPool, _timestamp)
-                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncManager, _logManager, _perfService, _blockTree, _transactionPool, _timestamp);
+                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncManager, _logManager, _perfService, _transactionPool)
+                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncManager, _logManager, _perfService, _transactionPool);
                     InitEthProtocol(session, ethHandler);
                     protocolHandler = ethHandler;
                     break;
