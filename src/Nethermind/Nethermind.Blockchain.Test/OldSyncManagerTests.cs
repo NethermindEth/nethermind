@@ -257,7 +257,7 @@ namespace Nethermind.Blockchain.Test
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(CancellationToken.None));
-            miner2.Node.Id.Returns(TestObject.PublicKeyB);
+            miner2.Node.Id.Returns(TestItem.PublicKeyB);
 
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()), "number as expected");
 
@@ -292,7 +292,7 @@ namespace Nethermind.Blockchain.Test
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(CancellationToken.None));
-            miner2.Node.Id.Returns(TestObject.PublicKeyB);
+            miner2.Node.Id.Returns(TestItem.PublicKeyB);
 
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()), "number as expected");
 
@@ -305,10 +305,10 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Can_retrieve_node_values()
         {
-            _stateDb.Set(TestObject.KeccakA, TestObject.RandomDataA);
-            byte[][] values = _manager.GetNodeData(new[] {TestObject.KeccakA, TestObject.KeccakB});
+            _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
+            byte[][] values = _manager.GetNodeData(new[] {TestItem.KeccakA, TestItem.KeccakB});
             Assert.AreEqual(2, values.Length, "data.Length");
-            Assert.AreEqual(TestObject.RandomDataA, values[0], "data[0]");
+            Assert.AreEqual(TestItem.RandomDataA, values[0], "data[0]");
             Assert.AreEqual(null, values[1], "data[1]");
         }
 
@@ -319,7 +319,7 @@ namespace Nethermind.Blockchain.Test
             Block block0 = _blockTree.FindBlock(0);
             Block block1 = _blockTree.FindBlock(1);
 
-            TransactionReceipt[][] transactionReceipts = _manager.GetReceipts(new[] {block0.Hash, block1.Hash, TestObject.KeccakA});
+            TransactionReceipt[][] transactionReceipts = _manager.GetReceipts(new[] {block0.Hash, block1.Hash, TestItem.KeccakA});
 
             Assert.AreEqual(3, transactionReceipts.Length, "data.Length");
             Assert.AreEqual(0, transactionReceipts[0].Length, "data[0]");

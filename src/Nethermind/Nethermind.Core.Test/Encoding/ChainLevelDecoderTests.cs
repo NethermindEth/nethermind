@@ -31,13 +31,13 @@ namespace Nethermind.Core.Test.Encoding
         public void Can_do_roundtrip()
         {
             BlockInfo blockInfo = new BlockInfo();
-            blockInfo.BlockHash = TestObject.KeccakA;
+            blockInfo.BlockHash = TestItem.KeccakA;
             blockInfo.TotalDifficulty = 1;
             blockInfo.TotalTransactions = 1;
             blockInfo.WasProcessed = true;
 
             BlockInfo blockInfo2 = new BlockInfo();
-            blockInfo2.BlockHash = TestObject.KeccakB;
+            blockInfo2.BlockHash = TestItem.KeccakB;
             blockInfo2.TotalDifficulty = 2;
             blockInfo2.TotalTransactions = 2;
             blockInfo2.WasProcessed = false;
@@ -50,7 +50,7 @@ namespace Nethermind.Core.Test.Encoding
             Assert.True(decoded.HasBlockOnMainChain, "has block on the main chain");
             Assert.True(decoded.BlockInfos[0].WasProcessed, "0 processed");
             Assert.False(decoded.BlockInfos[1].WasProcessed, "1 not processed");
-            Assert.AreEqual(TestObject.KeccakA, decoded.BlockInfos[0].BlockHash, "block hash");
+            Assert.AreEqual(TestItem.KeccakA, decoded.BlockInfos[0].BlockHash, "block hash");
             Assert.AreEqual(UInt256.One, decoded.BlockInfos[0].TotalDifficulty, "difficulty");
             Assert.AreEqual(UInt256.One, decoded.BlockInfos[0].TotalTransactions, "txs");
         }

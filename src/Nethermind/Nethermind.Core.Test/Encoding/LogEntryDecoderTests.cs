@@ -29,7 +29,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip()
         {
-            LogEntry logEntry = new LogEntry(TestObject.AddressA, new byte[] {1, 2, 3}, new [] {TestObject.KeccakA, TestObject.KeccakB});
+            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new [] {TestItem.KeccakA, TestItem.KeccakB});
             LogEntryDecoder decoder = new LogEntryDecoder();
             Rlp rlp = decoder.Encode(logEntry);
             LogEntry deserialized = decoder.Decode(rlp.Bytes.AsRlpContext());

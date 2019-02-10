@@ -110,7 +110,7 @@ namespace Nethermind.Network
 
         private async Task<bool> SendPingMessage(IP2PSession session)
         {
-            if (session.P2PMessageSender == null)
+            if (session.PingSender == null)
             {
                 /* this would happen when session is initialized already but the protocol is not yet initialized
                    we do not have a separate session state for it at the moment */
@@ -124,7 +124,7 @@ namespace Nethermind.Network
             
             for (var i = 0; i < _networkConfig.P2PPingRetryCount; i++)
             {
-                var pongReceived = await session.P2PMessageSender.SendPing();
+                var pongReceived = await session.PingSender.SendPing();
                 if (pongReceived)
                 {
                     return true;
@@ -132,7 +132,7 @@ namespace Nethermind.Network
             }
 
             if (_logger.IsTrace) _logger.Trace($"Disconnecting due to missed ping messages: {session.RemoteNodeId}");
-            await session.InitiateDisconnectAsync(DisconnectReason.ReceiveMessageTimeout);
+            session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout);
             return false;
         }
 

@@ -201,7 +201,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             _headersRequests.CompleteAdding();
             _bodiesRequests.CompleteAdding();
-            P2PSession.DisconnectAsync(disconnectReason, DisconnectType.Local);
+            P2PSession.Disconnect(disconnectReason, DisconnectType.Local);
         }
 
         public void SendNewBlock(Block block)

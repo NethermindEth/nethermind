@@ -45,7 +45,7 @@ namespace Nethermind.Evm.Test
         [Test(Description = "Refunds should not be given when the call fails due to lack of gas for code deposit payment")]
         public void Regression_mainnet_6108276()
         {
-            Address deployed = Address.OfContract(TestObject.AddressC, 0);
+            Address deployed = Address.OfContract(TestItem.AddressC, 0);
             StorageAddress storageAddress = new StorageAddress(deployed, 1);
 
             byte[] deployedCode = new byte[100]; // cost is * 200
@@ -65,12 +65,12 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .Call(TestObject.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
+                .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
 
             var receipt = Execute(code);
@@ -78,7 +78,7 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(new byte[] {0}, result, "storage reverted");
             Assert.AreEqual(98777, receipt.GasSpent, "no refund");
             
-            byte[] returnData = Storage.Get(new StorageAddress(TestObject.AddressC, 0));
+            byte[] returnData = Storage.Get(new StorageAddress(TestItem.AddressC, 0));
             Assert.AreEqual(new byte[1], returnData, "address returned");
         }
         
@@ -86,7 +86,7 @@ namespace Nethermind.Evm.Test
         public void Regression_mainnet_226522()
         {
             _blockNumber = 1;
-            Address deployed = Address.OfContract(TestObject.AddressC, 0);
+            Address deployed = Address.OfContract(TestItem.AddressC, 0);
             StorageAddress storageAddress = new StorageAddress(deployed, 1);
 
             byte[] deployedCode = new byte[106]; // cost is * 200
@@ -106,12 +106,12 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .Call(TestObject.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
+                .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
 
             var receipt = Execute(code);
@@ -119,7 +119,7 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(new byte[] {0}, result, "storage reverted");
             Assert.AreEqual(83136, receipt.GasSpent, "with refund");
             
-            byte[] returnData = Storage.Get(new StorageAddress(TestObject.AddressC, 0));
+            byte[] returnData = Storage.Get(new StorageAddress(TestItem.AddressC, 0));
             Assert.AreEqual(deployed.Bytes, returnData, "address returned");
         }
     }

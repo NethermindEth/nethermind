@@ -59,10 +59,10 @@ namespace Nethermind.Blockchain.Test
         }
 
         private Transaction GetSignedTransaction(Address to = null)
-            => Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, 1).TestObject;
+            => Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, 1).TestObject;
 
         private static TransactionReceipt GetReceipt(Transaction transaction)
-            => Build.A.TransactionReceipt.WithState(TestObject.KeccakB)
+            => Build.A.TransactionReceipt.WithState(TestItem.KeccakB)
                 .WithTransactionHash(transaction.Hash).TestObject;
     }
 }

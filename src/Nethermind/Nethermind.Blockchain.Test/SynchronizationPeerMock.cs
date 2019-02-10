@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Test
         public SynchronizationPeerMock(IBlockTree blockTree, PublicKey publicKey = null)
         {
             _blockTree = blockTree;
-            Node = new Node(publicKey ?? TestObject.PublicKeyA, "127.0.0.1", 1234);
+            Node = new Node(publicKey ?? TestItem.PublicKeyA, "127.0.0.1", 1234);
         }
 
         public Guid Id { get; } = Guid.NewGuid();

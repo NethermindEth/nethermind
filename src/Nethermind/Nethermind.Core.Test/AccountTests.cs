@@ -18,7 +18,7 @@ namespace Nethermind.Core.Test
         public void Test_just_empty()
         {
             Account account = Account.TotallyEmpty;
-            account = account.WithChangedStorageRoot(TestObject.KeccakA);
+            account = account.WithChangedStorageRoot(TestItem.KeccakA);
             Assert.False(account.IsTotallyEmpty, "totally empty");
             Assert.True(account.IsEmpty, "empty");
         }

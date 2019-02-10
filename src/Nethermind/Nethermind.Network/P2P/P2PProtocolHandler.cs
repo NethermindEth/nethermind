@@ -30,7 +30,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    public class P2PProtocolHandler : ProtocolHandlerBase, IProtocolHandler, IP2PMessageSender
+    public class P2PProtocolHandler : ProtocolHandlerBase, IProtocolHandler, IPingSender
     {
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly IPerfService _perfService;
@@ -322,7 +322,7 @@ namespace Nethermind.Network.P2P
             }
             
             // Received disconnect message, triggering direct TCP disconnection
-            P2PSession.DisconnectAsync(disconnectReason, DisconnectType.Remote);
+            P2PSession.Disconnect(disconnectReason, DisconnectType.Remote);
         }
 
         private void HandlePong(Packet msg)

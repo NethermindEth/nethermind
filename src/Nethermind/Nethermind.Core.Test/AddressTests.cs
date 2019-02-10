@@ -179,7 +179,7 @@ namespace Nethermind.Core.Test
         [TestCase(1, "0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8")]
         public void Of_contract(long nonce, string expectedAddress)
         {
-            Address address = Address.OfContract(TestObject.AddressA, (UInt256)nonce);
+            Address address = Address.OfContract(TestItem.AddressA, (UInt256)nonce);
             Assert.AreEqual(address, new Address(expectedAddress));
         }
     }

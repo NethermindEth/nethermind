@@ -22,17 +22,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
-using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
@@ -50,7 +43,7 @@ namespace Nethermind.Network.P2P
             PublicKey localNodeId,
             PublicKey remoteId,
             int localPort,
-            ConnectionDirection connectionDirection,
+            ConnectionDirection direction,
             ILogManager logManager,
             IChannel channel)
         {
@@ -61,7 +54,7 @@ namespace Nethermind.Network.P2P
             RemoteNodeId = remoteId;
             LocalPort = localPort;
             SessionId = Guid.NewGuid();
-            ConnectionDirection = connectionDirection;
+            Direction = direction;
         }
 
         public bool IsClosing => SessionState > SessionState.Initialized;
@@ -71,7 +64,7 @@ namespace Nethermind.Network.P2P
         public PublicKey ObsoleteRemoteNodeId { get; set; }
         public string RemoteHost { get; set; }
         public int? RemotePort { get; set; }
-        public ConnectionDirection ConnectionDirection { get; }
+        public ConnectionDirection Direction { get; }
         public Guid SessionId { get; }
 
         public Node Node
@@ -81,9 +74,9 @@ namespace Nethermind.Network.P2P
                 //It is needed for lazy creation of Node, in case  IN connections, publicKey is available only after handshake
                 if (_node == null)
                 {
-                    if (RemoteNodeId == null)
+                    if (RemoteNodeId == null || RemoteHost == null || RemotePort == 0)
                     {
-                        throw new Exception("Cannot get NodeStats without NodeId");
+                        throw new InvalidOperationException("Cannot create a session's node object without knowing remote node details");
                     }
 
                     _node = new Node(RemoteNodeId, RemoteHost, RemotePort ?? 0);
@@ -94,7 +87,6 @@ namespace Nethermind.Network.P2P
             set => _node = value;
         }
 
-        // TODO: this should be one level up
         public void EnableSnappy()
         {
             lock (_sessionStateLock)
@@ -116,7 +108,7 @@ namespace Nethermind.Network.P2P
             _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new SnappyEncoder(_logger));
         }
 
-        public IP2PMessageSender P2PMessageSender { get; set; }
+        public IPingSender PingSender { get; set; }
 
         public void DeliverMessage(Packet packet)
         {
@@ -172,9 +164,17 @@ namespace Nethermind.Network.P2P
 
         public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
         {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            if (packetSender == null) throw new ArgumentNullException(nameof(packetSender));
+
             P2PVersion = p2PVersion;
             lock (_sessionStateLock)
             {
+                if (SessionState == SessionState.Disconnected)
+                {
+                    return;
+                }
+                
                 if (SessionState != SessionState.HandshakeComplete)
                 {
                     throw new InvalidOperationException($"{nameof(Init)} called on session that is not in the {nameof(HandshakeComplete)} state");
@@ -182,7 +182,6 @@ namespace Nethermind.Network.P2P
 
                 _context = context;
                 _packetSender = packetSender;
-
                 SessionState = SessionState.Initialized;
             }
 
@@ -220,7 +219,7 @@ namespace Nethermind.Network.P2P
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 
-        public async Task InitiateDisconnectAsync(DisconnectReason disconnectReason)
+        public void InitiateDisconnect(DisconnectReason disconnectReason)
         {
             lock (_sessionStateLock)
             {
@@ -231,26 +230,31 @@ namespace Nethermind.Network.P2P
 
                 SessionState = SessionState.DisconnectingProtocols;
             }
-            
-            Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, DisconnectType.Local));
 
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (_protocols.Any())
             {
                 foreach (var protocolHandler in _protocols.Values)
                 {
-                    protocolHandler.Disconnect(disconnectReason);
+                    try
+                    {
+                        protocolHandler.Disconnect(disconnectReason);
+                    }
+                    catch (Exception e)
+                    {
+                        if(_logger.IsDebug) _logger.Error($"DEBUG/ERROR Failed to disconnect {protocolHandler.ProtocolCode} {protocolHandler.ProtocolVersion} correctly", e);
+                    }
                 }
             }
 
-            await DisconnectAsync(disconnectReason, DisconnectType.Local);
+            Disconnect(disconnectReason, DisconnectType.Local);
         }
 
         private object _sessionStateLock = new object();
         public byte P2PVersion { get; private set; }
         public SessionState SessionState { get; private set; }
 
-        public async Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType)
+        public void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType)
         {
             lock (_sessionStateLock)
             {
@@ -262,18 +266,21 @@ namespace Nethermind.Network.P2P
                 SessionState = SessionState.Disconnecting;
             }
 
+            Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, DisconnectType.Local));
+
             //Possible in case of disconnect before p2p initialization
             if (_context == null)
             {
                 //in case pipeline did not get to p2p - no disconnect delay
-                await _channel.DisconnectAsync().ContinueWith(x =>
+                _channel.DisconnectAsync().ContinueWith(x =>
                 {
                     if (x.IsFaulted && _logger.IsTrace) _logger.Trace($"Error while disconnecting on channel: {x.Exception}");
                 });
             }
             else
             {
-                await Task.Delay(Timeouts.Disconnection).ContinueWith(t =>
+                var delayTask = disconnectType == DisconnectType.Local ? Task.Delay(Timeouts.Disconnection) : Task.CompletedTask;
+                delayTask.ContinueWith(t =>
                 {
                     _context.DisconnectAsync().ContinueWith(x =>
                     {
@@ -290,9 +297,9 @@ namespace Nethermind.Network.P2P
 
             if (Disconnected != null)
             {
-                Disconnected.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
+                Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
             }
-            else if (_logger.IsWarn) _logger.Warn($"No subscriptions for PeerDisconnected for {RemoteNodeId}");
+            else if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected for {RemoteNodeId}");
         }
 
         public event EventHandler<DisconnectEventArgs> Disconnecting;
@@ -319,22 +326,19 @@ namespace Nethermind.Network.P2P
 
         private IPacketSender _packetSender;
 
-
-        private Dictionary<string, IProtocolHandler> _protocolHandlers = new Dictionary<string, IProtocolHandler>();
-
         public void AddProtocolHandler(IProtocolHandler handler)
         {
-            if (_protocolHandlers.ContainsKey(handler.ProtocolCode))
+            if (_protocols.ContainsKey(handler.ProtocolCode))
             {
                 throw new InvalidOperationException($"{RemoteNodeId} Session for protocol {handler.ProtocolCode} already started");
             }
-            
-            if (handler.ProtocolCode != Protocol.P2P && !_protocolHandlers.ContainsKey(Protocol.P2P))
+
+            if (handler.ProtocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
             {
                 throw new InvalidOperationException($"{Protocol.P2P} protocolHandler has to be started before starting {handler.ProtocolCode} protocolHandler");
             }
 
-            _protocolHandlers.Add(handler.ProtocolCode, handler);
+            _protocols.Add(handler.ProtocolCode, handler);
             _resolver = GetOrCreateResolver();
         }
 
@@ -342,10 +346,10 @@ namespace Nethermind.Network.P2P
 
         private AdaptiveCodeResolver GetOrCreateResolver()
         {
-            string key = string.Join(":", _protocolHandlers.Select(p => p.Key).OrderBy(x => x).ToArray());
+            string key = string.Join(":", _protocols.Select(p => p.Key).OrderBy(x => x).ToArray());
             if (!_resolvers.ContainsKey(key))
             {
-                _resolvers[key] = new AdaptiveCodeResolver(_protocolHandlers);
+                _resolvers[key] = new AdaptiveCodeResolver(_protocols);
             }
 
             return _resolvers[key];
@@ -381,8 +385,7 @@ namespace Nethermind.Network.P2P
                     offset += _alphabetically[j].SpaceSize;
                 }
 
-//                if (_logger.IsTrace) _logger.Warn($"Could not resolve message id from {dynamicId} with known: {string.Join(", ", alphabetically.Select(x => $"{x.ProtocolCode} {x.SpaceSize}"))}");
-
+                // consider disconnecting on the breach of protocol here?
                 return (null, 0);
             }
 
@@ -393,13 +396,18 @@ namespace Nethermind.Network.P2P
                 {
                     if (_alphabetically[j].ProtocolCode == protocol)
                     {
+                        if (_alphabetically[j].SpaceSize <= messageCode)
+                        {
+                            break;
+                        }
+                        
                         return offset + messageCode;
                     }
 
                     offset += _alphabetically[j].SpaceSize;
                 }
 
-                return messageCode;
+                throw new InvalidOperationException($"Registered protocols do not support {protocol}.{messageCode}");
             }
         }
     }

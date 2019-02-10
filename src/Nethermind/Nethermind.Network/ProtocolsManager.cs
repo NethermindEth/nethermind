@@ -101,6 +101,7 @@ namespace Nethermind.Network
 
         private ConcurrentDictionary<Guid, IP2PSession> _sessions = new ConcurrentDictionary<Guid, IP2PSession>();
 
+        [Todo(Improve.Refactor, "this can be all in SyncManager now")]
         private void OnSyncEvent(object sender, SyncEventArgs e)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Sync Event: {e.SyncStatus.ToString()}, NodeId: {e.Peer.Node.Id}");
@@ -121,11 +122,7 @@ namespace Nethermind.Network
             if (new[] {SyncStatus.InitFailed, SyncStatus.InitCancelled, SyncStatus.Failed, SyncStatus.Cancelled}.Contains(e.SyncStatus))
             {
                 if (_logger.IsDebug) _logger.Debug($"Initializing disconnect on sync {e.SyncStatus.ToString()} with node: {e.Peer.Node.Id}");
-                session.InitiateDisconnectAsync(DisconnectReason.Other).ContinueWith(
-                    t =>
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Failed to disconnect a session after a synchronizaton failure {session.RemoteNodeId}");
-                    });
+                session.InitiateDisconnect(DisconnectReason.Other);
             }
         }
 
@@ -181,7 +178,7 @@ namespace Nethermind.Network
             {
                 case Protocol.P2P:
                     P2PProtocolHandler handler = new P2PProtocolHandler(session, _stats, _serializer, _perfService, _logManager);
-                    session.P2PMessageSender = handler;
+                    session.PingSender = handler;
                     InitP2PProtocol(session, handler);
                     protocolHandler = handler;
                     break;
@@ -266,13 +263,7 @@ namespace Nethermind.Network
                     }
                     else
                     {
-                        session.DisconnectAsync(DisconnectReason.Other, DisconnectType.Local).ContinueWith(t =>
-                        {
-                            if (t.IsFaulted)
-                            {
-                                if (_logger.IsDebug) _logger.Debug($"Failed to disconnect {session.RemoteNodeId}");
-                            }
-                        });
+                        session.InitiateDisconnect(DisconnectReason.BreachOfProtocol);
                     }
 
                     handler.ClientId = session.Node.ClientId;
@@ -306,13 +297,13 @@ namespace Nethermind.Network
         {
             if (eventArgs.ListenPort == 0)
             {
-                if (_logger.IsTrace) _logger.Trace($"Listen port is 0, node is not listening: {session.Node.Id}, ConnectionType: {session.ConnectionDirection}, nodePort: {session.Node.Port}");
+                if (_logger.IsTrace) _logger.Trace($"Listen port is 0, node is not listening: {session.Node.Id}, ConnectionType: {session.Direction}, nodePort: {session.Node.Port}");
                 return;
             }
 
             if (session.Node.Port != eventArgs.ListenPort)
             {
-                if (_logger.IsDebug) _logger.Debug($"Updating listen port for node: {session.Node.Id}, ConnectionType: {session.ConnectionDirection}, from: {session.Node.Port} to: {eventArgs.ListenPort}");
+                if (_logger.IsDebug) _logger.Debug($"Updating listen port for node: {session.Node.Id}, ConnectionType: {session.Direction}, from: {session.Node.Port} to: {eventArgs.ListenPort}");
 
                 if (session.Node.AddedToDiscovery)
                 {

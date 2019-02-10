@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_do_roundtrip()
         {
-            TestSerialization(TestObject.KeccakA, (a, b) => a.Equals(b));
+            TestSerialization(TestItem.KeccakA, (a, b) => a.Equals(b));
         }
     }
 }

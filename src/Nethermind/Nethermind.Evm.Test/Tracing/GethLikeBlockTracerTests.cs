@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Starts_with_trace_set_to_null()
         {
-            Keccak txHash = TestObject.KeccakA;
+            Keccak txHash = TestItem.KeccakA;
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(txHash);
             Assert.IsNull(blockTracer.BuildResult().SingleOrDefault(), $"starts with trace set to null");
         }
@@ -40,9 +40,9 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Throws_when_recording_unexpected_trace()
         {
-            Keccak txHash = TestObject.KeccakA;
+            Keccak txHash = TestItem.KeccakA;
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(txHash);
-            Assert.Throws<InvalidOperationException>(() => ((IBlockTracer) blockTracer).StartNewTxTrace(TestObject.KeccakB));
+            Assert.Throws<InvalidOperationException>(() => ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakB));
         }
 
         [Test]
@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                ((IBlockTracer) blockTracer).StartNewTxTrace(TestObject.KeccakA);
+                ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakA);
                 ((IBlockTracer) blockTracer).EndTxTrace();    
             }
             
@@ -69,13 +69,13 @@ namespace Nethermind.Evm.Test.Tracing
             block.Transactions = new Transaction[3];
 
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer();
-            ((IBlockTracer) blockTracer).StartNewTxTrace(TestObject.KeccakA);
+            ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakA);
             ((IBlockTracer) blockTracer).EndTxTrace();
 
-            ((IBlockTracer) blockTracer).StartNewTxTrace(TestObject.KeccakB);
+            ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakB);
             ((IBlockTracer) blockTracer).EndTxTrace();
 
-            ((IBlockTracer) blockTracer).StartNewTxTrace(TestObject.KeccakC);
+            ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakC);
             ((IBlockTracer) blockTracer).EndTxTrace();
 
             Assert.NotNull(blockTracer.BuildResult().First(), "0");

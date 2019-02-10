@@ -36,14 +36,14 @@ namespace Nethermind.Network.P2P
         PublicKey ObsoleteRemoteNodeId { get; set; }
         string RemoteHost { get; set; }
         int? RemotePort { get; set; }
-        ConnectionDirection ConnectionDirection { get; }
+        ConnectionDirection Direction { get; }
         Guid SessionId { get; }
         Node Node { get; }
         void ReceiveMessage(Packet packet);
         void DeliverMessage(Packet packet);
         void EnableSnappy();
       
-        IP2PMessageSender P2PMessageSender { get; set; }
+        IPingSender PingSender { get; set; }
         
         void AddProtocolHandler(IProtocolHandler handler);
         
@@ -52,12 +52,12 @@ namespace Nethermind.Network.P2P
         /// <summary>
         /// Starts local disconnect (triggers disconnect on each protocolHandler, down to tcp disconnect)
         /// </summary>
-        Task InitiateDisconnectAsync(DisconnectReason disconnectReason);
+        void InitiateDisconnect(DisconnectReason disconnectReason);
 
         /// <summary>
         ///  Drop tcp connection after a delay
         /// </summary>     
-        Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType);
+        void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType);
 
         void Handshake(PublicKey handshakeRemoteNodeId);
 

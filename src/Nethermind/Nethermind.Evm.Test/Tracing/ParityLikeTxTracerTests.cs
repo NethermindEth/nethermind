@@ -257,12 +257,12 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .Call(TestObject.AddressC, 50000)
+                .Call(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -297,12 +297,12 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .DelegateCall(TestObject.AddressC, 50000)
+                .DelegateCall(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -333,12 +333,12 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .CallCode(TestObject.AddressC, 50000)
+                .CallCode(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -369,12 +369,12 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .StaticCall(TestObject.AddressC, 50000)
+                .StaticCall(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -426,13 +426,13 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .Call(TestObject.AddressC, 40000)
-                .Call(TestObject.AddressC, 40000)
+                .Call(TestItem.AddressC, 40000)
+                .Call(TestItem.AddressC, 40000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -483,14 +483,14 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
                 .PersistData("0x2", SampleHexData1)
                 .PersistData("0x3", SampleHexData2)
-                .Call(TestObject.AddressC, 70000)
+                .Call(TestItem.AddressC, 70000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -499,7 +499,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(5, trace.StateChanges.Count, "state changes count");
             Assert.True(trace.StateChanges.ContainsKey(Sender), "sender");
             Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
-            Assert.True(trace.StateChanges.ContainsKey(TestObject.AddressC), "address c");
+            Assert.True(trace.StateChanges.ContainsKey(TestItem.AddressC), "address c");
             Assert.AreEqual(2, trace.StateChanges[Recipient].Storage.Count, "recipient storage count");
             Assert.AreEqual(new byte[] {0}, trace.StateChanges[Recipient].Storage[2].Before, "recipient storage[2]");
             Assert.AreEqual(Bytes.FromHexString(SampleHexData1), trace.StateChanges[Recipient].Storage[2].After, "recipient storage[2] after");
@@ -522,21 +522,21 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
                 .PersistData("0x2", SampleHexData1)
                 .PersistData("0x3", SampleHexData2)
-                .Call(TestObject.AddressC, 70000)
+                .Call(TestItem.AddressC, 70000)
                 .Op(Instruction.STOP)
                 .Done;
 
             (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
             Assert.AreEqual(5, trace.StateChanges.Count, "state changes count");
-            Assert.True(trace.StateChanges.ContainsKey(TestObject.AddressC), "call target");
+            Assert.True(trace.StateChanges.ContainsKey(TestItem.AddressC), "call target");
             Assert.True(trace.StateChanges.ContainsKey(Sender), "sender");
             Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
             Assert.True(trace.StateChanges.ContainsKey(Miner), "miner");

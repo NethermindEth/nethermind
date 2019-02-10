@@ -102,8 +102,8 @@ namespace Nethermind.Network
                 session.Disconnected += OnDisconnected;
                 session.HandshakeComplete += OnHandshakeComplete;
 
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Session created: {session.RemoteNodeId}, {session.ConnectionDirection.ToString()}");
-                if (session.ConnectionDirection == ConnectionDirection.Out)
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Session created: {session.RemoteNodeId}, {session.Direction.ToString()}");
+                if (session.Direction == ConnectionDirection.Out)
                 {
                     ProcessOutgoingConnection(session);
                 }
@@ -256,7 +256,7 @@ namespace Nethermind.Network
                             if (peer.OutSession != null)
                             {
                                 if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
-                                peer.OutSession?.DisconnectAsync(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local);
+                                peer.OutSession?.Disconnect(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local);
                             }
                             else if (peer.InSession != null)
                             {
@@ -548,7 +548,7 @@ namespace Nethermind.Network
             return ConnectionDirection.In;
         }
 
-        private async Task ProcessIncomingConnection(IP2PSession session)
+        private void ProcessIncomingConnection(IP2PSession session)
         {
             // if we have already initiated connection before
             if (_activePeers.TryGetValue(session.RemoteNodeId, out Peer existingPeer))
@@ -558,14 +558,14 @@ namespace Nethermind.Network
                     existingPeer.InSession = session;
                     _nodeStats.ReportHandshakeEvent(existingPeer.Node, ConnectionDirection.In);
                     if (_logger.IsTrace) _logger.Trace($"Disconnecting OUT session, IN session already connected: {session.RemoteNodeId}");
-                    await existingPeer.OutSession.InitiateDisconnectAsync(DisconnectReason.AlreadyConnected);
+                    existingPeer.OutSession.InitiateDisconnect(DisconnectReason.AlreadyConnected);
                     return;
                 }
                 else
                 {
                     existingPeer.InSession = session;
                     if (_logger.IsTrace) _logger.Trace($"Disconnecting IN session, OUT session already connected: {session.RemoteNodeId}");
-                    await existingPeer.InSession.InitiateDisconnectAsync(DisconnectReason.AlreadyConnected);
+                    existingPeer.InSession.InitiateDisconnect(DisconnectReason.AlreadyConnected);
                     return;
                 }
             }
@@ -574,7 +574,7 @@ namespace Nethermind.Network
             if (_activePeers.Count >= _networkConfig.ActivePeersMaxCount)
             {
                 if (_logger.IsTrace) _logger.Trace($"Initiating disconnect, we have too many peers: {session.RemoteNodeId}");
-                await session.InitiateDisconnectAsync(DisconnectReason.TooManyPeers);
+                session.InitiateDisconnect(DisconnectReason.TooManyPeers);
                 return;
             }
 
@@ -600,7 +600,8 @@ namespace Nethermind.Network
             }
             else
             {
-                await ProcessIncomingConnection(session);
+                // TODO: check this?
+                ProcessIncomingConnection(session);
             }
         }
 
@@ -615,7 +616,7 @@ namespace Nethermind.Network
             var session = (IP2PSession) sender;
             session.HandshakeComplete -= OnHandshakeComplete;
             session.Disconnected -= OnDisconnected;
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Session closing: {session.RemoteNodeId}, {session.ConnectionDirection.ToString()}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Session closing: {session.RemoteNodeId}, {session.Direction.ToString()}");
 
             if (session.SessionState != SessionState.Disconnected)
             {
@@ -654,12 +655,33 @@ namespace Nethermind.Network
 
         private void OnHandshakeComplete(object sender, EventArgs args)
         {
-            IP2PSession session = sender as IP2PSession;
+            IP2PSession session = (IP2PSession)sender;
             //In case of OUT connections and different RemoteNodeId we need to replace existing Active Peer with new peer 
             ManageNewRemoteNodeId(session);
 
-            //Fire and forget
-            Task.Run(async () => await OnHandshakeCompleteAsync(session));
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| OnHandshakeComplete: {session.RemoteNodeId}, {session.Direction.ToString()}");
+
+            //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
+            if (session.Direction == ConnectionDirection.In)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Handshake initialized {session.Direction.ToString().ToUpper()} channel {session.RemoteNodeId}@{session.RemoteHost}:{session.RemotePort}");
+
+                ProcessIncomingConnection(session);
+            }
+            else
+            {
+                if (!_activePeers.TryGetValue(session.RemoteNodeId, out Peer peer))
+                {
+                    //Can happen when peer sent Disconnect message before handshake is done, it takes us a while to disconnect
+                    if (_logger.IsTrace) _logger.Trace($"Initiated Handshake (OUT) with Peer without adding it to Active collection: {session.RemoteNodeId}");
+
+                    return;
+                }
+
+                _nodeStats.ReportHandshakeEvent(peer.Node, ConnectionDirection.Out);
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"Handshake initialized for peer: {session.RemoteNodeId}");
         }
 
         private void ManageNewRemoteNodeId(IP2PSession session)
@@ -679,7 +701,7 @@ namespace Nethermind.Network
 
             var node = new Node(session.RemoteNodeId, session.RemoteHost, session.RemotePort ?? 0);
             newPeer = new Peer(node);
-            if (session.ConnectionDirection == ConnectionDirection.In)
+            if (session.Direction == ConnectionDirection.In)
             {
                 newPeer.InSession = session;
             }
@@ -693,34 +715,6 @@ namespace Nethermind.Network
             _candidatePeers.TryAdd(newPeer.Node.Id, newPeer);
             if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer not present in candidate collection");
         }
-
-        private async Task OnHandshakeCompleteAsync(IP2PSession session)
-        {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| OnHandshakeComplete: {session.RemoteNodeId}, {session.ConnectionDirection.ToString()}");
-
-            //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
-            if (session.ConnectionDirection == ConnectionDirection.In)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Handshake initialized {session.ConnectionDirection.ToString().ToUpper()} channel {session.RemoteNodeId}@{session.RemoteHost}:{session.RemotePort}");
-
-                await ProcessIncomingConnection(session);
-            }
-            else
-            {
-                if (!_activePeers.TryGetValue(session.RemoteNodeId, out Peer peer))
-                {
-                    //Can happen when peer sent Disconnect message before handshake is done, it takes us a while to disconnect
-                    if (_logger.IsTrace) _logger.Trace($"Initiated Handshake (OUT) with Peer without adding it to Active collection: {session.RemoteNodeId}");
-
-                    return;
-                }
-
-                _nodeStats.ReportHandshakeEvent(peer.Node, ConnectionDirection.Out);
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"Handshake initialized for peer: {session.RemoteNodeId}");
-        }
-
         private void OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| OnNodeDiscovered {nodeEventArgs.Node.Id}");

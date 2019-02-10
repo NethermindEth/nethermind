@@ -41,9 +41,9 @@ namespace Nethermind.Evm.Test
         protected internal IStorageProvider Storage { get; }
 
         protected internal static Address Contract { get; } = new Address("0xd75a3a95360e44a3874e691fb48d77855f127069");
-        protected internal static Address Sender { get; } = TestObject.AddressA;
-        protected internal static Address Recipient { get; } = TestObject.AddressB;
-        protected internal static Address Miner { get; } = TestObject.AddressD;
+        protected internal static Address Sender { get; } = TestItem.AddressA;
+        protected internal static Address Recipient { get; } = TestItem.AddressB;
+        protected internal static Address Miner { get; } = TestItem.AddressD;
 
         protected virtual UInt256 BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
         
@@ -147,15 +147,15 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(Sender, 100.Ether());
             TestState.CreateAccount(Recipient, 100.Ether());
             Keccak codeHash = TestState.UpdateCode(code);
-            TestState.UpdateCodeHash(TestObject.AddressB, codeHash, SpecProvider.GenesisSpec);
+            TestState.UpdateCodeHash(TestItem.AddressB, codeHash, SpecProvider.GenesisSpec);
 
             TestState.Commit(SpecProvider.GenesisSpec);
 
             Transaction transaction = Build.A.Transaction
                 .WithGasLimit((ulong) gasLimit)
                 .WithGasPrice(1)
-                .To(TestObject.AddressB)
-                .SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, blockNumber)
+                .To(TestItem.AddressB)
+                .SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, blockNumber)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber);
@@ -167,7 +167,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(Sender, 100.Ether());
             TestState.CreateAccount(Recipient, 100.Ether());
             Keccak codeHash = TestState.UpdateCode(code);
-            TestState.UpdateCodeHash(TestObject.AddressB, codeHash, SpecProvider.GenesisSpec);
+            TestState.UpdateCodeHash(TestItem.AddressB, codeHash, SpecProvider.GenesisSpec);
 
             TestState.Commit(SpecProvider.GenesisSpec);
 
@@ -176,8 +176,8 @@ namespace Nethermind.Evm.Test
                 .WithGasPrice(1)
                 .WithData(input)
                 .WithValue(value)
-                .To(TestObject.AddressB)
-                .SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, blockNumber)
+                .To(TestItem.AddressB)
+                .SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, blockNumber)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber);
@@ -195,7 +195,7 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit((ulong) gasLimit)
                 .WithGasPrice(1)
                 .WithInit(code)
-                .SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, blockNumber)
+                .SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, blockNumber)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber);

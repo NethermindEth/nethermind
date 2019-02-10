@@ -37,7 +37,7 @@ namespace Nethermind.Benchmarks.Core
             new byte[]{},
             new byte[]{1},
             new byte[100000],
-            TestObject.AddressA.Bytes
+            TestItem.AddressA.Bytes
         };
 
         [Params(0, 1, 2, 3)]

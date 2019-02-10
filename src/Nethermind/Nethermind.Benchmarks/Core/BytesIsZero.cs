@@ -36,7 +36,7 @@ namespace Nethermind.Benchmarks.Core
             Keccak.Zero.Bytes,
             Keccak.EmptyTreeHash.Bytes,
             Keccak.OfAnEmptyString.Bytes,
-            TestObject.AddressA.Bytes,
+            TestItem.AddressA.Bytes,
             Address.Zero.Bytes,
         };
 

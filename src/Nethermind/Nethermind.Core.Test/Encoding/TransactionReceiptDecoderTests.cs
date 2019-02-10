@@ -33,16 +33,16 @@ namespace Nethermind.Core.Test.Encoding
         {
             TransactionReceipt transactionReceipt = Build.A.Receipt.TestObject;
             transactionReceipt.BlockNumber = 1;
-            transactionReceipt.BlockHash = TestObject.KeccakA;
+            transactionReceipt.BlockHash = TestItem.KeccakA;
             transactionReceipt.Bloom = new Bloom();
             transactionReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
-            transactionReceipt.ContractAddress = TestObject.AddressA;
-            transactionReceipt.Sender = TestObject.AddressB;
-            transactionReceipt.Recipient = TestObject.AddressC;
+            transactionReceipt.ContractAddress = TestItem.AddressA;
+            transactionReceipt.Sender = TestItem.AddressB;
+            transactionReceipt.Recipient = TestItem.AddressC;
             transactionReceipt.GasUsed = 100;
             transactionReceipt.GasUsedTotal = 1000;
             transactionReceipt.Index = 2;
-            transactionReceipt.PostTransactionState = TestObject.KeccakH;
+            transactionReceipt.PostTransactionState = TestItem.KeccakH;
             
             TransactionReceiptDecoder decoder = new TransactionReceiptDecoder();
             Rlp rlp = decoder.Encode(transactionReceipt, RlpBehaviors.Storage);
@@ -66,16 +66,16 @@ namespace Nethermind.Core.Test.Encoding
         {
             TransactionReceipt transactionReceipt = Build.A.Receipt.TestObject;
             transactionReceipt.BlockNumber = 1;
-            transactionReceipt.BlockHash = TestObject.KeccakA;
+            transactionReceipt.BlockHash = TestItem.KeccakA;
             transactionReceipt.Bloom = new Bloom();
             transactionReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
-            transactionReceipt.ContractAddress = TestObject.AddressA;
-            transactionReceipt.Sender = TestObject.AddressB;
-            transactionReceipt.Recipient = TestObject.AddressC;
+            transactionReceipt.ContractAddress = TestItem.AddressA;
+            transactionReceipt.Sender = TestItem.AddressB;
+            transactionReceipt.Recipient = TestItem.AddressC;
             transactionReceipt.GasUsed = 100;
             transactionReceipt.GasUsedTotal = 1000;
             transactionReceipt.Index = 2;
-            transactionReceipt.PostTransactionState = TestObject.KeccakH;
+            transactionReceipt.PostTransactionState = TestItem.KeccakH;
             
             TransactionReceiptDecoder decoder = new TransactionReceiptDecoder();
             Rlp rlp = decoder.Encode(transactionReceipt);

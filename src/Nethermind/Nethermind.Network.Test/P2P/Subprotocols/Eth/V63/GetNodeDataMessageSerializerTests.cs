@@ -40,14 +40,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip()
         {
-            Keccak[] keys = {TestObject.KeccakA, TestObject.KeccakB, TestObject.KeccakC};
+            Keccak[] keys = {TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
             Test(keys);
         }
 
         [Test]
         public void Roundtrip_with_nulls()
         {
-            Keccak[] keys = {null, TestObject.KeccakA, null, TestObject.KeccakB, null, null};
+            Keccak[] keys = {null, TestItem.KeccakA, null, TestItem.KeccakB, null, null};
             Test(keys);
         }
     }

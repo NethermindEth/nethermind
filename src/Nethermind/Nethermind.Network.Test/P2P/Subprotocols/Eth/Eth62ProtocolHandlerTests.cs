@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
-            msg.StartingBlockHash = TestObject.KeccakA;
+            msg.StartingBlockHash = TestItem.KeccakA;
             msg.MaxHeaders = 3;
             msg.Skip = 1;
             msg.Reverse = 1;
@@ -68,7 +68,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
             handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
-            syncManager.Received().Find(TestObject.KeccakA, 3, 1, true);
+            syncManager.Received().Find(TestItem.KeccakA, 3, 1, true);
         }
         
         [Test]

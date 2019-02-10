@@ -71,7 +71,7 @@ namespace Nethermind.Network.Test.Discovery
 
 
             _nodeTable = new NodeTable(new FileKeyStore(keyStoreConfig, new EthereumJsonSerializer(), new AesEncrypter(keyStoreConfig, logManager), new CryptoRandom(), logManager), calculator, networkConfig, logManager);
-            _nodeTable.Initialize(TestObject.PublicKeyA);
+            _nodeTable.Initialize(TestItem.PublicKeyA);
             
             _timestamp = new Timestamp();
 

@@ -213,7 +213,7 @@ namespace Nethermind.Network.Rlpx
                     _logger.Trace($"Channel disconnected: {session.RemoteNodeId}");
                 }
                 
-                await session.DisconnectAsync(DisconnectReason.ClientQuitting, DisconnectType.Remote);
+                session.Disconnect(DisconnectReason.ClientQuitting, DisconnectType.Remote);
             });
         }
 
