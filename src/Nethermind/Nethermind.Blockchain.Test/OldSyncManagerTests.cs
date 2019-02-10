@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Syncs_with_empty_peer()
         {
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
             
             _manager.Start();
@@ -103,7 +103,7 @@ namespace Nethermind.Blockchain.Test
         public void Syncs_when_knows_more_blocks()
         {
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(QueueBasedSyncManager.MaxBatchSize * 2).TestObject;
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);

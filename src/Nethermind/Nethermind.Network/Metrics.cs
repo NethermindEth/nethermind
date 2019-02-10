@@ -18,7 +18,7 @@
 
 namespace Nethermind.Network
 {
-    public class Metrics
+    public static class Metrics
     {
         public static long IncomingConnections { get; set; }
         public static long OutgoingConnections { get; set; }
