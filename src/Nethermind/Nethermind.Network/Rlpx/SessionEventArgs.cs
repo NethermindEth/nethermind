@@ -23,9 +23,9 @@ namespace Nethermind.Network.Rlpx
 {
     public class SessionEventArgs : EventArgs
     {
-        public IP2PSession Session { get; }
+        public ISession Session { get; }
 
-        public SessionEventArgs(IP2PSession session)
+        public SessionEventArgs(ISession session)
         {
             Session = session;
         }

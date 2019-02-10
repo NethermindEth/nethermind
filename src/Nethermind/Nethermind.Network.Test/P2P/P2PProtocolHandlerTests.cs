@@ -34,11 +34,11 @@ namespace Nethermind.Network.Test.P2P
         [SetUp]
         public void Setup()
         {
-            _p2PSession = Substitute.For<IP2PSession>();
+            _session = Substitute.For<ISession>();
             _serializer = Substitute.For<IMessageSerializationService>();
         }
 
-        private IP2PSession _p2PSession;
+        private ISession _session;
         private IMessageSerializationService _serializer;
 
         private Packet CreatePacket(P2PMessage message)
@@ -50,9 +50,9 @@ namespace Nethermind.Network.Test.P2P
 
         private P2PProtocolHandler CreateSession()
         {
-            _p2PSession.LocalPort.Returns(ListenPort);
+            _session.LocalPort.Returns(ListenPort);
             return new P2PProtocolHandler(
-                _p2PSession,
+                _session,
                 TestItem.PublicKeyA,
                 new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), 
                 _serializer,
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Test.P2P
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             p2PProtocolHandler.Init();
 
-            _p2PSession.Received(1).DeliverMessage(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Hello));
+            _session.Received(1).DeliverMessage(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Hello));
         }
 
         [Test]
@@ -74,7 +74,7 @@ namespace Nethermind.Network.Test.P2P
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             p2PProtocolHandler.HandleMessage(CreatePacket(PingMessage.Instance));
-            _p2PSession.Received(1).DeliverMessage(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Pong));
+            _session.Received(1).DeliverMessage(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Pong));
         }
 
         [Test]

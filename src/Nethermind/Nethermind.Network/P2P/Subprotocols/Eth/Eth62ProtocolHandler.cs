@@ -56,7 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly ITimestamp _timestamp;
 
         public Eth62ProtocolHandler(
-            IP2PSession session,
+            ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISynchronizationManager syncManager,
@@ -98,9 +98,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public string ProtocolCode => "eth";
         public virtual int MessageIdSpaceSize => 8;
         
-        public Guid SessionId => P2PSession.SessionId; 
+        public Guid SessionId => Session.SessionId; 
         public virtual bool IsFastSyncSupported => false;
-        public Node Node => P2PSession.Node;
+        public Node Node => Session.Node;
         public string ClientId { get; set; }
 
         public UInt256 TotalDifficultyOnSessionStart { get; private set; }
@@ -115,7 +115,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Init()
         {
-            if(Logger.IsTrace) Logger.Trace($"{P2PSession.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
+            if(Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
             if (SyncManager.Head == null)
             {
                 throw new InvalidOperationException($"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
@@ -150,12 +150,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace($"{P2PSession.RemoteNodeId} {nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
+                Logger.Trace($"{Session.RemoteNodeId} {nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
             }
 
             if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
             {
-                throw new SubprotocolException($"{P2PSession.RemoteNodeId} No {nameof(StatusMessage)} received prior to communication.");
+                throw new SubprotocolException($"{Session.RemoteNodeId} No {nameof(StatusMessage)} received prior to communication.");
             }
 
             switch (message.PacketType)
@@ -201,7 +201,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             _headersRequests.CompleteAdding();
             _bodiesRequests.CompleteAdding();
-            P2PSession.Disconnect(disconnectReason, DisconnectType.Local);
+            Session.Disconnect(disconnectReason, DisconnectType.Local);
         }
 
         public void SendNewBlock(Block block)
@@ -254,7 +254,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             _statusReceived = true;
             if (Logger.IsTrace)
-                Logger.Trace($"{P2PSession.RemoteNodeId} ETH received status with" +
+                Logger.Trace($"{Session.RemoteNodeId} ETH received status with" +
                              Environment.NewLine + $" prot version\t{status.ProtocolVersion}" +
                              Environment.NewLine + $" network ID\t{status.ChainId}," +
                              Environment.NewLine + $" genesis hash\t{status.GenesisHash}," +
@@ -395,7 +395,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private void Handle(NewBlockMessage newBlockMessage)
         {
             newBlockMessage.Block.TotalDifficulty = (UInt256) newBlockMessage.TotalDifficulty;
-            SyncManager.AddNewBlock(newBlockMessage.Block, P2PSession.RemoteNodeId);
+            SyncManager.AddNewBlock(newBlockMessage.Block, Session.RemoteNodeId);
         }
 
         protected class Request<TMsg, TResult>
@@ -440,13 +440,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 var latency = _perfService.EndPerfCalc(perfCalcId);
                 if (latency.HasValue)
                 {
-                    StatsManager.ReportLatencyCaptureEvent(P2PSession.Node, NodeLatencyStatType.BlockHeaders, latency.Value);
+                    StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockHeaders, latency.Value);
                 }
 
                 return task.Result;
             }
 
-            throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetBlockHeadersMessage)}");
+            throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(GetBlockHeadersMessage)}");
         }
 
         [Todo(Improve.Refactor, "Generic approach to requests")]
@@ -476,13 +476,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 var latency = _perfService.EndPerfCalc(perfCalcId);
                 if (latency.HasValue)
                 {
-                    StatsManager.ReportLatencyCaptureEvent(P2PSession.Node, NodeLatencyStatType.BlockBodies, latency.Value);
+                    StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockBodies, latency.Value);
                 }
 
                 return task.Result;
             }
 
-            throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetBlockBodiesMessage)}");
+            throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(GetBlockBodiesMessage)}");
         }
 
         async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)

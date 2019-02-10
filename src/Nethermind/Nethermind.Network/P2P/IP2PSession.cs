@@ -27,10 +27,10 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    public interface IP2PSession : IDisposable
+    public interface ISession : IDisposable
     {
         byte P2PVersion { get; }
-        SessionState SessionState { get; }
+        SessionState State { get; }
         bool IsClosing { get; }
         PublicKey RemoteNodeId { get; set; }
         PublicKey ObsoleteRemoteNodeId { get; set; }

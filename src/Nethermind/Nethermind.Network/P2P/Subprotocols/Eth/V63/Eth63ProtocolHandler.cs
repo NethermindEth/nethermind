@@ -39,7 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             = new BlockingCollection<Request<GetReceiptsMessage, TransactionReceipt[][]>>();
 
         public Eth63ProtocolHandler(
-            IP2PSession session,
+            ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
             ISynchronizationManager syncManager,
@@ -149,7 +149,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return task.Result;
             }
 
-            throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetNodeDataMessage)}");
+            throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(GetNodeDataMessage)}");
         }
         
         [Todo(Improve.Refactor, "Generic approach to requests")]
@@ -178,7 +178,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return task.Result;
             }
 
-            throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetReceiptsMessage)}");
+            throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(GetReceiptsMessage)}");
         }
         
         [Todo(Improve.MissingFunctionality, "Need to compare response")]

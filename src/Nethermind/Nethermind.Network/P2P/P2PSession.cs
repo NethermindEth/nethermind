@@ -31,7 +31,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    public class P2PSession : IP2PSession
+    public class Session : ISession
     {
         private readonly ILogger _logger;
         private readonly Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P
 
         private Node _node;
 
-        public P2PSession(
+        public Session(
             PublicKey remoteId,
             int localPort,
             ConnectionDirection direction,
@@ -62,26 +62,26 @@ namespace Nethermind.Network.P2P
                 }
             }
             
-            SessionState = SessionState.New;
+            State = SessionState.New;
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
-            _logger = logManager.GetClassLogger<P2PSession>();
+            _logger = logManager.GetClassLogger<Session>();
             RemoteNodeId = remoteId;
             LocalPort = localPort;
             SessionId = Guid.NewGuid();
             Direction = direction;
         }
         
-        public P2PSession(
+        public Session(
             int localPort,
             ConnectionDirection direction,
             ILogManager logManager,
             IChannel channel,
             Node node)
         {
-            SessionState = SessionState.New;
+            State = SessionState.New;
             _node = node ?? throw new ArgumentNullException(nameof(node));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
-            _logger = logManager.GetClassLogger<P2PSession>();
+            _logger = logManager.GetClassLogger<Session>();
             RemoteNodeId = node.Id;
             RemoteHost = node.Host;
             RemotePort = node.Port;
@@ -90,7 +90,7 @@ namespace Nethermind.Network.P2P
             Direction = direction;
         }
 
-        public bool IsClosing => SessionState > SessionState.Initialized;
+        public bool IsClosing => State > SessionState.Initialized;
         public int LocalPort { get; set; }
         public PublicKey RemoteNodeId { get; set; }
         public PublicKey ObsoleteRemoteNodeId { get; set; }
@@ -123,12 +123,12 @@ namespace Nethermind.Network.P2P
         {
             lock (_sessionStateLock)
             {
-                if (SessionState < SessionState.Initialized)
+                if (State < SessionState.Initialized)
                 {
-                    throw new InvalidOperationException($"{nameof(EnableSnappy)} called on session that is in the {SessionState} state");
+                    throw new InvalidOperationException($"{nameof(EnableSnappy)} called on session that is in the {State} state");
                 }
 
-                if (SessionState != SessionState.Initialized)
+                if (State != SessionState.Initialized)
                 {
                     return;
                 }
@@ -146,12 +146,12 @@ namespace Nethermind.Network.P2P
         {
             lock (_sessionStateLock)
             {
-                if (SessionState < SessionState.Initialized)
+                if (State < SessionState.Initialized)
                 {
-                    throw new InvalidOperationException($"{nameof(DeliverMessage)} called on session that is in the {SessionState} state");
+                    throw new InvalidOperationException($"{nameof(DeliverMessage)} called on session that is in the {State} state");
                 }
 
-                if (SessionState != SessionState.Initialized)
+                if (State != SessionState.Initialized)
                 {
                     return;
                 }
@@ -167,12 +167,12 @@ namespace Nethermind.Network.P2P
         {
             lock (_sessionStateLock)
             {
-                if (SessionState < SessionState.Initialized)
+                if (State < SessionState.Initialized)
                 {
-                    throw new InvalidOperationException($"{nameof(ReceiveMessage)} called on session that is in the {SessionState} state");
+                    throw new InvalidOperationException($"{nameof(ReceiveMessage)} called on session that is in the {State} state");
                 }
 
-                if (SessionState != SessionState.Initialized)
+                if (State != SessionState.Initialized)
                 {
                     return;
                 }
@@ -182,7 +182,7 @@ namespace Nethermind.Network.P2P
             (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
             packet.Protocol = protocol;
 
-            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} {nameof(P2PSession)} received a message of length {packet.Data.Length} ({dynamicMessageCode} => {protocol}.{messageId})");
+            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} {nameof(Session)} received a message of length {packet.Data.Length} ({dynamicMessageCode} => {protocol}.{messageId})");
 
             if (protocol == null)
             {
@@ -202,19 +202,19 @@ namespace Nethermind.Network.P2P
             P2PVersion = p2PVersion;
             lock (_sessionStateLock)
             {
-                if (SessionState == SessionState.Disconnected)
+                if (State == SessionState.Disconnected)
                 {
                     return;
                 }
                 
-                if (SessionState != SessionState.HandshakeComplete)
+                if (State != SessionState.HandshakeComplete)
                 {
                     throw new InvalidOperationException($"{nameof(Init)} called on session that is not in the {nameof(HandshakeComplete)} state");
                 }
 
                 _context = context;
                 _packetSender = packetSender;
-                SessionState = SessionState.Initialized;
+                State = SessionState.Initialized;
             }
 
             Initialized?.Invoke(this, EventArgs.Empty);
@@ -224,12 +224,12 @@ namespace Nethermind.Network.P2P
         {
             lock (_sessionStateLock)
             {
-                if (SessionState != SessionState.New)
+                if (State != SessionState.New)
                 {
                     throw new InvalidOperationException($"{nameof(Handshake)} called on session that is not in the {nameof(SessionState.New)} state");
                 }
 
-                SessionState = SessionState.HandshakeComplete;
+                State = SessionState.HandshakeComplete;
             }
 
             //For IN connections we don't have NodeId until that moment, so we need to set it in Session
@@ -255,12 +255,12 @@ namespace Nethermind.Network.P2P
         {
             lock (_sessionStateLock)
             {
-                if (SessionState >= SessionState.DisconnectingProtocols)
+                if (State >= SessionState.DisconnectingProtocols)
                 {
                     return;
                 }
 
-                SessionState = SessionState.DisconnectingProtocols;
+                State = SessionState.DisconnectingProtocols;
             }
 
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
@@ -284,18 +284,18 @@ namespace Nethermind.Network.P2P
 
         private object _sessionStateLock = new object();
         public byte P2PVersion { get; private set; }
-        public SessionState SessionState { get; private set; }
+        public SessionState State { get; private set; }
 
         public void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType)
         {
             lock (_sessionStateLock)
             {
-                if (SessionState >= SessionState.Disconnecting)
+                if (State >= SessionState.Disconnecting)
                 {
                     return;
                 }
 
-                SessionState = SessionState.Disconnecting;
+                State = SessionState.Disconnecting;
             }
 
             Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, DisconnectType.Local));
@@ -324,7 +324,7 @@ namespace Nethermind.Network.P2P
 
             lock (_sessionStateLock)
             {
-                SessionState = SessionState.Disconnected;
+                State = SessionState.Disconnected;
             }
 
             if (Disconnected != null)
@@ -344,7 +344,7 @@ namespace Nethermind.Network.P2P
         {
             lock (_sessionStateLock)
             {
-                if (SessionState != SessionState.Disconnected)
+                if (State != SessionState.Disconnected)
                 {
                     throw new InvalidOperationException("Disposing session that is not disconnected");
                 }

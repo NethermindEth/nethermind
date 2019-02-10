@@ -26,10 +26,10 @@ namespace Nethermind.Network.P2P
 {
     public class NettyP2PHandler : SimpleChannelInboundHandler<Packet>
     {
-        private readonly IP2PSession _session;
+        private readonly ISession _session;
         private readonly ILogger _logger;
 
-        public NettyP2PHandler(IP2PSession session, ILogger logger)
+        public NettyP2PHandler(ISession session, ILogger logger)
         {
             _session = session;
             _logger = logger;

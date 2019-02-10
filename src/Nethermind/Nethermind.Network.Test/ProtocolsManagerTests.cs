@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+
 using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
@@ -34,7 +53,7 @@ namespace Nethermind.Network.Test
             private int _localPort = 30312;
             private int _remotePort = 30000;
             private string _remoteHost = "35.0.0.1";
-            private IP2PSession _currentSession;
+            private ISession _currentSession;
             private IDiscoveryApp _discoveryApp;
             private IRlpxPeer _localPeer;
             private ProtocolsManager _manager;
@@ -92,7 +111,7 @@ namespace Nethermind.Network.Test
             public Context CreateIncomingSession()
             {
                 IChannel channel = Substitute.For<IChannel>();
-                _currentSession = new P2PSession(null, _localPort, ConnectionDirection.In, LimboLogs.Instance, channel);
+                _currentSession = new Session(null, _localPort, ConnectionDirection.In, LimboLogs.Instance, channel);
                 _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;
             }
@@ -100,7 +119,7 @@ namespace Nethermind.Network.Test
             public Context CreateOutgoingSession()
             {
                 IChannel channel = Substitute.For<IChannel>();
-                _currentSession = new P2PSession(_localPort, ConnectionDirection.Out, LimboLogs.Instance, channel, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort) {AddedToDiscovery = true});
+                _currentSession = new Session(_localPort, ConnectionDirection.Out, LimboLogs.Instance, channel, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort) {AddedToDiscovery = true});
                 _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;
             }
@@ -132,7 +151,7 @@ namespace Nethermind.Network.Test
 
             public Context VerifyDisconnected()
             {
-                Assert.AreEqual(SessionState.Disconnected, _currentSession.SessionState);
+                Assert.AreEqual(SessionState.Disconnected, _currentSession.State);
                 return this;
             }
 
@@ -151,7 +170,7 @@ namespace Nethermind.Network.Test
 
             public Context VerifyInitialized()
             {
-                Assert.AreEqual(SessionState.Initialized, _currentSession.SessionState);
+                Assert.AreEqual(SessionState.Initialized, _currentSession.State);
                 return this;
             }
 

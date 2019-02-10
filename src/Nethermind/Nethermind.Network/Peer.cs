@@ -31,8 +31,8 @@ namespace Nethermind.Network
         }
 
         public Node Node { get; }
-        public IP2PSession InSession { get; set; }
-        public IP2PSession OutSession { get; set; }
+        public ISession InSession { get; set; }
+        public ISession OutSession { get; set; }
         public ISynchronizationPeer SynchronizationPeer { get; set; }
     }
 }

@@ -29,14 +29,14 @@ namespace Nethermind.Network.P2P
     {
         protected INodeStatsManager StatsManager { get; }
         private readonly IMessageSerializationService _serializer;
-        protected IP2PSession P2PSession { get; }
+        protected ISession Session { get; }
         private readonly TaskCompletionSource<MessageBase> _initCompletionSource;
 
-        protected ProtocolHandlerBase(IP2PSession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
+        protected ProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
         {
             Logger = logManager?.GetClassLogger(GetType()) ?? throw new ArgumentNullException(nameof(logManager));
             StatsManager = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
-            P2PSession = session ?? throw new ArgumentNullException(nameof(session));
+            Session = session ?? throw new ArgumentNullException(nameof(session));
             
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _initCompletionSource = new TaskCompletionSource<MessageBase>();
@@ -55,7 +55,7 @@ namespace Nethermind.Network.P2P
         {
             if (Logger.IsTrace) Logger.Trace($"Sending {typeof(T).Name}");
             Packet packet = new Packet(message.Protocol, message.PacketType, _serializer.Serialize(message));
-            P2PSession.DeliverMessage(packet);   
+            Session.DeliverMessage(packet);   
         }
 
         protected async Task CheckProtocolInitTimeout()
@@ -67,10 +67,10 @@ namespace Nethermind.Network.P2P
             {
                 if (Logger.IsTrace)
                 {
-                    Logger.Trace($"Disconnecting due to timeout for protocol init message ({GetType().Name}): {P2PSession.RemoteNodeId}");
+                    Logger.Trace($"Disconnecting due to timeout for protocol init message ({GetType().Name}): {Session.RemoteNodeId}");
                 }
                 
-                P2PSession.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout);
+                Session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout);
             }
         }
 

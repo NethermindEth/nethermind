@@ -92,7 +92,7 @@ namespace Nethermind.Network.Rlpx
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
                     {
-                        P2PSession session = new P2PSession((PublicKey)null, LocalPort, ConnectionDirection.In, _logManager, ch);
+                        Session session = new Session((PublicKey)null, LocalPort, ConnectionDirection.In, _logManager, ch);
                         session.RemoteHost = ((IPEndPoint) ch.RemoteAddress).Address.ToString();
                         session.RemotePort = ((IPEndPoint) ch.RemoteAddress).Port;
                         InitializeChannel(ch, session);
@@ -137,7 +137,7 @@ namespace Nethermind.Network.Rlpx
             
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
             {
-                P2PSession session = new P2PSession(LocalPort, ConnectionDirection.Out, _logManager, ch, node);
+                Session session = new Session(LocalPort, ConnectionDirection.Out, _logManager, ch, node);
                 session.RemoteHost = ((IPEndPoint) ch.RemoteAddress).Address.ToString();
                 session.RemotePort = ((IPEndPoint) ch.RemoteAddress).Port;
                 InitializeChannel(ch, session);
@@ -166,7 +166,7 @@ namespace Nethermind.Network.Rlpx
 
         public event EventHandler<SessionEventArgs> SessionCreated;
         
-        private void InitializeChannel(IChannel channel, IP2PSession session)
+        private void InitializeChannel(IChannel channel, ISession session)
         {
             if (session.Direction == ConnectionDirection.In)
             {
@@ -207,7 +207,7 @@ namespace Nethermind.Network.Rlpx
 
         private void SessionOnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
-            IP2PSession session = (P2PSession) sender;
+            ISession session = (Session) sender;
             session.Disconnected -= SessionOnPeerDisconnected;
             session.Dispose();
         }

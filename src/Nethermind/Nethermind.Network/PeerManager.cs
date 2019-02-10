@@ -511,7 +511,7 @@ namespace Nethermind.Network
             }
         }
 
-        private void ProcessOutgoingConnection(IP2PSession session)
+        private void ProcessOutgoingConnection(ISession session)
         {
             var id = session.RemoteNodeId;
 
@@ -548,7 +548,7 @@ namespace Nethermind.Network
             return ConnectionDirection.In;
         }
 
-        private void ProcessIncomingConnection(IP2PSession session)
+        private void ProcessIncomingConnection(ISession session)
         {
             // if we have already initiated connection before
             if (_activePeers.TryGetValue(session.RemoteNodeId, out Peer existingPeer))
@@ -607,20 +607,20 @@ namespace Nethermind.Network
 
         private bool IsPeerDisconnected(Peer peer)
         {
-            return (peer.InSession?.SessionState ?? SessionState.Disconnected) == SessionState.Disconnected
-                   && (peer.OutSession?.SessionState ?? SessionState.Disconnected) == SessionState.Disconnected;
+            return (peer.InSession?.State ?? SessionState.Disconnected) == SessionState.Disconnected
+                   && (peer.OutSession?.State ?? SessionState.Disconnected) == SessionState.Disconnected;
         }
 
         private void OnDisconnected(object sender, DisconnectEventArgs e)
         {
-            var session = (IP2PSession) sender;
+            var session = (ISession) sender;
             session.HandshakeComplete -= OnHandshakeComplete;
             session.Disconnected -= OnDisconnected;
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Session closing: {session.RemoteNodeId}, {session.Direction.ToString()}");
 
-            if (session.SessionState != SessionState.Disconnected)
+            if (session.State != SessionState.Disconnected)
             {
-                throw new InvalidOperationException($"Invalid session state in {nameof(OnDisconnected)} - {session.SessionState}");
+                throw new InvalidOperationException($"Invalid session state in {nameof(OnDisconnected)} - {session.State}");
             }
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Peer disconnected event in PeerManager: {session.RemoteNodeId}, disconnectReason: {e.DisconnectReason}, disconnectType: {e.DisconnectType}");
@@ -655,7 +655,7 @@ namespace Nethermind.Network
 
         private void OnHandshakeComplete(object sender, EventArgs args)
         {
-            IP2PSession session = (IP2PSession)sender;
+            ISession session = (ISession)sender;
             //In case of OUT connections and different RemoteNodeId we need to replace existing Active Peer with new peer 
             ManageNewRemoteNodeId(session);
 
@@ -684,7 +684,7 @@ namespace Nethermind.Network
             if (_logger.IsTrace) _logger.Trace($"Handshake initialized for peer: {session.RemoteNodeId}");
         }
 
-        private void ManageNewRemoteNodeId(IP2PSession session)
+        private void ManageNewRemoteNodeId(ISession session)
         {
             if (session.ObsoleteRemoteNodeId == null)
             {

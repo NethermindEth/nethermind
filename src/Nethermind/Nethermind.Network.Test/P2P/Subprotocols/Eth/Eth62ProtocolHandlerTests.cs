@@ -41,7 +41,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         {
             var svc = Build.A.SerializationService().WithEth().TestObject;
             
-            var session = Substitute.For<IP2PSession>();
+            var session = Substitute.For<ISession>();
             var syncManager = Substitute.For<ISynchronizationManager>();
             var transactionPool = Substitute.For<ITransactionPool>();
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -76,7 +76,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         {
             var svc = Build.A.SerializationService().WithEth().TestObject;
             
-            var session = Substitute.For<IP2PSession>();
+            var session = Substitute.For<ISession>();
             var syncManager = Substitute.For<ISynchronizationManager>();
             var transactionPool = Substitute.For<ITransactionPool>();
             syncManager.Find(null, Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>()).Throws(new ArgumentNullException());

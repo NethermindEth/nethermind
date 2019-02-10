@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -30,7 +31,7 @@ namespace Nethermind.Network
     public class SessionMonitor : ISessionMonitor
     {
         private System.Timers.Timer _pingTimer;
-        
+
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
 
@@ -45,32 +46,27 @@ namespace Nethermind.Network
             StartPingTimer();
         }
 
-        public async Task StopAsync()
+        public void Stop()
         {
             StopPingTimer();
-            await Task.CompletedTask;
         }
 
-        private List<IP2PSession> _sessions = new List<IP2PSession>();
-        
-        public void AddSession(IP2PSession session)
+        private ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
+
+        public void AddSession(ISession session)
         {
-            lock (_sessions)
+            session.Disconnected += OnDisconnected;
+            if (session.State < SessionState.DisconnectingProtocols)
             {
-                session.Disconnected += OnDisconnected;
-                if (session.SessionState < SessionState.DisconnectingProtocols)
-                {
-                    _sessions.Add(session);
-                }
+                _sessions.TryAdd(session.SessionId, session);
             }
         }
 
         private void OnDisconnected(object sender, DisconnectEventArgs e)
         {
-            lock (_sessions)
-            {
-                _sessions.Remove((IP2PSession)sender);
-            }
+            ISession session = (ISession) sender;
+            session.Disconnected -= OnDisconnected;
+            _sessions.TryRemove(session.SessionId, out session);
         }
 
         private void SendPingMessages()
@@ -79,24 +75,22 @@ namespace Nethermind.Network
             {
                 if (x.IsFaulted && _logger.IsError)
                 {
-                    _logger.Error($"Error during send ping messages: {x.Exception}");
+                    if(_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error during send ping messages: {x.Exception}");
                 }
             });
+            
             task.Wait();
         }
 
         private async Task SendPingMessagesAsync()
         {
-            var pingTasks = new List<(IP2PSession session, Task<bool> pingTask)>();
-            lock (_sessions)
+            var pingTasks = new List<(ISession session, Task<bool> pingTask)>();
+            foreach (var session in _sessions.Values)
             {
-                foreach (var session in _sessions)
+                if (session.State == SessionState.Initialized)
                 {
-                    if (session.SessionState == SessionState.Initialized)
-                    {
-                        var pingTask = SendPingMessage(session);
-                        pingTasks.Add((session, pingTask));
-                    }
+                    var pingTask = SendPingMessage(session);
+                    pingTasks.Add((session, pingTask));
                 }
             }
 
@@ -108,7 +102,7 @@ namespace Nethermind.Network
             else if (_logger.IsTrace) _logger.Trace("Sent no ping messages.");
         }
 
-        private async Task<bool> SendPingMessage(IP2PSession session)
+        private async Task<bool> SendPingMessage(ISession session)
         {
             if (session.PingSender == null)
             {
@@ -121,7 +115,7 @@ namespace Nethermind.Network
             {
                 return true;
             }
-            
+
             for (var i = 0; i < _networkConfig.P2PPingRetryCount; i++)
             {
                 var pongReceived = await session.PingSender.SendPing();
@@ -138,7 +132,7 @@ namespace Nethermind.Network
 
         private void StartPingTimer()
         {
-            if (_logger.IsDebug) _logger.Debug("Starting ping timer");
+            if (_logger.IsDebug) _logger.Debug("Starting session monitor");
 
             _pingTimer = new System.Timers.Timer(_networkConfig.P2PPingInterval) {AutoReset = false};
             _pingTimer.Elapsed += (sender, e) =>
@@ -150,7 +144,7 @@ namespace Nethermind.Network
                 }
                 catch (Exception exception)
                 {
-                    if (_logger.IsDebug) _logger.Error("Ping timer failed", exception);
+                    if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Ping timer failed", exception);
                 }
                 finally
                 {
@@ -165,12 +159,12 @@ namespace Nethermind.Network
         {
             try
             {
-                if (_logger.IsDebug) _logger.Debug("Stopping ping timer");
+                if (_logger.IsDebug) _logger.Debug("Stopping session monitor");
                 _pingTimer?.Stop();
             }
             catch (Exception e)
             {
-                _logger.Error("Error during ping timer stop", e);
+                if (_logger.IsDebug)  _logger.Error("DEBUG/ERRUR Error during ping timer stop", e);
             }
         }
     }

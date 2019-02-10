@@ -24,7 +24,7 @@ namespace Nethermind.Network
     public interface ISessionMonitor
     {
         void Start();
-        Task StopAsync();
-        void AddSession(IP2PSession session);
+        void Stop();
+        void AddSession(ISession session);
     }
 }

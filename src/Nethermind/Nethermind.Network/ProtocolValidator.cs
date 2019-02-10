@@ -28,7 +28,7 @@ namespace Nethermind.Network
             _genesisHash = genesisHash;
         }
 
-        public bool DisconnectOnInvalid(string protocol, IP2PSession session, ProtocolInitializedEventArgs eventArgs)
+        public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs)
         {
             switch (protocol)
             {
@@ -77,7 +77,7 @@ namespace Nethermind.Network
             return true;
         }
 
-        private void Disconnect(IP2PSession session, DisconnectReason reason)
+        private void Disconnect(ISession session, DisconnectReason reason)
         {
             session.InitiateDisconnect(reason);
         }

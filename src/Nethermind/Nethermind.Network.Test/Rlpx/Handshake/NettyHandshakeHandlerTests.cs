@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [SetUp]
         public void Setup()
         {
-            _ip2PSession = Substitute.For<IP2PSession>();
+            _ip2PSession = Substitute.For<ISession>();
 
             _pipeline = Substitute.For<IChannelPipeline>();
 
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         private IChannelPipeline _pipeline;
         private IChannelHandlerContext _channelHandlerContext;
         private IEncryptionHandshakeService _service;
-        private IP2PSession _ip2PSession;
+        private ISession _ip2PSession;
         private ILogManager _logger;
         private PublicKey _remotePublicKey;
 

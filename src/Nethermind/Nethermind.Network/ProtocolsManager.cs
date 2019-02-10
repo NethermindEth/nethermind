@@ -101,14 +101,14 @@ namespace Nethermind.Network
             throw new Exception($"SyncStatus not supported: {syncStatus.ToString()}");
         }
 
-        private ConcurrentDictionary<Guid, IP2PSession> _sessions = new ConcurrentDictionary<Guid, IP2PSession>();
+        private ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
 
         [Todo(Improve.Refactor, "this can be all in SyncManager now")]
         private void OnSyncEvent(object sender, SyncEventArgs e)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Sync Event: {e.SyncStatus.ToString()}, NodeId: {e.Peer.Node.Id}");
 
-            if (!_sessions.TryGetValue(e.Peer.SessionId, out IP2PSession session))
+            if (!_sessions.TryGetValue(e.Peer.SessionId, out ISession session))
             {
                 if (_logger.IsTrace) _logger.Trace($"Sync failed for an unknown session: {e.Peer.Node.Id} {e.Peer.SessionId}");
                 return;
@@ -137,7 +137,7 @@ namespace Nethermind.Network
 
         private void SessionDisconnected(object sender, DisconnectEventArgs e)
         {
-            IP2PSession session = (IP2PSession) sender;
+            ISession session = (ISession) sender;
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
             
@@ -155,18 +155,18 @@ namespace Nethermind.Network
 
         private void SessionInitialized(object sender, EventArgs e)
         {
-            IP2PSession session = (IP2PSession) sender;
+            ISession session = (ISession) sender;
             InitProtocol(session, Protocol.P2P, session.P2PVersion);
         }
 
-        private void InitProtocol(IP2PSession session, string protocolCode, int version)
+        private void InitProtocol(ISession session, string protocolCode, int version)
         {
-            if (session.SessionState < SessionState.Initialized)
+            if (session.State < SessionState.Initialized)
             {
-                throw new InvalidOperationException($"{nameof(InitProtocol)} called on session that is in the {session.SessionState} state");
+                throw new InvalidOperationException($"{nameof(InitProtocol)} called on session that is in the {session.State} state");
             }
 
-            if (session.SessionState != SessionState.Initialized)
+            if (session.State != SessionState.Initialized)
             {
                 return;
             }
@@ -202,7 +202,7 @@ namespace Nethermind.Network
             protocolHandler.Init();
         }
 
-        private void InitP2PProtocol(IP2PSession session, P2PProtocolHandler handler)
+        private void InitP2PProtocol(ISession session, P2PProtocolHandler handler)
         {
             handler.ProtocolInitialized += (sender, args) =>
             {
@@ -235,7 +235,7 @@ namespace Nethermind.Network
             };
         }
 
-        private void InitEthProtocol(IP2PSession session, Eth62ProtocolHandler handler)
+        private void InitEthProtocol(ISession session, Eth62ProtocolHandler handler)
         {
             handler.ProtocolInitialized += (sender, args) =>
             {
@@ -275,7 +275,7 @@ namespace Nethermind.Network
             };
         }
 
-        private bool RunBasicChecks(IP2PSession session, string protocolCode, int protocolVersion)
+        private bool RunBasicChecks(ISession session, string protocolCode, int protocolVersion)
         {
             if (session.IsClosing)
             {
@@ -290,7 +290,7 @@ namespace Nethermind.Network
         /// <summary>
         /// In case of IN connection we don't know what is the port node is listening on until we receive the Hello message
         /// </summary>
-        private void AddNodeToDiscovery(IP2PSession session, P2PProtocolInitializedEventArgs eventArgs)
+        private void AddNodeToDiscovery(ISession session, P2PProtocolInitializedEventArgs eventArgs)
         {
             if (eventArgs.ListenPort == 0)
             {
