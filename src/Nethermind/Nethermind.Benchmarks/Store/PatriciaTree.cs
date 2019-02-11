@@ -41,9 +41,9 @@ namespace Nethermind.Benchmarks.Store
         {
             ("setting_1", tree =>
             {
-                tree.Set(TestObject.AddressA, _account0);
-                tree.Set(TestObject.AddressB, _account0);
-                tree.Set(TestObject.AddressC, _account0);
+                tree.Set(TestItem.AddressA, _account0);
+                tree.Set(TestItem.AddressB, _account0);
+                tree.Set(TestItem.AddressC, _account0);
                 tree.Commit();
             }),
             ("setting_2", tree =>

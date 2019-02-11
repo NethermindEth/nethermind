@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
@@ -38,12 +39,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             = new BlockingCollection<Request<GetReceiptsMessage, TransactionReceipt[][]>>();
 
         public Eth63ProtocolHandler(
-            IP2PSession p2PSession,
+            ISession session,
             IMessageSerializationService serializer,
+            INodeStatsManager nodeStatsManager,
             ISynchronizationManager syncManager,
             ILogManager logManager, IPerfService perfService,
-            IBlockTree blockTree, ITransactionPool transactionPool, ITimestamp timestamp) : base(p2PSession, serializer,
-            syncManager, logManager, perfService, blockTree, transactionPool, timestamp)
+            ITransactionPool transactionPool) : base(session, serializer, nodeStatsManager, syncManager, logManager, perfService, transactionPool)
         {
         }
 
@@ -148,7 +149,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return task.Result;
             }
 
-            throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetNodeDataMessage)}");
+            throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(GetNodeDataMessage)}");
         }
         
         [Todo(Improve.Refactor, "Generic approach to requests")]
@@ -177,7 +178,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return task.Result;
             }
 
-            throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetReceiptsMessage)}");
+            throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(GetReceiptsMessage)}");
         }
         
         [Todo(Improve.MissingFunctionality, "Need to compare response")]

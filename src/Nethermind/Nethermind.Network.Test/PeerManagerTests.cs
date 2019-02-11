@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,30 +17,21 @@
  */
 
 using System;
-using System.IO;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
-using Nethermind.KeyStore;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.Lifecycle;
-using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
-using Nethermind.Network.Rlpx.Handshake;
-using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -51,420 +42,421 @@ namespace Nethermind.Network.Test
     [TestFixture]
     public class PeerManagerTests
     {
-        private TestRlpxPeer _localPeer;
+        private RlpxMock _rlpxPeer;
+        private IDiscoveryApp _discoveryApp;
+        private INodeStatsManager _stats;
+        private INetworkStorage _storage;
+        private PeerLoader _peerLoader;
         private PeerManager _peerManager;
-        private INodeFactory _nodeFactory;
-        private IConfigProvider _configurationProvider;
-        private IDiscoveryManager _discoveryManager;
-        private ISynchronizationManager _synchronizationManager;
-        private ITransactionPool _transactionPool;
-        private IBlockTree _blockTree;
-        private ITimestamp _timestamp;
-        private ILogManager _logManager;
+        private INetworkConfig _networkConfig;
 
-        [SetUp]
-        public void Initialize()
+        private class RlpxMock : IRlpxPeer
         {
-            NetworkNodeDecoder.Init();
-            _timestamp = new Timestamp();
-            _logManager = new OneLoggerLogManager(new SimpleConsoleLogger());
-            _configurationProvider = new ConfigProvider();
-            INetworkConfig networkConfig = _configurationProvider.GetConfig<INetworkConfig>();
-            networkConfig.DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
-            networkConfig.IsActivePeerTimerEnabled = false;
-            networkConfig.IsDiscoveryNodesPersistenceOn = false;
-            networkConfig.IsPeersPersistenceOn = false;
+            private readonly List<Session> _sessions;
 
-            if (!Directory.Exists(networkConfig.DbBasePath))
+            public RlpxMock(List<Session> sessions)
             {
-                Directory.CreateDirectory(networkConfig.DbBasePath);
+                _sessions = sessions;
             }
 
-            var syncManager = Substitute.For<ISynchronizationManager>();
-            Block genesisBlock = Build.A.Block.Genesis.TestObject;
-            syncManager.Head.Returns(genesisBlock.Header);
-            syncManager.Genesis.Returns(genesisBlock.Header);
-
-            _nodeFactory = new NodeFactory(LimboLogs.Instance);
-            _localPeer = new TestRlpxPeer();
-            var keyProvider = new PrivateKeyGenerator(new CryptoRandom());
-            var key = keyProvider.Generate().PublicKey;
-            _synchronizationManager = Substitute.For<ISynchronizationManager>();
-
-            IStatsConfig statsConfig = _configurationProvider.GetConfig<IStatsConfig>();
-            var nodeTable = new NodeTable(_nodeFactory, Substitute.For<IKeyStore>(), new NodeDistanceCalculator(networkConfig), networkConfig, _logManager);
-            nodeTable.Initialize(new NodeId(key));
-            
-            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(networkConfig, _timestamp), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _nodeFactory, _logManager, true), networkConfig, _logManager), _nodeFactory, nodeTable, new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager)), networkConfig, _logManager);
-            _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
-            _transactionPool = NullTransactionPool.Instance;
-            _blockTree = Substitute.For<IBlockTree>();
-            var app = new DiscoveryApp(new NodesLocator(nodeTable, _discoveryManager, _configurationProvider, _logManager), _discoveryManager, _nodeFactory, nodeTable, Substitute.For<IMessageSerializationService>(), new CryptoRandom(), Substitute.For<INetworkStorage>(), networkConfig, _logManager, new PerfService(_logManager));
-            app.Initialize(key);
-
-            var sessionLogger = new PeerSessionLogger(_logManager, _configurationProvider, new PerfService(_logManager));
-            sessionLogger.Init(Path.GetTempPath());
-            var networkStorage = new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager));
-            _peerManager = new PeerManager(_localPeer, app, _synchronizationManager, new NodeStatsProvider(statsConfig, _nodeFactory, _logManager, true), networkStorage, _nodeFactory, _configurationProvider, new PerfService(_logManager), _transactionPool, _logManager, sessionLogger);
-            _peerManager.Init(true);
-        }
-
-        [Test]
-        public void OurPeerBecomesActiveAndDisconnectTest()
-        {
-            var p2pSession = InitializeNode();
-
-            //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager, new PerfService(_logManager));
-            var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
+            public Task Init()
             {
-                P2PVersion = 4,
-                Capabilities = new[] {new Capability(Protocol.Eth, 62), new Capability(Protocol.Eth, 63)}.ToList(),
-            };
-            p2pSession.TriggerProtocolInitialized(p2pArgs);
-            AssertTrue(() => _peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized), 5000);
-            //Assert.IsTrue();
-
-            //trigger eth62 initialization
-            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager), _blockTree, _transactionPool, _timestamp);
-            var args = new EthProtocolInitializedEventArgs(eth62)
-            {
-                ChainId = _synchronizationManager.ChainId
-            };
-            p2pSession.TriggerProtocolInitialized(args);
-            AssertTrue(() => _peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized), 5000);
-            //Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized));
-            AssertTrue(() => _peerManager.ActivePeers.First().SynchronizationPeer != null, 5000);
-            //Assert.NotNull(_peerManager.ActivePeers.First().SynchronizationPeer);
-
-            //verify active peer was added to synch manager
-            _synchronizationManager.Received(1).AddPeer(Arg.Any<ISynchronizationPeer>());
-
-            //trigger disconnect
-            p2pSession.TriggerPeerDisconnected();
-
-            //verify active peer was removed from synch manager
-            AssertTrue(() => _peerManager.ActivePeers.Count == 0, 5000);
-            Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
-            //Assert.AreEqual(0, _peerManager.ActivePeers.Count);
-            _synchronizationManager.Received(1).RemovePeer(Arg.Any<ISynchronizationPeer>());
-        }
-
-        [Test]
-        [Ignore("Do magic and fix it for Travis")]
-        public void InPeerBecomesActiveAndDisconnectTest()
-        {
-            var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
-
-            //trigger connection initialized
-            var p2pSession = new TestP2PSession();
-            p2pSession.RemoteNodeId = node.Id;
-            p2pSession.RemoteHost = node.Host;
-            p2pSession.RemotePort = node.Port;
-            p2pSession.ConnectionDirection = ConnectionDirection.In;
-            _localPeer.TriggerSessionCreated(p2pSession);
-            p2pSession.TriggerHandshakeComplete();
-
-            //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager, new PerfService(_logManager));
-            var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
-            {
-                P2PVersion = 4,
-                Capabilities = new[] {new Capability(Protocol.Eth, 62), new Capability(Protocol.Eth, 63)}.ToList()
-            };
-            p2pSession.TriggerProtocolInitialized(p2pArgs);
-            AssertTrue(() => _peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized), 5000);
-            //Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized));
-
-            //trigger eth62 initialization
-            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager), _blockTree, _transactionPool, _timestamp);
-            var args = new EthProtocolInitializedEventArgs(eth62)
-            {
-                ChainId = _synchronizationManager.ChainId
-            };
-            p2pSession.TriggerProtocolInitialized(args);
-            AssertTrue(() => _peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized), 5000);
-
-            Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
-            Assert.AreEqual(1, _peerManager.ActivePeers.Count);
-            //Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized));
-            AssertTrue(() => _peerManager.ActivePeers.First().SynchronizationPeer != null, 5000);
-            //Assert.NotNull(_peerManager.ActivePeers.First().SynchronizationPeer);
-
-            //verify active peer was added to synch manager
-            _synchronizationManager.Received(1).AddPeer(Arg.Any<ISynchronizationPeer>());
-
-            //trigger disconnect
-            p2pSession.TriggerPeerDisconnected();
-            AssertTrue(() => _peerManager.ActivePeers.Count == 0, 5000);
-            Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
-            //Assert.AreEqual(0, _peerManager.ActivePeers.Count);
-
-            //verify active peer was removed from synch manager
-            _synchronizationManager.Received(1).RemovePeer(Arg.Any<ISynchronizationPeer>());
-        }
-
-        [Test]
-        public void DisconnectOnWrongP2PVersionTest()
-        {
-            var p2pSession = InitializeNode();
-
-            //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager, new PerfService(_logManager));
-            var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
-            {
-                P2PVersion = 1,
-                Capabilities = new[] {new Capability(Protocol.Eth, 62), new Capability(Protocol.Eth, 63)}.ToList()
-            };
-            p2pSession.TriggerProtocolInitialized(p2pArgs);
-            AssertTrue(() => p2pSession.Disconected, 5000);
-            //Assert.IsTrue(p2pSession.Disconected);
-            Assert.AreEqual(DisconnectReason.IncompatibleP2PVersion, p2pSession.DisconnectReason);
-        }
-
-        [Test]
-        public void DisconnectOnNoEth62SupportTest()
-        {
-            var p2pSession = InitializeNode();
-
-            //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager, new PerfService(_logManager));
-            var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
-            {
-                P2PVersion = 5,
-                Capabilities = new[] {new Capability(Protocol.Eth, 60), new Capability(Protocol.Eth, 61)}.ToList()
-            };
-            p2pSession.TriggerProtocolInitialized(p2pArgs);
-            AssertTrue(() => p2pSession.Disconected, 5000);
-            //Assert.IsTrue(p2pSession.Disconected);
-            Assert.AreEqual(DisconnectReason.Other, p2pSession.DisconnectReason);
-        }
-
-        [Test]
-        public void DisconnectOnWrongChainIdTest()
-        {
-            var p2pSession = InitializeNode();
-
-            //trigger eth62 initialization
-            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager), _blockTree, _transactionPool, _timestamp);
-            var args = new EthProtocolInitializedEventArgs(eth62)
-            {
-                ChainId = 100
-            };
-            p2pSession.TriggerProtocolInitialized(args);
-            AssertTrue(() => p2pSession.Disconected, 5000);
-            //Assert.IsTrue(p2pSession.Disconected);
-            Assert.AreEqual(DisconnectReason.Other, p2pSession.DisconnectReason);
-        }
-
-        [Test]
-        public void DisconnectOnAlreadyConnectedTest()
-        {
-            var p2pSession = InitializeNode(ConnectionDirection.In);
-
-            AssertTrue(() => p2pSession.Disconected, 5000);
-            //Assert.IsTrue(p2pSession.Disconected);
-            Assert.AreEqual(DisconnectReason.AlreadyConnected, p2pSession.DisconnectReason);
-        }
-
-        [Test]
-        public void DisconnectOnTooManyPeersTest()
-        {
-            var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
-            ((NetworkConfig) _configurationProvider.GetConfig<INetworkConfig>()).ActivePeersMaxCount = 0;
-
-            //trigger connection initialized
-            var p2pSession = new TestP2PSession();
-            p2pSession.RemoteNodeId = node.Id;
-            p2pSession.ConnectionDirection = ConnectionDirection.In;
-            _localPeer.TriggerSessionCreated(p2pSession);
-            p2pSession.TriggerHandshakeComplete();
-
-            AssertTrue(() => p2pSession.Disconected, 5000);
-            //Assert.IsTrue(p2pSession.Disconected);
-            Assert.AreEqual(DisconnectReason.TooManyPeers, p2pSession.DisconnectReason);
-        }
-
-        private TestP2PSession InitializeNode(ConnectionDirection connectionDirection = ConnectionDirection.Out)
-        {
-            var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
-
-            _discoveryManager.GetNodeLifecycleManager(node);
-            _peerManager.Start();
-            Thread.Sleep(200); // TODO: test properly without Thread.Sleep
-            //verify new peer is added
-            Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
-            Assert.AreEqual(node.Id, _peerManager.CandidatePeers.First().Node.Id);
-
-            //trigger connection start
-            _peerManager.RunPeerUpdate();
-            
-            Thread.Sleep(200); // TODO: test properly without Thread.Sleep
-            Assert.AreEqual(1, _localPeer.ConnectionAsyncCallsCounter);
-            Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
-            Assert.AreEqual(1, _peerManager.ActivePeers.Count);
-
-            //trigger connection initialized
-            var p2pSession = new TestP2PSession();
-            p2pSession.RemoteNodeId = node.Id;
-            p2pSession.ConnectionDirection = connectionDirection;
-            _localPeer.TriggerSessionCreated(p2pSession);
-
-            p2pSession.TriggerHandshakeComplete();
-
-            var peer = _peerManager.ActivePeers.First();
-            if (connectionDirection == ConnectionDirection.Out)
-            {
-                Assert.IsNotNull(peer.Session);
+                return Task.CompletedTask;
             }
 
-            return p2pSession;
-        }
-
-        private void AssertTrue(Func<bool> check, int timeout)
-        {
-            var checkThreshold = 200;
-            if (timeout < checkThreshold)
+            public Task ConnectAsync(Node node)
             {
-                Assert.IsTrue(check.Invoke());
-                return;
-            }
-
-            var waitTime = checkThreshold;
-            while (waitTime < timeout)
-            {
-                if (check.Invoke())
+                if (_isFailing)
                 {
-                    return;
+                    throw new InvalidOperationException("making it fail");
+                }
+                
+                lock (this)
+                {
+                    ConnectAsyncCallsCount++;
                 }
 
-                waitTime = waitTime + checkThreshold;
-                var task = Task.Delay(checkThreshold);
-                task.Wait();
+                var session = new Session(30313, LimboLogs.Instance, Substitute.For<IChannel>(), node);
+                lock (_sessions)
+                {
+                    _sessions.Add(session);
+                }
+
+                SessionCreated?.Invoke(this, new SessionEventArgs(session));
+                return Task.CompletedTask;
             }
 
-            Assert.IsTrue(check.Invoke());
-        }
-    }
+            public void CreateRandomIncoming()
+            {
+                var session = new Session(30313, LimboLogs.Instance, Substitute.For<IChannel>());
+                lock (_sessions)
+                {
+                    _sessions.Add(session);
+                }
 
-    public class TestP2PSession : IP2PSession
-    {
-        public bool Disconected { get; set; }
-        public DisconnectReason DisconnectReason { get; set; }
+                session.RemoteHost = "1.2.3.4";
+                session.RemotePort = 12345;
+                SessionCreated?.Invoke(this, new SessionEventArgs(session));
+                session.Handshake(new PrivateKeyGenerator().Generate().PublicKey);
+            }
 
-        public NodeId RemoteNodeId { get; set; }
-        public NodeId ObsoleteRemoteNodeId { get; set; }
-        public string RemoteHost { get; set; }
-        public int? RemotePort { get; set; }
-        public ConnectionDirection ConnectionDirection { get; set; }
+            public int ConnectAsyncCallsCount { get; set; }
 
-        public string SessionId { get; }
-        public INodeStats NodeStats { get; set; }
+            public Task Shutdown()
+            {
+                return Task.CompletedTask;
+            }
 
-        public TestP2PSession()
-        {
-            SessionId = Guid.NewGuid().ToString();
-        }
+            public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
+            public int LocalPort { get; }
+            public event EventHandler<SessionEventArgs> SessionCreated;
 
-        public void ReceiveMessage(Packet packet)
-        {
-        }
+            public void CreateIncoming(Session[] sessions)
+            {
+                List<Session> incomingSessions = new List<Session>();
+                foreach (Session session in sessions)
+                {
+                    var sessionIn = new Session(30313, LimboLogs.Instance, Substitute.For<IChannel>());
+                    sessionIn.RemoteHost = session.RemoteHost;
+                    sessionIn.RemotePort = session.RemotePort;
+                    SessionCreated?.Invoke(this, new SessionEventArgs(sessionIn));
+                    sessionIn.Handshake(session.RemoteNodeId);
+                    incomingSessions.Add(sessionIn);
+                }
 
-        public void TriggerProtocolInitialized(ProtocolInitializedEventArgs eventArgs)
-        {
-            ProtocolInitialized?.Invoke(this, eventArgs);
-            //var task = Task.Delay(1000);
-            //task.Wait();
-        }
+                lock (_sessions)
+                {
+                    _sessions.AddRange(incomingSessions);
+                }
+            }
 
-        public void TriggerPeerDisconnected()
-        {
-            PeerDisconnected?.Invoke(this, new DisconnectEventArgs(DisconnectReason.TooManyPeers, DisconnectType.Local));
-            //var task = Task.Delay(1000);
-            //task.Wait();
-        }
+            private bool _isFailing = false;
 
-        public void DeliverMessage(Packet packet, bool priority = false)
-        {
-        }
-
-        public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
-        {
-        }
-
-        public Task InitiateDisconnectAsync(DisconnectReason disconnectReason)
-        {
-            Disconected = true;
-            DisconnectReason = disconnectReason;
-            return Task.CompletedTask;
+            public void MakeItFail()
+            {
+                _isFailing = true;
+            }
         }
 
-        public Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType)
+        private class InMemoryStorage : INetworkStorage
         {
-            return Task.CompletedTask;
+            private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>();
+
+            public NetworkNode[] GetPersistedNodes()
+            {
+                return _nodes.Values.ToArray();
+            }
+
+            public void UpdateNodes(NetworkNode[] nodes)
+            {
+                foreach (NetworkNode node in nodes)
+                {
+                    _nodes[node.NodeId] = node;
+                }
+
+                _pendingChanges = true;
+            }
+
+            public void RemoveNodes(NetworkNode[] nodes)
+            {
+                _pendingChanges = true;
+            }
+
+            public void StartBatch()
+            {
+            }
+
+            public void Commit()
+            {
+            }
+
+            private bool _pendingChanges;
+
+            public bool AnyPendingChange()
+            {
+                return _pendingChanges;
+            }
         }
 
-        public void Handshake(NodeId handshakeRemoteNodeId)
+        [SetUp]
+        public void SetUp()
         {
-            HandshakeComplete?.Invoke(this, EventArgs.Empty);
-            var task = Task.Delay(1000);
-            task.Wait();
+            _rlpxPeer = new RlpxMock(_sessions);
+            _discoveryApp = Substitute.For<IDiscoveryApp>();
+            _stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+            _storage = new InMemoryStorage();
+            _peerLoader = new PeerLoader(new NetworkConfig(), _stats, _storage, LimboLogs.Instance);
+            _networkConfig = new NetworkConfig();
+            _networkConfig.PeersPersistenceInterval = 50;
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _stats, _storage, _peerLoader, _networkConfig, LimboLogs.Instance);
         }
 
-        public event EventHandler<DisconnectEventArgs> PeerDisconnected;
-        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
-        public event EventHandler<EventArgs> HandshakeComplete;
-
-        public void TriggerPeerDisconnected(DisconnectReason reason, DisconnectType disconnectType)
+        [Test]
+        public async Task Can_start_and_stop()
         {
-            PeerDisconnected?.Invoke(this, new DisconnectEventArgs(reason, disconnectType));
-            var task = Task.Delay(1000);
-            task.Wait();
+            _peerManager.Start();
+            await _peerManager.StopAsync(ExitType.LightExit);
         }
 
-        public void TriggerHandshakeComplete()
+        private const string enodesString = enode1String + "," + enode2String;
+        private const string enode1String = "enode://22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222@51.141.78.53:30303";
+        private const string enode2String = "enode://1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b@52.141.78.53:30303";
+
+        private void SetupPersistedPeers(int count)
         {
-            HandshakeComplete?.Invoke(this, EventArgs.Empty);
-            var task = Task.Delay(1000);
-            task.Wait();
+            List<NetworkNode> nodes = new List<NetworkNode>();
+            for (int i = 0; i < count; i++)
+            {
+                var generator = new PrivateKeyGenerator();
+                string enode = $"enode://{generator.Generate().PublicKey.ToString(false)}@52.141.78.53:30303";
+                NetworkNode node = new NetworkNode(enode);
+                nodes.Add(node);
+            }
+
+//            foreach (NetworkNode networkNode in nodes.OrderBy(n => n.NodeId.ToString()).ToArray())
+//            {
+//                Console.WriteLine(networkNode.NodeId);
+//            }
+
+            _storage.UpdateNodes(nodes.ToArray());
         }
 
-        public void Dispose()
+        [Test]
+        public async Task Will_connect_to_a_candidate_node()
         {
-        }
-    }
-
-    public class TestRlpxPeer : IRlpxPeer
-    {
-        public int ConnectionAsyncCallsCounter = 0;
-
-        public Task Shutdown()
-        {
-            return Task.CompletedTask;
+            SetupPersistedPeers(1);
+            _peerManager.Init();
+            _peerManager.Start();
+            Thread.Sleep(100);
+            Assert.AreEqual(1, _rlpxPeer.ConnectAsyncCallsCount);
+            await _peerManager.StopAsync(ExitType.LightExit);
         }
 
-        public Task Init()
+        [Test]
+        public async Task Will_only_connect_up_to_max_peers()
         {
-            return Task.CompletedTask;
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+            Thread.Sleep(200);
+            Assert.AreEqual(25, _rlpxPeer.ConnectAsyncCallsCount);
+            await _peerManager.StopAsync(ExitType.LightExit);
         }
 
-        public Task ConnectAsync(NodeId remoteNodeId, string remoteHost, int remotePort, INodeStats nodeStats)
+        private List<Session> _sessions = new List<Session>();
+
+        [Test]
+        public async Task Will_fill_up_on_disconnects()
         {
-            ConnectionAsyncCallsCounter++;
-            return Task.CompletedTask;
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+            Thread.Sleep(200);
+            Assert.AreEqual(25, _rlpxPeer.ConnectAsyncCallsCount);
+            DisconnectAllSessions();
+
+            Thread.Sleep(200);
+            Assert.AreEqual(50, _rlpxPeer.ConnectAsyncCallsCount);
+            await _peerManager.StopAsync(ExitType.LightExit);
         }
 
-        public void TriggerSessionCreated(IP2PSession session)
+        [Test]
+        public async Task Ok_if_fails_to_connect()
         {
-            SessionCreated?.Invoke(this, new SessionEventArgs(session));
+            SetupPersistedPeers(50);
+            _rlpxPeer.MakeItFail();
+            _peerManager.Init();
+            _peerManager.Start();
+
+            
+            for (int i = 0; i < 10; i++)
+            {
+                Thread.Sleep(500);
+                Assert.AreEqual(0, _peerManager.ActivePeers.Count);
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+        
+        [Test]
+        public async Task Will_fill_up_over_and_over_again_on_disconnects()
+        {
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            int currentCount = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                currentCount += 25;
+                Thread.Sleep(300);
+                Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
+                DisconnectAllSessions();
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+        
+        [Test]
+        public async Task Will_fill_up_over_and_over_again_on_newly_discovered()
+        {
+            SetupPersistedPeers(0);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            for (int i = 0; i < 10; i++)
+            {
+                DiscoverNew(25);
+                Thread.Sleep(300);
+                Assert.AreEqual(25, _peerManager.ActivePeers.Count);
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
         }
 
-        public event EventHandler<SessionEventArgs> SessionCreated;
-
-        public event EventHandler<SessionEventArgs> SessionClosing
+        [Test]
+        public async Task Will_fill_up_with_incoming_over_and_over_again_on_disconnects()
         {
-            add { }
-            remove { }
+            SetupPersistedPeers(0);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            for (int i = 0; i < 10; i++)
+            {
+                CreateNewIncomingSessions(25);
+                Thread.Sleep(300);
+                Assert.AreEqual(25, _peerManager.ActivePeers.Count);
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        [Test]
+        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing()
+        {
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            int currentCount = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                currentCount += 25;
+                Thread.Sleep(200);
+                Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
+                HandshakeAllSessions();
+                Thread.Sleep(200);
+                DisconnectAllSessions();
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        [Test]
+        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
+        {
+            _networkConfig.MaxCandidatePeerCount = 40;
+            _networkConfig.CandidatePeerCountCleanupThreshold = 30;
+            _networkConfig.PersistedPeerCountCleanupThreshold = 40;
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            int currentCount = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                currentCount += 25;
+                Thread.Sleep(200);
+                Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
+                HandshakeAllSessions();
+                Thread.Sleep(300);
+                DisconnectAllSessions();
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        [Test]
+        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40_with_random_incoming_connections()
+        {
+            _networkConfig.MaxCandidatePeerCount = 40;
+            _networkConfig.CandidatePeerCountCleanupThreshold = 30;
+            _networkConfig.PersistedPeerCountCleanupThreshold = 40;
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            int currentCount = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                currentCount += 25;
+                Thread.Sleep(200);
+                Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
+                HandshakeAllSessions();
+                Thread.Sleep(200);
+                CreateIncomingSessions();
+                Thread.Sleep(300);
+                DisconnectAllSessions();
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        private void CreateIncomingSessions()
+        {
+            Session[] clone;
+
+            lock (_sessions)
+            {
+                clone = _sessions.ToArray();
+            }
+
+            _rlpxPeer.CreateIncoming(clone);
+        }
+
+        private void CreateNewIncomingSessions(int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                _rlpxPeer.CreateRandomIncoming();
+            }
+        }
+        
+        private void DiscoverNew(int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                _discoveryApp.NodeDiscovered += Raise.EventWith(new NodeEventArgs(new Node(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.4", 1234)));
+            }
+        }
+
+        private void DisconnectAllSessions()
+        {
+            Session[] clone;
+            lock (_sessions)
+            {
+                clone = _sessions.ToArray();
+                _sessions.Clear();
+            }
+
+            foreach (Session session in clone)
+            {
+                session.Disconnect(DisconnectReason.TooManyPeers, DisconnectType.Remote);
+            }
+        }
+
+        private void HandshakeAllSessions()
+        {
+            Session[] clone;
+            lock (_sessions)
+            {
+                clone = _sessions.ToArray();
+            }
+
+            foreach (Session session in clone)
+            {
+                session.Handshake(new PrivateKeyGenerator().Generate().PublicKey);
+            }
         }
     }
 }

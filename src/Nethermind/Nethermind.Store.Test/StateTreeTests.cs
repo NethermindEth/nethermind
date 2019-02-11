@@ -44,9 +44,9 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new MemDb();
             StateTree tree = new StateTree(db);
-            tree.Set(TestObject.AddressA, _account0);
-            tree.Set(TestObject.AddressB, _account0);
-            tree.Set(TestObject.AddressC, _account0);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Set(TestItem.AddressB, _account0);
+            tree.Set(TestItem.AddressC, _account0);
             tree.Commit();
             Assert.AreEqual(0, db.ReadsCount, "reads");
         }
@@ -56,9 +56,9 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new MemDb();
             StateTree tree = new StateTree(db);
-            tree.Set(TestObject.AddressA, _account0);
-            tree.Set(TestObject.AddressB, _account0);
-            tree.Set(TestObject.AddressC, _account0);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Set(TestItem.AddressB, _account0);
+            tree.Set(TestItem.AddressC, _account0);
             tree.Commit();
             Assert.AreEqual(5, db.WritesCount, "writes"); // branch, branch, two leaves (one is stored as RLP)
         }
@@ -357,9 +357,9 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new MemDb();
             StateTree tree = new StateTree(db);
-            tree.Set(TestObject.AddressA, _account0);
-            tree.Set(TestObject.AddressB, _account0);
-            tree.Set(TestObject.AddressC, _account0);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Set(TestItem.AddressB, _account0);
+            tree.Set(TestItem.AddressC, _account0);
             tree.Commit();
             Assert.AreEqual(5, Metrics.TreeNodeHashCalculations, "hashes"); // branch, branch, three leaves
         }
@@ -369,9 +369,9 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new MemDb();
             StateTree tree = new StateTree(db);
-            tree.Set(TestObject.AddressA, _account0);
-            tree.Set(TestObject.AddressB, _account0);
-            tree.Set(TestObject.AddressC, _account0);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Set(TestItem.AddressB, _account0);
+            tree.Set(TestItem.AddressC, _account0);
             tree.Commit();
             Assert.AreEqual(5, Metrics.TreeNodeRlpEncodings, "encodings"); // branch, branch, three leaves
         }
@@ -381,9 +381,9 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new MemDb();
             StateTree tree = new StateTree(db);
-            tree.Set(TestObject.AddressA, _account0);
-            tree.Set(TestObject.AddressB, _account0);
-            tree.Set(TestObject.AddressC, _account0);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Set(TestItem.AddressB, _account0);
+            tree.Set(TestItem.AddressC, _account0);
             tree.Commit();
             Assert.AreEqual(0, Metrics.TreeNodeRlpDecodings, "decodings");
         }
@@ -393,10 +393,10 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new MemDb();
             StateTree tree = new StateTree(db);
-            tree.Set(TestObject.AddressA, _account0);
-            tree.Set(TestObject.AddressA, _account1);
-            tree.Set(TestObject.AddressA, _account2);
-            tree.Set(TestObject.AddressA, _account3);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Set(TestItem.AddressA, _account1);
+            tree.Set(TestItem.AddressA, _account2);
+            tree.Set(TestItem.AddressA, _account3);
             tree.Commit();
             Assert.AreEqual(1, db.WritesCount, "writes"); // extension, branch, two leaves
         }
@@ -407,11 +407,11 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new MemDb();
             StateTree tree = new StateTree(db);
-            tree.Set(TestObject.AddressA, _account0);
+            tree.Set(TestItem.AddressA, _account0);
             tree.Commit();
             Assert.AreEqual(1, db.WritesCount, "writes before"); // extension, branch, two leaves
-            tree.Set(TestObject.AddressA, _account1);
-            tree.Set(TestObject.AddressA, _account0);
+            tree.Set(TestItem.AddressA, _account1);
+            tree.Set(TestItem.AddressA, _account0);
             tree.Commit();
             Assert.AreEqual(1, db.WritesCount, "writes after"); // extension, branch, two leaves
         }
@@ -421,7 +421,7 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new MemDb();
             StateTree tree = new StateTree(db);
-            tree.Set(TestObject.AddressA, _account0);
+            tree.Set(TestItem.AddressA, _account0);
             Assert.AreEqual(0, db.WritesCount, "writes");
         }
         
@@ -430,7 +430,7 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new MemDb();
             StateTree tree = new StateTree(db);
-            tree.Set(TestObject.AddressA, _account0);
+            tree.Set(TestItem.AddressA, _account0);
             tree.UpdateRootHash();
             Assert.AreEqual("0x545a417202afcb10925b2afddb70a698710bb1cf4ab32942c42e9f019d564fdc", tree.RootHash.ToString(true));
         }
@@ -475,7 +475,7 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new MemDb();
             StateTree tree = new StateTree(db);
-            tree.Set(TestObject.AddressA, null);
+            tree.Set(TestItem.AddressA, null);
         }
     }
 }

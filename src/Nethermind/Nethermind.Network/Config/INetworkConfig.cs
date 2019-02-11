@@ -141,6 +141,11 @@ namespace Nethermind.Network.Config
         /// List of trusted nodes - we connect to them and set predefined high reputation
         /// </summary>
         string TrustedPeers { get; set; }
+        
+        /// <summary>
+        /// List of static nodes - we try to keep connection on all the time
+        /// </summary>
+        string StaticPeers { get; set; }
 
         /// <summary>
         /// Base path for discovery db
@@ -158,16 +163,6 @@ namespace Nethermind.Network.Config
         bool IsPeersPersistenceOn { get; set; }
 
         /// <summary>
-        /// Time between running peer update in milliseconds
-        /// </summary>
-        int ActivePeerUpdateInterval { get; }
-
-        /// <summary>
-        /// On/Off for active peer timer - provides reconnections
-        /// </summary>
-        bool IsActivePeerTimerEnabled { get; set; }
-
-        /// <summary>
         /// Max amount of active peers on the tcp level 
         /// </summary>
         int ActivePeersMaxCount { get; }
@@ -175,7 +170,7 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Delay of connection retrying after disconnect
         /// </summary>
-        int DisconnectDelay { get; }
+        int DisconnectDelay { get; set; }
 
         /// <summary>
         /// Delay of connection retrying after failed connection attempt
@@ -185,7 +180,12 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Time between persisting peers in milliseconds
         /// </summary>
-        int PeersPersistenceInterval { get; }
+        int PeersPersistenceInterval { get; set; }
+        
+        /// <summary>
+        /// Time between persisting peers in milliseconds
+        /// </summary>
+        int PeersUpdateInterval { get; set; }
 
         /// <summary>
         /// Time between sending p2p ping
@@ -210,16 +210,16 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Persisted Peer Count Cleanup Threshold
         /// </summary>
-        int PersistedPeerCountCleanupThreshold { get; }
+        int PersistedPeerCountCleanupThreshold { get; set; }
         
         /// <summary>
         /// Max Candidate Peer count
         /// </summary>
-        int MaxCandidatePeerCount { get; }
+        int MaxCandidatePeerCount { get; set; }
         
         /// <summary>
         /// Candidate Peer Count Cleanup Threshold
         /// </summary>
-        int CandidatePeerCountCleanupThreshold { get; }
+        int CandidatePeerCountCleanupThreshold { get; set; }
     }
 }

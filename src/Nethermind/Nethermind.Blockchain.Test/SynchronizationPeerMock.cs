@@ -21,10 +21,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -35,11 +35,12 @@ namespace Nethermind.Blockchain.Test
         public SynchronizationPeerMock(IBlockTree blockTree, PublicKey publicKey = null)
         {
             _blockTree = blockTree;
-            NodeId = new NodeId(publicKey ?? TestObject.PublicKeyA);
+            Node = new Node(publicKey ?? TestItem.PublicKeyA, "127.0.0.1", 1234);
         }
 
+        public Guid SessionId { get; } = Guid.NewGuid();
         public bool IsFastSyncSupported => false;
-        public NodeId NodeId { get; set; }
+        public Node Node { get; set; }
         public INodeStats NodeStats { get; set; }
         public string ClientId { get; set; }
         public UInt256 TotalDifficultyOnSessionStart => _blockTree.Head.TotalDifficulty ?? 0;

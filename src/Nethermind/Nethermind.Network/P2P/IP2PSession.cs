@@ -19,6 +19,7 @@
 using System;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -26,35 +27,44 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    public interface IP2PSession : IDisposable
+    public interface ISession : IDisposable
     {
-        NodeId RemoteNodeId { get; set; }
-        NodeId ObsoleteRemoteNodeId { get; set; }
+        byte P2PVersion { get; }
+        SessionState State { get; }
+        bool IsClosing { get; }
+        PublicKey RemoteNodeId { get; set; }
+        PublicKey ObsoleteRemoteNodeId { get; set; }
         string RemoteHost { get; set; }
-        int? RemotePort { get; set; }
-        ConnectionDirection ConnectionDirection { get; }
-        string SessionId { get; }
-        INodeStats NodeStats { get; }
-
+        int RemotePort { get; set; }
+        int LocalPort { get; set; }
+        ConnectionDirection Direction { get; }
+        Guid SessionId { get; }
+        Node Node { get; }
         void ReceiveMessage(Packet packet);
-        void DeliverMessage(Packet packet, bool priority = false);
+        void DeliverMessage(Packet packet);
+        void EnableSnappy();
+      
+        IPingSender PingSender { get; set; }
+        
+        void AddProtocolHandler(IProtocolHandler handler);
         
         void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender);
 
         /// <summary>
         /// Starts local disconnect (triggers disconnect on each protocolHandler, down to tcp disconnect)
         /// </summary>
-        Task InitiateDisconnectAsync(DisconnectReason disconnectReason);
+        void InitiateDisconnect(DisconnectReason disconnectReason);
 
         /// <summary>
         ///  Drop tcp connection after a delay
         /// </summary>     
-        Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType);
+        void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType);
 
-        void Handshake(NodeId handshakeRemoteNodeId);
+        void Handshake(PublicKey handshakeRemoteNodeId);
 
-        event EventHandler<DisconnectEventArgs> PeerDisconnected;
-        event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        event EventHandler<DisconnectEventArgs> Disconnecting;
+        event EventHandler<DisconnectEventArgs> Disconnected;
+        event EventHandler<EventArgs> Initialized;
         event EventHandler<EventArgs> HandshakeComplete;
     }
 }

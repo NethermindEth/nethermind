@@ -183,7 +183,7 @@ namespace Nethermind.Core.Specs.ChainSpec
             chainSpec.Bootnodes = new NetworkNode[chainSpecJson.Nodes.Length];
             for (int i = 0; i < chainSpecJson.Nodes.Length; i++)
             {
-                chainSpec.Bootnodes[i] = new NetworkNode(chainSpecJson.Nodes[i], $"bootnode{i}");
+                chainSpec.Bootnodes[i] = new NetworkNode(chainSpecJson.Nodes[i]);
             }
         }
     }

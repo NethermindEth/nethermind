@@ -50,7 +50,7 @@ namespace Nethermind.Stats
 
         private static int _statsLength = Enum.GetValues(typeof(NodeStatsEventType)).Length;
         
-        public NodeStatsLight(Node node, IStatsConfig statsConfig, ILogManager logManager)
+        public NodeStatsLight(Node node, IStatsConfig statsConfig)
         {
             _statCountersArray = new int[_statsLength];
             _statsConfig = statsConfig;
@@ -208,6 +208,8 @@ namespace Nethermind.Stats
                     disconnectDelay = randomizedDelay < 10 ? randomizedDelay + 10 : randomizedDelay;
                 }
             }
+            
+            
             var result = timePassed < disconnectDelay;
             return result;
         }
@@ -274,7 +276,7 @@ namespace Nethermind.Stats
             return IsReputationPenalized()
                 ? -100
                 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation() +
-                  (IsTrustedPeer ? _statsConfig.PredefinedReputation : 0);
+                  (Node.IsTrusted ? _statsConfig.PredefinedReputation : 0);
         }
 
         private bool HasDisconnectedOnce => _lastLocalDisconnect.HasValue || _lastRemoteDisconnect.HasValue;

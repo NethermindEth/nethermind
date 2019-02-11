@@ -33,7 +33,7 @@ namespace Nethermind.Benchmarks.Store
         {
             Keccak.EmptyTreeHash.Bytes,
             Keccak.Zero.Bytes,
-            TestObject.AddressA.Bytes,
+            TestItem.AddressA.Bytes,
         };
 
         [Params(0, 1, 2)]

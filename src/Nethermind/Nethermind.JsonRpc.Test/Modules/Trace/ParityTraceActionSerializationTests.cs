@@ -30,10 +30,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         public void Can_serialize()
         {
             ParityTraceAction action = new ParityTraceAction();
-            action.From = TestObject.AddressA;
+            action.From = TestItem.AddressA;
             action.Gas = 12345;
             action.Input = new byte[] {6, 7, 8, 9, 0};
-            action.To = TestObject.AddressB;
+            action.To = TestItem.AddressB;
             action.Value = 24680;
             action.CallType = "call";
             action.TraceAddress = new int[] {1, 3, 5, 7};

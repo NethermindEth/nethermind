@@ -28,8 +28,8 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats;
@@ -44,41 +44,30 @@ namespace Nethermind.Network.Rlpx
         private IEventLoopGroup _workerGroup;
 
         private bool _isInitialized;
-        internal readonly NodeId LocalNodeId;
-        private readonly int _localPort;
+        public PublicKey LocalNodeId { get; }
+        public int LocalPort { get; }
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
-        private readonly INodeStatsProvider _nodeStatsProvider;
-        private readonly IMessageSerializationService _serializationService;
-        private readonly ISynchronizationManager _synchronizationManager;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IPerfService _perfService;
-        private readonly IBlockTree _blockTree;
-        private readonly ITransactionPool _transactionPool;
-        private readonly ITimestamp _timestamp;
+        private readonly ISessionMonitor _sessionMonitor;
 
-        public RlpxPeer(NodeId localNodeId, int localPort, ISynchronizationManager synchronizationManager,
-            IMessageSerializationService messageSerializationService,
-            IEncryptionHandshakeService encryptionHandshakeService, INodeStatsProvider nodeStatsProvider,
-            ILogManager logManager, IPerfService perfService,
-            IBlockTree blockTree, ITransactionPool transactionPool)
+        public RlpxPeer(
+            PublicKey localNodeId,
+            int localPort,
+            IEncryptionHandshakeService encryptionHandshakeService,
+            ILogManager logManager,
+            IPerfService perfService,
+            ISessionMonitor sessionMonitor)
         {
             _encryptionHandshakeService = encryptionHandshakeService ??
                                           throw new ArgumentNullException(nameof(encryptionHandshakeService));
-            _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _perfService = perfService;
-            _blockTree = blockTree;
-            _transactionPool = transactionPool;
-            _timestamp = new Timestamp();
+            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
+            _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
             _logger = logManager.GetClassLogger();
-            _serializationService = messageSerializationService ??
-                                    throw new ArgumentNullException(nameof(messageSerializationService));
-            _synchronizationManager =
-                synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
-
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
-            _localPort = localPort;
+            LocalPort = localPort;
         }
 
         public async Task Init()
@@ -102,10 +91,14 @@ namespace Nethermind.Network.Rlpx
                     .ChildOption(ChannelOption.SoBacklog, 100)
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
-                        InitializeChannel(ch, ConnectionDirection.In, null,
-                            ((IPEndPoint) ch.RemoteAddress).Address.ToString(), ((IPEndPoint) ch.RemoteAddress).Port)));
+                    {
+                        Session session = new Session(LocalPort,  _logManager, ch);
+                        session.RemoteHost = ((IPEndPoint) ch.RemoteAddress).Address.ToString();
+                        session.RemotePort = ((IPEndPoint) ch.RemoteAddress).Port;
+                        InitializeChannel(ch, session);
+                    }));
 
-                _bootstrapChannel = await bootstrap.BindAsync(_localPort).ContinueWith(t =>
+                _bootstrapChannel = await bootstrap.BindAsync(LocalPort).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -118,21 +111,20 @@ namespace Nethermind.Network.Rlpx
 
                 if (_bootstrapChannel == null)
                 {
-                    throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}", NetwokExceptionType.Other);
+                    throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}", NetworkExceptionType.Other);
                 }
             }
             catch (Exception ex)
             {
                 _logger.Error($"{nameof(Init)} failed.", ex);
-                // TODO: check what happens on nulls
-                await Task.WhenAll(_bossGroup?.ShutdownGracefullyAsync(), _workerGroup?.ShutdownGracefullyAsync());
+                await Task.WhenAll(_bossGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask, _workerGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask);
                 throw;
             }
         }
 
-        public async Task ConnectAsync(NodeId remoteId, string host, int port, INodeStats nodeStats)
+        public async Task ConnectAsync(Node node)
         {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connecting to {remoteId}@{host}:{port}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connecting to {node.Id}@{node.Port}:{node.Host}");
 
             Bootstrap clientBootstrap = new Bootstrap();
             clientBootstrap.Group(_workerGroup);
@@ -141,37 +133,40 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Option(ChannelOption.TcpNodelay, true);
             clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
             clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
-            clientBootstrap.RemoteAddress(host, port);
+            clientBootstrap.RemoteAddress(node.Host, node.Port);
             
-            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, ConnectionDirection.Out, remoteId, host, port, nodeStats)));
+            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
+            {
+                Session session = new Session(LocalPort, _logManager, ch, node);
+                InitializeChannel(ch, session);
+            }));
 
-            var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
+            var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(node.Host), node.Port));
             var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10))));
             if (firstTask != connectTask)
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connection timed out: {remoteId}@{host}:{port}");
-                throw new NetworkingException($"Failed to connect to {remoteId} (timeout)", NetwokExceptionType.Timeout);
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connection timed out: {node.Id}@{node.Port}:{node.Host}");
+                throw new NetworkingException($"Failed to connect to {node.Id}@{node.Port}:{node.Host} (timeout)", NetworkExceptionType.Timeout);
             }
 
             if (connectTask.IsFaulted)
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Error when connecting to {remoteId}@{host}:{port}, error: {connectTask.Exception}");
+                    _logger.Trace($"Error when connecting to {node.Id}@{node.Port}:{node.Host}, error: {connectTask.Exception}");
                 }
 
-                throw new NetworkingException($"Failed to connect to {remoteId}", NetwokExceptionType.TargetUnreachable,connectTask.Exception);
+                throw new NetworkingException($"Failed to connect to {node.Id}@{node.Port}:{node.Host}", NetworkExceptionType.TargetUnreachable,connectTask.Exception);
             }
 
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connected to {remoteId}@{host}:{port}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connected to {node.Id}@{node.Port}:{node.Host}");
         }
 
         public event EventHandler<SessionEventArgs> SessionCreated;
-        public event EventHandler<SessionEventArgs> SessionClosing;
         
-        private void InitializeChannel(IChannel channel, ConnectionDirection connectionDirection, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
+        private void InitializeChannel(IChannel channel, ISession session)
         {
-            if (connectionDirection == ConnectionDirection.In)
+            if (session.Direction == ConnectionDirection.In)
             {
                 Metrics.IncomingConnections++;
             }
@@ -180,52 +175,41 @@ namespace Nethermind.Network.Rlpx
                 Metrics.OutgoingConnections++;    
             }
             
-            P2PSession session = new P2PSession(
-                LocalNodeId,
-                remoteId,
-                _localPort,
-                connectionDirection,
-                _serializationService,
-                _synchronizationManager,
-                _nodeStatsProvider,
-                nodeStats,
-                _logManager, channel, _perfService, _blockTree, _transactionPool, _timestamp);
-
-            if (connectionDirection == ConnectionDirection.Out)
+            if (_logger.IsTrace)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Initializing {connectionDirection.ToString().ToUpper()} channel{(connectionDirection == ConnectionDirection.Out ? $": {remoteId}@{remoteHost}:{remotePort}" : string.Empty)}");
-                }
-
-                // this is the first moment we get confirmed publicKey of remote node in case of outgoing connections
-                session.RemoteNodeId = remoteId;
-                session.RemoteHost = remoteHost;
-                session.RemotePort = remotePort;
+                _logger.Trace($"Initializing {session.Direction.ToString().ToUpper()} channel{(session.Direction == ConnectionDirection.Out ? $": {session.RemoteNodeId}@{session.RemoteHost}:{session.RemotePort}" : string.Empty)}");
             }
-
+            
+            _sessionMonitor.AddSession(session);
+            session.Disconnected += SessionOnPeerDisconnected;
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
-            HandshakeRole role = connectionDirection == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, remoteId, _logManager);
+            HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
+            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, session.RemoteNodeId, _logManager);
             
             IChannelPipeline pipeline = channel.Pipeline;
-            pipeline.AddLast(new LoggingHandler(connectionDirection.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
+//            pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
-            channel.CloseCompletion.ContinueWith(async x =>
+            channel.CloseCompletion.ContinueWith(x =>
             {
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"Channel disconnected: {session.RemoteNodeId}");
                 }
-
-                await session.DisconnectAsync(DisconnectReason.ClientQuitting, DisconnectType.Remote);
-                SessionClosing?.Invoke(this, new SessionEventArgs(session));
+                
+                session.Disconnect(DisconnectReason.ClientQuitting, DisconnectType.Remote);
             });
         }
-        
+
+        private void SessionOnPeerDisconnected(object sender, DisconnectEventArgs e)
+        {
+            ISession session = (Session) sender;
+            session.Disconnected -= SessionOnPeerDisconnected;
+            session.Dispose();
+        }
+
         public async Task Shutdown()
         {
             var key = _perfService.StartPerfCalc();

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Stats.Model;
+using System.Threading.Tasks;
+using Nethermind.Network.P2P;
 
-namespace Nethermind.Network.Discovery.RoutingTable
+namespace Nethermind.Network
 {
-    public interface INodeBucketItem
+    public interface ISessionMonitor
     {
-        Node Node { get; }
-        DateTime LastContactTime { get; }
-        void OnContactReceived();
+        void Start();
+        void Stop();
+        void AddSession(ISession session);
     }
 }

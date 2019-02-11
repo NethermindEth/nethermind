@@ -26,6 +26,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Stats;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -40,20 +41,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         {
             var svc = Build.A.SerializationService().WithEth().TestObject;
             
-            var session = Substitute.For<IP2PSession>();
+            var session = Substitute.For<ISession>();
             var syncManager = Substitute.For<ISynchronizationManager>();
-            var blockTree = Substitute.For<IBlockTree>();
             var transactionPool = Substitute.For<ITransactionPool>();
-            var timestamp = Substitute.For<ITimestamp>();
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, syncManager, LimboLogs.Instance,
-                new PerfService(LimboLogs.Instance), blockTree, transactionPool, timestamp);
+            var handler = new Eth62ProtocolHandler(
+                session,
+                svc,
+                new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
+                syncManager,
+                LimboLogs.Instance,
+                new PerfService(LimboLogs.Instance),
+                transactionPool);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
-            msg.StartingBlockHash = TestObject.KeccakA;
+            msg.StartingBlockHash = TestItem.KeccakA;
             msg.MaxHeaders = 3;
             msg.Skip = 1;
             msg.Reverse = 1;
@@ -63,7 +68,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
             handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
-            syncManager.Received().Find(TestObject.KeccakA, 3, 1, true);
+            syncManager.Received().Find(TestItem.KeccakA, 3, 1, true);
         }
         
         [Test]
@@ -71,17 +76,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         {
             var svc = Build.A.SerializationService().WithEth().TestObject;
             
-            var session = Substitute.For<IP2PSession>();
+            var session = Substitute.For<ISession>();
             var syncManager = Substitute.For<ISynchronizationManager>();
-            var blockTree = Substitute.For<IBlockTree>();
             var transactionPool = Substitute.For<ITransactionPool>();
-            var timestamp = Substitute.For<ITimestamp>();
             syncManager.Find(null, Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>()).Throws(new ArgumentNullException());
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, syncManager, LimboLogs.Instance,
-                new PerfService(LimboLogs.Instance), blockTree, transactionPool, timestamp);
+            var handler = new Eth62ProtocolHandler(
+                session,
+                svc,
+                new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
+                syncManager,
+                LimboLogs.Instance,
+                new PerfService(LimboLogs.Instance),
+                transactionPool);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();

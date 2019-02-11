@@ -34,8 +34,8 @@ namespace Nethermind.Evm.Test
         protected override Block BuildBlock(UInt256 blockNumber)
         {
             Block block = base.BuildBlock(blockNumber);
-            if(_setAuthor) block.Header.Author = TestObject.AddressC;
-            block.Header.Beneficiary = TestObject.AddressB;
+            if(_setAuthor) block.Header.Author = TestItem.AddressC;
+            block.Header.Beneficiary = TestItem.AddressB;
             return block;
         }
 
@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
             
-            AssertStorage(0, TestObject.AddressC);
+            AssertStorage(0, TestItem.AddressC);
         }
         
         [Test]
@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
             
-            AssertStorage(0, TestObject.AddressB);
+            AssertStorage(0, TestItem.AddressB);
         }
     }
 }

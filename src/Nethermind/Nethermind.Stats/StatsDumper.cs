@@ -23,72 +23,60 @@ using System.Linq;
 using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Core.Utils;
-using Nethermind.Network.Config;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network
+namespace Nethermind.Stats
 {
-    public class PeerSessionLogger : IPeerSessionLogger
+    public class StatsDumper : IStatsDumper
     {
+        private const string DetailedTimeDateFormat = "yyyy-MM-dd HH:mm:ss.fff";
+
         private readonly ILogger _logger;
         private readonly IStatsConfig _statsConfig;
-        private readonly INetworkConfig _networkConfig;
-        private readonly IPerfService _perfService;
         private string _eventLogsDirectoryPath;
-        
-        public PeerSessionLogger(ILogManager logManager, IConfigProvider configProvider, IPerfService perfService)
-        {
-            _perfService = perfService;
-            _logger = logManager.GetClassLogger();
-            _statsConfig = configProvider.GetConfig<IStatsConfig>();
-            _networkConfig = configProvider.GetConfig<INetworkConfig>();
-        }
 
-        public void Init(string logsDirectory)
+        public StatsDumper(ILogManager logManager, IStatsConfig statsConfig, string outputDir = null)
         {
-            var path = logsDirectory ?? PathUtils.GetExecutingDirectory();
-            _eventLogsDirectoryPath = Path.Combine(path, @"logs\logEvents");
+            _logger = logManager.GetClassLogger();
+            _statsConfig = statsConfig ?? throw new ArgumentNullException(nameof(statsConfig));
+            
+            var path = outputDir ?? PathUtils.GetExecutingDirectory();
+            _eventLogsDirectoryPath = Path.Combine(path, "networkLogs");
             if (!Directory.Exists(_eventLogsDirectoryPath))
             {
                 Directory.CreateDirectory(_eventLogsDirectoryPath);
             }
         }
-        
-        public void LogSessionStats(IReadOnlyCollection<Peer> activePeers, IReadOnlyCollection<Peer> candidatePeers, bool logEventDetails)
+
+        public void DumpStats(IReadOnlyCollection<INodeStats> nodes, bool logEventDetails)
         {
-            var key = _perfService.StartPerfCalc();
-            var peers = activePeers.Concat(candidatePeers).GroupBy(x => x.Node.Id).Select(x => x.First()).ToArray();
             var eventTypes = Enum.GetValues(typeof(NodeStatsEventType)).OfType<NodeStatsEventType>().Where(x => !x.ToString().Contains("Discovery"))
                 .OrderBy(x => x).ToArray();
             var eventStats = eventTypes.Select(x => new
             {
                 EventType = x.ToString(),
-                Count = peers.Count(y => y.NodeStats.DidEventHappen(x))
+                Count = nodes.Count(y => y.DidEventHappen(x))
             }).ToArray();
 
-            var chains = peers.Where(x => x.NodeStats.EthNodeDetails != null).GroupBy(x => x.NodeStats.EthNodeDetails.ChainId).Select(
+            var chains = nodes.Where(x => x.EthNodeDetails != null).GroupBy(x => x.EthNodeDetails.ChainId).Select(
                 x => new {ChainName = ChainId.GetChainName((int) x.Key), Count = x.Count()}).ToArray();
-            var clients = peers.Where(x => x.NodeStats.P2PNodeDetails != null).Select(x => x.NodeStats.P2PNodeDetails.ClientId).GroupBy(x => x).Select(
+            var clients = nodes.Where(x => x.P2PNodeDetails != null).Select(x => x.P2PNodeDetails.ClientId).GroupBy(x => x).Select(
                 x => new {ClientId = x.Key, Count = x.Count()}).ToArray();
-            var remoteDisconnect = peers.Count(x => x.NodeStats.EventHistory.Any(y => y.DisconnectDetails != null && y.DisconnectDetails.DisconnectType == DisconnectType.Remote));
+            var remoteDisconnect = nodes.Count(x => x.EventHistory.Any(y => y.DisconnectDetails != null && y.DisconnectDetails.DisconnectType == DisconnectType.Remote));
 
             var sb = new StringBuilder();
-            sb.AppendLine($"Session stats | {DateTime.Now.ToString(_networkConfig.DetailedTimeDateFormat)} | Active peers: {activePeers.Count} | Candidate peers: {candidatePeers.Count}");
+            sb.AppendLine($"Session stats | {DateTime.Now.ToString(DetailedTimeDateFormat)} | Peers: {nodes.Count}");
             sb.AppendLine($"Peers count with each EVENT:{Environment.NewLine}" +
-                         $"{string.Join(Environment.NewLine, eventStats.Select(x => $"{x.EventType.ToString()}:{x.Count}"))}{Environment.NewLine}" +
-                         $"Remote disconnect: {remoteDisconnect}{Environment.NewLine}{Environment.NewLine}" +
-                         $"CHAINS: {Environment.NewLine}" +
-                         $"{string.Join(Environment.NewLine, chains.Select(x => $"{x.ChainName}:{x.Count}"))}{Environment.NewLine}{Environment.NewLine}" +
-                         $"CLIENTS:{Environment.NewLine}" +
-                         $"{string.Join(Environment.NewLine, clients.Select(x => $"{x.ClientId}:{x.Count}"))}{Environment.NewLine}");
+                          $"{string.Join(Environment.NewLine, eventStats.Select(x => $"{x.EventType.ToString()}:{x.Count}"))}{Environment.NewLine}" +
+                          $"Remote disconnect: {remoteDisconnect}{Environment.NewLine}{Environment.NewLine}" +
+                          $"CHAINS: {Environment.NewLine}" +
+                          $"{string.Join(Environment.NewLine, chains.Select(x => $"{x.ChainName}:{x.Count}"))}{Environment.NewLine}{Environment.NewLine}" +
+                          $"CLIENTS:{Environment.NewLine}" +
+                          $"{string.Join(Environment.NewLine, clients.Select(x => $"{x.ClientId}:{x.Count}"))}{Environment.NewLine}");
 
-            var peersWithLatencyStats = peers.Where(x => x.NodeStats.LatencyHistory.Any()).ToArray();
+            var peersWithLatencyStats = nodes.Where(x => x.LatencyHistory.Any()).ToArray();
             if (peersWithLatencyStats.Any())
             {
                 var latencyLog = GetLatencyComparisonLog(peersWithLatencyStats);
@@ -97,10 +85,10 @@ namespace Nethermind.Network
 
             if (_statsConfig.CaptureNodeStatsEventHistory && logEventDetails)
             {
-                sb.AppendLine($"All peers ({peers.Length}):");
-                sb.AppendLine($"{string.Join(Environment.NewLine, peers.Select(x => GetNodeLog(x.NodeStats)))}{Environment.NewLine}");
+                sb.AppendLine($"All peers ({nodes.Count}):");
+                sb.AppendLine($"{string.Join(Environment.NewLine, nodes.Select(GetNodeLog))}{Environment.NewLine}");
 
-                var peersWithEvents = peers.Where(x => x.NodeStats.EventHistory.Any(y => y.EventType != NodeStatsEventType.NodeDiscovered)).ToArray();
+                var peersWithEvents = nodes.Where(x => x.EventHistory.Any(y => y.EventType != NodeStatsEventType.NodeDiscovered)).ToArray();
                 sb.AppendLine($"Logging {peersWithEvents.Length} peers log event histories");
                 foreach (var peer in peersWithEvents)
                 {
@@ -117,16 +105,19 @@ namespace Nethermind.Network
             var content = sb.ToString();
             File.AppendAllText(generalFilePath, content);
             if (_logger.IsTrace) _logger.Trace(content);
-
-            var logTime = _perfService.EndPerfCalc(key);
-            if (_logger.IsDebug) _logger.Debug($"LogSessionStats time: {logTime} ms");
         }
-        
-        public string GetEventHistoryLog(INodeStats nodeStats)
-        {   
+
+        public void DumpNodeStats(INodeStats nodeStats)
+        {
+            StringBuilder sb = BuildNodeStats(nodeStats);
+            _logger.Trace(sb.ToString());
+        }
+
+        private StringBuilder BuildNodeStats(INodeStats nodeStats)
+        {
             var sb = new StringBuilder();
             sb.AppendLine();
-            sb.AppendLine($"NodeEventHistory | {DateTime.Now.ToString(_networkConfig.DetailedTimeDateFormat)}, {GetNodeLog(nodeStats)}");
+            sb.AppendLine($"NodeEventHistory | {DateTime.Now.ToString(DetailedTimeDateFormat)}, {GetNodeLog(nodeStats)}");
 
             if (nodeStats.P2PNodeDetails != null)
             {
@@ -140,7 +131,7 @@ namespace Nethermind.Network
 
             foreach (var statsEvent in nodeStats.EventHistory.OrderBy(x => x.EventDate).ToArray())
             {
-                sb.Append($"{statsEvent.EventDate.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.EventType}");
+                sb.Append($"{statsEvent.EventDate.ToString(DetailedTimeDateFormat)} | {statsEvent.EventType}");
                 if (statsEvent.ConnectionDirection.HasValue)
                 {
                     sb.Append($" | {statsEvent.ConnectionDirection.Value.ToString()}");
@@ -176,39 +167,40 @@ namespace Nethermind.Network
             {
                 sb.AppendLine($"{latency.Key.ToString()} = {latency.Value}");
             }
-            
+
             if (nodeStats.LatencyHistory.Any())
             {
                 sb.AppendLine("Latency events:");
                 foreach (var statsEvent in nodeStats.LatencyHistory.OrderBy(x => x.StatType).ThenBy(x => x.CaptureTime).ToArray())
                 {
-                    sb.AppendLine($"{statsEvent.StatType.ToString()} | {statsEvent.CaptureTime.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.Latency}");
+                    sb.AppendLine($"{statsEvent.StatType.ToString()} | {statsEvent.CaptureTime.ToString(DetailedTimeDateFormat)} | {statsEvent.Latency}");
                 }
             }
 
-            return sb.ToString();
+            return sb;
         }
-        
+
         private string GetNodeLog(INodeStats nodeStats)
         {
-            var isBootnode = NetworkNode.ParseNodes(_networkConfig.Bootnodes).Any(x => x.NodeId == nodeStats.Node.Id);
-            return $"Node: {nodeStats.Node.Id.PublicKey.ToString(false)}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Desc: {nodeStats.Node.Description}, Trusted: {nodeStats.IsTrustedPeer}, Bootnode: {isBootnode}";
+            return $"Node: {nodeStats.Node.Id.ToString(false)}, Address: {nodeStats.Node.Host}:{nodeStats.Node.Port}, Trusted: {nodeStats.Node.IsTrusted}, Bootnode: {nodeStats.Node.IsBootnode}";
         }
-        
-        private void LogPeerEventHistory(Peer peer)
+
+        private void LogPeerEventHistory(INodeStats nodeStats)
         {
-            var log = GetEventHistoryLog(peer.NodeStats);
-            var fileName = Path.Combine(_eventLogsDirectoryPath, $"{peer.Node.Id.PublicKey.ToString(false)}.log");
+            var log = BuildNodeStats(nodeStats).ToString();
+            var fileName = Path.Combine(_eventLogsDirectoryPath, $"{nodeStats.Node.Id.ToString(false)}.log");
             File.AppendAllText(fileName, log);
             if (_logger.IsTrace) _logger.Trace(log);
         }
 
-        private string GetLatencyComparisonLog(Peer[] peers)
+        private string GetLatencyComparisonLog(INodeStats[] nodeStats)
         {
-            var latencyDict = peers.Select(x => new {x, Av = GetAverageLatencies(x.NodeStats)}).OrderBy(x => x.Av.Select(y => new {y.Key, y.Value}).FirstOrDefault(y => y.Key == NodeLatencyStatType.BlockHeaders)?.Value ?? 10000);
-            return $"Overall latency stats: {Environment.NewLine}{string.Join(Environment.NewLine, latencyDict.Select(x => $"{x.x.Node.Id}: {string.Join(" | ", x.Av.Select(y => $"{y.Key.ToString()}: {y.Value?.ToString() ?? "-"}"))}"))}";
+            var latencyDict = nodeStats
+                .Select(x => new {Node = x.Node, Average = GetAverageLatencies(x)})
+                .OrderBy(x => x.Average.Select(y => new {y.Key, y.Value}).FirstOrDefault(y => y.Key == NodeLatencyStatType.BlockHeaders)?.Value ?? 10000);
+            return $"Overall latency stats: {Environment.NewLine}{string.Join(Environment.NewLine, latencyDict.Select(x => $"{x.Node.Id}: {string.Join(" | ", x.Average.Select(y => $"{y.Key.ToString()}: {y.Value?.ToString() ?? "-"}"))}"))}";
         }
-        
+
         private string GetCapabilities(P2PNodeDetails nodeDetails)
         {
             if (nodeDetails.Capabilities == null || !nodeDetails.Capabilities.Any())
@@ -218,7 +210,7 @@ namespace Nethermind.Network
 
             return string.Join("|", nodeDetails.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"));
         }
-        
+
         private static Dictionary<NodeLatencyStatType, long?> GetAverageLatencies(INodeStats nodeStats)
         {
             return Enum.GetValues(typeof(NodeLatencyStatType)).OfType<NodeLatencyStatType>().ToDictionary(x => x, nodeStats.GetAverageLatency);

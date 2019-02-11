@@ -56,12 +56,12 @@ namespace Nethermind.Network.Config
         public string DbBasePath { get; set; } = Path.GetTempPath();
         public bool IsDiscoveryNodesPersistenceOn { get; set; } = true;
         public bool IsPeersPersistenceOn { get; set; } = true;
-        public int ActivePeerUpdateInterval { get; set; } = 1000 * 3;
-        public bool IsActivePeerTimerEnabled { get; set; } = true;
         public int ActivePeersMaxCount { get; set; } = 25;
         public int DisconnectDelay { get; set; } = 1000 * 60 * 5;
         public int FailedConnectionDelay { get; set; } = 1000 * 60 * 10;
         public int PeersPersistenceInterval { get; set; } = 1000 * 5;
+        
+        public int PeersUpdateInterval { get; set; } = 100;
         public int P2PPingInterval { get; set; } = 1000 * 10;
         public int P2PPingRetryCount { get; set; } = 3;
         public string DetailedTimeDateFormat { get; } = "yyyy-MM-dd HH:mm:ss.fff";
@@ -69,5 +69,6 @@ namespace Nethermind.Network.Config
         public int PersistedPeerCountCleanupThreshold { get; set; } = 2200;
         public int MaxCandidatePeerCount { get; set; } = 10000;
         public int CandidatePeerCountCleanupThreshold { get; set; } = 11000;
+        public string StaticPeers { get; set; }
     }
 }

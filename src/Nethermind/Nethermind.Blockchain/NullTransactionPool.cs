@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain
         {
         }
 
-        public void RemovePeer(NodeId nodeId)
+        public void RemovePeer(PublicKey nodeId)
         {
         }
 

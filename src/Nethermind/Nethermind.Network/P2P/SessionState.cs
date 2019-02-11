@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-
 namespace Nethermind.Network.P2P
 {
-    public class InvalidProtocolException : Exception
+    public enum SessionState
     {
-        public InvalidProtocolException(string message)
-            : base(message)
-        {
-        }
+        New = 0,
+        HandshakeComplete = 1,
+        Initialized = 2,
+        DisconnectingProtocols = 3,
+        Disconnecting = 4,
+        Disconnected = 5
     }
 }

@@ -41,7 +41,6 @@ namespace Nethermind.Stats
         long CurrentNodeReputation { get; }
         long CurrentPersistedNodeReputation { get; set; }
         long NewPersistedNodeReputation { get; }
-        bool IsTrustedPeer { get; set; }
         
         P2PNodeDetails P2PNodeDetails { get; }
         EthNodeDetails EthNodeDetails { get; }

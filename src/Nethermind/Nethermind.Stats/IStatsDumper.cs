@@ -16,22 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Network.P2P;
+using System.Collections.Generic;
 using Nethermind.Stats;
-using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Rlpx
+namespace Nethermind.Stats
 {
-    public class ConnectionInitializedEventArgs : EventArgs
+    internal interface IStatsDumper
     {
-        public IP2PSession Session { get; set; }
-        public ConnectionDirection ConnectionDirection { get; set; }
-
-        public ConnectionInitializedEventArgs(IP2PSession session, ConnectionDirection connectionDirection)
-        {
-            Session = session;
-            ConnectionDirection = connectionDirection;
-        }
+        void DumpStats(IReadOnlyCollection<INodeStats> nodes, bool logEventDetails);
+        void DumpNodeStats(INodeStats nodeStats);
     }
 }

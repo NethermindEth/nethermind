@@ -16,13 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Model;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
@@ -59,7 +56,7 @@ namespace Nethermind.Network.P2P
             }).ToList();
             
             helloMessage.ListenPort = context.DecodeInt();
-            helloMessage.NodeId = new NodeId(new PublicKey(context.DecodeByteArray()));
+            helloMessage.NodeId = new PublicKey(context.DecodeByteArray());
             return helloMessage;
         }
     }

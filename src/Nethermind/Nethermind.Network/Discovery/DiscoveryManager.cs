@@ -42,7 +42,6 @@ namespace Nethermind.Network.Discovery
     {
         private readonly INetworkConfig _configurationProvider;
         private readonly ILogger _logger;
-        private readonly INodeFactory _nodeFactory;
         private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
         private readonly ConcurrentDictionary<Keccak, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<Keccak, INodeLifecycleManager>();
         private readonly INodeTable _nodeTable;
@@ -52,7 +51,6 @@ namespace Nethermind.Network.Discovery
         private IMessageSender _messageSender;
 
         public DiscoveryManager(INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
-            INodeFactory nodeFactory,
             INodeTable nodeTable,
             INetworkStorage discoveryStorage,
             INetworkConfig networkConfig,
@@ -61,7 +59,6 @@ namespace Nethermind.Network.Discovery
             _logger = logManager.GetClassLogger();
             _configurationProvider = networkConfig;
             _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
-            _nodeFactory = nodeFactory;
             _nodeTable = nodeTable;
             _discoveryStorage = discoveryStorage;
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
@@ -80,7 +77,7 @@ namespace Nethermind.Network.Discovery
 
                 MessageType msgType = message.MessageType;
 
-                Node node = _nodeFactory.CreateNode(new NodeId(message.FarPublicKey), message.FarAddress);
+                Node node = new Node(message.FarPublicKey, message.FarAddress);
                 INodeLifecycleManager nodeManager = GetNodeLifecycleManager(node);
                 if (nodeManager == null)
                 {
@@ -135,7 +132,7 @@ namespace Nethermind.Network.Discovery
                 var manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
                 if (!isPersisted)
                 {
-                    _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id.PublicKey, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.ManagedNode.Description, manager.NodeStats.NewPersistedNodeReputation)});
+                    _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation)});
                 }
                 OnNewNode(manager);
                 return manager;
@@ -209,7 +206,7 @@ namespace Nethermind.Network.Discovery
 
         private void OnNewNode(INodeLifecycleManager manager)
         {
-            NodeDiscovered?.Invoke(this, new NodeEventArgs(manager.ManagedNode, manager.NodeStats));
+            NodeDiscovered?.Invoke(this, new NodeEventArgs(manager.ManagedNode));
         }
 
         private void NotifySubscribersOnMsgReceived(MessageType msgType, Node node, DiscoveryMessage message)
@@ -261,7 +258,7 @@ namespace Nethermind.Network.Discovery
                 var item = items[i];
                 if (_nodeLifecycleManagers.TryRemove(item.Key, out _))
                 {
-                    _discoveryStorage.RemoveNodes(new[] { new NetworkNode(item.Value.ManagedNode.Id.PublicKey, item.Value.ManagedNode.Host, item.Value.ManagedNode.Port, item.Value.ManagedNode.Description, item.Value.NodeStats.NewPersistedNodeReputation),  });
+                    _discoveryStorage.RemoveNodes(new[] { new NetworkNode(item.Value.ManagedNode.Id, item.Value.ManagedNode.Host, item.Value.ManagedNode.Port, item.Value.NodeStats.NewPersistedNodeReputation),  });
                     removeCount++;
                 }
             }

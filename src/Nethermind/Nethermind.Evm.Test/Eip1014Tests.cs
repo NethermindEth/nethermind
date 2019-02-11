@@ -51,17 +51,17 @@ namespace Nethermind.Evm.Test
             byte[] createCode = Prepare.EvmCode
                 .Create2(initCode, salt, 0).Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .Call(TestObject.AddressC, 50000)
+                .Call(TestItem.AddressC, 50000)
                 .Done;
 
             Execute(code);
             
-            Address expectedAddress = Address.OfContract(TestObject.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
+            Address expectedAddress = Address.OfContract(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
             AssertEip1014(expectedAddress, deployedCode);
         }
         
@@ -86,12 +86,12 @@ namespace Nethermind.Evm.Test
             byte[] createCode = Prepare.EvmCode
                 .Create2(initCode, salt, 0).Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .Call(TestObject.AddressC, 50000)
+                .Call(TestItem.AddressC, 50000)
                 .Done;
 
             var trace = ExecuteAndTrace(code);

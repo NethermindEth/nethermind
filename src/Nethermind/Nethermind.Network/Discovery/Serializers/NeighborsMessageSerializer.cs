@@ -35,8 +35,7 @@ namespace Nethermind.Network.Discovery.Serializers
             ISigner signer,
             IPrivateKeyGenerator privateKeyGenerator,
             IDiscoveryMessageFactory messageFactory,
-            INodeIdResolver nodeIdResolver,
-            INodeFactory nodeFactory) : base(signer, privateKeyGenerator, messageFactory, nodeIdResolver, nodeFactory)
+            INodeIdResolver nodeIdResolver) : base(signer, privateKeyGenerator, messageFactory, nodeIdResolver)
         {
         }
 
@@ -51,7 +50,7 @@ namespace Nethermind.Network.Discovery.Serializers
                 for (var i = 0; i < message.Nodes.Length; i++)
                 {
                     var node = message.Nodes[i];
-                    var serializedNode = SerializeNode(node.Address, node.Id.PublicKey.Bytes);
+                    var serializedNode = SerializeNode(node.Address, node.Id.Bytes);
                     nodes[i] = serializedNode;
                 }
             }
@@ -96,7 +95,7 @@ namespace Nethermind.Network.Discovery.Serializers
                 }
 
                 byte[] id = ctx.DecodeByteArray();
-                return NodeFactory.CreateNode(new NodeId(new PublicKey(id)), address);
+                return new Node(new PublicKey(id), address);
             });
         }
     }

@@ -22,6 +22,6 @@ namespace Nethermind.Network.P2P
 {
     public interface IPacketSender
     {
-        void Enqueue(Packet message, bool priority = false);
+        void Enqueue(Packet message);
     }
 }

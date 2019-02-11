@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
@@ -39,16 +40,16 @@ namespace Nethermind.Network.Rlpx
         private readonly HandshakeRole _role;
 
         private readonly IEncryptionHandshakeService _service;
-        private readonly IP2PSession _p2PSession;
-        private NodeId _remoteId;
+        private readonly ISession _session;
+        private PublicKey _remoteId;
         private readonly TaskCompletionSource<object> _initCompletionSource;
         private IChannel _channel;
 
         public NettyHandshakeHandler(
             IEncryptionHandshakeService service,
-            IP2PSession p2PSession,
+            ISession session,
             HandshakeRole role,
-            NodeId remoteId,
+            PublicKey remoteId,
             ILogManager logManager)
         {
             _handshake.RemoteNodeId = remoteId;
@@ -57,7 +58,7 @@ namespace Nethermind.Network.Rlpx
             _logManager = logManager?? throw new ArgumentNullException(nameof(NettyHandshakeHandler));
             _logger = logManager.GetClassLogger<NettyHandshakeHandler>(); 
             _service = service;
-            _p2PSession = p2PSession;
+            _session = session;
             _initCompletionSource = new TaskCompletionSource<object>();
         }
 
@@ -74,8 +75,8 @@ namespace Nethermind.Network.Rlpx
                 context.WriteAndFlushAsync(_buffer);
             }
 
-            _p2PSession.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
-            _p2PSession.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
+            _session.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
+            _session.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
 
             CheckHandshakeInitTimeout().ContinueWith(x =>
             {
@@ -112,7 +113,7 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            string clientId = _p2PSession.NodeStats?.P2PNodeDetails?.ClientId ?? $"unknown {_p2PSession?.RemoteHost}";
+            string clientId = _session.Node?.ClientId ?? $"unknown {_session?.RemoteHost}";
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
@@ -164,10 +165,10 @@ namespace Nethermind.Network.Rlpx
 
                 _remoteId = _handshake.RemoteNodeId;
                 _initCompletionSource?.SetResult(message);
-                _p2PSession.Handshake(_handshake.RemoteNodeId);
+                _session.Handshake(_handshake.RemoteNodeId);
 
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
-                FrameMacProcessor macProcessor = new FrameMacProcessor(_p2PSession.RemoteNodeId, _handshake.Secrets);
+                FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameDecoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logger));
@@ -179,11 +180,11 @@ namespace Nethermind.Network.Rlpx
                 context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
 
                 PacketSender packetSender = new PacketSender(_logManager);
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_p2PSession.RemoteNodeId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(packetSender);
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyP2PHandler)} for {_remoteId} @ {context.Channel.RemoteAddress}");
-                NettyP2PHandler handler = new NettyP2PHandler(_p2PSession, _logger);
+                NettyP2PHandler handler = new NettyP2PHandler(_session, _logger);
                 context.Channel.Pipeline.AddLast(handler);
 
                 handler.Init(packetSender, context);
@@ -212,7 +213,7 @@ namespace Nethermind.Network.Rlpx
             if (firstTask != receivedInitMsgTask)
             {
                 Metrics.HandshakeTimeouts++;
-                if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_p2PSession.RemoteNodeId}@{_p2PSession.RemoteHost}:{_p2PSession.RemotePort}");
+                if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_session.RemoteNodeId}@{_session.RemoteHost}:{_session.RemotePort}");
                 //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
                 await _channel.DisconnectAsync();
             }

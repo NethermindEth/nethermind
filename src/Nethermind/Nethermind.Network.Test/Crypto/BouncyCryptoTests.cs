@@ -29,8 +29,8 @@ namespace Nethermind.Network.Test.Crypto
         [Test]
         public void Can_calculate_agreement()
         {
-            PrivateKey privateKey1 = TestObject.PrivateKeyA;
-            PrivateKey privateKey2 = TestObject.PrivateKeyB;
+            PrivateKey privateKey1 = TestItem.PrivateKeyA;
+            PrivateKey privateKey2 = TestItem.PrivateKeyB;
 
             byte[] sharedSecret1 = BouncyCrypto.Agree(privateKey1, privateKey2.PublicKey);
             byte[] sharedSecret2 = BouncyCrypto.Agree(privateKey2, privateKey1.PublicKey);

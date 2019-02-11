@@ -22,11 +22,11 @@ namespace Nethermind.Network.P2P
 {
     public class ProtocolInitializedEventArgs : EventArgs
     {
-        public IProtocolHandler ProtocolHandler { get; }
+        public IProtocolHandler Subprotocol { get; }
 
-        protected ProtocolInitializedEventArgs(IProtocolHandler protocolHandler)
+        protected ProtocolInitializedEventArgs(IProtocolHandler handler)
         {
-            ProtocolHandler = protocolHandler;
+            Subprotocol = handler;
         }
     }
 }

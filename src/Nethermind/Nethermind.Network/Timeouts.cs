@@ -20,7 +20,7 @@ using System;
 
 namespace Nethermind.Network
 {
-    public class Timeouts
+    public static class Timeouts
     {
         public static readonly TimeSpan InitialConnection = TimeSpan.FromSeconds(10);
         public static readonly TimeSpan TcpClose = TimeSpan.FromSeconds(5);

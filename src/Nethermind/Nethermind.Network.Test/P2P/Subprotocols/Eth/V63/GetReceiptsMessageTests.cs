@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Sets_values_from_contructor_argument()
         {
-            Keccak[] hashes = {TestObject.KeccakA, TestObject.KeccakB};
+            Keccak[] hashes = {TestItem.KeccakA, TestItem.KeccakB};
             GetReceiptsMessage message = new GetReceiptsMessage(hashes);
             Assert.AreSame(hashes, message.BlockHashes);
         }

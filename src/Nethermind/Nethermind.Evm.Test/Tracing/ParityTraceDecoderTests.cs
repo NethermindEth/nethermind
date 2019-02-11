@@ -39,8 +39,8 @@ namespace Nethermind.Evm.Test.Tracing
             ParityTraceAction subtrace = new ParityTraceAction();
             subtrace.Value = 67890;
             subtrace.CallType = "call";
-            subtrace.From = TestObject.AddressC;
-            subtrace.To = TestObject.AddressD;
+            subtrace.From = TestItem.AddressC;
+            subtrace.To = TestItem.AddressD;
             subtrace.Input = Bytes.Empty;
             subtrace.Gas = 10000;
             subtrace.TraceAddress = new int[] { 0, 0 };
@@ -51,8 +51,8 @@ namespace Nethermind.Evm.Test.Tracing
             txTrace.Action = new ParityTraceAction();
             txTrace.Action.Value = 12345;
             txTrace.Action.CallType = "init";
-            txTrace.Action.From = TestObject.AddressA;
-            txTrace.Action.To = TestObject.AddressB;
+            txTrace.Action.From = TestItem.AddressA;
+            txTrace.Action.To = TestItem.AddressB;
             txTrace.Action.Input = new byte[] { 1, 2, 3, 4, 5, 6 };
             txTrace.Action.Gas = 40000;
             txTrace.Action.TraceAddress = new int[] { 0 };
@@ -60,9 +60,9 @@ namespace Nethermind.Evm.Test.Tracing
             txTrace.Action.Result.Output = Bytes.Empty;
             txTrace.Action.Result.GasUsed = 30000;
 
-            txTrace.BlockHash = TestObject.KeccakB;
+            txTrace.BlockHash = TestItem.KeccakB;
             txTrace.BlockNumber = 123456;
-            txTrace.TransactionHash = TestObject.KeccakC;
+            txTrace.TransactionHash = TestItem.KeccakC;
             txTrace.TransactionPosition = 5;
             txTrace.Action.TraceAddress = new int[] { 1, 2, 3 };
 
@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Test.Tracing
             stateChange.Storage[1] = new ParityStateChange<byte[]>(new byte[] { 1 }, new byte[] { 2 });
 
             txTrace.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
-            txTrace.StateChanges.Add(TestObject.AddressC, stateChange);
+            txTrace.StateChanges.Add(TestItem.AddressC, stateChange);
 
             Rlp rlp = Rlp.Encode(txTrace);
             ParityLikeTxTrace deserialized = Rlp.Decode<ParityLikeTxTrace>(rlp);
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Test.Tracing
             
             ParityTraceAction reward = new ParityTraceAction();
             reward.CallType = "reward";
-            reward.Author = TestObject.AddressA;
+            reward.Author = TestItem.AddressA;
             reward.RewardType = "block";
             reward.Value = 2.Ether();
             reward.TraceAddress = new int[] { };
@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Test.Tracing
             ParityLikeTxTrace txTrace = new ParityLikeTxTrace();
             txTrace.Action = reward;
 
-            txTrace.BlockHash = TestObject.KeccakB;
+            txTrace.BlockHash = TestItem.KeccakB;
             txTrace.BlockNumber = 123456;
             txTrace.TransactionHash = null;
             txTrace.TransactionPosition = null;
@@ -105,7 +105,7 @@ namespace Nethermind.Evm.Test.Tracing
             stateChange.Balance = new ParityStateChange<UInt256>(0, 2.Ether());
 
             txTrace.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
-            txTrace.StateChanges.Add(TestObject.AddressA, stateChange);
+            txTrace.StateChanges.Add(TestItem.AddressA, stateChange);
 
             Rlp rlp = Rlp.Encode(txTrace);
             ParityLikeTxTrace deserialized = Rlp.Decode<ParityLikeTxTrace>(rlp);
@@ -121,8 +121,8 @@ namespace Nethermind.Evm.Test.Tracing
             ParityTraceAction subtrace001 = new ParityTraceAction();
             subtrace001.Value = 67890;
             subtrace001.CallType = "call";
-            subtrace001.From = TestObject.AddressC;
-            subtrace001.To = TestObject.AddressD;
+            subtrace001.From = TestItem.AddressC;
+            subtrace001.To = TestItem.AddressD;
             subtrace001.Input = Bytes.Empty;
             subtrace001.Gas = 10000;
             subtrace001.TraceAddress = new int[] { 0, 0, 1 };
@@ -132,8 +132,8 @@ namespace Nethermind.Evm.Test.Tracing
             ParityTraceAction subtrace000 = new ParityTraceAction();
             subtrace000.Value = 67890;
             subtrace000.CallType = "create";
-            subtrace000.From = TestObject.AddressC;
-            subtrace000.To = TestObject.AddressD;
+            subtrace000.From = TestItem.AddressC;
+            subtrace000.To = TestItem.AddressD;
             subtrace000.Input = Bytes.Empty;
             subtrace000.Gas = 10000;
             subtrace000.TraceAddress = new int[] { 0, 0, 2 };
@@ -143,8 +143,8 @@ namespace Nethermind.Evm.Test.Tracing
             ParityTraceAction subtrace00 = new ParityTraceAction();
             subtrace00.Value = 67890;
             subtrace00.CallType = "call";
-            subtrace00.From = TestObject.AddressC;
-            subtrace00.To = TestObject.AddressD;
+            subtrace00.From = TestItem.AddressC;
+            subtrace00.To = TestItem.AddressD;
             subtrace00.Input = Bytes.Empty;
             subtrace00.Gas = 10000;
             subtrace00.TraceAddress = new int[] { 0, 0};
@@ -156,8 +156,8 @@ namespace Nethermind.Evm.Test.Tracing
             ParityTraceAction subtrace01 = new ParityTraceAction();
             subtrace01.Value = 67890;
             subtrace01.CallType = "call";
-            subtrace01.From = TestObject.AddressC;
-            subtrace01.To = TestObject.AddressD;
+            subtrace01.From = TestItem.AddressC;
+            subtrace01.To = TestItem.AddressD;
             subtrace01.Input = Bytes.Empty;
             subtrace01.Gas = 10000;
             subtrace01.TraceAddress = new int[] { 0, 1};
@@ -168,8 +168,8 @@ namespace Nethermind.Evm.Test.Tracing
             txTrace.Action = new ParityTraceAction();
             txTrace.Action.Value = 12345;
             txTrace.Action.CallType = "init";
-            txTrace.Action.From = TestObject.AddressA;
-            txTrace.Action.To = TestObject.AddressB;
+            txTrace.Action.From = TestItem.AddressA;
+            txTrace.Action.To = TestItem.AddressB;
             txTrace.Action.Input = new byte[] { 1, 2, 3, 4, 5, 6 };
             txTrace.Action.Gas = 40000;
             txTrace.Action.TraceAddress = new int[] { 0 };
@@ -178,9 +178,9 @@ namespace Nethermind.Evm.Test.Tracing
             txTrace.Action.Result.Output = Bytes.Empty;
             txTrace.Action.Result.GasUsed = 30000;
 
-            txTrace.BlockHash = TestObject.KeccakB;
+            txTrace.BlockHash = TestItem.KeccakB;
             txTrace.BlockNumber = 123456;
-            txTrace.TransactionHash = TestObject.KeccakC;
+            txTrace.TransactionHash = TestItem.KeccakC;
             txTrace.TransactionPosition = 5;
             txTrace.Action.TraceAddress = new int[] { 1, 2, 3 };
 

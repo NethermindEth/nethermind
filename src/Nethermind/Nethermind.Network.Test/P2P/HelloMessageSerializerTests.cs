@@ -39,7 +39,7 @@ namespace Nethermind.Network.Test.P2P
             helloMessage.Capabilities.Add(new Capability(Protocol.Eth, 1));
             helloMessage.ClientId = "Nethermind/alpha";
             helloMessage.ListenPort = 8002;
-            helloMessage.NodeId = new NodeId(NetTestVectors.StaticKeyA.PublicKey);
+            helloMessage.NodeId = NetTestVectors.StaticKeyA.PublicKey;
 
             HelloMessageSerializer serializer = new HelloMessageSerializer();
             byte[] serialized = serializer.Serialize(helloMessage);

@@ -19,132 +19,152 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
-using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    public class P2PSession : IP2PSession
+    public class Session : ISession
     {
-        private readonly ILogManager _logManager;
         private readonly ILogger _logger;
-        private readonly IMessageSerializationService _serializer;
-        private readonly ISynchronizationManager _syncManager;
-        private readonly INodeStatsProvider _nodeStatsProvider;
-        private readonly IPerfService _perfService;
-        private readonly IBlockTree _blockTree;
-        private readonly ITransactionPool _transactionPool;
-        private readonly ITimestamp _timestamp;
         private readonly Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
-
         private readonly IChannel _channel;
         private IChannelHandlerContext _context;
-        private IPacketSender _packetSender;
 
-        private Func<int, (string, int)> _adaptiveCodeResolver;
-        private Func<(string ProtocolCode, int PacketType), int> _adaptiveEncoder;
-        private bool _wasDisconnected;
-        private INodeStats _nodeStats;
+        private Node _node;
 
-        public P2PSession(NodeId localNodeId,
-            NodeId remoteId,
+        public Session(
             int localPort,
-            ConnectionDirection connectionDirection,
-            IMessageSerializationService serializer,
-            ISynchronizationManager syncManager,
-            INodeStatsProvider nodeStatsProvider,
-            INodeStats nodeStats,
+            ILogManager logManager,
+            IChannel channel)
+        {
+            Direction = ConnectionDirection.In;
+            State = SessionState.New;
+            _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+            _logger = logManager.GetClassLogger<Session>();
+            RemoteNodeId = null;
+            LocalPort = localPort;
+            SessionId = Guid.NewGuid();
+        }
+        
+        public Session(
+            int localPort,
             ILogManager logManager,
             IChannel channel,
-            IPerfService perfService,
-            IBlockTree blockTree,
-            ITransactionPool transactionPool,
-            ITimestamp timestamp)
+            Node node)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            State = SessionState.New;
+            _node = node ?? throw new ArgumentNullException(nameof(node));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
-            _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
-            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
-            _blockTree = blockTree;
-            _transactionPool = transactionPool;
-            _timestamp = timestamp;
-            _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
-            _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
-            _logger = logManager.GetClassLogger<P2PSession>();
-            
-            NodeStats = nodeStats;
-            LocalNodeId = localNodeId;
-            RemoteNodeId = remoteId;
+            _logger = logManager.GetClassLogger<Session>();
+            RemoteNodeId = node.Id;
+            RemoteHost = node.Host;
+            RemotePort = node.Port;
             LocalPort = localPort;
-            SessionId = Guid.NewGuid().ToString();
-            ConnectionDirection = connectionDirection;
+            SessionId = Guid.NewGuid();
+            Direction = ConnectionDirection.Out;
         }
 
-        public NodeId LocalNodeId { get; }
-        public int LocalPort { get; }
-        public NodeId RemoteNodeId { get; set; }
-        public NodeId ObsoleteRemoteNodeId { get; set; }
+        public bool IsClosing => State > SessionState.Initialized;
+        public int LocalPort { get; set; }
+        public PublicKey RemoteNodeId { get; set; }
+        public PublicKey ObsoleteRemoteNodeId { get; set; }
         public string RemoteHost { get; set; }
-        public int? RemotePort { get; set; }
-        public ConnectionDirection ConnectionDirection { get; }
-        public string SessionId { get; }
+        public int RemotePort { get; set; }
+        public ConnectionDirection Direction { get; }
+        public Guid SessionId { get; }
 
-        public INodeStats NodeStats
+        public Node Node
         {
             get
             {
-                //It is needed for lazy creation of NodeStats, in case  IN connections, publicKey is available only after handshake
-                if (_nodeStats == null)
+                //It is needed for lazy creation of Node, in case  IN connections, publicKey is available only after handshake
+                if (_node == null)
                 {
-                    if (RemoteNodeId == null)
+                    if (RemoteNodeId == null || RemoteHost == null || RemotePort == 0)
                     {
-                        throw new Exception("Cannot get NodeStats without NodeId");
+                        throw new InvalidOperationException("Cannot create a session's node object without knowing remote node details");
                     }
 
-                    _nodeStats = _nodeStatsProvider.GetOrAddNodeStats(RemoteNodeId, RemoteHost, RemotePort ?? 0);
+                    _node = new Node(RemoteNodeId, RemoteHost, RemotePort);
                 }
 
-                return _nodeStats;
+                return _node;
             }
-            set => _nodeStats = value;
+            set => _node = value;
         }
 
-        // TODO: this should be one level up
         public void EnableSnappy()
         {
+            lock (_sessionStateLock)
+            {
+                if (State < SessionState.Initialized)
+                {
+                    throw new InvalidOperationException($"{nameof(EnableSnappy)} called on session that is in the {State} state");
+                }
+
+                if (IsClosing)
+                {
+                    return;
+                }
+            }
+
             if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} Enabling Snappy compression and disabling framing");
             _context.Channel.Pipeline.Get<NettyPacketSplitter>().DisableFraming();
             _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new SnappyDecoder(_logger));
             _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new SnappyEncoder(_logger));
         }
 
-        public void DeliverMessage(Packet packet, bool priority = false)
+        public IPingSender PingSender { get; set; }
+
+        public void DeliverMessage(Packet packet)
         {
+            lock (_sessionStateLock)
+            {
+                if (State < SessionState.Initialized)
+                {
+                    throw new InvalidOperationException($"{nameof(DeliverMessage)} called on session that is in the {State} state");
+                }
+
+                if (IsClosing)
+                {
+                    return;
+                }
+            }
+
             if (_logger.IsTrace) _logger.Trace($"P2P to deliver {packet.Protocol}.{packet.PacketType} with payload {packet.Data.ToHexString()}");
 
-            packet.PacketType = _adaptiveEncoder((packet.Protocol, packet.PacketType));
-            _packetSender.Enqueue(packet, priority);
+            packet.PacketType = _resolver.ResolveAdaptiveId(packet.Protocol, packet.PacketType);
+            _packetSender.Enqueue(packet);
         }
 
         public void ReceiveMessage(Packet packet)
         {
+            lock (_sessionStateLock)
+            {
+                if (State < SessionState.Initialized)
+                {
+                    throw new InvalidOperationException($"{nameof(ReceiveMessage)} called on session that is in the {State} state");
+                }
+
+                if (IsClosing)
+                {
+                    return;
+                }
+            }
+
             int dynamicMessageCode = packet.PacketType;
-            (string protocol, int messageId) = ResolveMessageCode(dynamicMessageCode);
+            (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
             packet.Protocol = protocol;
 
-            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} {nameof(P2PSession)} received a message of length {packet.Data.Length} ({dynamicMessageCode} => {protocol}.{messageId})");
+            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} {nameof(Session)} received a message of length {packet.Data.Length} ({dynamicMessageCode} => {protocol}.{messageId})");
 
             if (protocol == null)
             {
@@ -156,16 +176,49 @@ namespace Nethermind.Network.P2P
             _protocols[protocol].HandleMessage(packet);
         }
 
-        // TODO: use custom interface instead of netty one (can encapsulate both)
         public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
         {
-            _packetSender = packetSender;
-            _context = context;
-            InitProtocol(Protocol.P2P, p2PVersion);
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            if (packetSender == null) throw new ArgumentNullException(nameof(packetSender));
+
+            P2PVersion = p2PVersion;
+            lock (_sessionStateLock)
+            {
+                if (IsClosing)
+                {
+                    return;
+                }
+                
+                if (State != SessionState.HandshakeComplete)
+                {
+                    throw new InvalidOperationException($"{nameof(Init)} called on session that is not in the {nameof(HandshakeComplete)} state");
+                }
+
+                _context = context;
+                _packetSender = packetSender;
+                State = SessionState.Initialized;
+            }
+
+            Initialized?.Invoke(this, EventArgs.Empty);
         }
 
-        public void Handshake(NodeId handshakeRemoteNodeId)
+        public void Handshake(PublicKey handshakeRemoteNodeId)
         {
+            lock (_sessionStateLock)
+            {
+                if (State == SessionState.Initialized || State == SessionState.HandshakeComplete)
+                {
+                    throw new InvalidOperationException($"{nameof(Handshake)} called on session that is in the {State} state");
+                }
+                
+                if (IsClosing)
+                {
+                    return;
+                }
+
+                State = SessionState.HandshakeComplete;
+            }
+
             //For IN connections we don't have NodeId until that moment, so we need to set it in Session
             //For OUT connections it is possible remote id is different than what we had persisted or received from Discovery
             //If that is the case we need to set it in the session
@@ -175,21 +228,27 @@ namespace Nethermind.Network.P2P
             }
             else if (handshakeRemoteNodeId != null && RemoteNodeId != handshakeRemoteNodeId)
             {
-                if (_logger.IsTrace) _logger.Trace($"Different NodeId received in handshake: old: {RemoteNodeId.PublicKey}, new: {handshakeRemoteNodeId.PublicKey}");
+                if (_logger.IsTrace) _logger.Trace($"Different NodeId received in handshake: old: {RemoteNodeId}, new: {handshakeRemoteNodeId}");
                 ObsoleteRemoteNodeId = RemoteNodeId;
                 RemoteNodeId = handshakeRemoteNodeId;
+                Node = new Node(RemoteNodeId, RemoteHost, RemotePort, _node.AddedToDiscovery);
             }
-           
+
             Metrics.Handshakes++;
+
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 
-        public async Task InitiateDisconnectAsync(DisconnectReason disconnectReason)
+        public void InitiateDisconnect(DisconnectReason disconnectReason)
         {
-            if (_wasDisconnected)
+            lock (_sessionStateLock)
             {
-                if (_logger.IsTrace) _logger.Trace($"Session was already disconnected: {RemoteNodeId}, sessioId: {SessionId}");
-                return;
+                if (IsClosing)
+                {
+                    return;
+                }
+
+                State = SessionState.DisconnectingProtocols;
             }
 
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
@@ -197,160 +256,177 @@ namespace Nethermind.Network.P2P
             {
                 foreach (var protocolHandler in _protocols.Values)
                 {
-                    protocolHandler.Disconnect(disconnectReason);
+                    try
+                    {
+                        protocolHandler.Disconnect(disconnectReason);
+                    }
+                    catch (Exception e)
+                    {
+                        if(_logger.IsDebug) _logger.Error($"DEBUG/ERROR Failed to disconnect {protocolHandler.ProtocolCode} {protocolHandler.ProtocolVersion} correctly", e);
+                    }
                 }
             }
 
-            await DisconnectAsync(disconnectReason, DisconnectType.Local);
+            Disconnect(disconnectReason, DisconnectType.Local);
         }
 
-        public async Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType)
+        private object _sessionStateLock = new object();
+        public byte P2PVersion { get; private set; }
+        public SessionState State { get; private set; }
+
+        public void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType)
         {
-            if (_wasDisconnected)
+            lock (_sessionStateLock)
             {
-                return;
+                if (State >= SessionState.Disconnecting)
+                {
+                    return;
+                }
+
+                State = SessionState.Disconnecting;
             }
 
-            _wasDisconnected = true;
-            if (PeerDisconnected != null)
-            {
-                PeerDisconnected.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
-            }
-            else if (_logger.IsDebug) _logger.Debug("No subscriptions for PeerDisconnected");
+            Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, DisconnectType.Local));
 
             //Possible in case of disconnect before p2p initialization
             if (_context == null)
             {
                 //in case pipeline did not get to p2p - no disconnect delay
-                await _channel.DisconnectAsync().ContinueWith(x =>
+                _channel.DisconnectAsync().ContinueWith(x =>
                 {
-                    if (x.IsFaulted &&  _logger.IsTrace) _logger.Trace($"Error while disconnecting on channel: {x.Exception}");
+                    if (x.IsFaulted && _logger.IsTrace) _logger.Trace($"Error while disconnecting on channel: {x.Exception}");
                 });
-                return;
             }
-            await Task.Delay(Timeouts.Disconnection).ContinueWith(t =>
+            else
             {
-                _context.DisconnectAsync().ContinueWith(x =>
+                var delayTask = disconnectType == DisconnectType.Local ? Task.Delay(Timeouts.Disconnection) : Task.CompletedTask;
+                delayTask.ContinueWith(t =>
                 {
-                    if (x.IsFaulted && _logger.IsTrace) _logger.Trace($"Error while disconnecting on context: {x.Exception}");
+                    _context.DisconnectAsync().ContinueWith(x =>
+                    {
+                        if (x.IsFaulted && _logger.IsTrace) _logger.Trace($"Error while disconnecting on context: {x.Exception}");
+                    });
+                    if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} Disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");
                 });
-                if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} Disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");
-            });
+            }
+
+            lock (_sessionStateLock)
+            {
+                State = SessionState.Disconnected;
+            }
+
+            if (Disconnected != null)
+            {
+                Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
+            }
+            else if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected for {RemoteNodeId}");
         }
 
-        public event EventHandler<DisconnectEventArgs> PeerDisconnected;
-        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        public event EventHandler<DisconnectEventArgs> Disconnecting;
+        public event EventHandler<DisconnectEventArgs> Disconnected;
         public event EventHandler<EventArgs> HandshakeComplete;
-
-        private (string, int) ResolveMessageCode(int adaptiveId)
-        {
-            return _adaptiveCodeResolver.Invoke(adaptiveId);
-        }
-
-        private void InitProtocol(string protocolCode, int version)
-        {
-            protocolCode = protocolCode.ToLowerInvariant();
-            if (_protocols.ContainsKey(protocolCode))
-            {
-                throw new InvalidOperationException($"{RemoteNodeId} Session for protocol {protocolCode} already started");
-            }
-
-            if (protocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
-            {
-                throw new InvalidOperationException($"{Protocol.P2P} protocolHandler has to be started before starting {protocolCode} protocolHandler");
-            }
-
-            IProtocolHandler protocolHandler;
-            switch (protocolCode)
-            {
-                case Protocol.P2P:
-                    protocolHandler = new P2PProtocolHandler(this, _serializer, LocalNodeId, LocalPort, _logManager, _perfService);
-                    protocolHandler.ProtocolInitialized += (sender, args) =>
-                    {
-                        if (protocolHandler.ProtocolVersion >= 5)
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Enabling Snappy");
-                            EnableSnappy();
-                        }
-                        else
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Disabling Snappy");
-                        }
-
-                        ProtocolInitialized?.Invoke(this, args);
-                    };
-                    break;
-                case Protocol.Eth:
-                    if (version < 62 || version > 63)
-                    {
-                        throw new NotSupportedException($"Eth protocolo version {version} is not supported.");
-                    }
-
-                    protocolHandler = version == 62
-                        ? new Eth62ProtocolHandler(this, _serializer, _syncManager, _logManager, _perfService, _blockTree, _transactionPool, _timestamp)
-                        : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logManager, _perfService, _blockTree, _transactionPool, _timestamp);
-                    protocolHandler.ProtocolInitialized += (sender, args) =>
-                    {
-                        ProtocolInitialized?.Invoke(this, args);
-                    };
-                    break;
-                default:
-                    throw new NotSupportedException();
-            }
-
-            protocolHandler.SubprotocolRequested += (sender, args) => InitProtocol(args.ProtocolCode, args.Version);
-            _protocols[protocolCode] = protocolHandler;
-
-            (string ProtocolCode, int SpaceSize)[] alphabetically = new (string, int)[_protocols.Count];
-            alphabetically[0] = (Protocol.P2P, _protocols[Protocol.P2P].MessageIdSpaceSize);
-            int i = 1;
-            foreach (KeyValuePair<string, IProtocolHandler> protocolSession in _protocols.Where(kv => kv.Key != "p2p").OrderBy(kv => kv.Key))
-            {
-                alphabetically[i++] = (protocolSession.Key, protocolSession.Value.MessageIdSpaceSize);
-            }
-
-            _adaptiveCodeResolver = dynamicId =>
-            {
-                int offset = 0;
-                for (int j = 0; j < alphabetically.Length; j++)
-                {
-                    if (offset + alphabetically[j].SpaceSize > dynamicId)
-                    {
-                        return (alphabetically[j].ProtocolCode, dynamicId - offset);
-                    }
-
-                    offset += alphabetically[j].SpaceSize;
-                }
-
-                if(_logger.IsTrace) _logger.Warn($"Could not resolve message id from {dynamicId} with known: {string.Join(", ", alphabetically.Select(x => $"{x.ProtocolCode} {x.SpaceSize}"))}");
-
-                return (null, 0);
-            };
-
-            _adaptiveEncoder = args =>
-            {
-                int offset = 0;
-                for (int j = 0; j < alphabetically.Length; j++)
-                {
-                    if (alphabetically[j].ProtocolCode == args.ProtocolCode)
-                    {
-                        return offset + args.PacketType;
-                    }
-
-                    offset += alphabetically[j].SpaceSize;
-                }
-
-                return args.PacketType;
-            };
-
-            protocolHandler.Init();
-        }
+        public event EventHandler<EventArgs> Initialized;
 
         public void Dispose()
         {
+            lock (_sessionStateLock)
+            {
+                if (State != SessionState.Disconnected)
+                {
+                    throw new InvalidOperationException("Disposing session that is not disconnected");
+                }
+            }
+
             foreach ((_, IProtocolHandler handler) in _protocols)
             {
                 handler.Dispose();
+            }
+        }
+
+        private IPacketSender _packetSender;
+
+        public void AddProtocolHandler(IProtocolHandler handler)
+        {
+            if (_protocols.ContainsKey(handler.ProtocolCode))
+            {
+                throw new InvalidOperationException($"{RemoteNodeId} Session for protocol {handler.ProtocolCode} already started");
+            }
+
+            if (handler.ProtocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
+            {
+                throw new InvalidOperationException($"{Protocol.P2P} protocolHandler has to be started before starting {handler.ProtocolCode} protocolHandler");
+            }
+
+            _protocols.Add(handler.ProtocolCode, handler);
+            _resolver = GetOrCreateResolver();
+        }
+
+        private AdaptiveCodeResolver _resolver;
+
+        private AdaptiveCodeResolver GetOrCreateResolver()
+        {
+            string key = string.Join(":", _protocols.Select(p => p.Key).OrderBy(x => x).ToArray());
+            if (!_resolvers.ContainsKey(key))
+            {
+                _resolvers[key] = new AdaptiveCodeResolver(_protocols);
+            }
+
+            return _resolvers[key];
+        }
+
+        private static ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new ConcurrentDictionary<string, AdaptiveCodeResolver>();
+
+        private class AdaptiveCodeResolver
+        {
+            private readonly (string ProtocolCode, int SpaceSize)[] _alphabetically;
+
+            public AdaptiveCodeResolver(Dictionary<string, IProtocolHandler> protocols)
+            {
+                _alphabetically = new (string, int)[protocols.Count];
+                _alphabetically[0] = (Protocol.P2P, protocols[Protocol.P2P].MessageIdSpaceSize);
+                int i = 1;
+                foreach (KeyValuePair<string, IProtocolHandler> protocolSession in protocols.Where(kv => kv.Key != "p2p").OrderBy(kv => kv.Key))
+                {
+                    _alphabetically[i++] = (protocolSession.Key, protocolSession.Value.MessageIdSpaceSize);
+                }
+            }
+
+            public (string, int) ResolveProtocol(int adaptiveId)
+            {
+                int offset = 0;
+                for (int j = 0; j < _alphabetically.Length; j++)
+                {
+                    if (offset + _alphabetically[j].SpaceSize > adaptiveId)
+                    {
+                        return (_alphabetically[j].ProtocolCode, adaptiveId - offset);
+                    }
+
+                    offset += _alphabetically[j].SpaceSize;
+                }
+
+                // consider disconnecting on the breach of protocol here?
+                return (null, 0);
+            }
+
+            public int ResolveAdaptiveId(string protocol, int messageCode)
+            {
+                int offset = 0;
+                for (int j = 0; j < _alphabetically.Length; j++)
+                {
+                    if (_alphabetically[j].ProtocolCode == protocol)
+                    {
+                        if (_alphabetically[j].SpaceSize <= messageCode)
+                        {
+                            break;
+                        }
+                        
+                        return offset + messageCode;
+                    }
+
+                    offset += _alphabetically[j].SpaceSize;
+                }
+
+                throw new InvalidOperationException($"Registered protocols do not support {protocol}.{messageCode}");
             }
         }
     }

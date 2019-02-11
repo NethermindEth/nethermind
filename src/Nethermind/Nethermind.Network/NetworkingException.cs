@@ -22,17 +22,17 @@ namespace Nethermind.Network
 {
     public class NetworkingException : Exception
     {
-        public NetworkingException(string message, NetwokExceptionType netwokExceptionType)
+        public NetworkingException(string message, NetworkExceptionType networkExceptionType)
             : base(message)
         {
-            NetwokExceptionType = netwokExceptionType;
+            NetworkExceptionType = networkExceptionType;
         }
 
-        public NetworkingException(string message, NetwokExceptionType netwokExceptionType, Exception innerException) : base(message, innerException)
+        public NetworkingException(string message, NetworkExceptionType networkExceptionType, Exception innerException) : base(message, innerException)
         {
-            NetwokExceptionType = netwokExceptionType;
+            NetworkExceptionType = networkExceptionType;
         }
 
-        public NetwokExceptionType NetwokExceptionType { get; set; }
+        public NetworkExceptionType NetworkExceptionType { get; set; }
     }
 }

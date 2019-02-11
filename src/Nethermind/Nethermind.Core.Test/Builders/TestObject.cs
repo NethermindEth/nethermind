@@ -20,9 +20,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Test.Builders
 {
-    public static class TestObject
+    public static class TestItem
     {
-        static TestObject()
+        static TestItem()
         {
             NonZeroBloom = new Bloom();
             NonZeroBloom.Set(KeccakA.Bytes);

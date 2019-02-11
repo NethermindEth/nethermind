@@ -23,7 +23,6 @@ namespace Nethermind.Stats.Model
 {
     public class EthNodeDetails
     {
-        public string Protocol { get; set; }
         public byte ProtocolVersion { get; set; }
         public long ChainId { get; set; }
         public BigInteger TotalDifficulty { get; set; }

@@ -16,28 +16,65 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Net;
+using Microsoft.VisualBasic.CompilerServices;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 
 namespace Nethermind.Stats.Model
 {
     public class Node
     {
-        public Node(NodeId id)
+        private PublicKey _id;
+
+        public PublicKey Id
         {
-            Id = id;
-            IdHash = Keccak.Compute(id.PublicKey.PrefixedBytes);
+            get => _id;
+            set
+            {
+                if (_id != null)
+                {
+                    throw new InvalidOperationException($"ID already set for the node {Id}");
+                }
+
+                _id = value;
+                IdHash = Keccak.Compute(_id.PrefixedBytes);
+            }
         }
 
-        //id is bytes without prefix byte - 64 bytes
-        public NodeId Id { get; }
-        public Keccak IdHash { get; }
+        public Keccak IdHash { get; private set; }
         public string Host { get; private set; }
         public int Port { get; set; }
         public IPEndPoint Address { get; private set; }
-        public bool IsDiscoveryNode { get; set; }
-        public string Description { get; set; }
+        public bool AddedToDiscovery { get; set; }
+        public bool IsBootnode { get; set; }
+        public bool IsTrusted { get; set; }
+
+        public bool IsStatic { get; set; }
+
+        public string ClientId { get; set; }
+
+        public Node(PublicKey id, IPEndPoint address)
+        {
+            Id = id;
+            AddedToDiscovery = false;
+            InitializeAddress(address);
+        }
+
+        public Node(PublicKey id, string host, int port, bool addedToDiscovery = false)
+        {
+            Id = id;
+            AddedToDiscovery = addedToDiscovery;
+            InitializeAddress(host, port);
+        }
+
+        public Node(string host, int port)
+        {
+            Keccak512 socketHash = Keccak512.Compute($"{host}:{port}");
+            Id = new PublicKey(socketHash.Bytes);
+            AddedToDiscovery = true;
+            InitializeAddress(host, port);
+        }
 
         public void InitializeAddress(IPEndPoint address)
         {
@@ -59,7 +96,7 @@ namespace Nethermind.Stats.Model
             {
                 return true;
             }
-            
+
             if (obj is Node item)
             {
                 return IdHash.Equals(item.IdHash);
@@ -70,12 +107,33 @@ namespace Nethermind.Stats.Model
 
         public override int GetHashCode()
         {
+            // ReSharper disable once NonReadonlyMemberInGetHashCode
             return IdHash.GetHashCode();
         }
 
         public override string ToString()
         {
-            return $"Id: {Id}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {IsDiscoveryNode}";
+            return $"Id: {Id}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {AddedToDiscovery}";
+        }
+        
+        public static bool operator ==(Node a, Node b)
+        {
+            if (ReferenceEquals(a, null))
+            {
+                return ReferenceEquals(b, null);
+            }
+
+            if (ReferenceEquals(b, null))
+            {
+                return false;
+            }
+
+            return a.Id.Equals(b.Id);
+        }
+
+        public static bool operator !=(Node a, Node b)
+        {
+            return !(a == b);
         }
     }
 }

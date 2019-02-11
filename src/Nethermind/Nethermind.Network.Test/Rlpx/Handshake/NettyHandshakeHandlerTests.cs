@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [SetUp]
         public void Setup()
         {
-            _ip2PSession = Substitute.For<IP2PSession>();
+            _ip2PSession = Substitute.For<ISession>();
 
             _pipeline = Substitute.For<IChannelPipeline>();
 
@@ -52,12 +52,12 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _channelHandlerContext.Channel.Returns(_channel);
 
             _service = Substitute.For<IEncryptionHandshakeService>();
-            _service.Auth(Arg.Any<NodeId>(), Arg.Any<EncryptionHandshake>()).Returns(_authPacket);
+            _service.Auth(Arg.Any<PublicKey>(), Arg.Any<EncryptionHandshake>()).Returns(_authPacket);
             _service.Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>()).Returns(_ackPacket).AndDoes(ci => ci.Arg<EncryptionHandshake>().Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress());
             _service.When(s => s.Agree(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>())).Do(ci => ci.Arg<EncryptionHandshake>().Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress());
 
             _logger = NullLogManager.Instance;
-            _remotePublicKey = new NodeId(NetTestVectors.StaticKeyB.PublicKey);
+            _remotePublicKey = NetTestVectors.StaticKeyB.PublicKey;
         }
 
         private readonly Packet _ackPacket = new Packet(NetTestVectors.AckEip8);
@@ -66,9 +66,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         private IChannelPipeline _pipeline;
         private IChannelHandlerContext _channelHandlerContext;
         private IEncryptionHandshakeService _service;
-        private IP2PSession _ip2PSession;
+        private ISession _ip2PSession;
         private ILogManager _logger;
-        private NodeId _remotePublicKey;
+        private PublicKey _remotePublicKey;
 
         // TODO: need to define the desired behaviour here
         [Test]
@@ -175,7 +175,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Recipient, _remotePublicKey, _logger);
             handler.ChannelActive(_channelHandlerContext);
 
-            _service.Received(0).Auth(Arg.Any<NodeId>(), Arg.Any<EncryptionHandshake>());
+            _service.Received(0).Auth(Arg.Any<PublicKey>(), Arg.Any<EncryptionHandshake>());
             await _channelHandlerContext.Received(0).WriteAndFlushAsync(Arg.Any<object>());
         }
 

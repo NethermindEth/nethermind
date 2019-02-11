@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,19 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Nethermind.Stats.Model;
+using Nethermind.Network.P2P;
 
-namespace Nethermind.Network.Discovery.RoutingTable
+namespace Nethermind.Network
 {
-    public interface INodeBucket
+    public interface IProtocolsManager
     {
-        int Distance { get; }
-        int BucketSize { get; }
-        IReadOnlyCollection<NodeBucketItem> Items { get; }
-        NodeAddResult AddNode(Node node);
-        void RemoveNode(Node node);
-        void ReplaceNode(Node nodeToRemove, Node nodeToAdd);
-        void RefreshNode(Node node);
     }
 }

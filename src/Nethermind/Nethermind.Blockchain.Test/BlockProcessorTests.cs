@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Test
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance);
 
-            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestObject.AddressD).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
             Block[] processedBlocks = processor.Process(Keccak.EmptyTreeHash, new [] {block}, ProcessingOptions.None, NullBlockTracer.Instance);
             Assert.AreEqual(1, processedBlocks.Length, "length");

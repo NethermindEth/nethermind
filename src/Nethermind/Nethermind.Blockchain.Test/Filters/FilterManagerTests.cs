@@ -158,42 +158,42 @@ namespace Nethermind.Blockchain.Test.Filters
 
         [Test]
         public void logs_should_not_be_empty_for_existing_address()
-            => LogsShouldNotBeEmpty(filter => filter.WithAddress(TestObject.AddressA),
-                receipt => receipt.WithLogs(new[] {Build.A.LogEntry.WithAddress(TestObject.AddressA).TestObject}));
+            => LogsShouldNotBeEmpty(filter => filter.WithAddress(TestItem.AddressA),
+                receipt => receipt.WithLogs(new[] {Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject}));
 
         [Test]
         public void logs_should_be_empty_for_non_existing_address()
-            => LogsShouldBeEmpty(filter => filter.WithAddress(TestObject.AddressA),
+            => LogsShouldBeEmpty(filter => filter.WithAddress(TestItem.AddressA),
                 receipt => receipt
-                    .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestObject.AddressB).TestObject}));
+                    .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject}));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_addresses()
-            => LogsShouldNotBeEmpty(filter => filter.WithAddresses(new[] {TestObject.AddressA, TestObject.AddressB}),
+            => LogsShouldNotBeEmpty(filter => filter.WithAddresses(new[] {TestItem.AddressA, TestItem.AddressB}),
                 receipt => receipt
-                    .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestObject.AddressB).TestObject}));
+                    .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject}));
 
         [Test]
         public void logs_should_be_empty_for_non_existing_addresses()
-            => LogsShouldBeEmpty(filter => filter.WithAddresses(new[] {TestObject.AddressA, TestObject.AddressB}),
+            => LogsShouldBeEmpty(filter => filter.WithAddresses(new[] {TestItem.AddressA, TestItem.AddressB}),
                 receipt => receipt
-                    .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestObject.AddressC).TestObject}));
+                    .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestItem.AddressC).TestObject}));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_specific_topic()
             => LogsShouldNotBeEmpty(filter => filter
-                    .WithTopicExpressions(TestTopicExpressions.Specific(TestObject.KeccakA)),
+                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA)),
                 receipt => receipt
                     .WithLogs(new[]
-                        {Build.A.LogEntry.WithTopics(new[] {TestObject.KeccakA, TestObject.KeccakB}).TestObject}));
+                        {Build.A.LogEntry.WithTopics(new[] {TestItem.KeccakA, TestItem.KeccakB}).TestObject}));
 
         [Test]
         public void logs_should_be_empty_for_non_existing_specific_topic()
             => LogsShouldBeEmpty(filter => filter
-                    .WithTopicExpressions(TestTopicExpressions.Specific(TestObject.KeccakA)),
+                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA)),
                 receipt => receipt
                     .WithLogs(new[]
-                        {Build.A.LogEntry.WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject}));
+                        {Build.A.LogEntry.WithTopics(new[] {TestItem.KeccakB, TestItem.KeccakC}).TestObject}));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_any_topic()
@@ -201,49 +201,49 @@ namespace Nethermind.Blockchain.Test.Filters
                     .WithTopicExpressions(TestTopicExpressions.Any),
                 receipt => receipt
                     .WithLogs(new[]
-                        {Build.A.LogEntry.WithTopics(new[] {TestObject.KeccakA, TestObject.KeccakB}).TestObject}));
+                        {Build.A.LogEntry.WithTopics(new[] {TestItem.KeccakA, TestItem.KeccakB}).TestObject}));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_or_topic()
             => LogsShouldNotBeEmpty(filter => filter
                     .WithTopicExpressions(TestTopicExpressions.Or(new[]
                     {
-                        TestTopicExpressions.Specific(TestObject.KeccakB),
-                        TestTopicExpressions.Specific(TestObject.KeccakD)
+                        TestTopicExpressions.Specific(TestItem.KeccakB),
+                        TestTopicExpressions.Specific(TestItem.KeccakD)
                     })),
                 receipt => receipt
                     .WithLogs(new[]
-                        {Build.A.LogEntry.WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject}));
+                        {Build.A.LogEntry.WithTopics(new[] {TestItem.KeccakB, TestItem.KeccakC}).TestObject}));
 
         [Test]
         public void logs_should_be_empty_for_non_existing_or_topic()
             => LogsShouldBeEmpty(filter => filter
                     .WithTopicExpressions(TestTopicExpressions.Or(new[]
                     {
-                        TestTopicExpressions.Specific(TestObject.KeccakA),
-                        TestTopicExpressions.Specific(TestObject.KeccakD)
+                        TestTopicExpressions.Specific(TestItem.KeccakA),
+                        TestTopicExpressions.Specific(TestItem.KeccakD)
                     })),
                 receipt => receipt
                     .WithLogs(new[]
-                        {Build.A.LogEntry.WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject}));
+                        {Build.A.LogEntry.WithTopics(new[] {TestItem.KeccakB, TestItem.KeccakC}).TestObject}));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_block_and_address_and_topics()
             => LogsShouldNotBeEmpty(filter => filter
                     .FromBlock(UInt256.One)
                     .ToBlock(new UInt256(10))
-                    .WithAddress(TestObject.AddressA)
+                    .WithAddress(TestItem.AddressA)
                     .WithTopicExpressions(TestTopicExpressions.Or(new[]
                     {
-                        TestTopicExpressions.Specific(TestObject.KeccakB),
-                        TestTopicExpressions.Specific(TestObject.KeccakD)
+                        TestTopicExpressions.Specific(TestItem.KeccakB),
+                        TestTopicExpressions.Specific(TestItem.KeccakD)
                     })),
                 receipt => receipt
                     .WithBlockNumber(new UInt256(6))
                     .WithLogs(new[]
                     {
-                        Build.A.LogEntry.WithAddress(TestObject.AddressA)
-                            .WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject
+                        Build.A.LogEntry.WithAddress(TestItem.AddressA)
+                            .WithTopics(new[] {TestItem.KeccakB, TestItem.KeccakC}).TestObject
                     }));
 
         [Test]
@@ -251,18 +251,18 @@ namespace Nethermind.Blockchain.Test.Filters
             => LogsShouldNotBeEmpty(filter => filter
                     .FromBlock(UInt256.One)
                     .ToBlock(new UInt256(10))
-                    .WithAddresses(new[] {TestObject.AddressA, TestObject.AddressB})
+                    .WithAddresses(new[] {TestItem.AddressA, TestItem.AddressB})
                     .WithTopicExpressions(TestTopicExpressions.Or(new[]
                     {
-                        TestTopicExpressions.Specific(TestObject.KeccakB),
-                        TestTopicExpressions.Specific(TestObject.KeccakD)
+                        TestTopicExpressions.Specific(TestItem.KeccakB),
+                        TestTopicExpressions.Specific(TestItem.KeccakD)
                     })),
                 receipt => receipt
                     .WithBlockNumber(new UInt256(6))
                     .WithLogs(new[]
                     {
-                        Build.A.LogEntry.WithAddress(TestObject.AddressA)
-                            .WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject
+                        Build.A.LogEntry.WithAddress(TestItem.AddressA)
+                            .WithTopics(new[] {TestItem.KeccakB, TestItem.KeccakC}).TestObject
                     }));
 
         [Test]
@@ -270,18 +270,18 @@ namespace Nethermind.Blockchain.Test.Filters
             => LogsShouldBeEmpty(filter => filter
                     .FromBlock(UInt256.One)
                     .ToBlock(new UInt256(10))
-                    .WithAddresses(new[] {TestObject.AddressA, TestObject.AddressB})
+                    .WithAddresses(new[] {TestItem.AddressA, TestItem.AddressB})
                     .WithTopicExpressions(TestTopicExpressions.Or(new[]
                     {
-                        TestTopicExpressions.Specific(TestObject.KeccakC),
-                        TestTopicExpressions.Specific(TestObject.KeccakD)
+                        TestTopicExpressions.Specific(TestItem.KeccakC),
+                        TestTopicExpressions.Specific(TestItem.KeccakD)
                     })),
                 receipt => receipt
                     .WithBlockNumber(new UInt256(6))
                     .WithLogs(new[]
                     {
-                        Build.A.LogEntry.WithAddress(TestObject.AddressA)
-                            .WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject
+                        Build.A.LogEntry.WithAddress(TestItem.AddressA)
+                            .WithTopics(new[] {TestItem.KeccakB, TestItem.KeccakC}).TestObject
                     }));
 
 

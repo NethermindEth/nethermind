@@ -36,18 +36,16 @@ namespace Nethermind.Network.Discovery.RoutingTable
     public class NodeTable : INodeTable
     {
         private readonly INetworkConfig _networkConfig;
-        private readonly INodeFactory _nodeFactory;
         private readonly IKeyStore _keyStore;
         private readonly ILogger _logger;
         private readonly INodeDistanceCalculator _nodeDistanceCalculator;
 
         private readonly ConcurrentDictionary<Keccak, Node> _nodes = new ConcurrentDictionary<Keccak, Node>(); 
 
-        public NodeTable(INodeFactory nodeFactory, IKeyStore keyStore, INodeDistanceCalculator nodeDistanceCalculator, INetworkConfig networkConfig, ILogManager logManager)
+        public NodeTable(IKeyStore keyStore, INodeDistanceCalculator nodeDistanceCalculator, INetworkConfig networkConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = networkConfig;
-            _nodeFactory = nodeFactory;
             _keyStore = keyStore;
             _nodeDistanceCalculator = nodeDistanceCalculator; 
         }
@@ -110,14 +108,14 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             var idHash = Keccak.Compute(nodeId);
             var allNodes = Buckets.SelectMany(x => x.Items).Where(x => x.Node.IdHash != idHash)
-                .Select(x => new {x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node.Id.PublicKey.Bytes, nodeId)})
+                .Select(x => new {x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node.Id.Bytes, nodeId)})
                 .OrderBy(x => x.Distance)
                 .Take(_networkConfig.BucketSize)
                 .Select(x => x.Node).ToArray();
             return allNodes;
         }
 
-        public void Initialize(NodeId masterNodeKey = null)
+        public void Initialize(PublicKey masterNodeKey)
         {
             Buckets = new NodeBucket[_networkConfig.BucketsCount];
             var pass = new SecureString();
@@ -126,22 +124,10 @@ namespace Nethermind.Network.Discovery.RoutingTable
             {
                 pass.AppendChar(rawPass[i]);
             }
+            
             pass.MakeReadOnly();
 
-            if (masterNodeKey == null)
-            {
-                var key = _keyStore.GenerateKey(pass);
-                if (key.Item2.ResultType == ResultType.Failure)
-                {
-                    var msg = $"Cannot create key, error: {key.Item2.Error}";
-                    _logger.Error(msg);
-                    throw new Exception(msg);
-                }
-
-                masterNodeKey = new NodeId(key.PrivateKey.PublicKey);
-            } 
-
-            MasterNode = _nodeFactory.CreateNode(masterNodeKey, _networkConfig.MasterHost, _networkConfig.MasterPort);
+            MasterNode = new Node(masterNodeKey, _networkConfig.MasterHost, _networkConfig.MasterPort);
             if (_logger.IsTrace) _logger.Trace($"Created MasterNode: {MasterNode}");
 
             for (var i = 0; i < Buckets.Length; i++)

@@ -140,12 +140,12 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .Call(TestObject.AddressC, 50000)
+                .Call(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
             
@@ -181,13 +181,13 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
                 .PushData(SampleHexData1) // just to test if stack is restored
-                .Call(TestObject.AddressC, 50000)
+                .Call(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
             
@@ -226,13 +226,13 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
                 .StoreDataInMemory(64, SampleHexData2.PadLeft(64, '0')) // just to test if memory is restored
-                .Call(TestObject.AddressC, 50000)
+                .Call(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
             
@@ -271,14 +271,14 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestObject.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
                 .PersistData("0x2", HexZero) // just to test if storage is restored
                 .PersistData("0x3", HexZero) // just to test if storage is restored
-                .Call(TestObject.AddressC, 70000)
+                .Call(TestItem.AddressC, 70000)
                 .Op(Instruction.STOP)
                 .Done;
             

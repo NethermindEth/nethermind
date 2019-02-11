@@ -37,10 +37,10 @@ namespace Nethermind.Network
             var publicKey = new PublicKey(context.DecodeByteArray());
             var ip = System.Text.Encoding.UTF8.GetString(context.DecodeByteArray());
             var port = context.DecodeByteArray().ToInt32();
-            var description = System.Text.Encoding.UTF8.GetString(context.DecodeByteArray());
+            System.Text.Encoding.UTF8.GetString(context.DecodeByteArray());
             var reputation = context.DecodeByteArray().ToInt64();
 
-            var networkNode = new NetworkNode(publicKey, ip != string.Empty ? ip : null, port, description != string.Empty ? description : null, reputation);
+            var networkNode = new NetworkNode(publicKey, ip != string.Empty ? ip : null, port, reputation);
             return networkNode;
         }
 
@@ -50,7 +50,7 @@ namespace Nethermind.Network
             elements[0] = Rlp.Encode(item.NodeId.Bytes);
             elements[1] = Rlp.Encode(item.Host);
             elements[2] = Rlp.Encode(item.Port);
-            elements[3] = Rlp.Encode(item.Description);
+            elements[3] = Rlp.Encode(string.Empty);
             elements[4] = Rlp.Encode(item.Reputation);
             return Rlp.Encode(elements);
         }

@@ -64,11 +64,11 @@ namespace Nethermind.Blockchain.Test
         private Transaction[] GetTransactions()
             => new[]
             {
-                GetTransaction(0, 1000, 10, Address.Zero, new byte[0], TestObject.PrivateKeyA),
-                GetTransaction(0, 500, 2, Address.FromNumber(1), new byte[0], TestObject.PrivateKeyB),
-                GetTransaction(1, 2000, 50, Address.FromNumber(3), new byte[0], TestObject.PrivateKeyC),
-                GetTransaction(2, 10000, 100, Address.FromNumber(2), new byte[0], TestObject.PrivateKeyD),
-                GetTransaction(3, 4000, 5, Address.Zero, new byte[0], TestObject.PrivateKeyC)
+                GetTransaction(0, 1000, 10, Address.Zero, new byte[0], TestItem.PrivateKeyA),
+                GetTransaction(0, 500, 2, Address.FromNumber(1), new byte[0], TestItem.PrivateKeyB),
+                GetTransaction(1, 2000, 50, Address.FromNumber(3), new byte[0], TestItem.PrivateKeyC),
+                GetTransaction(2, 10000, 100, Address.FromNumber(2), new byte[0], TestItem.PrivateKeyD),
+                GetTransaction(3, 4000, 5, Address.Zero, new byte[0], TestItem.PrivateKeyC)
             };
 
         private Transaction GetTransaction(UInt256 nonce, UInt256 gasLimit,

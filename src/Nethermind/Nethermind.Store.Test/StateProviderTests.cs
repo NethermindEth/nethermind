@@ -64,7 +64,7 @@ namespace Nethermind.Store.Test
         public void Update_balance_on_non_existing_acccount_throws()
         {
             StateProvider provider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), Logger);
-            Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestObject.AddressA, 1.Ether(), Olympic.Instance));
+            Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
         }
 
 

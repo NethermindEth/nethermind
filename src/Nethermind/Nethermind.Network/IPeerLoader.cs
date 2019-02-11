@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,16 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Net;
-using Nethermind.Core.Model;
-using Nethermind.Stats.Model;
+using System.Collections.Generic;
 
-namespace Nethermind.Stats
+namespace Nethermind.Network
 {
-    public interface INodeFactory
+    public interface IPeerLoader
     {
-        Node CreateNode(NodeId id, IPEndPoint address);
-        Node CreateNode(NodeId id, string host, int port, bool isDiscovery = false);
-        Node CreateNode(string host, int port);
+        List<Peer> LoadPeers();
     }
 }

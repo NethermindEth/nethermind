@@ -48,7 +48,6 @@ namespace Nethermind.Network.Discovery
         private readonly INetworkConfig _networkConfig;
         private readonly INodesLocator _nodesLocator;
         private readonly IDiscoveryManager _discoveryManager;
-        private readonly INodeFactory _nodeFactory;
         private readonly INodeTable _nodeTable;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
@@ -69,7 +68,6 @@ namespace Nethermind.Network.Discovery
         public DiscoveryApp(
             INodesLocator nodesLocator,
             IDiscoveryManager discoveryManager,
-            INodeFactory nodeFactory,
             INodeTable nodeTable,
             IMessageSerializationService messageSerializationService,
             ICryptoRandom cryptoRandom,
@@ -83,7 +81,6 @@ namespace Nethermind.Network.Discovery
             _networkConfig = networkConfig;
             _nodesLocator = nodesLocator;
             _discoveryManager = discoveryManager;
-            _nodeFactory = nodeFactory;
             _nodeTable = nodeTable;
             _messageSerializationService = messageSerializationService;
             _cryptoRandom = cryptoRandom;
@@ -96,7 +93,7 @@ namespace Nethermind.Network.Discovery
         public void Initialize(PublicKey masterPublicKey)
         {
             _discoveryManager.NodeDiscovered += OnNewNodeDiscovered;
-            _nodeTable.Initialize(new NodeId(masterPublicKey));
+            _nodeTable.Initialize(masterPublicKey);
             _nodesLocator.Initialize(_nodeTable.MasterNode);
         }
 
@@ -265,7 +262,7 @@ namespace Nethermind.Network.Discovery
                     break;
                 }
                 
-                var node = _nodeFactory.CreateNode(networkNode.NodeId, networkNode.Host, networkNode.Port);
+                var node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node, true);
                 if (manager == null)
                 {
@@ -400,8 +397,8 @@ namespace Nethermind.Network.Discovery
             {
                 var bootnode = bootnodes[i];
                 var node = bootnode.NodeId == null
-                    ? _nodeFactory.CreateNode(bootnode.Host, bootnode.Port)
-                    : _nodeFactory.CreateNode(bootnode.NodeId, bootnode.Host, bootnode.Port, true);
+                    ? new Node(bootnode.Host, bootnode.Port)
+                    : new Node(bootnode.NodeId, bootnode.Host, bootnode.Port, true);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
                 if (manager != null)
                 {
@@ -500,7 +497,7 @@ namespace Nethermind.Network.Discovery
             {
                 var managers = _discoveryManager.GetOrAddNodeLifecycleManagers();
                 //we need to update all notes to update reputation
-                _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id.PublicKey, x.ManagedNode.Host, x.ManagedNode.Port, x.ManagedNode.Description, x.NodeStats.NewPersistedNodeReputation)).ToArray());
+                _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host, x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation)).ToArray());
 
                 if (!_discoveryStorage.AnyPendingChange())
                 {
@@ -532,6 +529,7 @@ namespace Nethermind.Network.Discovery
         
         private void OnNewNodeDiscovered(object sender, NodeEventArgs e)
         {
+            e.Node.AddedToDiscovery = true;
             NodeDiscovered?.Invoke(this, e);
         }
     }

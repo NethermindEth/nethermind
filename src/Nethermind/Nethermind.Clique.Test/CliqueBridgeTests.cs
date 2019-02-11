@@ -45,18 +45,18 @@ namespace Nethermind.Clique.Test
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<IStateProvider>(),
                 Substitute.For<ISnapshotManager>(),
-                new CliqueSealer(new BasicWallet(TestObject.PrivateKeyA), cliqueConfig, Substitute.For<ISnapshotManager>(), TestObject.PrivateKeyA.Address, NullLogManager.Instance),
-                TestObject.AddressA,
+                new CliqueSealer(new BasicWallet(TestItem.PrivateKeyA), cliqueConfig, Substitute.For<ISnapshotManager>(), TestItem.PrivateKeyA.Address, NullLogManager.Instance),
+                TestItem.AddressA,
                 cliqueConfig,
                 NullLogManager.Instance);
             
             SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumSigner.Instance, LimboLogs.Instance);
             
             CliqueBridge bridge = new CliqueBridge(producer, snapshotManager, blockTree);
-            Assert.DoesNotThrow(() => bridge.CastVote(TestObject.AddressB, true));
-            Assert.DoesNotThrow(() => bridge.UncastVote(TestObject.AddressB));
-            Assert.DoesNotThrow(() => bridge.CastVote(TestObject.AddressB, false));
-            Assert.DoesNotThrow(() => bridge.UncastVote(TestObject.AddressB));
+            Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, true));
+            Assert.DoesNotThrow(() => bridge.UncastVote(TestItem.AddressB));
+            Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, false));
+            Assert.DoesNotThrow(() => bridge.UncastVote(TestItem.AddressB));
         }
     }
 }

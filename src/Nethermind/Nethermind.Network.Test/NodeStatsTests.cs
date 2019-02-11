@@ -34,8 +34,7 @@ namespace Nethermind.Network.Test
         [SetUp]
         public void Initialize()
         {
-            var nodeFactory = new NodeFactory(LimboLogs.Instance);
-            _node = nodeFactory.CreateNode("192.1.1.1", 3333);
+            _node = new Node("192.1.1.1", 3333);
             _config = new StatsConfig();
             _config.CaptureNodeLatencyStatsEventHistory = true;
         }
@@ -44,7 +43,7 @@ namespace Nethermind.Network.Test
         [TestCase(false)]
         public void LatencyCaptureTest(bool useLight)
         {
-            _nodeStats = useLight ?  new NodeStatsLight(_node, _config, NullLogManager.Instance) : (INodeStats)new NodeStats(_node, _config, NullLogManager.Instance);
+            _nodeStats = useLight ?  new NodeStatsLight(_node, _config) : (INodeStats)new NodeStats(_node, _config);
             
             _nodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, 30);
             _nodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, 51);
@@ -68,7 +67,7 @@ namespace Nethermind.Network.Test
         [TestCase(false)]
         public void DisconnectDelayTest(bool useLight)
         {
-            _nodeStats = useLight ?  new NodeStatsLight(_node, _config, NullLogManager.Instance) : (INodeStats)new NodeStats(_node, _config, NullLogManager.Instance);
+            _nodeStats = useLight ?  new NodeStatsLight(_node, _config) : (INodeStats)new NodeStats(_node, _config);
             
             var isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result, "before disconnect");
@@ -87,7 +86,7 @@ namespace Nethermind.Network.Test
         [TestCase(false)]
         public void FailedConnectionDelayTest(bool useLight)
         {
-            _nodeStats = useLight ? new NodeStatsLight(_node, _config, NullLogManager.Instance) : (INodeStats)new NodeStats(_node, _config, NullLogManager.Instance);
+            _nodeStats = useLight ? new NodeStatsLight(_node, _config) : (INodeStats)new NodeStats(_node, _config);
             
             var isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result, "before failure");

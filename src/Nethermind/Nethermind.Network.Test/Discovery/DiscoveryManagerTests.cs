@@ -47,7 +47,6 @@ namespace Nethermind.Network.Test.Discovery
         private IDiscoveryManager _discoveryManager;
         private IMessageSender _messageSender;
         private INodeTable _nodeTable;
-        private INodeFactory _nodeFactory;
         private ITimestamp _timestamp;
         private int _port = 1;
         private string _host = "192.168.1.17";
@@ -68,21 +67,20 @@ namespace Nethermind.Network.Test.Discovery
             IStatsConfig statsConfig = new StatsConfig();
 
             _messageSender = Substitute.For<IMessageSender>();
-            _nodeFactory = new NodeFactory(LimboLogs.Instance);
             var calculator = new NodeDistanceCalculator(networkConfig);
 
 
-            _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(keyStoreConfig, new EthereumJsonSerializer(), new AesEncrypter(keyStoreConfig, logManager), new CryptoRandom(), logManager), calculator, networkConfig, logManager);
-            _nodeTable.Initialize();
+            _nodeTable = new NodeTable(new FileKeyStore(keyStoreConfig, new EthereumJsonSerializer(), new AesEncrypter(keyStoreConfig, logManager), new CryptoRandom(), logManager), calculator, networkConfig, logManager);
+            _nodeTable.Initialize(TestItem.PublicKeyA);
             
             _timestamp = new Timestamp();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(networkConfig, _timestamp), evictionManager, new NodeStatsProvider(statsConfig, _nodeFactory, logManager, true), networkConfig, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(networkConfig, _timestamp), evictionManager, new NodeStatsManager(statsConfig, logManager, true), networkConfig, logManager);
 
-            _nodes = new[] { _nodeFactory.CreateNode("192.168.1.18", 1), _nodeFactory.CreateNode("192.168.1.19", 2) };
+            _nodes = new[] { new Node("192.168.1.18", 1), new Node("192.168.1.19", 2) };
 
-            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeFactory, _nodeTable, new NetworkStorage("test", networkConfig, logManager, new PerfService(logManager)), networkConfig, logManager);
+            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage("test", networkConfig, logManager, new PerfService(logManager)), networkConfig, logManager);
             _discoveryManager.MessageSender = _messageSender;
         }
 

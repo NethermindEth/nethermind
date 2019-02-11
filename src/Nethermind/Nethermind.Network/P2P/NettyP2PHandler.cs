@@ -26,18 +26,18 @@ namespace Nethermind.Network.P2P
 {
     public class NettyP2PHandler : SimpleChannelInboundHandler<Packet>
     {
-        private readonly IP2PSession _ip2PSession;
+        private readonly ISession _session;
         private readonly ILogger _logger;
 
-        public NettyP2PHandler(IP2PSession ip2PSession, ILogger logger)
+        public NettyP2PHandler(ISession session, ILogger logger)
         {
-            _ip2PSession = ip2PSession;
+            _session = session;
             _logger = logger;
         }
 
         public void Init(IPacketSender packetSender, IChannelHandlerContext context)
         {
-            _ip2PSession.Init(5, context, packetSender);
+            _session.Init(5, context, packetSender);
         }
 
         public override void ChannelRegistered(IChannelHandlerContext context)
@@ -49,13 +49,13 @@ namespace Nethermind.Network.P2P
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
         {
             if (_logger.IsTrace) _logger.Trace($"Channel read... data length {msg.Data.Length}");
-            _ip2PSession.ReceiveMessage(msg);
+            _session.ReceiveMessage(msg);
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
             //In case of SocketException we log it as debug to avoid noise
-            string clientId = _ip2PSession?.NodeStats?.P2PNodeDetails?.ClientId ?? $"unknown {_ip2PSession?.RemoteHost}";
+            string clientId = _session?.Node.ClientId ?? $"unknown {_session?.RemoteHost}";
             if (exception is SocketException)
             {
                 

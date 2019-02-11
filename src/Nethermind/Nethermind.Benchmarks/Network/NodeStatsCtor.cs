@@ -36,7 +36,7 @@ namespace Nethermind.Benchmarks.Network
         [GlobalSetup]
         public void Setup()
         {
-            _node = new Node(new NodeId(new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f")));
+            _node = new Node(new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f"), "127.0.0.1", 1234);
             _statsConfig = new StatsConfig();
             _statsConfig.CaptureNodeStatsEventHistory = true;
             _statsConfig.CaptureNodeLatencyStatsEventHistory = true;
@@ -46,26 +46,26 @@ namespace Nethermind.Benchmarks.Network
         [Benchmark]
         public void Heavy()
         {
-            NodeStats stats = new NodeStats(_node, _statsConfig, _logManager);
+            NodeStats stats = new NodeStats(_node, _statsConfig);
         }
         
         [Benchmark]
         public void Light()
         {
-            NodeStatsLight stats = new NodeStatsLight(_node, _statsConfig, _logManager);
+            NodeStatsLight stats = new NodeStatsLight(_node, _statsConfig);
         }
         
         [Benchmark]
         public long HeavyRep()
         {
-            NodeStats stats = new NodeStats(_node, _statsConfig, _logManager);
+            NodeStats stats = new NodeStats(_node, _statsConfig);
             return stats.CurrentNodeReputation;
         }
         
         [Benchmark]
         public long LightRep()
         {
-            NodeStatsLight stats = new NodeStatsLight(_node, _statsConfig, _logManager);
+            NodeStatsLight stats = new NodeStatsLight(_node, _statsConfig);
             return stats.CurrentNodeReputation;
         }
     }

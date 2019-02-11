@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,36 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Model;
+
+using System;
+using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Stats
+namespace Nethermind.Network.Discovery
 {
-    public interface INodeStatsProvider
+    public class NullDiscoveryApp : IDiscoveryApp
     {
-        INodeStats GetOrAddNodeStats(Node node);
-        INodeStats GetOrAddNodeStats(NodeId nodeId, string host, int port);
+        public void Initialize(PublicKey masterPublicKey)
+        {
+        }
+
+        public void Start()
+        {
+        }
+
+        public Task StopAsync()
+        {
+            return Task.CompletedTask;
+        }
+
+        public event EventHandler<NodeEventArgs> NodeDiscovered {
+            add { }
+            remove { }
+        }
+
+        public void AddNodeToDiscovery(Node node)
+        {
+        }
     }
 }

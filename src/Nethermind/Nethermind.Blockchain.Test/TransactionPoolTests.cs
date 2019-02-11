@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Test
 
             foreach ((ISynchronizationPeer peer, _) in peers)
             {
-                _transactionPool.RemovePeer(peer.NodeId);
+                _transactionPool.RemovePeer(peer.Node.Id);
             }
         }
 
@@ -93,7 +93,7 @@ namespace Nethermind.Blockchain.Test
         {
             _transactionPool = CreatePool(_noTransactionStorage);
             EthereumSigner signer = new EthereumSigner(MainNetSpecProvider.Instance, _logManager);
-            Transaction tx = Build.A.Transaction.SignedAndResolved(signer, TestObject.PrivateKeyA, MainNetSpecProvider.ByzantiumBlockNumber).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(signer, TestItem.PrivateKeyA, MainNetSpecProvider.ByzantiumBlockNumber).TestObject;
             AddTransactionResult result = _transactionPool.AddTransaction(tx, 1);
             _transactionPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTransactionResult.InvalidChainId);
@@ -103,7 +103,7 @@ namespace Nethermind.Blockchain.Test
         public void should_ignore_old_scheme_signatures()
         {
             _transactionPool = CreatePool(_noTransactionStorage);
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, 1).TestObject;
             AddTransactionResult result = _transactionPool.AddTransaction(tx, 1);
             _transactionPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTransactionResult.OldScheme);
@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Test
         public void should_ignore_already_known()
         {
             _transactionPool = CreatePool(_noTransactionStorage);
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, RopstenSpecProvider.ByzantiumBlockNumber).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, RopstenSpecProvider.ByzantiumBlockNumber).TestObject;
             AddTransactionResult result1 = _transactionPool.AddTransaction(tx, 1);
             AddTransactionResult result2 = _transactionPool.AddTransaction(tx, 1);
             _transactionPool.GetPendingTransactions().Length.Should().Be(1);
@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Test
         public void should_add_valid_transactions()
         {
             _transactionPool = CreatePool(_noTransactionStorage);
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, RopstenSpecProvider.ByzantiumBlockNumber).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, RopstenSpecProvider.ByzantiumBlockNumber).TestObject;
             AddTransactionResult result = _transactionPool.AddTransaction(tx, 1);
             _transactionPool.GetPendingTransactions().Length.Should().Be(1);
             result.Should().Be(AddTransactionResult.Added);

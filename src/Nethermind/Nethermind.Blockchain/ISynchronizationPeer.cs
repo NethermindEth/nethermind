@@ -16,21 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain
 {
     public interface ISynchronizationPeer
     {
+        Guid SessionId { get;}
         bool IsFastSyncSupported { get; }
-        NodeId NodeId { get; }
-        INodeStats NodeStats { get; }
+        Node Node { get; }
         string ClientId { get; }
         UInt256 TotalDifficultyOnSessionStart { get; }
         
