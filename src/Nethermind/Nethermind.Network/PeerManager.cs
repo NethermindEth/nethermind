@@ -93,21 +93,13 @@ namespace Nethermind.Network
             _discoveryApp.NodeDiscovered += OnNodeDiscovered;
             _rlpxPeer.SessionCreated += (sender, args) =>
             {
-                try
-                {
-                    var session = args.Session;
-                    ToggleSessionEventListeners(session, true);
+                var session = args.Session;
+                ToggleSessionEventListeners(session, true);
 
-                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Session created: {session.RemoteNodeId}, {session.Direction.ToString()}");
-                    if (session.Direction == ConnectionDirection.Out)
-                    {
-                        ProcessOutgoingConnection(session);
-                    }
-                }
-                catch (Exception e)
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Session created: {session.RemoteNodeId}, {session.Direction.ToString()}");
+                if (session.Direction == ConnectionDirection.Out)
                 {
-                    Console.WriteLine("ERROR ON CREATED " + e);
-                    throw;
+                    ProcessOutgoingConnection(session);
                 }
             };
         }
@@ -202,11 +194,8 @@ namespace Nethermind.Network
                     if (_logger.IsDebug) _logger.Error("Candidate peers clanup failed", e);
                 }
 
-                Console.WriteLine($"WAITING NOW");
                 _peerUpdateRequested.Wait(_cancellationTokenSource.Token);
                 _peerUpdateRequested.Reset();
-
-                Console.WriteLine($"LOOP COUNT {loopcount++}");
 
                 if (!_isStarted)
                 {
@@ -216,7 +205,6 @@ namespace Nethermind.Network
                 int availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
                 if (availableActiveCount == 0)
                 {
-                    Console.WriteLine($"AVAILABLE 0 - BREAKING");
                     continue;
                 }
 
@@ -234,7 +222,6 @@ namespace Nethermind.Network
                 IReadOnlyCollection<Peer> remainingCandidates = candidateSelection.Candidates;
                 if (!remainingCandidates.Any())
                 {
-                    Console.WriteLine($"REMAINING 0 - BREAKING");
                     continue;
                 }
 
@@ -249,13 +236,11 @@ namespace Nethermind.Network
                     int nodesToTry = Math.Min(remainingCandidates.Count, availableActiveCount);
                     if (nodesToTry == 0)
                     {
-                        Console.WriteLine($"NODES TO TRY 0 - BREAKING");
                         break;
                     }
 
                     IEnumerable<Peer> candidatesToTry = remainingCandidates.Take(nodesToTry);
                     remainingCandidates = remainingCandidates.Skip(nodesToTry).ToList();
-                    Console.WriteLine($"CANDIDATES TO TRY {candidatesToTry.Count()} REMAINING {remainingCandidates.Count} ACTIVE {_activePeers.Count}");
                     Parallel.ForEach(candidatesToTry, async (peer, loopState) =>
                     {
                         if (loopState.ShouldExitCurrentIteration || _cancellationTokenSource.IsCancellationRequested)
@@ -283,7 +268,7 @@ namespace Nethermind.Network
                                 if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
                                 peer.OutSession?.Disconnect(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local);
                             }
-                            
+
                             DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
 
                             return;
@@ -324,10 +309,8 @@ namespace Nethermind.Network
                     _logCounter++;
                 }
 
-                Console.WriteLine($"ACTIVE NOW {_activePeers.Count}");
                 if (_activePeers.Count != _networkConfig.ActivePeersMaxCount)
                 {
-                    Console.WriteLine($"ACTIVE NOW {_activePeers.Count} - SETTING");
                     _peerUpdateRequested.Set();
                 }
             }
@@ -361,8 +344,6 @@ namespace Nethermind.Network
             }
 
             var candidatesSnapshot = _candidatePeers.Where(x => !_activePeers.ContainsKey(x.Key)).ToArray();
-            Console.WriteLine($"CANDIDATE SNAPSHOT {candidatesSnapshot.Length}");
-
             if (!candidatesSnapshot.Any())
             {
                 return (Array.Empty<Peer>(), counters, Array.Empty<Peer>());
@@ -393,20 +374,17 @@ namespace Nethermind.Network
                         counters[ActivePeerSelectionCounter.FilteredByFailedConnection] = counters[ActivePeerSelectionCounter.FilteredByFailedConnection] + 1;
                     }
 
-                    Console.WriteLine($"DELAY RESULT");
                     continue;
                 }
 
                 if (_stats.FindCompatibilityValidationResult(candidate.Value.Node).HasValue)
                 {
-                    Console.WriteLine($"COMPATIBILITY");
                     incompatiblePeers.Add(candidate.Value);
                     continue;
                 }
 
                 if (!PeerIsDisconnected(candidate.Value))
                 {
-                    Console.WriteLine($"IN TRANSITION");
                     // in transition
                     continue;
                 }
@@ -444,13 +422,10 @@ namespace Nethermind.Network
             return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
         }
 
-        private int connectCOunt = 0;
-
         private async Task<bool> InitializePeerConnection(Peer candidate)
         {
             try
             {
-                Console.WriteLine($"{candidate.Node.Id.ToShortString()} CONNECT ASYN {Interlocked.Increment(ref connectCOunt)} LOOP {loopcount} TO {candidate.Node.Id}");
                 await _rlpxPeer.ConnectAsync(candidate.Node);
                 return true;
             }
@@ -461,13 +436,10 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                Console.WriteLine("ERROR " + e.ToString());
                 if (_logger.IsDebug) _logger.Error($"Error trying to initiate connection with peer: {candidate.Node.Id}", e);
                 return false;
             }
         }
-
-        int addSessionCount = 0;
 
         private void ProcessOutgoingConnection(ISession session)
         {
@@ -481,7 +453,6 @@ namespace Nethermind.Network
 
             _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionEstablished);
 
-            Console.WriteLine($"{session.Node.Id.ToShortString()} ADDING SESSION {Interlocked.Increment(ref addSessionCount)} {session.SessionId}");
             AddSession(session, peer);
         }
 
@@ -506,14 +477,14 @@ namespace Nethermind.Network
         }
 
         private void ProcessIncomingConnection(ISession session)
-        {           
+        {
             // if we have already initiated connection before
             if (_activePeers.TryGetValue(session.RemoteNodeId, out Peer existingActivePeer))
             {
                 AddSession(session, existingActivePeer);
                 return;
             }
-            
+
             if (_activePeers.Count >= _networkConfig.ActivePeersMaxCount)
             {
                 if (_logger.IsTrace) _logger.Trace($"Initiating disconnect, we have too many peers: {session.RemoteNodeId}");
@@ -552,7 +523,7 @@ namespace Nethermind.Network
             bool newSessionIsIn = session.Direction == ConnectionDirection.In;
             bool newSessionIsOut = !newSessionIsIn;
             bool peerIsDisconnected = PeerIsDisconnected(peer);
-            
+
             if (peerIsDisconnected)
             {
                 if (newSessionIsIn)
@@ -641,7 +612,6 @@ namespace Nethermind.Network
                 DeactivatePeerIfDisconnected(activePeer, "session disconnected");
 
                 if (_logger.IsTrace) _stats.DumpNodeStats(activePeer.Node);
-                Console.WriteLine($"{session.Node.Id.ToShortString()} ON DISCONNECTED");
                 _peerUpdateRequested.Set();
             }
         }
@@ -757,11 +727,8 @@ namespace Nethermind.Network
             if (_logger.IsDebug) _logger.Debug("Starting peer update timer");
 
             _peerUpdateTimer = new System.Timers.Timer(_networkConfig.PeersUpdateInterval);
-            _peerUpdateTimer.Elapsed += (sender, e) =>
-            {
-                _peerUpdateRequested.Set();
-            };
-            
+            _peerUpdateTimer.Elapsed += (sender, e) => { _peerUpdateRequested.Set(); };
+
             _peerUpdateTimer.Start();
         }
 
@@ -871,7 +838,6 @@ namespace Nethermind.Network
             }
 
             //if we have more persisted nodes then the threshold, we run cleanup process
-            Console.WriteLine($"STORED {storedNodes.Length} MAX {_networkConfig.PersistedPeerCountCleanupThreshold}");
             if (storedNodes.Length > _networkConfig.PersistedPeerCountCleanupThreshold)
             {
                 CleanupPersistedPeers(activePeers, storedNodes);
@@ -918,7 +884,6 @@ namespace Nethermind.Network
 
             if (nodesToRemove.Length > 0)
             {
-                Console.WriteLine($"REMOVING NODES: {nodesToRemove.Length}");
                 foreach (var peer in nodesToRemove)
                 {
                     _candidatePeers.TryRemove(peer.Node.Id, out _);

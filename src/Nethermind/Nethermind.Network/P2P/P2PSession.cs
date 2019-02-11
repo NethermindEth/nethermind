@@ -241,8 +241,6 @@ namespace Nethermind.Network.P2P
 
         public void InitiateDisconnect(DisconnectReason disconnectReason)
         {
-            Console.WriteLine($"DISCONNECTING {disconnectReason} {Node.Id.ToShortString()} {SessionId}");
-            
             lock (_sessionStateLock)
             {
                 if (IsClosing)
