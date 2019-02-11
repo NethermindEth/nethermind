@@ -170,7 +170,7 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Delay of connection retrying after disconnect
         /// </summary>
-        int DisconnectDelay { get; }
+        int DisconnectDelay { get; set; }
 
         /// <summary>
         /// Delay of connection retrying after failed connection attempt

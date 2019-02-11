@@ -92,7 +92,7 @@ namespace Nethermind.Network.Rlpx
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
                     {
-                        Session session = new Session((PublicKey)null, LocalPort, ConnectionDirection.In, _logManager, ch);
+                        Session session = new Session(LocalPort,  _logManager, ch);
                         session.RemoteHost = ((IPEndPoint) ch.RemoteAddress).Address.ToString();
                         session.RemotePort = ((IPEndPoint) ch.RemoteAddress).Port;
                         InitializeChannel(ch, session);
@@ -137,9 +137,7 @@ namespace Nethermind.Network.Rlpx
             
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
             {
-                Session session = new Session(LocalPort, ConnectionDirection.Out, _logManager, ch, node);
-                session.RemoteHost = ((IPEndPoint) ch.RemoteAddress).Address.ToString();
-                session.RemotePort = ((IPEndPoint) ch.RemoteAddress).Port;
+                Session session = new Session(LocalPort, _logManager, ch, node);
                 InitializeChannel(ch, session);
             }));
 

@@ -115,7 +115,7 @@ namespace Nethermind.Network.Test
             public Context CreateIncomingSession()
             {
                 IChannel channel = Substitute.For<IChannel>();
-                _currentSession = new Session(null, _localPort, ConnectionDirection.In, LimboLogs.Instance, channel);
+                _currentSession = new Session(_localPort,  LimboLogs.Instance, channel);
                 _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;
             }
@@ -123,7 +123,7 @@ namespace Nethermind.Network.Test
             public Context CreateOutgoingSession()
             {
                 IChannel channel = Substitute.For<IChannel>();
-                _currentSession = new Session(_localPort, ConnectionDirection.Out, LimboLogs.Instance, channel, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort) {AddedToDiscovery = true});
+                _currentSession = new Session(_localPort, LimboLogs.Instance, channel, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort) {AddedToDiscovery = true});
                 _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;
             }

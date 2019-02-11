@@ -27,6 +27,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
@@ -57,7 +58,7 @@ namespace Nethermind.Network.Test
             {
                 _sessions = sessions;
             }
-            
+
             public Task Init()
             {
                 return Task.CompletedTask;
@@ -65,19 +66,38 @@ namespace Nethermind.Network.Test
 
             public Task ConnectAsync(Node node)
             {
+                if (_isFailing)
+                {
+                    throw new InvalidOperationException("making it fail");
+                }
+                
                 lock (this)
                 {
                     ConnectAsyncCallsCount++;
                 }
 
-                var session = new Session(30313, ConnectionDirection.Out, LimboLogs.Instance, Substitute.For<IChannel>(), node);
+                var session = new Session(30313, LimboLogs.Instance, Substitute.For<IChannel>(), node);
                 lock (_sessions)
                 {
                     _sessions.Add(session);
                 }
-                
+
                 SessionCreated?.Invoke(this, new SessionEventArgs(session));
                 return Task.CompletedTask;
+            }
+
+            public void CreateRandomIncoming()
+            {
+                var session = new Session(30313, LimboLogs.Instance, Substitute.For<IChannel>());
+                lock (_sessions)
+                {
+                    _sessions.Add(session);
+                }
+
+                session.RemoteHost = "1.2.3.4";
+                session.RemotePort = 12345;
+                SessionCreated?.Invoke(this, new SessionEventArgs(session));
+                session.Handshake(new PrivateKeyGenerator().Generate().PublicKey);
             }
 
             public int ConnectAsyncCallsCount { get; set; }
@@ -87,15 +107,41 @@ namespace Nethermind.Network.Test
                 return Task.CompletedTask;
             }
 
-            public PublicKey LocalNodeId { get; }
+            public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
             public int LocalPort { get; }
             public event EventHandler<SessionEventArgs> SessionCreated;
+
+            public void CreateIncoming(Session[] sessions)
+            {
+                List<Session> incomingSessions = new List<Session>();
+                foreach (Session session in sessions)
+                {
+                    var sessionIn = new Session(30313, LimboLogs.Instance, Substitute.For<IChannel>());
+                    sessionIn.RemoteHost = session.RemoteHost;
+                    sessionIn.RemotePort = session.RemotePort;
+                    SessionCreated?.Invoke(this, new SessionEventArgs(sessionIn));
+                    sessionIn.Handshake(session.RemoteNodeId);
+                    incomingSessions.Add(sessionIn);
+                }
+
+                lock (_sessions)
+                {
+                    _sessions.AddRange(incomingSessions);
+                }
+            }
+
+            private bool _isFailing = false;
+
+            public void MakeItFail()
+            {
+                _isFailing = true;
+            }
         }
 
         private class InMemoryStorage : INetworkStorage
         {
             private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>();
-            
+
             public NetworkNode[] GetPersistedNodes()
             {
                 return _nodes.Values.ToArray();
@@ -107,7 +153,7 @@ namespace Nethermind.Network.Test
                 {
                     _nodes[node.NodeId] = node;
                 }
-                
+
                 _pendingChanges = true;
             }
 
@@ -125,13 +171,13 @@ namespace Nethermind.Network.Test
             }
 
             private bool _pendingChanges;
-            
+
             public bool AnyPendingChange()
             {
                 return _pendingChanges;
             }
         }
-        
+
         [SetUp]
         public void SetUp()
         {
@@ -215,6 +261,24 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Ok_if_fails_to_connect()
+        {
+            SetupPersistedPeers(50);
+            _rlpxPeer.MakeItFail();
+            _peerManager.Init();
+            _peerManager.Start();
+
+            
+            for (int i = 0; i < 10; i++)
+            {
+                Thread.Sleep(500);
+                Assert.AreEqual(0, _peerManager.ActivePeers.Count);
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+        
+        [Test]
         public async Task Will_fill_up_over_and_over_again_on_disconnects()
         {
             SetupPersistedPeers(50);
@@ -225,7 +289,7 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
-                Thread.Sleep(500);
+                Thread.Sleep(300);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
                 DisconnectAllSessions();
             }
@@ -233,6 +297,40 @@ namespace Nethermind.Network.Test
             await _peerManager.StopAsync(ExitType.LightExit);
         }
         
+        [Test]
+        public async Task Will_fill_up_over_and_over_again_on_newly_discovered()
+        {
+            SetupPersistedPeers(0);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            for (int i = 0; i < 10; i++)
+            {
+                DiscoverNew(25);
+                Thread.Sleep(300);
+                Assert.AreEqual(25, _peerManager.ActivePeers.Count);
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        [Test]
+        public async Task Will_fill_up_with_incoming_over_and_over_again_on_disconnects()
+        {
+            SetupPersistedPeers(0);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            for (int i = 0; i < 10; i++)
+            {
+                CreateNewIncomingSessions(25);
+                Thread.Sleep(300);
+                Assert.AreEqual(25, _peerManager.ActivePeers.Count);
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
         [Test]
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing()
         {
@@ -254,7 +352,7 @@ namespace Nethermind.Network.Test
 
             await _peerManager.StopAsync(ExitType.LightExit);
         }
-        
+
         [Test]
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
         {
@@ -269,15 +367,70 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
-                Thread.Sleep(500);
+                Thread.Sleep(200);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
                 Session[] clone;
                 HandshakeAllSessions();
-                Thread.Sleep(1000);
+                Thread.Sleep(300);
                 DisconnectAllSessions();
             }
 
             await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        [Test]
+        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40_with_random_incoming_connections()
+        {
+            _networkConfig.MaxCandidatePeerCount = 40;
+            _networkConfig.CandidatePeerCountCleanupThreshold = 30;
+            _networkConfig.PersistedPeerCountCleanupThreshold = 40;
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            int currentCount = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                currentCount += 25;
+                Thread.Sleep(200);
+                Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
+                Session[] clone;
+                HandshakeAllSessions();
+                Thread.Sleep(200);
+                CreateIncomingSessions();
+                Thread.Sleep(300);
+                DisconnectAllSessions();
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        private void CreateIncomingSessions()
+        {
+            Session[] clone;
+
+            lock (_sessions)
+            {
+                clone = _sessions.ToArray();
+            }
+
+            _rlpxPeer.CreateIncoming(clone);
+        }
+
+        private void CreateNewIncomingSessions(int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                _rlpxPeer.CreateRandomIncoming();
+            }
+        }
+        
+        private void DiscoverNew(int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                _discoveryApp.NodeDiscovered += Raise.EventWith(new NodeEventArgs(new Node(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.4", 1234)));
+            }
         }
 
         private void DisconnectAllSessions()
@@ -286,7 +439,7 @@ namespace Nethermind.Network.Test
             lock (_sessions)
             {
                 clone = _sessions.ToArray();
-                _sessions.Clear();    
+                _sessions.Clear();
             }
 
             foreach (Session session in clone)
@@ -294,7 +447,7 @@ namespace Nethermind.Network.Test
                 session.Disconnect(DisconnectReason.TooManyPeers, DisconnectType.Remote);
             }
         }
-        
+
         private void HandshakeAllSessions()
         {
             Session[] clone;

@@ -185,6 +185,8 @@ namespace Nethermind.Network
             _stats.DumpStats(logEventDetails);
         }
 
+        public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToList().AsReadOnly();
+
         int loopcount = 0;
 
         private async Task RunPeerUpdateLoop()
@@ -281,10 +283,8 @@ namespace Nethermind.Network
                                 if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
                                 peer.OutSession?.Disconnect(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local);
                             }
-                            else if (peer.InSession != null)
-                            {
-                                DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
-                            }
+                            
+                            DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
 
                             return;
                         }
@@ -344,15 +344,10 @@ namespace Nethermind.Network
 
         private void DeactivatePeerIfDisconnected(Peer peer, string reason)
         {
-            if (IsPeerDisconnected(peer))
+            if (PeerIsDisconnected(peer))
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| REMOVING {peer.Node.Id} {reason}");
-                bool success = _activePeers.TryRemove(peer.Node.Id, out Peer removedPeer);
-                if (success)
-                {
-                    removedPeer.InSession = null;
-                    removedPeer.OutSession = null;
-                }
+                _activePeers.TryRemove(peer.Node.Id, out _);
             }
         }
 
@@ -409,7 +404,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (candidate.Value.OutSession != null || candidate.Value.InSession != null)
+                if (!PeerIsDisconnected(candidate.Value))
                 {
                     Console.WriteLine($"IN TRANSITION");
                     // in transition
@@ -487,10 +482,7 @@ namespace Nethermind.Network
             _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionEstablished);
 
             Console.WriteLine($"{session.Node.Id.ToShortString()} ADDING SESSION {Interlocked.Increment(ref addSessionCount)} {session.SessionId}");
-            if (AddSession(session, peer))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Initializing OUT connection (PeerManager) for peer: {session.RemoteNodeId}");
-            }
+            AddSession(session, peer);
         }
 
         private ConnectionDirection ChooseDirectionToKeep(PublicKey remoteNode)
@@ -514,14 +506,14 @@ namespace Nethermind.Network
         }
 
         private void ProcessIncomingConnection(ISession session)
-        {
+        {           
             // if we have already initiated connection before
             if (_activePeers.TryGetValue(session.RemoteNodeId, out Peer existingActivePeer))
             {
-                if (!AddSession(session, existingActivePeer)) return;
+                AddSession(session, existingActivePeer);
+                return;
             }
-
-            // if we have too many active peers
+            
             if (_activePeers.Count >= _networkConfig.ActivePeersMaxCount)
             {
                 if (_logger.IsTrace) _logger.Trace($"Initiating disconnect, we have too many peers: {session.RemoteNodeId}");
@@ -532,7 +524,7 @@ namespace Nethermind.Network
             // it is possible we already have this node as a candidate
             if (_candidatePeers.TryGetValue(session.RemoteNodeId, out Peer existingCandidatePeer))
             {
-                if (!AddSession(session, existingCandidatePeer)) return;
+                AddSession(session, existingCandidatePeer);
             }
             else
             {
@@ -555,26 +547,34 @@ namespace Nethermind.Network
             }
         }
 
-        private bool AddSession(ISession session, Peer existingPeer)
+        private void AddSession(ISession session, Peer peer)
         {
             bool newSessionIsIn = session.Direction == ConnectionDirection.In;
             bool newSessionIsOut = !newSessionIsIn;
-
-            if (!IsPeerDisconnected(existingPeer))
+            bool peerIsDisconnected = PeerIsDisconnected(peer);
+            
+            if (peerIsDisconnected)
             {
-                bool peerHasAnOpenInSession = existingPeer.InSession != null && (!existingPeer.InSession?.IsClosing ?? true);
-                bool peerHasAnOpenOutSession = existingPeer.OutSession != null && (!existingPeer.OutSession?.IsClosing ?? true);
+                if (newSessionIsIn)
+                {
+                    peer.InSession = session;
+                }
+                else
+                {
+                    peer.OutSession = session;
+                }
+            }
+            else
+            {
+                bool peerHasAnOpenInSession = !peer.InSession?.IsClosing ?? false;
+                bool peerHasAnOpenOutSession = !peer.OutSession?.IsClosing ?? false;
 
-                if (newSessionIsIn && peerHasAnOpenInSession ||
-                    newSessionIsOut && peerHasAnOpenOutSession)
+                if (newSessionIsIn && peerHasAnOpenInSession || newSessionIsOut && peerHasAnOpenOutSession)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Disconnecting an {session.Direction} session, {session.Direction} session already connected: {session.RemoteNodeId}");
                     session.InitiateDisconnect(DisconnectReason.AlreadyConnected);
-                    return false;
                 }
-
-                if (newSessionIsIn && peerHasAnOpenOutSession ||
-                    newSessionIsOut && peerHasAnOpenInSession)
+                else if (newSessionIsIn && peerHasAnOpenOutSession || newSessionIsOut && peerHasAnOpenInSession)
                 {
                     // disconnecting the new session as it lost to the existing one
                     ConnectionDirection directionToKeep = ChooseDirectionToKeep(session.RemoteNodeId);
@@ -582,40 +582,27 @@ namespace Nethermind.Network
                     {
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting an {session.Direction} session, {directionToKeep} session already connected: {session.RemoteNodeId}");
                         session.InitiateDisconnect(DisconnectReason.AlreadyConnected);
-                        return false;
                     }
-
                     // replacing existing session with the new one as the new one won
-                    if (newSessionIsIn)
+                    else if (newSessionIsIn)
                     {
-                        existingPeer.InSession = session;
+                        peer.InSession = session;
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting an OUT session, {directionToKeep} session to replace: {session.RemoteNodeId}");
-                        existingPeer.OutSession?.InitiateDisconnect(DisconnectReason.AlreadyConnected);
+                        peer.OutSession?.InitiateDisconnect(DisconnectReason.AlreadyConnected);
                     }
                     else
                     {
-                        existingPeer.OutSession = session;
+                        peer.OutSession = session;
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting an IN session, {directionToKeep} session to replace: {session.RemoteNodeId}");
-                        existingPeer.OutSession?.InitiateDisconnect(DisconnectReason.AlreadyConnected);
+                        peer.OutSession?.InitiateDisconnect(DisconnectReason.AlreadyConnected);
                     }
                 }
             }
-            else
-            {
-                if (newSessionIsIn)
-                {
-                    existingPeer.InSession = session;
-                }
-                else
-                {
-                    existingPeer.OutSession = session;
-                }
-            }
 
-            return true;
+            AddActivePeer(peer.Node.Id, peer, "IN session");
         }
 
-        private static bool IsPeerDisconnected(Peer peer)
+        private static bool PeerIsDisconnected(Peer peer)
         {
             return (peer.InSession?.IsClosing ?? true) && (peer.OutSession?.IsClosing ?? true);
         }
@@ -716,6 +703,7 @@ namespace Nethermind.Network
             if (_candidatePeers.TryGetValue(session.RemoteNodeId, out Peer newPeer))
             {
                 if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer present in candidate collection");
+                _candidatePeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
                 _activePeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
                 _activePeers.TryAdd(newPeer.Node.Id, newPeer);
                 return;
