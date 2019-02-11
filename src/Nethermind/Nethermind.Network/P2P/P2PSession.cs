@@ -324,7 +324,6 @@ namespace Nethermind.Network.P2P
 
         public event EventHandler<DisconnectEventArgs> Disconnecting;
         public event EventHandler<DisconnectEventArgs> Disconnected;
-        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public event EventHandler<EventArgs> HandshakeComplete;
         public event EventHandler<EventArgs> Initialized;
 

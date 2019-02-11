@@ -39,7 +39,10 @@ namespace Nethermind.Network.Discovery
             return Task.CompletedTask;
         }
 
-        public event EventHandler<NodeEventArgs> NodeDiscovered;
+        public event EventHandler<NodeEventArgs> NodeDiscovered {
+            add { }
+            remove { }
+        }
 
         public void AddNodeToDiscovery(Node node)
         {

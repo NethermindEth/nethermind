@@ -179,8 +179,6 @@ namespace Nethermind.Network
 
         public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToList().AsReadOnly();
 
-        int loopcount = 0;
-
         private async Task RunPeerUpdateLoop()
         {
             while (true)
