@@ -344,7 +344,6 @@ namespace Nethermind.Network.Test
                 currentCount += 25;
                 Thread.Sleep(200);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
-                Session[] clone;
                 HandshakeAllSessions();
                 Thread.Sleep(200);
                 DisconnectAllSessions();
@@ -369,7 +368,6 @@ namespace Nethermind.Network.Test
                 currentCount += 25;
                 Thread.Sleep(200);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
-                Session[] clone;
                 HandshakeAllSessions();
                 Thread.Sleep(300);
                 DisconnectAllSessions();
@@ -394,7 +392,6 @@ namespace Nethermind.Network.Test
                 currentCount += 25;
                 Thread.Sleep(200);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
-                Session[] clone;
                 HandshakeAllSessions();
                 Thread.Sleep(200);
                 CreateIncomingSessions();

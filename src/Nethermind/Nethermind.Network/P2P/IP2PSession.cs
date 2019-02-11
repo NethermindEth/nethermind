@@ -64,7 +64,6 @@ namespace Nethermind.Network.P2P
 
         event EventHandler<DisconnectEventArgs> Disconnecting;
         event EventHandler<DisconnectEventArgs> Disconnected;
-        event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         event EventHandler<EventArgs> Initialized;
         event EventHandler<EventArgs> HandshakeComplete;
     }
