@@ -211,7 +211,6 @@ namespace Nethermind.Stats
             
             
             var result = timePassed < disconnectDelay;
-            Console.WriteLine($" {result} TIMEPASSED {timePassed} DELAY {disconnectDelay}");
             return result;
         }
 
