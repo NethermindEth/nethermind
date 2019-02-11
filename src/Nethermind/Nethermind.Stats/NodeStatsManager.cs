@@ -53,12 +53,6 @@ namespace Nethermind.Stats
             return _nodeStats.GetOrAdd(node.Id, x => _useLightStats ? new NodeStatsLight(node, _statsConfig) : (INodeStats) new NodeStats(node, _statsConfig));
         }
 
-        public INodeStats GetOrAdd(PublicKey nodeId, string host, int port)
-        {
-            var node = new Node(nodeId, host, port);
-            return GetOrAdd(node);
-        }
-
         public void ReportHandshakeEvent(Node node, ConnectionDirection direction)
         {
             INodeStats stats = GetOrAdd(node);

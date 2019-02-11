@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,13 +17,11 @@
  */
 
 using System.Collections.Generic;
-using Nethermind.Stats;
 
-namespace Nethermind.Stats
+namespace Nethermind.Network
 {
-    internal interface IStatsDumper
+    public interface IPeerLoader
     {
-        void DumpStats(IReadOnlyCollection<INodeStats> nodes, bool logEventDetails);
-        void DumpNodeStats(INodeStats nodeStats);
+        List<Peer> LoadPeers();
     }
 }

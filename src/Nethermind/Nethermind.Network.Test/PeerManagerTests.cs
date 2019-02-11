@@ -16,11 +16,297 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using DotNetty.Transport.Channels;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
+using Nethermind.Core.Model;
+using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
+using Nethermind.Network.P2P;
+using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
+using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.Network.Test
 {
+    [TestFixture]
     public class PeerManagerTests
     {
+        private RlpxMock _rlpxPeer;
+        private IDiscoveryApp _discoveryApp;
+        private INodeStatsManager _stats;
+        private INetworkStorage _storage;
+        private PeerLoader _peerLoader;
+        private PeerManager _peerManager;
+        private INetworkConfig _networkConfig;
+
+        private class RlpxMock : IRlpxPeer
+        {
+            private readonly List<Session> _sessions;
+
+            public RlpxMock(List<Session> sessions)
+            {
+                _sessions = sessions;
+            }
+            
+            public Task Init()
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task ConnectAsync(Node node)
+            {
+                lock (this)
+                {
+                    ConnectAsyncCallsCount++;
+                }
+
+                var session = new Session(30313, ConnectionDirection.Out, LimboLogs.Instance, Substitute.For<IChannel>(), node);
+                lock (_sessions)
+                {
+                    _sessions.Add(session);
+                }
+                
+                SessionCreated?.Invoke(this, new SessionEventArgs(session));
+                return Task.CompletedTask;
+            }
+
+            public int ConnectAsyncCallsCount { get; set; }
+
+            public Task Shutdown()
+            {
+                return Task.CompletedTask;
+            }
+
+            public PublicKey LocalNodeId { get; }
+            public int LocalPort { get; }
+            public event EventHandler<SessionEventArgs> SessionCreated;
+        }
+
+        private class InMemoryStorage : INetworkStorage
+        {
+            private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>();
+            
+            public NetworkNode[] GetPersistedNodes()
+            {
+                return _nodes.Values.ToArray();
+            }
+
+            public void UpdateNodes(NetworkNode[] nodes)
+            {
+                foreach (NetworkNode node in nodes)
+                {
+                    _nodes[node.NodeId] = node;
+                }
+                
+                _pendingChanges = true;
+            }
+
+            public void RemoveNodes(NetworkNode[] nodes)
+            {
+                _pendingChanges = true;
+            }
+
+            public void StartBatch()
+            {
+            }
+
+            public void Commit()
+            {
+            }
+
+            private bool _pendingChanges;
+            
+            public bool AnyPendingChange()
+            {
+                return _pendingChanges;
+            }
+        }
         
+        [SetUp]
+        public void SetUp()
+        {
+            _rlpxPeer = new RlpxMock(_sessions);
+            _discoveryApp = Substitute.For<IDiscoveryApp>();
+            _stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+            _storage = new InMemoryStorage();
+            _peerLoader = new PeerLoader(new NetworkConfig(), _stats, _storage, LimboLogs.Instance);
+            _networkConfig = new NetworkConfig();
+            _networkConfig.PeersPersistenceInterval = 50;
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _stats, _storage, _peerLoader, _networkConfig, LimboLogs.Instance);
+        }
+
+        [Test]
+        public async Task Can_start_and_stop()
+        {
+            _peerManager.Start();
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        private const string enodesString = enode1String + "," + enode2String;
+        private const string enode1String = "enode://22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222@51.141.78.53:30303";
+        private const string enode2String = "enode://1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b@52.141.78.53:30303";
+
+        private void SetupPersistedPeers(int count)
+        {
+            List<NetworkNode> nodes = new List<NetworkNode>();
+            for (int i = 0; i < count; i++)
+            {
+                var generator = new PrivateKeyGenerator();
+                string enode = $"enode://{generator.Generate().PublicKey.ToString(false)}@52.141.78.53:30303";
+                NetworkNode node = new NetworkNode(enode);
+                nodes.Add(node);
+            }
+
+//            foreach (NetworkNode networkNode in nodes.OrderBy(n => n.NodeId.ToString()).ToArray())
+//            {
+//                Console.WriteLine(networkNode.NodeId);
+//            }
+
+            _storage.UpdateNodes(nodes.ToArray());
+        }
+
+        [Test]
+        public async Task Will_connect_to_a_candidate_node()
+        {
+            SetupPersistedPeers(1);
+            _peerManager.Init();
+            _peerManager.Start();
+            Thread.Sleep(100);
+            Assert.AreEqual(1, _rlpxPeer.ConnectAsyncCallsCount);
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        [Test]
+        public async Task Will_only_connect_up_to_max_peers()
+        {
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+            Thread.Sleep(200);
+            Assert.AreEqual(25, _rlpxPeer.ConnectAsyncCallsCount);
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        private List<Session> _sessions = new List<Session>();
+
+        [Test]
+        public async Task Will_fill_up_on_disconnects()
+        {
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+            Thread.Sleep(200);
+            Assert.AreEqual(25, _rlpxPeer.ConnectAsyncCallsCount);
+            DisconnectAllSessions();
+
+            Thread.Sleep(200);
+            Assert.AreEqual(50, _rlpxPeer.ConnectAsyncCallsCount);
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        [Test]
+        public async Task Will_fill_up_over_and_over_again_on_disconnects()
+        {
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            int currentCount = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                currentCount += 25;
+                Thread.Sleep(500);
+                Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
+                DisconnectAllSessions();
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+        
+        [Test]
+        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing()
+        {
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            int currentCount = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                currentCount += 25;
+                Thread.Sleep(200);
+                Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
+                Session[] clone;
+                HandshakeAllSessions();
+                Thread.Sleep(200);
+                DisconnectAllSessions();
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+        
+        [Test]
+        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
+        {
+            _networkConfig.MaxCandidatePeerCount = 40;
+            _networkConfig.CandidatePeerCountCleanupThreshold = 30;
+            _networkConfig.PersistedPeerCountCleanupThreshold = 40;
+            SetupPersistedPeers(50);
+            _peerManager.Init();
+            _peerManager.Start();
+
+            int currentCount = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                currentCount += 25;
+                Thread.Sleep(500);
+                Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
+                Session[] clone;
+                HandshakeAllSessions();
+                Thread.Sleep(1000);
+                DisconnectAllSessions();
+            }
+
+            await _peerManager.StopAsync(ExitType.LightExit);
+        }
+
+        private void DisconnectAllSessions()
+        {
+            Session[] clone;
+            lock (_sessions)
+            {
+                clone = _sessions.ToArray();
+                _sessions.Clear();    
+            }
+
+            foreach (Session session in clone)
+            {
+                session.Disconnect(DisconnectReason.TooManyPeers, DisconnectType.Remote);
+            }
+        }
+        
+        private void HandshakeAllSessions()
+        {
+            Session[] clone;
+            lock (_sessions)
+            {
+                clone = _sessions.ToArray();
+            }
+
+            foreach (Session session in clone)
+            {
+                session.Handshake(new PrivateKeyGenerator().Generate().PublicKey);
+            }
+        }
     }
 }

@@ -114,6 +114,7 @@ namespace Nethermind.Runner.Runners
         private ISynchronizationManager _syncManager;
         private IKeyStore _keyStore;
         private IPeerManager _peerManager;
+        private IProtocolsManager _protocolsManager;
         private IBlockTree _blockTree;
         private IBlockValidator _blockValidator;
         private IBlockDataRecoveryStep _recoveryStep;
@@ -879,7 +880,10 @@ namespace Nethermind.Runner.Runners
             
             var peerStorage = new NetworkStorage(PeersDbPath, networkConfig, _logManager, _perfService);
 
-            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, _configProvider.GetConfig<INetworkConfig>(), _logManager);
+            ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
+            _protocolsManager = new ProtocolsManager(_syncManager, _transactionPool, _discoveryApp, _messageSerializationService, _rlpxPeer, _nodeStatsManager, protocolValidator, peerStorage, _perfService, _logManager);
+            PeerLoader peerLoader = new PeerLoader(networkConfig, _nodeStatsManager, peerStorage, _logManager);
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, networkConfig, _logManager);
             _peerManager.Init();
         }
 

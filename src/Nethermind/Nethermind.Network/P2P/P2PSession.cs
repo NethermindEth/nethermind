@@ -95,7 +95,7 @@ namespace Nethermind.Network.P2P
         public PublicKey RemoteNodeId { get; set; }
         public PublicKey ObsoleteRemoteNodeId { get; set; }
         public string RemoteHost { get; set; }
-        public int? RemotePort { get; set; }
+        public int RemotePort { get; set; }
         public ConnectionDirection Direction { get; }
         public Guid SessionId { get; }
 
@@ -111,7 +111,7 @@ namespace Nethermind.Network.P2P
                         throw new InvalidOperationException("Cannot create a session's node object without knowing remote node details");
                     }
 
-                    _node = new Node(RemoteNodeId, RemoteHost, RemotePort ?? 0);
+                    _node = new Node(RemoteNodeId, RemoteHost, RemotePort);
                 }
 
                 return _node;
@@ -128,7 +128,7 @@ namespace Nethermind.Network.P2P
                     throw new InvalidOperationException($"{nameof(EnableSnappy)} called on session that is in the {State} state");
                 }
 
-                if (State != SessionState.Initialized)
+                if (IsClosing)
                 {
                     return;
                 }
@@ -151,7 +151,7 @@ namespace Nethermind.Network.P2P
                     throw new InvalidOperationException($"{nameof(DeliverMessage)} called on session that is in the {State} state");
                 }
 
-                if (State != SessionState.Initialized)
+                if (IsClosing)
                 {
                     return;
                 }
@@ -172,7 +172,7 @@ namespace Nethermind.Network.P2P
                     throw new InvalidOperationException($"{nameof(ReceiveMessage)} called on session that is in the {State} state");
                 }
 
-                if (State != SessionState.Initialized)
+                if (IsClosing)
                 {
                     return;
                 }
@@ -202,7 +202,7 @@ namespace Nethermind.Network.P2P
             P2PVersion = p2PVersion;
             lock (_sessionStateLock)
             {
-                if (State == SessionState.Disconnected)
+                if (IsClosing)
                 {
                     return;
                 }
@@ -224,9 +224,14 @@ namespace Nethermind.Network.P2P
         {
             lock (_sessionStateLock)
             {
-                if (State != SessionState.New)
+                if (State == SessionState.Initialized)
                 {
-                    throw new InvalidOperationException($"{nameof(Handshake)} called on session that is not in the {nameof(SessionState.New)} state");
+                    throw new InvalidOperationException($"{nameof(Handshake)} called on session that is in the {State} state");
+                }
+                
+                if (IsClosing)
+                {
+                    return;
                 }
 
                 State = SessionState.HandshakeComplete;
@@ -244,6 +249,7 @@ namespace Nethermind.Network.P2P
                 if (_logger.IsTrace) _logger.Trace($"Different NodeId received in handshake: old: {RemoteNodeId}, new: {handshakeRemoteNodeId}");
                 ObsoleteRemoteNodeId = RemoteNodeId;
                 RemoteNodeId = handshakeRemoteNodeId;
+                Node = new Node(RemoteNodeId, RemoteHost, RemotePort, _node.AddedToDiscovery);
             }
 
             Metrics.Handshakes++;
@@ -253,9 +259,11 @@ namespace Nethermind.Network.P2P
 
         public void InitiateDisconnect(DisconnectReason disconnectReason)
         {
+            Console.WriteLine($"DISCONNECTING {disconnectReason} {Node.Id.ToShortString()}");
+            
             lock (_sessionStateLock)
             {
-                if (State >= SessionState.DisconnectingProtocols)
+                if (IsClosing)
                 {
                     return;
                 }

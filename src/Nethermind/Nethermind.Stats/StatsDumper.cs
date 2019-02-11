@@ -37,15 +37,12 @@ namespace Nethermind.Stats
         private readonly IStatsConfig _statsConfig;
         private string _eventLogsDirectoryPath;
 
-        public StatsDumper(ILogManager logManager, IStatsConfig statsConfig)
+        public StatsDumper(ILogManager logManager, IStatsConfig statsConfig, string outputDir = null)
         {
             _logger = logManager.GetClassLogger();
             _statsConfig = statsConfig ?? throw new ArgumentNullException(nameof(statsConfig));
-        }
-
-        public void Init(string logsDirectory)
-        {
-            var path = logsDirectory ?? PathUtils.GetExecutingDirectory();
+            
+            var path = outputDir ?? PathUtils.GetExecutingDirectory();
             _eventLogsDirectoryPath = Path.Combine(path, "networkLogs");
             if (!Directory.Exists(_eventLogsDirectoryPath))
             {

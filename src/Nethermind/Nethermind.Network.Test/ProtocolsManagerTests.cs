@@ -68,6 +68,7 @@ namespace Nethermind.Network.Test
             private IChannel _channel;
             private IChannelPipeline _pipeline;
             private IPacketSender _packetSender;
+            private IBlockTree _blockTree;
 
             public Context()
             {
@@ -88,7 +89,10 @@ namespace Nethermind.Network.Test
                 _localPeer.LocalPort.Returns(_localPort);
                 _localPeer.LocalNodeId.Returns(TestItem.PublicKeyA);
                 _nodeStatsManager = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
-                _protocolValidator = new ProtocolValidator(_nodeStatsManager, 1, TestItem.KeccakA, LimboLogs.Instance);
+                _blockTree = Substitute.For<IBlockTree>();
+                _blockTree.ChainId.Returns(1);
+                _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
+                _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _perfService = new PerfService(LimboLogs.Instance);
                 _manager = new ProtocolsManager(
@@ -185,7 +189,7 @@ namespace Nethermind.Network.Test
                 StatusMessage msg = new StatusMessage();
                 msg.TotalDifficulty = 1;
                 msg.ChainId = 1;
-                msg.GenesisHash = TestItem.KeccakA;
+                msg.GenesisHash = _blockTree.Genesis.Hash;
                 msg.ProtocolVersion = 63;
 
                 _currentSession.ReceiveMessage(new Packet("eth", Eth62MessageCode.Status + 16, _serializer.Serialize(msg)));
@@ -196,7 +200,7 @@ namespace Nethermind.Network.Test
             {
                 INodeStats stats = _nodeStatsManager.GetOrAdd(_currentSession.Node);
                 Assert.AreEqual(1, stats.EthNodeDetails.ChainId);
-                Assert.AreEqual(TestItem.KeccakA, stats.EthNodeDetails.GenesisHash);
+                Assert.AreEqual(_blockTree.Genesis.Hash, stats.EthNodeDetails.GenesisHash);
                 Assert.AreEqual(63, stats.EthNodeDetails.ProtocolVersion);
                 Assert.AreEqual(BigInteger.One, stats.EthNodeDetails.TotalDifficulty);
                 return this;
@@ -261,7 +265,6 @@ namespace Nethermind.Network.Test
 
                 _currentSession.ReceiveMessage(new Packet("eth", Eth62MessageCode.Status + 16, _serializer.Serialize(msg)));
                 return this;
-                return this;
             }
 
             public Context ReceiveStatusWrongGenesis()
@@ -273,7 +276,6 @@ namespace Nethermind.Network.Test
                 msg.ProtocolVersion = 63;
 
                 _currentSession.ReceiveMessage(new Packet("eth", Eth62MessageCode.Status + 16, _serializer.Serialize(msg)));
-                return this;
                 return this;
             }
 

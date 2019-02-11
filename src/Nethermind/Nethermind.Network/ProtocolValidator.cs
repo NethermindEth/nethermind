@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -16,16 +17,14 @@ namespace Nethermind.Network
     public class ProtocolValidator : IProtocolValidator
     {
         private readonly INodeStatsManager _nodeStatsManager;
-        private readonly int _chainId;
-        private readonly Keccak _genesisHash;
+        private readonly IBlockTree _blockTree;
         private ILogger _logger;
 
-        public ProtocolValidator(INodeStatsManager nodeStatsManager, int chainId, Keccak genesisHash, ILogManager logManager)
+        public ProtocolValidator(INodeStatsManager nodeStatsManager, IBlockTree blockTree, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger();
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-            _chainId = chainId;
-            _genesisHash = genesisHash;
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
         public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs)
@@ -55,16 +54,16 @@ namespace Nethermind.Network
                     var ethArgs = (EthProtocolInitializedEventArgs) eventArgs;
                     if (!ValidateChainId(ethArgs.ChainId))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName((int) ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_chainId)}");
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName((int) ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
 
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
                         Disconnect(session, DisconnectReason.UselessPeer);
                         return false;
                     }
 
-                    if (ethArgs.GenesisHash != _genesisHash)
+                    if (ethArgs.GenesisHash != _blockTree.Genesis.Hash)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {ethArgs.GenesisHash}, our: {_genesisHash}");
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {ethArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}");
 
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.DifferentGenesis);
                         Disconnect(session, DisconnectReason.BreachOfProtocol);
@@ -94,7 +93,7 @@ namespace Nethermind.Network
 
         private bool ValidateChainId(long chainId)
         {
-            return chainId == _chainId;
+            return chainId == _blockTree.ChainId;
         }
     }
 }

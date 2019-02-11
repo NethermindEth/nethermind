@@ -24,7 +24,6 @@ namespace Nethermind.Stats
     public interface INodeStatsManager
     {
         INodeStats GetOrAdd(Node node);
-        INodeStats GetOrAdd(PublicKey nodeId, string host, int port);
         void ReportHandshakeEvent(Node node, ConnectionDirection direction);
         void ReportEvent(Node node, NodeStatsEventType eventType);
         void DumpStats(bool logEventDetails);

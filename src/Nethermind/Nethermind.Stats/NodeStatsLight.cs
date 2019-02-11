@@ -208,7 +208,10 @@ namespace Nethermind.Stats
                     disconnectDelay = randomizedDelay < 10 ? randomizedDelay + 10 : randomizedDelay;
                 }
             }
+            
+            
             var result = timePassed < disconnectDelay;
+            Console.WriteLine($" {result} TIMEPASSED {timePassed} DELAY {disconnectDelay}");
             return result;
         }
 
