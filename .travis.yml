@@ -17,7 +17,7 @@ after_success:
 jobs:
   include:
     - stage: build
-    - script: dotnet build src/Nethermind/Nethermind.sln
+      script: dotnet build src/Nethermind/Nethermind.sln
       name: "Build Nethermind"
     - script: dotnet build src/Nethermind/EthereumTests.sln
       name: "Build Ethereum tests"
