@@ -86,7 +86,7 @@ jobs:
       name: "Nethermind.Secp256k1.Test.Linux"
     #- script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
     #  name: "Nethermind.Secp256k1.Test.Osx"
-      os: osx
+    #  os: osx
     - script: dotnet test src/Nethermind/Nethermind.Store.Test
       name: "Nethermind.Store.Test"
     - script: dotnet test src/Nethermind/Nethermind.Wallet.Test
