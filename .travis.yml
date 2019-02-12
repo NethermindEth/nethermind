@@ -16,13 +16,11 @@ after_success:
   - ./scripts/docker-publish.sh
 jobs:
   include:
-    - stage: restore and build
-      script: 
-        - dotnet restore src/Nethermind
-        - dotnet build src/Nethermind
-      name: "Restore and build projects"
-    - script: dotnet build src/Nethermind
-      name: "Build projects"
+    - stage: build
+      script: dotnet build src/Nethermind/Nethermind.sln
+      name: "Build Nethermind"
+    - script: dotnet build src/Nethermind/EthereumTests.sln
+      name: "Build Ethereum tests"
     - stage: run tests
       script: dotnet test src/Nethermind/Ethereum.Basic.Test
       name: "Ethereum.Basic.Test"
@@ -84,7 +82,7 @@ jobs:
       name: "Nethermind.Secp256k1.Test.Linux"
     #- script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
     #  name: "Nethermind.Secp256k1.Test.Osx"
-      os: osx
+    #  os: osx
     - script: dotnet test src/Nethermind/Nethermind.Store.Test
       name: "Nethermind.Store.Test"
     - script: dotnet test src/Nethermind/Nethermind.Wallet.Test
