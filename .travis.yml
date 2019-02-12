@@ -16,11 +16,7 @@ after_success:
   - ./scripts/docker-publish.sh
 jobs:
   include:
-    - stage: restore and build
-      script: 
-        - dotnet restore src/Nethermind
-        - dotnet build src/Nethermind
-      name: "Restore and build projects"
+    - stage: build
     - script: dotnet build src/Nethermind/Nethermind.sln
       name: "Build Nethermind"
     - script: dotnet build src/Nethermind/EthereumTests.sln
