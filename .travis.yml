@@ -21,8 +21,10 @@ jobs:
         - dotnet restore src/Nethermind
         - dotnet build src/Nethermind
       name: "Restore and build projects"
-    - script: dotnet build src/Nethermind
-      name: "Build projects"
+    - script: dotnet build src/Nethermind/Nethermind.sln
+      name: "Build Nethermind"
+    - script: dotnet build src/Nethermind/EthereumTests.sln
+      name: "Build Ethereum tests"
     - stage: run tests
       script: dotnet test src/Nethermind/Ethereum.Basic.Test
       name: "Ethereum.Basic.Test"
