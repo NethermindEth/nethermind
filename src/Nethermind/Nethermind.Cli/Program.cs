@@ -126,6 +126,7 @@ namespace Nethermind.Cli
         private static void BuildNet()
         {
             Build.Api("net")
+                .WithProperty<string>("localEnode")
                 .WithProperty<BigInteger>("version")
                 .WithProperty<BigInteger>("peerCount")
                 .Build();
@@ -147,6 +148,7 @@ namespace Nethermind.Cli
         {
             Console.WriteLine("Enabling node operations");
             Build.Api("node")
+                .WithProperty("enode", () => _client.Post<string>("net_localEnode").Result)
                 .WithProperty("uri", () => _client.CurrentUri)
                 .WithAction("switch", (string uri) => _client.SwitchUri(new Uri(uri)))
                 .WithAction("switchLocal", (string uri) => _client.SwitchUri(new Uri($"http://localhost:{uri}")))

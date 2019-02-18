@@ -22,6 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Net
 {
     public interface INetModule : IModule
     {
+        ResultWrapper<string> net_localEnode();
         ResultWrapper<string> net_version();
         ResultWrapper<bool> net_listening();
         ResultWrapper<BigInteger> net_peerCount();

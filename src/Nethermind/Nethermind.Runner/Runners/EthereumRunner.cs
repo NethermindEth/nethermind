@@ -278,7 +278,7 @@ namespace Nethermind.Runner.Runners
 
             if (_initConfig.NetworkEnabled && _initConfig.SynchronizationEnabled)
             {
-                NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_syncManager, _peerManager));
+                NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_enode, _syncManager, _peerManager));
                 _rpcModuleProvider.Register<INetModule>(netModule);
             }
 

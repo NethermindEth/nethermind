@@ -32,6 +32,11 @@ namespace Nethermind.JsonRpc.Modules.Net
             _netBridge = netBridge;
         }
 
+        public ResultWrapper<string> net_localEnode()
+        {
+            return ResultWrapper<string>.Success(_netBridge.LocalEnode);
+        }
+
         public ResultWrapper<string> net_version()
         {
             return ResultWrapper<string>.Success(_netBridge.NetworkId.ToString());

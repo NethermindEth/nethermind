@@ -20,6 +20,7 @@ namespace Nethermind.JsonRpc.Modules.Net
 {
     public interface INetBridge
     {
+        string LocalEnode { get; }
         int NetworkId { get; }
         int PeerCount { get; }
         
