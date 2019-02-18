@@ -113,7 +113,7 @@ namespace Nethermind.Stats.Model
 
         public override string ToString()
         {
-            return $"Id: {Id}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {AddedToDiscovery}";
+            return $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}";
         }
         
         public static bool operator ==(Node a, Node b)

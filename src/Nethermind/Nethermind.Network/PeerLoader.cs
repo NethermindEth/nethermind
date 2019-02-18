@@ -46,9 +46,21 @@ namespace Nethermind.Network
         {
             List<Peer> allPeers = new List<Peer>();
             LoadPeersFromDb(allPeers);
-            LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n => n.IsBootnode = true);
-            LoadConfigPeers(allPeers, _networkConfig.StaticPeers, n => n.IsStatic = true);
-            LoadConfigPeers(allPeers, _networkConfig.TrustedPeers, n => n.IsTrusted = true);
+            LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
+            {
+                n.IsBootnode = true;
+                if(_logger.IsInfo) _logger.Info($"Registering bootnode: {n}");
+            });
+            LoadConfigPeers(allPeers, _networkConfig.StaticPeers, n =>
+            {
+                n.IsStatic = true;
+                if(_logger.IsInfo) _logger.Info($"Registering static node: {n}");
+            });
+            LoadConfigPeers(allPeers, _networkConfig.TrustedPeers, n =>
+            {
+                n.IsTrusted = true;
+                if(_logger.IsInfo) _logger.Info($"Registering trusted node: {n}");
+            });
             return allPeers;
         }
 
@@ -71,7 +83,7 @@ namespace Nethermind.Network
 
                 peers.Add(new Peer(node));
 
-                if (_logger.IsTrace) _logger.Trace($"Adding a new peer candidate {node.Id}@{node.Host}:{node.Port}");
+                if (_logger.IsTrace) _logger.Trace($"Adding a new peer candidate {node}");
             }
         }
 
