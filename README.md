@@ -51,7 +51,7 @@ then (any platform):
 ```
 git clone https://github.com/tkstanczak/nethermind --recursive
 cd nethermind/src/Nethermind
-dotnet build -c Release
+dotnet build Nethermind.sln -c Release
 cd Nethermind.Runner
 dotnet run --no-build -- --config mainnet
 ```
