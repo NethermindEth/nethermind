@@ -669,10 +669,14 @@ namespace Nethermind.Blockchain
             Block block = blockEventArgs.Block;
             foreach ((_, PeerInfo peerInfo) in _peers)
             {
+                int counter = 0;
                 if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero)) // TODO: total difficulty instead
                 {
                     peerInfo.Peer.SendNewBlock(block);
+                    counter++;
                 }
+                
+                if(_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
             }
         }
 

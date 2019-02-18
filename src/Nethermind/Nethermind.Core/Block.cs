@@ -246,7 +246,7 @@ namespace Nethermind.Core
                     }
                     else
                     {
-                        return $"{Number} ({Hash?.ToString().Substring(60, 6)})";
+                        return $"{Number} ({Hash?.ToString().Substring(0, 6)}...{Hash?.ToString().Substring(60, 6)})";
                     }
             }
         }
