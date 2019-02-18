@@ -254,7 +254,7 @@ namespace Nethermind.Clique
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"Block producer could not produce block on top of {parentBlock.ToString(Block.Format.HashAndNumber)}", e);
+                    if (_logger.IsError) _logger.Error($"Block producer could not produce block on top of {parentBlock.ToString(Block.Format.Short)}", e);
                 }
             }
         }
@@ -273,7 +273,7 @@ namespace Nethermind.Clique
             BlockHeader parentHeader = parentBlock.Header;
             if (parentHeader == null)
             {
-                if (_logger.IsError) _logger.Error($"Preparing new block on top of {parentBlock.ToString(Block.Format.HashAndNumber)} - parent header is null");
+                if (_logger.IsError) _logger.Error($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)} - parent header is null");
                 return null;
             }
 
@@ -289,7 +289,7 @@ namespace Nethermind.Clique
                 return null;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.HashAndNumber)}");
+            if (_logger.IsInfo) _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
             UInt256 timestamp = _timestamp.EpochSeconds;
 

@@ -29,6 +29,13 @@ namespace Nethermind.Core.Test
         public const string KeccakZero = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
 
         [Test]
+        public void To_short_string()
+        {
+            string result = Keccak.OfAnEmptyString.ToShortString();
+            Assert.AreEqual("c5d246...85a470", result);
+        }
+
+        [Test]
         public void Empty_byte_array()
         {
             string result = Keccak.Compute(new byte[] { }).ToString();

@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain
                 }
                 else if(t.IsCanceled)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Mining block {processedBlock.ToString(Block.Format.HashAndNumber)} cancelled");
+                    if(_logger.IsDebug) _logger.Debug($"Mining block {processedBlock.ToString(Block.Format.FullHashAndNumber)} cancelled");
                 }
             }, token);
         }

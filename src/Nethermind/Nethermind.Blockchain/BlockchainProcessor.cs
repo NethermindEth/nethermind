@@ -354,7 +354,7 @@ namespace Nethermind.Blockchain
                         if (blocks[i].Hash == ex.InvalidBlockHash)
                         {
                             _blockTree.DeleteInvalidBlock(blocks[i]);
-                            if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.HashAndNumber)} because of {blocks[i].ToString(Block.Format.HashAndNumber)} is invalid");
+                            if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} because of {blocks[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
                             return null;
                         }
                     }
@@ -367,7 +367,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.HashAndNumber)}, Head = {_blockTree.Head?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
+                if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
             }
 
             Block lastProcessed = null;
@@ -380,7 +380,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.HashAndNumber)}, last processed is null: {lastProcessed == null}, processedBlocks.Length: {processedBlocks?.Length}");
+                if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {lastProcessed == null}, processedBlocks.Length: {processedBlocks?.Length}");
             }
             
             return lastProcessed;
@@ -392,19 +392,19 @@ namespace Nethermind.Blockchain
             /* a bit hacky way to get the invalid branch out of the processing loop */
             if (suggestedBlock.Number != 0 && _blockTree.FindParent(suggestedBlock) == null)
             {
-                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.HashAndNumber)} with unknown parent");
+                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
                 return false;
             }
 
             if (suggestedBlock.Header.TotalDifficulty == null)
             {
-                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.HashAndNumber)} without total difficulty");
+                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
                 throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
             }
 
             if ((options & ProcessingOptions.ReadOnlyChain) == 0 && suggestedBlock.Hash == null)
             {
-                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.HashAndNumber)} without calculated hash");
+                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without calculated hash");
                 throw new InvalidOperationException("Block hash should be known at this stage if the block is not read only");
             }
 
@@ -412,7 +412,7 @@ namespace Nethermind.Blockchain
             {
                 if (suggestedBlock.Ommers[i].Hash == null)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.HashAndNumber)} with null ommer hash ar {i}");
+                    if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null ommer hash ar {i}");
                     throw new InvalidOperationException($"Ommer's {i} hash is null when processing block");
                 }
             }

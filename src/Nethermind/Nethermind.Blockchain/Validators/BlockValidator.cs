@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Validators
             {
                 if (!_transactionValidator.IsWellFormed(txs[i], _specProvider.GetSpec(block.Number)))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.HashAndNumber)}) - invalid transaction ({txs[i].Hash})");
+                    if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid transaction ({txs[i].Hash})");
                     return false;
                 }
             }
@@ -63,20 +63,20 @@ namespace Nethermind.Blockchain.Validators
             Keccak txsRoot = block.CalculateTransactionsRoot();
             if (txsRoot != block.Header.TransactionsRoot)
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.HashAndNumber)}) tx root {txsRoot} != stated tx root {block.Header.TransactionsRoot}");
+                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) tx root {txsRoot} != stated tx root {block.Header.TransactionsRoot}");
                 return false;
             }
 
             if (block.Header.OmmersHash != Keccak.Compute(Rlp.Encode(block.Ommers)))
             {
-                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.HashAndNumber)}) - invalid ommers hash");
+                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid ommers hash");
                 return false;
             }
 
             bool blockHeaderValid = _headerValidator.Validate(block.Header);
             if (!blockHeaderValid)
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.HashAndNumber)}) - invalid header");
+                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid header");
                 return false;
             }
 

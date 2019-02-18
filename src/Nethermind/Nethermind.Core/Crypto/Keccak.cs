@@ -72,6 +72,12 @@ namespace Nethermind.Core.Crypto
         {
             return ToString(true);
         }
+        
+        public string ToShortString()
+        {
+            string hash = Bytes?.ToHexString(false);
+            return $"{hash?.Substring(0, 6)}...{hash?.Substring(hash.Length - 6)}";
+        }
 
         public string ToString(bool withZeroX)
         {

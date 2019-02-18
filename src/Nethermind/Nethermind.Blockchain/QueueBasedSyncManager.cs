@@ -337,7 +337,7 @@ namespace Nethermind.Blockchain
             _peers.TryGetValue(nodeWhoSentTheBlock, out PeerInfo peer);
             if (peer == null)
             {
-                string errorMessage = $"Received a new block from an unknown peer {nodeWhoSentTheBlock}";
+                string errorMessage = $"Received a new block from an unknown peer {nodeWhoSentTheBlock.ToShortString()}";
                 if (_logger.IsDebug) _logger.Debug(errorMessage);
                 return;
             }
@@ -369,11 +369,11 @@ namespace Nethermind.Blockchain
                 _recentlySuggested.Set(block.Hash, _dummyValue);
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Adding new block {block.Hash} ({block.Number}) from {nodeWhoSentTheBlock}");
+            if (_logger.IsTrace) _logger.Trace($"Adding new block {block.Hash} ({block.Number}) from {nodeWhoSentTheBlock.ToShortString()}");
 
             if (block.Number <= _blockTree.BestKnownNumber + 1)
             {
-                if (_logger.IsInfo) _logger.Info($"Suggesting a new block {block.ToString(Block.Format.Short)} from {nodeWhoSentTheBlock} with {block.Transactions.Length} transactions");
+                if (_logger.IsInfo) _logger.Info($"Suggesting a new block {block.ToString(Block.Format.HashNumberAndTx)} from {nodeWhoSentTheBlock.ToShortString()}");
                 if (_logger.IsTrace) _logger.Trace($"{block}");
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);

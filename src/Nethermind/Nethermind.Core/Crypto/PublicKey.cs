@@ -111,7 +111,7 @@ namespace Nethermind.Core.Crypto
         public string ToShortString()
         {
             var value = Bytes.ToHexString(false);
-            return value.Substring(value.Length - 12);
+            return $"{value.Substring(0, 6)}...{value.Substring(value.Length - 6)}";;
         }
         
         public static bool operator ==(PublicKey a, PublicKey b)

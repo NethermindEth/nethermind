@@ -415,7 +415,7 @@ namespace Nethermind.Blockchain
 
         public void DeleteInvalidBlock(Block invalidBlock)
         {
-            if(_logger.IsDebug) _logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.HashAndNumber)}");
+            if(_logger.IsDebug) _logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
             
             _invalidBlocks.AddOrUpdate(
                 invalidBlock.Number,
@@ -625,7 +625,7 @@ namespace Nethermind.Blockchain
             int? index = FindIndex(block.Hash, level);
             if (index == null)
             {
-                throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.HashAndNumber)} to main");
+                throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.FullHashAndNumber)} to main");
             }
 
 

@@ -31,7 +31,7 @@ namespace Nethermind.Core
         public enum Format
         {
             Full,
-            HashAndNumber,
+            FullHashAndNumber,
             HashNumberAndTx,
             HashNumberDiffAndTx,
             Short
@@ -70,25 +70,25 @@ namespace Nethermind.Core
             get => Header.ParentHash;
             set => Header.ParentHash = value;
         }
-        
+
         public ulong Nonce
         {
             get => Header.Nonce;
             set => Header.Nonce = value;
         }
-        
+
         public Keccak MixHash
         {
             get => Header.MixHash;
             set => Header.MixHash = value;
         }
-        
+
         public byte[] ExtraData
         {
             get => Header.ExtraData;
             set => Header.ExtraData = value;
         }
-        
+
         public Bloom Bloom
         {
             get => Header.Bloom;
@@ -100,7 +100,7 @@ namespace Nethermind.Core
             get => Header.OmmersHash;
             set => Header.OmmersHash = value;
         }
-        
+
         public Address Beneficiary
         {
             get => Header.Beneficiary;
@@ -112,7 +112,7 @@ namespace Nethermind.Core
             get => Header.Author;
             set => Header.Author = value;
         }
-        
+
         public Keccak StateRoot
         {
             get => Header.StateRoot;
@@ -124,7 +124,7 @@ namespace Nethermind.Core
             get => Header.TransactionsRoot;
             set => Header.TransactionsRoot = value;
         }
-        
+
         public Keccak ReceiptsRoot
         {
             get => Header.ReceiptsRoot;
@@ -194,7 +194,7 @@ namespace Nethermind.Core
 
             return builder.ToString();
         }
-        
+
         public bool HasAddressesRecovered => Transactions.Length == 0 || Transactions[0].SenderAddress != null;
 
         public override string ToString()
@@ -208,7 +208,7 @@ namespace Nethermind.Core
             {
                 case Format.Full:
                     return ToString(string.Empty);
-                case Format.HashAndNumber:
+                case Format.FullHashAndNumber:
                     if (Hash == null)
                     {
                         return $"{Number} null";
@@ -224,7 +224,7 @@ namespace Nethermind.Core
                     }
                     else
                     {
-                        return $"{Number} ({Hash}), tx count: {Transactions.Length}";
+                        return $"{Number} ({Hash?.ToShortString()}), tx count: {Transactions.Length}";
                     }
                 case Format.HashNumberDiffAndTx:
                     if (Hash == null)
@@ -233,21 +233,15 @@ namespace Nethermind.Core
                     }
                     else
                     {
-                        return $"{Number} ({Hash?.ToString().Substring(60, 6)}), diff: {Difficulty}, tx count: {Transactions.Length}";
+                        return $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Transactions.Length}";
                     }
                 default:
                     if (Hash == null)
                     {
                         return $"{Number} null";
                     }
-                    if (Hash.Bytes == null)
-                    {
-                        return $"{Number} ({Hash})";
-                    }
-                    else
-                    {
-                        return $"{Number} ({Hash?.ToString().Substring(0, 6)}...{Hash?.ToString().Substring(60, 6)})";
-                    }
+
+                    return $"{Number} ({Hash?.ToShortString()})";
             }
         }
     }
