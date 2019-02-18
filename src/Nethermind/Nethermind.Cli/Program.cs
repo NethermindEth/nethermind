@@ -148,6 +148,7 @@ namespace Nethermind.Cli
         {
             Console.WriteLine("Enabling node operations");
             Build.Api("node")
+                .WithFunc("setNodeKey", (string key) => SetNodeKey(key))
                 .WithProperty("enode", () => _client.Post<string>("net_localEnode").Result)
                 .WithProperty("uri", () => _client.CurrentUri)
                 .WithAction("switch", (string uri) => _client.SwitchUri(new Uri(uri)))
@@ -171,6 +172,13 @@ namespace Nethermind.Cli
 
             Keccak keccak = _client.Post<Keccak>("eth_sendTransaction", tx).Result;
             return _serializer.Serialize(keccak, true);
+        }
+
+        private static string SetNodeKey(string key)
+        {
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "node.key.plain");
+            File.WriteAllBytes("node.key.plain", new PrivateKey(Bytes.FromHexString(key)).KeyBytes);
+            return path;
         }
 
         private static string SendEth(Address address, decimal amount)
