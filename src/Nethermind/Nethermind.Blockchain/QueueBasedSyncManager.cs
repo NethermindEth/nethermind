@@ -131,6 +131,13 @@ namespace Nethermind.Blockchain
                         {
                             _syncRequested.Set();
                         }
+                        else if(peerInfo.TotalDifficulty == _blockTree.BestSuggested.TotalDifficulty 
+                                && peerInfo.HeadHash != _blockTree.BestSuggested.Hash)
+                        {
+                            Block block = _blockTree.FindBlock(_blockTree.BestSuggested.Hash, false);
+                            peerInfo.Peer.SendNewBlock(block);
+                            if(_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {peerInfo.ToString()}");
+                        }
                     }
 
                     initCancelSource.Dispose();
@@ -968,6 +975,7 @@ namespace Nethermind.Blockchain
                         }
 
                         peerInfo.HeadNumber = getHeadHeaderTask.Result.Number;
+                        peerInfo.HeadHash = getHeadHeaderTask.Result.Hash;
 
                         BlockHeader bestSuggested = _blockTree.BestSuggested;
                         if (getHeadHeaderTask.Result.ParentHash == bestSuggested.Hash)
@@ -992,6 +1000,7 @@ namespace Nethermind.Blockchain
             public ISynchronizationPeer Peer { get; }
             public UInt256 TotalDifficulty { get; set; }
             public UInt256 HeadNumber { get; set; }
+            public Keccak HeadHash { get; set; }
 
             public override string ToString()
             {

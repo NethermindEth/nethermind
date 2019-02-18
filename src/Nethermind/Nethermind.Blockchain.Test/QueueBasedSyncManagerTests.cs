@@ -35,12 +35,13 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
 {
     [TestFixture]
-    public class DiffSyncManagerTests
+    public class QueueBasedSyncManagerTests
     {
         private static Block _genesisBlock = Build.A.Block.Genesis.TestObject;
 
@@ -164,8 +165,11 @@ namespace Nethermind.Blockchain.Test
 
             public void SendNewBlock(Block block)
             {
+                ReceivedBlocks.Push(block);
             }
 
+            public Stack<Block> ReceivedBlocks { get; set; } = new Stack<Block>();
+            
             public void SendNewTransaction(Transaction transaction)
             {
             }
@@ -542,6 +546,27 @@ namespace Nethermind.Blockchain.Test
                 .AfterPeerIsAdded(peerA)
                 .Wait()
                 .BestSuggested.BlockHasNumber(1).Stop();
+        }
+        
+        [Test]
+        public void Will_inform_connecting_peer_about_the_alternative_branch_with_same_difficulty()
+        {
+            SyncPeerMock peerA = new SyncPeerMock("A");
+            peerA.AddBlocksUpTo(2);
+            
+            SyncPeerMock peerB = new SyncPeerMock("B");
+            peerB.AddBlocksUpTo(2, 0, 1);
+
+            When.Syncing
+                .AfterProcessingGenesis()
+                .AfterPeerIsAdded(peerA)
+                .Wait()
+                .AfterPeerIsAdded(peerB)
+                .Wait()
+                .BestSuggested.BlockHasNumber(2).Stop();
+            
+            Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
+            Assert.AreEqual(peerB.ReceivedBlocks.Peek().Hash, peerA.HeadBlock.Hash);
         }
 
         [Test]
