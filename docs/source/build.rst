@@ -20,9 +20,9 @@ Linux
 ::
 
     sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6
-    git clone https://github.com/tkstanczak/nethermind --recursive
+    git clone https://github.com/nethermindeth/nethermind --recursive
     cd nethermind/src/Nethermind
-    dotnet build -c Release
+    dotnet build Nethermind.sln -c Release
     cd Nethermind.Runner
     dotnet run
 
@@ -33,9 +33,9 @@ MacOS
 
     brew install gmp
     brew install snappy
-    git clone https://github.com/tkstanczak/nethermind --recursive
+    git clone https://github.com/nethermindeth/nethermind --recursive
     cd nethermind/src/Nethermind
-    dotnet build -c Release
+    dotnet build Nethermind.sln -c Release
     cd Nethermind.Runner
     dotnet run
     
@@ -46,8 +46,8 @@ you may need to install https://support.microsoft.com/en-us/help/2977003/the-lat
 
 ::
 
-    git clone https://github.com/tkstanczak/nethermind --recursive
+    git clone https://github.com/nethermindeth/nethermind --recursive
     cd nethermind/src/Nethermind
-    dotnet build -c Release
+    dotnet build Nethermind.sln -c Release
     cd Nethermind.Runner
     dotnet run
