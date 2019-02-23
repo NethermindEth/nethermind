@@ -73,3 +73,7 @@ or::
 
 Depending on the chosen version.
 
+Example usage of the locally created docker-image::
+
+    docker run -it -e NETHERMIND_CONFIG=goerli nethermind.runner .
+
