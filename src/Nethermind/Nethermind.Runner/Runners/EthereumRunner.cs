@@ -497,8 +497,9 @@ namespace Nethermind.Runner.Runners
                     }
                     break;
                 case SealEngineType.NethDev:
-                    _rewardCalculator = NoBlockRewards.Instance;
                     _sealer = NullSealEngine.Instance;
+                    _sealValidator = NullSealEngine.Instance;
+                    _rewardCalculator = NoBlockRewards.Instance;
                     break;
                 case SealEngineType.Ethash:
                     _rewardCalculator = new RewardCalculator(_specProvider);
