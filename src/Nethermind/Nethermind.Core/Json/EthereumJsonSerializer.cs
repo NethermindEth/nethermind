@@ -59,7 +59,7 @@ namespace Nethermind.Core.Json
         private static JsonSerializerSettings _readableSettings = new JsonSerializerSettings
         {
             NullValueHandling = NullValueHandling.Ignore,
-            Formatting = Formatting.None,
+            Formatting = Formatting.Indented,
             Converters = ReadableConverters
         };
         
