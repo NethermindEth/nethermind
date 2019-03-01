@@ -17,16 +17,6 @@ Prepare a fixed ethernet connection, USB-keyboard, HDMI-monitor
 sudo apt install docker.io git
 ```
 
-### Manually Build rocksdb
-
-This step takes quite long:
-
-```sh
-docker build -f arm/rockdb -t nethermind/rocksdb
-docker cp nethermind/rocksdb:/rocksdb/librocksdb.so arm/lib/librocksdb-5.15.10.so
-```
-
-(Possible Enhancement would be to use a cross-architecture-compilation)
 
 ### Create Docker Images
 
@@ -40,7 +30,7 @@ cd nethermind
 docker build -f arm/net2v2-arm32v7 -t nethermind/nethermind-net2v2-arm32v7 .
 
 #NET 3.0 (not functional yet)
-docker build -f arm/net3v0-arm64v8 -t nethermind/nethermind-net2v2-arm32v7 .
+docker build -f arm/net3v0-arm64v8 -t nethermind/nethermind-net3v0-arm64v8 .
 
 ```
 
@@ -52,11 +42,18 @@ docker run -it nethermind/nethermind-net2v2-arm32v7
 
 Nethermind Goerli should be synching now.
 
-### Trouble
+### Troubleshooting
 
-install and register qemu on your machine
+Possibly needed: install and register qemu on your machine
 
 ```sh
-
 docker run --rm --privileged multiarch/qemu-user-static:register --reset
 ```
+
+Tf docker-image `nethermind/rocksdb` not available on docker, build it locally (takes long)
+
+```sh
+docker build -f arm/rocksdb -t nethermind/rocksdb
+```
+
+
