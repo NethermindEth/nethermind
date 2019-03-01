@@ -24,6 +24,6 @@ namespace Nethermind.Runner.Runners
     public interface IRunner
     {
         Task Start();
-        Task StopAsync(ExitType exitType);
+        Task StopAsync();
     }
 }

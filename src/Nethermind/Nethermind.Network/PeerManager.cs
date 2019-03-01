@@ -144,7 +144,7 @@ namespace Nethermind.Network
             _peerUpdateRequested.Set();
         }
 
-        public async Task StopAsync(ExitType exitType)
+        public async Task StopAsync()
         {
             _cancellationTokenSource.Cancel();
 
@@ -167,7 +167,7 @@ namespace Nethermind.Network
 
             await Task.WhenAll(closingTasks);
 
-            if (_logger.IsTrace) LogSessionStats(exitType == ExitType.DetailLogExit);
+            if (_logger.IsTrace) LogSessionStats(true);
 
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
         }
