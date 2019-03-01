@@ -489,14 +489,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 var result = GetBlock(blockParameter, true);
-                if (result.Result.ResultType == ResultType.Failure)
-                {
-                    if (Logger.IsTrace) Logger.Trace($"eth_getBlockByNumber request {blockParameter}, result: {result.ErrorType}");
-                    return ResultWrapper<BlockForRpc>.Fail(result.Result.Error, result.ErrorType);
-                }
-
-                if (Logger.IsTrace) Logger.Trace($"eth_getBlockByNumber request {blockParameter}, result: {result.Data}");
-                return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(result.Data, returnFullTransactionObjects));
+                return result.Result.ResultType == ResultType.Failure
+                    ? ResultWrapper<BlockForRpc>.Fail(result.Result.Error, result.ErrorType)
+                    : ResultWrapper<BlockForRpc>.Success(result.Data == null ? null : new BlockForRpc(result.Data, returnFullTransactionObjects));
             }
             finally
             {
@@ -903,21 +898,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         return ResultWrapper<Core.Block>.Fail($"Block id is required for {BlockParameterType.BlockId}", ErrorType.InvalidParams);
                     }
 
-                    var value = blockParameter.BlockId.AsNumber();
-                    if (!value.HasValue)
-                    {
-                        return ResultWrapper<Core.Block>.Fail("Invalid block id", ErrorType.InvalidParams);
-                    }
-
                     Block block = null;
-                    if (value.Value < BigInteger.Pow(2, 256))
+                    var value = blockParameter.BlockId.AsNumber();
+                    if (value.HasValue)
                     {
                         block = _blockchainBridge.FindBlock(new UInt256(value.Value));
                     }
 
                     if (block == null && !allowNulls)
                     {
-                        return ResultWrapper<Core.Block>.Fail($"Cannot find block for {value.Value}", ErrorType.NotFound);
+                        return ResultWrapper<Core.Block>.Fail($"Cannot find block for {value}", ErrorType.NotFound);
                     }
 
                     return ResultWrapper<Core.Block>.Success(block);

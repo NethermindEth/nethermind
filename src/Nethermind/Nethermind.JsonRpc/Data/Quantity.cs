@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -52,9 +53,17 @@ namespace Nethermind.JsonRpc.Data
             return Value?.ToHexString(true);
         }
 
+        private static BigInteger _maxInt = BigInteger.Pow(2, 256) - 1;
+        
         public UInt256? AsNumber()
         {
-            return Value != null ? (UInt256?)new BigInteger(Value, true, true) : null;
+            BigInteger bigInteger = new BigInteger(Value, true, true);
+            if (bigInteger > _maxInt)
+            {
+                return null;
+            }
+            
+            return Value != null ? (UInt256?)bigInteger : null;
         }
         
         public Keccak AsHash()

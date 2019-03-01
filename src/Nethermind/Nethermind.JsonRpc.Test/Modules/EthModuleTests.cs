@@ -200,6 +200,20 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void Eth_get_block_by_number_with_number_bad_number()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.FindBlock(Arg.Any<UInt256>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.Head.Returns(Build.A.BlockHeader.TestObject);
+
+            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+
+            string serialized = RpcTest.TestSerializedRequest(module, "eth_getBlockByNumber", "'0x1234567890123456789012345678901234567890123456789012345678901234567890'", "true");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null}", serialized);
+        }
+
+        [Test]
         public void Eth_get_block_by_number_empty_param()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
