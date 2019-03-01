@@ -95,12 +95,12 @@ namespace Nethermind.JsonRpc
                 catch (TargetInvocationException ex)
                 {
                     if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
-                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
+                    return GetErrorResponse(ErrorType.InternalError, ex.InnerException.ToString(), rpcRequest.Id, rpcRequest.Method);
                 }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest.Method);
+                    return GetErrorResponse(ErrorType.InternalError, ex.InnerException.ToString(), rpcRequest.Id, rpcRequest.Method);
                 }
             }
             catch (Exception ex)
@@ -128,7 +128,7 @@ namespace Nethermind.JsonRpc
             var expectedParameters = method.GetParameters();
             var providedParameters = request.Params;
             int missingParamsCount = expectedParameters.Length - (providedParameters?.Length ?? 0);
-            
+
             if (missingParamsCount != 0)
             {
                 bool incorrectParametersCount = missingParamsCount != 0;
@@ -166,8 +166,9 @@ namespace Nethermind.JsonRpc
             //execute method
             if (!(method.Invoke(module, parameters) is IResultWrapper resultWrapper))
             {
-                if (_logger.IsError) _logger.Error($"Method {methodName} execution result does not implement IResultWrapper");
-                return GetErrorResponse(ErrorType.InternalError, "Internal error", request.Id, methodName);
+                string errorMessage = $"Method {methodName} execution result does not implement IResultWrapper";
+                if (_logger.IsError) _logger.Error(errorMessage);
+                return GetErrorResponse(ErrorType.InternalError, errorMessage, request.Id, methodName);
             }
 
             Result result = resultWrapper.GetResult();

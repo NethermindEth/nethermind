@@ -42,10 +42,9 @@ namespace Nethermind.JsonRpc.Data
 
         public byte[] Value { get; private set; }
 
-        // TODO: do we need it? 14/08/2018
         public void FromJson(string jsonValue)
         {
-            Value = Bytes.FromHexString(jsonValue);
+            Value = Bytes.FromHexString(jsonValue.Trim('\''));
         }
 
         public object ToJson()

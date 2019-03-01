@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -53,9 +54,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
 
-            Assert.AreEqual( "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0xde0b6b3a7640000\"}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0xde0b6b3a7640000\"}", serialized);
         }
-        
+
         [Test]
         public void Eth_get_block_number()
         {
@@ -66,7 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_blockNumber");
 
-            Assert.AreEqual( $"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x4baf0\"}}", serialized);
+            Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x4baf0\"}}", serialized);
         }
 
         [Test]
@@ -79,7 +80,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
 
-            Assert.AreEqual( "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"error\":{\"code\":-32603,\"message\":\"Incorrect head block\",\"data\":null}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"error\":{\"code\":-32603,\"message\":\"Incorrect head block\",\"data\":null}}", serialized);
         }
 
         [Test]
@@ -136,7 +137,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_syncing");
 
-            Assert.AreEqual( "{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":false}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":false}", serialized);
         }
 
         [Test]
@@ -182,6 +183,23 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void Eth_get_block_by_number_with_number()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.FindBlock(Arg.Any<UInt256>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.Head.Returns(Build.A.BlockHeader.TestObject);
+
+            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+
+            for (int i = 0; i < 2; i++)
+            {
+                string serialized = RpcTest.TestSerializedRequest(module, "eth_getBlockByNumber", "'0x" + i.ToString("x") + "'", "true");
+                Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"number\":\"0x0\",\"hash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"nonce\":\"0x3e8\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"totalDifficulty\":\"0x0\",\"extraData\":\"0x010203\",\"size\":\"0x0\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[{\"hash\":null,\"nonce\":\"0x0\",\"blockHash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"blockNumber\":\"0x0\",\"transactionIndex\":\"0x0\",\"from\":null,\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\"}],\"transactionHashes\":null,\"uncles\":[]}}", serialized);
+            }
+        }
+
+        [Test]
         public void Eth_get_block_by_number_empty_param()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
@@ -213,13 +231,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x0\",\"error\":\"error\"}}", serialized);
         }
-        
+
         [Test]
         public void Eth_get_transaction_receipt_returns_null_on_missing_receipt()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            
-            bridge.GetTransactionReceipt(Arg.Any<Keccak>()).Returns((TransactionReceipt)null);
+
+            bridge.GetTransactionReceipt(Arg.Any<Keccak>()).Returns((TransactionReceipt) null);
 
             IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
 
