@@ -65,7 +65,7 @@ namespace Nethermind.Runner.Controllers
             using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
             {
                 var body = await reader.ReadToEndAsync();
-                if (_logger.IsTrace) _logger.Trace($"Received request: {body}");
+                if (_logger.IsTrace) _logger.Trace($"Received JSON RPC request: {body}");
                 
                 (JsonRpcRequest Model, IEnumerable<JsonRpcRequest> Collection) rpcRequest;
                 try
@@ -77,7 +77,7 @@ namespace Nethermind.Runner.Controllers
                     Metrics.JsonRpcRequestDeserializationFailures++;
                     if (_logger.IsError) _logger.Error($"Error during parsing/validation, request: {body}", ex);
                     var response = _jsonRpcService.GetErrorResponse(ErrorType.ParseError, "Incorrect message");
-                    return new JsonResult(response);
+                    return BuildResult(response);
                 }
 
                 if (rpcRequest.Model != null)
@@ -95,7 +95,7 @@ namespace Nethermind.Runner.Controllers
                         Metrics.JsonRpcSuccesses++;
                     }
                     
-                    return new JsonResult(response, _jsonSettings);
+                    return BuildResult(response);
                 }
 
                 if (rpcRequest.Collection != null)
@@ -119,15 +119,35 @@ namespace Nethermind.Runner.Controllers
                         responses.Add(response);
                     }
 
-                    return new JsonResult(responses, _jsonSettings);
+                    return BuildResult(responses);
                 }
 
                 {
                     Metrics.JsonRpcInvalidRequests++;
                     var response = _jsonRpcService.GetErrorResponse(ErrorType.InvalidRequest, "Invalid request");
-                    return new JsonResult(response, _jsonSettings);
+                    return BuildResult(response);
                 }
             }
+        }
+
+        private JsonResult BuildResult(JsonRpcResponse response)
+        {
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"Sending JSON RPC response: {_jsonSerializer.Serialize(response, true)}");
+            }
+            
+            return new JsonResult(response, _jsonSettings);
+        }
+        
+        private JsonResult BuildResult(List<JsonRpcResponse> responses)
+        {
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"Sending JSON RPC response: {_jsonSerializer.Serialize(responses, true)}");
+            }
+            
+            return new JsonResult(responses, _jsonSettings);
         }
     }
 }
