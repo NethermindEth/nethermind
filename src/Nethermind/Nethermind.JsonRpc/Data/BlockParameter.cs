@@ -23,6 +23,12 @@ namespace Nethermind.JsonRpc.Data
 {
     public class BlockParameter : IJsonRpcRequest
     {
+        public static BlockParameter Earliest = new BlockParameter(BlockParameterType.Earliest);
+
+        public static BlockParameter Pending = new BlockParameter(BlockParameterType.Pending);
+
+        public static BlockParameter Latest = new BlockParameter(BlockParameterType.Latest);
+
         public BlockParameterType Type { get; set; }
         public Quantity BlockId { get; set; }
 
@@ -34,25 +40,38 @@ namespace Nethermind.JsonRpc.Data
         {
             BlockId = new Quantity(blockNumber);
         }
-        
+
+        public BlockParameter(BlockParameterType type)
+        {
+            Type = type;
+            BlockId = new Quantity(BigInteger.Zero);
+        }
+
         public void FromJson(string jsonValue)
         {
-            // TODO: (peculiar problem with ethstats now?)
-            if (string.IsNullOrEmpty(jsonValue))
+            switch (jsonValue)
             {
-                Type = BlockParameterType.Latest;
-                return;
+                case string earliest when string.Equals(earliest, "earliest", StringComparison.InvariantCultureIgnoreCase):
+                    Type = BlockParameterType.Earliest;
+                    return;
+                case string pending when string.Equals(pending, "pending", StringComparison.InvariantCultureIgnoreCase):
+                    Type = BlockParameterType.Pending;
+                    return;
+                case string latest when string.Equals(latest, "latest", StringComparison.InvariantCultureIgnoreCase):
+                    Type = BlockParameterType.Latest;
+                    return;
+                case string empty when string.IsNullOrWhiteSpace(empty):
+                    Type = BlockParameterType.Latest;
+                    return;
+                case null:
+                    Type = BlockParameterType.Latest;
+                    return;
+                default:
+                    Type = BlockParameterType.BlockId;
+                    BlockId = new Quantity();
+                    BlockId.FromJson(jsonValue);
+                    return;
             }
-            
-            if (Enum.TryParse(jsonValue, true, out BlockParameterType type))
-            {
-                Type = type;
-                return;
-            }
-            
-            Type = BlockParameterType.BlockId;
-            BlockId = new Quantity();
-            BlockId.FromJson(jsonValue);
         }
 
         public override string ToString()
