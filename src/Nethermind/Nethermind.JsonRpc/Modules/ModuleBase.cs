@@ -37,11 +37,6 @@ namespace Nethermind.JsonRpc.Modules
             Logger = logManager.GetClassLogger();
             JsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
         }
-
-        protected string GetJsonLog(object model)
-        {
-            return JsonSerializer.Serialize(model);
-        }
         
         public abstract ModuleType ModuleType { get; }
 

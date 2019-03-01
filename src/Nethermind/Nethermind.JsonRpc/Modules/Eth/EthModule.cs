@@ -34,6 +34,7 @@ using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -62,12 +63,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
             try
             {
                 _readerWriterLockSlim.EnterReadLock();
-                var result = new SyncingResult
+                SyncingResult result;
+                if (_blockchainBridge.IsSyncing)
                 {
-                    CurrentBlock = _blockchainBridge.Head.Number,
-                    HighestBlock = _blockchainBridge.BestKnown,
-                    StartingBlock = UInt256.Zero
-                };
+                    result = new SyncingResult
+                    {
+                        CurrentBlock = _blockchainBridge.Head.Number,
+                        HighestBlock = _blockchainBridge.BestKnown,
+                        StartingBlock = UInt256.Zero,
+                        IsSyncing = true
+                    };
+                }
+                else
+                {
+                    result = SyncingResult.NotSyncing;
+                }
 
                 if (Logger.IsTrace) Logger.Trace($"eth_syncing request, result: {_blockchainBridge.Head.Number}/{_blockchainBridge.BestKnown}");
                 return ResultWrapper<SyncingResult>.Success(result);
@@ -311,6 +321,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 _readerWriterLockSlim.ExitReadLock();
             }
+        }
+
+        private static List<JsonConverter> _converters = new List<JsonConverter>
+        {
+            new SyncingResultConverter()
+        };
+
+        public override IReadOnlyCollection<JsonConverter> GetConverters()
+        {
+            return _converters;
         }
 
         public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter blockParameter)
