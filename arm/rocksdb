@@ -1,0 +1,7 @@
+FROM microsoft/dotnet:2.2-sdk-bionic-arm32v7 AS buildrockdb
+COPY arm/lib/qemu-arm-static /usr/bin/
+
+RUN apt-get update && apt-get install -y git build-essential libgflags-dev libbz2-dev zlib1g-dev liblz4-dev libzstd-dev
+RUN git clone -b v5.15.10 --depth 1 https://github.com/facebook/rocksdb.git
+WORKDIR /rocksdb
+RUN make shared_lib
