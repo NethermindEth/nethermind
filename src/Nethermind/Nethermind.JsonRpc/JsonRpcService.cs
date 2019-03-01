@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc
             {
                 foreach (JsonConverter converter in module.Converters)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name}");
+                    if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} ({module.ModuleType} module)");
                     _serializer.Converters.Add(converter);
                     _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
                     Converters.Add(converter);
@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc
 
             foreach (JsonConverter converter in EthereumJsonSerializer.BasicConverters)
             {
-                if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name}");
+                if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} (default)");
                 _serializer.Converters.Add(converter);
                 _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
                 Converters.Add(converter);

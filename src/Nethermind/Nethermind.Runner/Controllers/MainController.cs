@@ -23,6 +23,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
 using Newtonsoft.Json;
@@ -37,20 +38,22 @@ namespace Nethermind.Runner.Controllers
         private readonly ILogger _logger;
         private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
+        private readonly JsonSerializer _traceSerializer;
         private readonly JsonSerializerSettings _jsonSettings;
 
         public MainController(ILogManager logManager, IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
-            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
+            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));            
             _jsonSettings = new JsonSerializerSettings();
             _jsonSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();
-
             for (int i = 0; i < _jsonRpcService.Converters.Count; i++)
             {
                 _jsonSettings.Converters.Add(_jsonRpcService.Converters[i]);
             }
+            
+            _traceSerializer = JsonSerializer.Create(_jsonSettings);
         }
 
         [HttpGet]
@@ -130,24 +133,39 @@ namespace Nethermind.Runner.Controllers
             }
         }
 
+        private JsonResult BuildResult(List<JsonRpcResponse> responses)
+        {
+            if (_logger.IsTrace)
+            {
+                TraceResult(responses.ToArray());
+            }
+            
+            return new JsonResult(responses, _jsonSettings);
+        }
+        
         private JsonResult BuildResult(JsonRpcResponse response)
         {
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Sending JSON RPC response: {_jsonSerializer.Serialize(response, true)}");
+                TraceResult(response);
             }
             
             return new JsonResult(response, _jsonSettings);
         }
         
-        private JsonResult BuildResult(List<JsonRpcResponse> responses)
+        private void TraceResult(params JsonRpcResponse[] responses)
         {
+            StringBuilder builder = new StringBuilder();
+            using (StringWriter stringWriter = new StringWriter(builder))
+            using (var jsonWriter = new JsonTextWriter(stringWriter))
+            {
+                _traceSerializer.Serialize(jsonWriter, responses);
+            }
+
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Sending JSON RPC response: {_jsonSerializer.Serialize(responses, true)}");
+                _logger.Trace($"Sending JSON RPC response: {builder}");
             }
-            
-            return new JsonResult(responses, _jsonSettings);
         }
     }
 }
