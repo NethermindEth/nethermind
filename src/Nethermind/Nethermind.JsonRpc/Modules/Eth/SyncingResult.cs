@@ -22,6 +22,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class SyncingResult
     {
+        public static SyncingResult NotSyncing = new SyncingResult();
+        
+        public bool IsSyncing { get; set; }
         public UInt256 StartingBlock { get; set; }
         public UInt256 CurrentBlock { get; set; }
         public UInt256 HighestBlock { get; set; }
