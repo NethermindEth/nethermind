@@ -470,13 +470,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 _readerWriterLockSlim.EnterReadLock();
                 var block = _blockchainBridge.FindBlock(blockHash, false);
-                if (block == null)
-                {
-                    return ResultWrapper<BlockForRpc>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
-                }
-
-
-                if (Logger.IsDebug) Logger.Debug($"eth_getBlockByHash request {blockHash}, result: {block}");
                 return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(block, returnFullTransactionObjects));
             }
             finally
@@ -492,10 +485,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _readerWriterLockSlim.EnterReadLock();
                 if (_blockchainBridge.Head == null)
                 {
-                    return ResultWrapper<BlockForRpc>.Fail($"Incorrect head block");
+                    return ResultWrapper<BlockForRpc>.Fail("Incorrect head block");
                 }
 
-                var result = GetBlock(blockParameter);
+                var result = GetBlock(blockParameter, true);
                 if (result.Result.ResultType == ResultType.Failure)
                 {
                     if (Logger.IsTrace) Logger.Trace($"eth_getBlockByNumber request {blockParameter}, result: {result.ErrorType}");
@@ -892,7 +885,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return GetAccountStorage(address, index, block.Data.Header.StateRoot);
         }
 
-        private ResultWrapper<Core.Block> GetBlock(BlockParameter blockParameter)
+        private ResultWrapper<Core.Block> GetBlock(BlockParameter blockParameter, bool allowNulls = false)
         {
             switch (blockParameter.Type)
             {
@@ -901,7 +894,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<Core.Block>.Success(pending); // TODO: a pending block for sealEngine, work in progress
                 case BlockParameterType.Latest:
                     return ResultWrapper<Core.Block>.Success(_blockchainBridge.RetrieveHeadBlock());
-
                 case BlockParameterType.Earliest:
                     var genesis = _blockchainBridge.RetrieveGenesisBlock();
                     return ResultWrapper<Core.Block>.Success(genesis);
@@ -917,8 +909,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         return ResultWrapper<Core.Block>.Fail("Invalid block id", ErrorType.InvalidParams);
                     }
 
-                    var block = _blockchainBridge.FindBlock(new UInt256(value.Value));
-                    if (block == null)
+                    Block block = null;
+                    if (value.Value < BigInteger.Pow(2, 256))
+                    {
+                        block = _blockchainBridge.FindBlock(new UInt256(value.Value));
+                    }
+
+                    if (block == null && !allowNulls)
                     {
                         return ResultWrapper<Core.Block>.Fail($"Cannot find block for {value.Value}", ErrorType.NotFound);
                     }
