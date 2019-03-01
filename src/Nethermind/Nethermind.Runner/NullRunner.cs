@@ -35,7 +35,7 @@ namespace Nethermind.Runner
             return Task.CompletedTask;
         }
 
-        public Task StopAsync(ExitType exitType)
+        public Task StopAsync()
         {
             return Task.CompletedTask;
         }

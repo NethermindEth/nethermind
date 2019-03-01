@@ -52,17 +52,8 @@ namespace Nethermind.Runner
                 logger.Error(FailureString, e);
             }
 
-            var detached = Environment.GetEnvironmentVariable("NETHERMIND_DETACHED_MODE")?.ToLowerInvariant() == "true";
-            if (detached)
-            {
-                Console.WriteLine("Press RETURN to exit.");
-                Console.ReadLine();
-            }
-            else
-            {
-                Console.WriteLine("Press any key to exit.");
-                Console.ReadKey();    
-            }
+            Console.WriteLine("Press RETURN to exit.");
+            Console.ReadLine();
         }
     }
 }

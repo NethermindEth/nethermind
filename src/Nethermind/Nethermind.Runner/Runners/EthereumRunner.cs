@@ -307,7 +307,7 @@ namespace Nethermind.Runner.Runners
             networkConfig.DbBasePath = _initConfig.BaseDbPath;
         }
 
-        public async Task StopAsync(ExitType exitType)
+        public async Task StopAsync()
         {
             if (_logger.IsInfo) _logger.Info("Shutting down...");
             _runnerCancellation.Cancel();
@@ -316,7 +316,7 @@ namespace Nethermind.Runner.Runners
             var rlpxPeerTask = _rlpxPeer?.Shutdown() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping peer manager...");
-            var peerManagerTask = _peerManager?.StopAsync(exitType) ?? Task.CompletedTask;
+            var peerManagerTask = _peerManager?.StopAsync() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping sync manager...");
             var syncManagerTask = _syncManager?.StopAsync() ?? Task.CompletedTask;

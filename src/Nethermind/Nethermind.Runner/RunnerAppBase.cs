@@ -41,7 +41,6 @@ namespace Nethermind.Runner
         private IRunner _jsonRpcRunner = NullRunner.Instance;
         private IRunner _ethereumRunner = NullRunner.Instance;
         private TaskCompletionSource<object> _cancelKeySource;
-        private ExitType _exitType = ExitType.LightExit;
         
         protected RunnerAppBase(ILogger logger)
         {
@@ -95,47 +94,9 @@ namespace Nethermind.Runner
                     Logger.Info($"Running Nethermind Runner, parameters:\n{serializer.Serialize(initConfig, true)}\n");
 
                 _cancelKeySource = new TaskCompletionSource<object>();
-                Task userCancelTask = Task.Factory.StartNew(() =>
-                {
-                    var detached = Environment.GetEnvironmentVariable("NETHERMIND_DETACHED_MODE")?.ToLowerInvariant() ==
-                                   "true";
-
-                    Console.WriteLine("Enter 'e' to exit, 'q' to exit and log session details.");
-                    while (true)
-                    {
-                        if (detached)
-                        {
-                            var line = Console.ReadLine();
-                            if (line == "e" || line == "E")
-                            {
-                                _exitType = ExitType.LightExit;
-                                break;
-                            }
-                            if (line == "q" || line == "Q")
-                            {
-                                _exitType = ExitType.DetailLogExit;
-                                break;
-                            }
-                        }
-                        else
-                        {
-                            var keyInfo = Console.ReadKey();
-                            if (keyInfo.Key == ConsoleKey.E)
-                            {
-                                _exitType = ExitType.LightExit;
-                                break;
-                            }
-                            if (keyInfo.Key == ConsoleKey.Q)
-                            {
-                                _exitType = ExitType.DetailLogExit;
-                                break;
-                            }
-                        }
-                    }
-                });
 
                 await StartRunners(configProvider);
-                await Task.WhenAny(userCancelTask, _cancelKeySource.Task);
+                await _cancelKeySource.Task;
 
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
                 StopAsync().Wait();
@@ -194,8 +155,8 @@ namespace Nethermind.Runner
 
         protected async Task StopAsync()
         {
-            _jsonRpcRunner?.StopAsync(_exitType); // do not await
-            var ethereumTask = _ethereumRunner?.StopAsync(_exitType) ?? Task.CompletedTask;
+            _jsonRpcRunner?.StopAsync(); // do not await
+            var ethereumTask = _ethereumRunner?.StopAsync() ?? Task.CompletedTask;
             await ethereumTask;
         }
 

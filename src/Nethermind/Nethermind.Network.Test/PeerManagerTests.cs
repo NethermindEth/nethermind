@@ -195,7 +195,7 @@ namespace Nethermind.Network.Test
         public async Task Can_start_and_stop()
         {
             _peerManager.Start();
-            await _peerManager.StopAsync(ExitType.LightExit);
+            await _peerManager.StopAsync();
         }
 
         private const string enodesString = enode1String + "," + enode2String;
@@ -229,7 +229,7 @@ namespace Nethermind.Network.Test
             _peerManager.Start();
             Thread.Sleep(100);
             Assert.AreEqual(1, _rlpxPeer.ConnectAsyncCallsCount);
-            await _peerManager.StopAsync(ExitType.LightExit);
+            await _peerManager.StopAsync();
         }
 
         [Test]
@@ -240,7 +240,7 @@ namespace Nethermind.Network.Test
             _peerManager.Start();
             Thread.Sleep(200);
             Assert.AreEqual(25, _rlpxPeer.ConnectAsyncCallsCount);
-            await _peerManager.StopAsync(ExitType.LightExit);
+            await _peerManager.StopAsync();
         }
 
         private List<Session> _sessions = new List<Session>();
@@ -257,7 +257,7 @@ namespace Nethermind.Network.Test
 
             Thread.Sleep(200);
             Assert.AreEqual(50, _rlpxPeer.ConnectAsyncCallsCount);
-            await _peerManager.StopAsync(ExitType.LightExit);
+            await _peerManager.StopAsync();
         }
 
         [Test]
@@ -275,7 +275,7 @@ namespace Nethermind.Network.Test
                 Assert.AreEqual(0, _peerManager.ActivePeers.Count);
             }
 
-            await _peerManager.StopAsync(ExitType.LightExit);
+            await _peerManager.StopAsync();
         }
         
         [Test]
@@ -294,7 +294,7 @@ namespace Nethermind.Network.Test
                 DisconnectAllSessions();
             }
 
-            await _peerManager.StopAsync(ExitType.LightExit);
+            await _peerManager.StopAsync();
         }
         
         [Test]
@@ -311,7 +311,7 @@ namespace Nethermind.Network.Test
                 Assert.AreEqual(25, _peerManager.ActivePeers.Count);
             }
 
-            await _peerManager.StopAsync(ExitType.LightExit);
+            await _peerManager.StopAsync();
         }
 
         [Test]
@@ -328,7 +328,7 @@ namespace Nethermind.Network.Test
                 Assert.AreEqual(25, _peerManager.ActivePeers.Count);
             }
 
-            await _peerManager.StopAsync(ExitType.LightExit);
+            await _peerManager.StopAsync();
         }
 
         [Test]
@@ -349,7 +349,7 @@ namespace Nethermind.Network.Test
                 DisconnectAllSessions();
             }
 
-            await _peerManager.StopAsync(ExitType.LightExit);
+            await _peerManager.StopAsync();
         }
 
         [Test]
@@ -373,7 +373,7 @@ namespace Nethermind.Network.Test
                 DisconnectAllSessions();
             }
 
-            await _peerManager.StopAsync(ExitType.LightExit);
+            await _peerManager.StopAsync();
         }
 
         [Test]
@@ -399,7 +399,7 @@ namespace Nethermind.Network.Test
                 DisconnectAllSessions();
             }
 
-            await _peerManager.StopAsync(ExitType.LightExit);
+            await _peerManager.StopAsync();
         }
 
         private void CreateIncomingSessions()

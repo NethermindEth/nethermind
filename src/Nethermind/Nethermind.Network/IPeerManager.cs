@@ -26,7 +26,7 @@ namespace Nethermind.Network
     {
         void Init();
         void Start();
-        Task StopAsync(ExitType exitType);
+        Task StopAsync();
         void LogSessionStats(bool logEventDetails);
 
         IReadOnlyCollection<Peer> ActivePeers { get; }
