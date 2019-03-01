@@ -1,7 +1,7 @@
 Build
 *****
 
-IDE
+IDE (optional)
 ^^^
 
 * JetBrains Rider https://www.jetbrains.com/rider/
@@ -10,9 +10,10 @@ IDE
 SDKs
 ^^^^
 
-* Windows https://www.microsoft.com/net/download?initial-os=windows
-* Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)
-* Mac https://www.microsoft.com/net/download?initial-os=macos
+You will need .NET SDK 2.2
+ * Windows https://www.microsoft.com/net/download?initial-os=windows
+ * Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)
+ * Mac https://www.microsoft.com/net/download?initial-os=macos
 
 Linux
 ^^^^^
@@ -20,11 +21,6 @@ Linux
 ::
 
     sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6
-    git clone https://github.com/nethermindeth/nethermind --recursive
-    cd nethermind/src/Nethermind
-    dotnet build Nethermind.sln -c Release
-    cd Nethermind.Runner
-    dotnet run
 
 MacOS
 ^^^^^
@@ -33,21 +29,41 @@ MacOS
 
     brew install gmp
     brew install snappy
-    git clone https://github.com/nethermindeth/nethermind --recursive
-    cd nethermind/src/Nethermind
-    dotnet build Nethermind.sln -c Release
-    cd Nethermind.Runner
-    dotnet run
     
 Windows
 ^^^^^^^
 
 you may need to install https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
 
+All Platforms
+^^^^^^^^^^^^^
+
 ::
 
-    git clone https://github.com/nethermindeth/nethermind --recursive
-    cd nethermind/src/Nethermind
+    git clone https://github.com/tkstanczak/nethermind nethworkshop --recursive -b workshop
+    cd nethworkshop/src/Nethermind
     dotnet build Nethermind.sln -c Release
+
+launch goerli testnet for quick sync and testing
+
+::
+
     cd Nethermind.Runner
-    dotnet run
+    dotnet run --no-build -c Release -- --config goerli   
+
+You can confirm the latest block of the Goerli tetsnet here:
+https://blockscout.com/eth/goerli/
+
+or (mainnet)
+
+::
+
+    cd Nethermind.EvmPlayground
+    dotnet run --no-build -c Release -- --config mainnet
+
+Potential Issues
+^^^^^^^^^^^^^^^^
+
+If you have some previous pre-release versions of .NET Core installed they may cause conflicts. Your case might be quite unique so best to search for help online.
+
+If application crashes saying that rocksdb-sharp / rocksdb is failing then most likely your processor is not supporting AVX instructions. This would require you to build RocksDb on your machine. We will add a tutorial for this later - for now reach out to us on gitter if you need to run it on a non-AVX CPU.
