@@ -17,6 +17,16 @@ Prepare a fixed ethernet connection, USB-keyboard, HDMI-monitor
 sudo apt install docker.io git
 ```
 
+### Preliminary Run Sequence
+
+(until nethermind project merges and uploads the docker images under `nethermind/` )
+
+```sh
+sudo docker pull lazaridiscom/rocksdb
+sudo docker tag lazaridiscom/rocksdb nethermind/rocksdb
+sudo docker run -it lazaridiscom/nethermind-net2v2-arm32v7
+```
+
 
 ### Create Docker Images
 
