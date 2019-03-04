@@ -1,0 +1,35 @@
+# !!!!!!!!!!! EARLY DRAFT !!!!!!!!!!!
+
+#  continue this after a NET3.0 branch is stabilized on x86
+# => https://github.com/NethermindEth/nethermind/issues/394
+
+DRAFT_NOT_WORKING
+
+FROM microsoft/dotnet:3.0-sdk-bionic AS build
+
+COPY . .
+
+RUN git submodule update --init
+RUN cd src/Nethermind/Nethermind.Runner && dotnet publish -c release -o out
+
+
+FROM microsoft/dotnet:3.0-aspnetcore-runtime-bionic-arm64v8
+COPY docker/lib/qemu-aarch64-static /usr/bin/
+
+RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 unzip
+WORKDIR /nethermind
+COPY --from=build /src/Nethermind/Nethermind.Runner/out .
+
+ENV ASPNETCORE_ENVIRONMENT docker
+ENV NETHERMIND_CONFIG goerli
+ENV NETHERMIND_DETACHED_MODE true
+ENV NETHERMIND_INITCONFIG_JSONRPCENABLED false
+ENV NETHERMIND_URL http://*:8345
+
+EXPOSE 8345 30312
+
+RUN echo "\n\n !!! WORKS !!!\n"
+RUN cat /etc/os-release
+RUN echo " " && uname --m
+
+ENTRYPOINT dotnet Nethermind.Runner.dll

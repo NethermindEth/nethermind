@@ -1,0 +1,15 @@
+# for nethermind team:
+# build and publish to nethermind/rocksdb
+
+#TODO: change this to a smaller base image
+
+FROM microsoft/dotnet:2.2-sdk-bionic-arm32v7 AS build
+COPY arm/lib/qemu-arm-static /usr/bin/
+
+RUN apt-get update && apt-get install -y git build-essential libgflags-dev libbz2-dev zlib1g-dev liblz4-dev libzstd-dev
+RUN git clone -b v5.15.10 --depth 1 https://github.com/facebook/rocksdb.git
+WORKDIR /rocksdb
+RUN make shared_lib
+
+FROM arm32v7/ubuntu
+COPY --from=build /rocksdb/librocksdb.so.5.15.10 /rocksdb/librocksdb.so.5.15.10

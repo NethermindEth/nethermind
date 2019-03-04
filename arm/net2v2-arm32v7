@@ -1,0 +1,28 @@
+FROM microsoft/dotnet:2.2-sdk AS build
+COPY . .
+RUN git submodule update --init
+
+RUN cd src/Nethermind/Nethermind.Runner && dotnet publish -c release -o out
+
+#--- RUNTIME ------------------------------------------------------------------
+
+FROM microsoft/dotnet:2.2-aspnetcore-runtime-bionic-arm32v7
+COPY arm/lib/qemu-arm-static /usr/bin/qemu-arm-static
+
+RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 unzip  libsecp256k1-dev
+
+
+WORKDIR /nethermind
+COPY --from=build /src/Nethermind/Nethermind.Runner/out .
+
+COPY --from=nethermind/rocksdb /rocksdb/librocksdb.so.5.15.10  librocksdb-5.15.10.so
+
+ENV ASPNETCORE_ENVIRONMENT docker
+ENV NETHERMIND_CONFIG goerli
+ENV NETHERMIND_DETACHED_MODE true
+ENV NETHERMIND_INITCONFIG_JSONRPCENABLED false
+ENV NETHERMIND_URL http://*:8345
+
+EXPOSE 8345 30312
+
+ENTRYPOINT dotnet Nethermind.Runner.dll
