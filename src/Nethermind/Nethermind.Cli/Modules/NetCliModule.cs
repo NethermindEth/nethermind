@@ -16,34 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Net;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Data;
 
-namespace Nethermind.Network
+namespace Nethermind.Cli.Modules
 {
-    public class Enode : IEnode
-    {
-        private readonly PublicKey _nodeKey;
+    [CliModule]
+    public class NetCliModule : CliModuleBase
+    {   
+        [CliProperty("net", "localEnode")]
+        public string LocalEnode() => NodeManager.Post<string>("net_localEnode").Result;
 
-        public Enode(PublicKey nodeKey, IPAddress localIp, int p2PPort)
+        [CliProperty("net", "version")]
+        public BigInteger Version() => NodeManager.Post<BigInteger>("net_version").Result;
+        
+        [CliProperty("net", "peerCount")]
+        public BigInteger PeerCount() => NodeManager.Post<BigInteger>("net_peerCount").Result;
+
+        public NetCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {
-            _nodeKey = nodeKey;
-            IpAddress = localIp;
-            P2PPort = p2PPort;
         }
-
-        public Enode(string enodeString)
-        {
-            string[] enodeParts = enodeString.Split(':');
-            Address address = new Address(enodeParts[1].Split('@')[0]);
-            P2PPort = int.Parse(enodeParts[2]);
-            IpAddress = IPAddress.Parse(enodeParts[1].Split('@')[1]);
-        }
-
-        public Address Address => _nodeKey.Address;
-        public IPAddress IpAddress { get; }
-        public int P2PPort { get; }
-        public string Info => $"enode://{_nodeKey.ToString(false)}@{IpAddress}:{P2PPort}";
     }
 }

@@ -202,7 +202,7 @@ namespace Nethermind.Runner.Runners
                 ? _networkHelper.GetLocalIp()
                 : IPAddress.Parse(ipVariable);
 
-            _enode = new Enode(_nodeKey, localIp, _initConfig.P2PPort);
+            _enode = new Enode(_nodeKey.PublicKey, localIp, _initConfig.P2PPort);
         }
 
         private void RegisterJsonRpcModules()
@@ -212,7 +212,7 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Resolving CLI ({nameof(Cli.CliApiBuilder)})");
+            if (_logger.IsDebug) _logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
 
             IReadOnlyDbProvider rpcDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             AlternativeChain rpcChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, _transactionPool, _receiptStorage);
