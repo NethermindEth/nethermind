@@ -9,7 +9,7 @@
 | Releases | [![GitHub release](https://img.shields.io/github/release/NethermindEth/nethermind.svg)](https://github.com/NethermindEth/nethermind/releases) | https://github.com/NethermindEth/nethermind/releases |
 | Travis CI | [![Build Status](https://travis-ci.org/NethermindEth/nethermind.svg?branch=master)](https://travis-ci.org/NethermindEth/nethermind) | https://travis-ci.org/NethermindEth/nethermind |
 | Website | | http://nethermind.io/ |
-|Docker||https://cloud.docker.com/u/nethermind/repository/docker/nethermind/nethermind.runner|
+|Docker||https://cloud.docker.com/u/nethermind/repository/docker/nethermind/nethermind|
 
 ## Download and run:
 [Windows](http://downloads.nethermind.io)<br/>
