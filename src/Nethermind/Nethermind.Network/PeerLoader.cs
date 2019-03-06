@@ -77,7 +77,17 @@ namespace Nethermind.Network
 
             foreach (var persistedPeer in networkNodes)
             {
-                var node = new Node(persistedPeer.NodeId, persistedPeer.Host, persistedPeer.Port);
+                Node node;
+                try
+                {
+                    node = new Node(persistedPeer.NodeId, persistedPeer.Host, persistedPeer.Port);
+                }
+                catch (Exception)
+                {
+                    if(_logger.IsDebug) _logger.Error($"ERROR/DEBUG peer could not be loaded for {persistedPeer.NodeId}@{persistedPeer.Host}:{persistedPeer.Port}");
+                    continue;
+                }
+                
                 var nodeStats = _stats.GetOrAdd(node);
                 nodeStats.CurrentPersistedNodeReputation = persistedPeer.Reputation;
 
