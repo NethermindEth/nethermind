@@ -178,6 +178,7 @@ namespace Nethermind.Network
         }
 
         public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToList().AsReadOnly();
+        public IReadOnlyCollection<Peer> CandidatePeers => _candidatePeers.Values.ToList().AsReadOnly();
 
         private async Task RunPeerUpdateLoop()
         {
@@ -327,6 +328,8 @@ namespace Nethermind.Network
         {
             if (PeerIsDisconnected(peer))
             {
+                peer.InSession = null;
+                peer.OutSession = null;
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| REMOVING {peer.Node.Id} {reason}");
                 _activePeers.TryRemove(peer.Node.Id, out _);
             }
