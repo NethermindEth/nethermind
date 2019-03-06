@@ -262,7 +262,17 @@ namespace Nethermind.Network.Discovery
                     break;
                 }
                 
-                var node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
+                Node node;
+                try
+                {
+                    node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
+                }
+                catch (Exception)
+                {
+                    if(_logger.IsDebug) _logger.Error($"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                    continue;
+                }
+                
                 var manager = _discoveryManager.GetNodeLifecycleManager(node, true);
                 if (manager == null)
                 {
