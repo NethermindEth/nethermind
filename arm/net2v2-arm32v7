@@ -1,3 +1,6 @@
+# To build on pi itself, enable use this sdk-image instead (untested)
+# FROM microsoft/dotnet:2.2-sdk-bionic-arm32v7 AS build
+
 FROM microsoft/dotnet:2.2-sdk AS build
 COPY . .
 RUN git submodule update --init
@@ -15,7 +18,8 @@ RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 unzip  li
 WORKDIR /nethermind
 COPY --from=build /src/Nethermind/Nethermind.Runner/out .
 
-COPY --from=nethermind/rocksdb /rocksdb/librocksdb.so.5.15.10  librocksdb-5.15.10.so
+COPY arm/lib/librocksdb-5.15.10.zip .
+RUN unzip -o librocksdb-5.15.10.zip && rm librocksdb-5.15.10.zip
 
 ENV ASPNETCORE_ENVIRONMENT docker
 ENV NETHERMIND_CONFIG goerli

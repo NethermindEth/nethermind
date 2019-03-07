@@ -61,7 +61,15 @@ namespace Nethermind.Cli
                 try
                 {
                     Console.Write("> ");
-                    var statement = Console.ReadLine();
+                    
+                    int bufferSize = 1024 * 16;
+                    string statement;
+                    using (Stream inStream = Console.OpenStandardInput(bufferSize))
+                    {
+                        Console.SetIn(new StreamReader(inStream, Console.InputEncoding, false, bufferSize));
+                        statement = Console.ReadLine();
+                    }
+
                     if (statement == "exit")
                     {
                         break;
@@ -98,6 +106,7 @@ namespace Nethermind.Cli
             ModuleLoader.LoadModule(typeof(Web3CliModule));
             ModuleLoader.LoadModule(typeof(NodeCliModule));
             ModuleLoader.LoadModule(typeof(CliqueCliModule));
+            ModuleLoader.LoadModule(typeof(DebugCliModule));
         }
     }
 }

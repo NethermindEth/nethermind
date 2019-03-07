@@ -23,6 +23,7 @@ using System.Numerics;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
@@ -92,7 +93,13 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp)
         {
-            throw new NotImplementedException();
+            var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp));
+            if (blockTrace == null)
+            {
+                return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for RLP {blockRlp.ToHexString()}", ErrorType.NotFound);
+            }
+
+            return ResultWrapper<GethLikeTxTrace[]>.Success(blockTrace);
         }
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BigInteger blockNumber)
