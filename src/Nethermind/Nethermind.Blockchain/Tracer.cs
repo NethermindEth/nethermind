@@ -95,6 +95,18 @@ namespace Nethermind.Blockchain
             Block block = _blockTree.FindBlock(blockNumber);
             return TraceBlock(block);
         }
+        
+        public GethLikeTxTrace[] TraceBlock(Rlp blockRlp)
+        {
+            Block block = Rlp.Decode<Block>(blockRlp);
+            if (block.TotalDifficulty == null)
+            {
+                block.TotalDifficulty = 1;
+                block.TotalTransactions = new UInt256(block.Transactions.Length);
+            }
+            
+            return TraceBlock(block);
+        }
 
         public ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes parityTraceTypes)
         {

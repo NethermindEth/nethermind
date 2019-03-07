@@ -368,6 +368,7 @@ namespace Nethermind.Clique.Test
 
             public On AddAllBadTransactions(PrivateKey nodeKey)
             {
+                // 0 gas price
                 Transaction transaction = new Transaction();
                 transaction.Value = 1;
                 transaction.To = TestItem.AddressC;
@@ -379,6 +380,7 @@ namespace Nethermind.Clique.Test
                 _ethereumSigner.Sign(TestItem.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
 
+                // bad nonce
                 transaction = new Transaction();
                 transaction.Value = 1;
                 transaction.To = TestItem.AddressC;
@@ -390,10 +392,23 @@ namespace Nethermind.Clique.Test
                 _ethereumSigner.Sign(TestItem.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
 
+                // gas limit too high
                 transaction = new Transaction();
                 transaction.Value = 1;
                 transaction.To = TestItem.AddressC;
                 transaction.GasLimit = 100000000;
+                transaction.GasPrice = 20.GWei();
+                transaction.Nonce = _currentNonce;
+                transaction.SenderAddress = TestItem.PrivateKeyD.Address;
+                transaction.Hash = Transaction.CalculateHash(transaction);
+                _ethereumSigner.Sign(TestItem.PrivateKeyD, transaction, 1);
+                _pools[nodeKey].AddTransaction(transaction, 1);
+                
+                // insufficient balance
+                transaction = new Transaction();
+                transaction.Value = 1000000000.Ether();
+                transaction.To = TestItem.AddressC;
+                transaction.GasLimit = 30000;
                 transaction.GasPrice = 20.GWei();
                 transaction.Nonce = _currentNonce;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;

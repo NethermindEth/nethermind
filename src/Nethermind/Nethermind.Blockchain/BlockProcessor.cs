@@ -207,7 +207,7 @@ namespace Nethermind.Blockchain
 
             block.Header.StateRoot = _stateProvider.StateRoot;
             block.Header.Hash = BlockHeader.CalculateHash(block.Header);
-            if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, suggestedBlock))
+            if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
             {
                 if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
                 throw new InvalidBlockException(suggestedBlock.Hash);

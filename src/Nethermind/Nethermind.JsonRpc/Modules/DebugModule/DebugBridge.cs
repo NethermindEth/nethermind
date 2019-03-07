@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Network;
@@ -83,6 +84,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber)
         {
             return _tracer.TraceBlock(blockNumber);
+        }
+        
+        public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp)
+        {
+            return _tracer.TraceBlock(blockRlp);
         }
         
         private AutoResetEvent _receiptProcessedEvent = new AutoResetEvent(false);
