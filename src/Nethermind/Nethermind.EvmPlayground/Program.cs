@@ -1,9 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Primitives;
+using Nethermind.Evm;
 
 namespace Nethermind.EvmPlayground
 {
@@ -108,10 +110,36 @@ namespace Nethermind.EvmPlayground
             return string.Join(' ', split);
         }
 
+        private static Dictionary<string, string> _instructions;
+
+        private static string Instructions(string input)
+        {
+            if (_instructions == null)
+            {
+                _instructions = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
+                foreach (var foo in Enum.GetValues(typeof(Instruction)))
+                {
+                    _instructions.Add(foo.ToString(), ((byte) foo).ToString());
+                }
+            }
+
+            string[] split = input.Split(' ');
+            for (int i = 0; i < split.Length; i++)
+            {
+                if (_instructions.ContainsKey(split[i]))
+                {
+                    split[i] = _instructions[split[i]];
+                }
+            }
+
+            return string.Join(' ', split);
+        }
+
         private static string RunMacros(string input)
         {
             input = input.Replace("PZ1", "96 0");
             input = ExpandPushHex(input);
+            input = Instructions(input);
             input = MakeHex(input);
             return input;
         }
