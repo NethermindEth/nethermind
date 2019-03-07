@@ -18,6 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 
@@ -32,6 +33,7 @@ namespace Nethermind.Blockchain
         GethLikeTxTrace[] TraceBlock(Keccak blockHash);
         GethLikeTxTrace[] TraceBlock(UInt256 blockNumber);
         
+        GethLikeTxTrace[] TraceBlock(Rlp blockRlp);
         ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes parityTraceTypes);
         ParityLikeTxTrace[] ParityTraceBlock(Keccak blockHash, ParityTraceTypes parityTraceTypes);
         ParityLikeTxTrace[] ParityTraceBlock(UInt256 blockNumber, ParityTraceTypes parityTraceTypes);

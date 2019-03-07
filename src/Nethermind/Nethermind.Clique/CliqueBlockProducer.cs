@@ -401,6 +401,14 @@ namespace Nethermind.Clique
                     continue;
                 }
 
+                UInt256 requiredBalance = transaction.GasLimit + transaction.Value;
+                UInt256 balance = _stateProvider.GetBalance(transaction.SenderAddress);
+                if (transaction.GasLimit + transaction.Value > balance)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - insufficient balance - required {requiredBalance}, actual {balance}.");
+                    continue;
+                }
+
                 selectedTxs.Add(transaction);
                 nonces[transaction.SenderAddress] = transaction.Nonce;
                 gasRemaining -= transaction.GasLimit;

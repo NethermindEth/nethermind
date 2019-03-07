@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -83,10 +84,10 @@ namespace Nethermind.Blockchain.Validators
             return true;
         }
 
-        public bool ValidateProcessedBlock(Block processedBlock, Block suggestedBlock)
+        public bool ValidateProcessedBlock(Block processedBlock, TransactionReceipt[] receipts, Block suggestedBlock)
         {
             bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
-            if (_logger != null && !isValid)
+            if (!isValid)
             {
                 if (_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.Short)} is not valid");
                 if(_logger.IsError) _logger.Error($"  hash {processedBlock.Hash} != stated hash {suggestedBlock.Hash}");
@@ -109,6 +110,14 @@ namespace Nethermind.Blockchain.Validators
                 if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
                 {
                     if(_logger.IsError) _logger.Error($"  state root {processedBlock.Header.StateRoot} != stated state root {suggestedBlock.Header.StateRoot}");
+                }
+            }
+            
+            for (int i = 0; i < processedBlock.Transactions.Length; i++)
+            {
+                if (receipts[i].Error != null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
+                {
+                    if(_logger.IsError) _logger.Error($"  invalid transaction {i}");
                 }
             }
 

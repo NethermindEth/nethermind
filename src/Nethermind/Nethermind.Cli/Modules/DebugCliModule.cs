@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,13 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.Cli.Modules
 {
-    public interface IBlockValidator
+    [CliModule]
+    public class DebugCliModule : CliModuleBase
     {
-        bool ValidateSuggestedBlock(Block block);
-        bool ValidateProcessedBlock(Block processedBlock, TransactionReceipt[] receipts, Block suggestedBlock);
+        [CliFunction("debug", "traceBlock")]
+        public string TraceBlock(string rlp)
+        {
+            return NodeManager.Post("debug_traceBlock", rlp).Result;
+        }
+
+        public DebugCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
+        {
+        }
     }
 }
