@@ -349,6 +349,9 @@ namespace Nethermind.Network.Test
                 DisconnectAllSessions();
             }
 
+            await _peerManager.StopAsync();
+            DisconnectAllSessions();
+
             Assert.True(_peerManager.CandidatePeers.All(p => p.OutSession == null));
             
             await _peerManager.StopAsync();
