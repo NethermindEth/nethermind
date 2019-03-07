@@ -56,25 +56,39 @@ namespace Nethermind.EvmPlayground
 
         private static string ExpandPushHex(string input)
         {
-            if (!input.Contains("PX", StringComparison.InvariantCultureIgnoreCase)) return input;
+            if (!input.Contains("PUSHX", StringComparison.InvariantCultureIgnoreCase)) return input;
 
             var expansion = input.Split(' ').ToArray();
 
             for (int i = 0; i < expansion.Length - 1; i++)
-                if (string.Equals(expansion[i], "PX", StringComparison.InvariantCultureIgnoreCase))
+            {
+                if (string.Equals(expansion[i], "PUSHX", StringComparison.InvariantCultureIgnoreCase))
                 {
                     if (expansion[i + 1].Length <= 64)
                     {
-                        expansion[i] = (96 + expansion[i + 1].Length / 2 - 1).ToString();
+                        if (expansion[i + 1].StartsWith("0x"))
+                        {
+                            expansion[i + 1] = expansion[i + 1].Substring(2);
+                        }
+                        
+                        int length = expansion[i + 1].Length;
+                        if (length % 2 == 1)
+                        {
+                            length++;
+                            expansion[i + 1] = "0" + expansion[i + 1];
+                        }
+                        
+                        expansion[i] = (96 + length / 2 - 1).ToString();
                         string decimals = string.Join(" ", Bytes.FromHexString(expansion[i + 1]).Select(x => x.ToString()));
-                        Console.WriteLine($"PX {expansion[i + 1]} expanded to: {expansion[i]} {decimals}");
+                        Console.WriteLine($"PUSHX {expansion[i + 1]} expanded to: {expansion[i]} {decimals}");
                         expansion[i + 1] = decimals;
                     }
                     else
                     {
-                        Console.WriteLine($"PX operand {expansion[i + 1]} is greater than 32 bytes");
+                        Console.WriteLine($"PUSHX operand {expansion[i + 1]} is greater than 32 bytes");
                     }
                 }
+            }
 
             string result = string.Join(' ', expansion);
             return result;
