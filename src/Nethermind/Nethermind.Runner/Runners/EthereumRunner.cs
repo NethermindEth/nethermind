@@ -132,6 +132,7 @@ namespace Nethermind.Runner.Runners
         private IWallet _wallet;
         private IEnode _enode;
         private HiveRunner _hiveRunner;
+        private ISessionMonitor _sessionMonitor;
 
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
@@ -315,6 +316,9 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsInfo) _logger.Info("Stopping rlpx peer...");
             var rlpxPeerTask = _rlpxPeer?.Shutdown() ?? Task.CompletedTask;
 
+            if (_logger.IsInfo) _logger.Info("Stopping sesison monitor...");
+            _sessionMonitor?.Stop();
+            
             if (_logger.IsInfo) _logger.Info("Stopping peer manager...");
             var peerManagerTask = _peerManager?.StopAsync() ?? Task.CompletedTask;
 
@@ -439,7 +443,7 @@ namespace Nethermind.Runner.Runners
             IDbConfig dbConfig = _configProvider.GetConfig<IDbConfig>();
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
-                _logger.Info($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
+                if(_logger.IsDebug) _logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
             _dbProvider = HiveEnabled
@@ -867,17 +871,16 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new ReceiptsMessageSerializer());
 
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
-            ISessionMonitor sessionMonitor = new SessionMonitor(networkConfig, _logManager);
+            _sessionMonitor = new SessionMonitor(networkConfig, _logManager);
             _rlpxPeer = new RlpxPeer(
                 _nodeKey.PublicKey,
                 _initConfig.P2PPort,
                 encryptionHandshakeServiceA,
                 _logManager,
                 _perfService,
-                sessionMonitor);
+                _sessionMonitor);
 
             await _rlpxPeer.Init();
-
             
             var peerStorage = new NetworkStorage(PeersDbPath, networkConfig, _logManager, _perfService);
 
@@ -897,6 +900,7 @@ namespace Nethermind.Runner.Runners
 
             if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
             _peerManager.Start();
+            _sessionMonitor.Start();
             if (_logger.IsDebug) _logger.Debug("Peer manager initialization completed");
         }
 

@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Network.P2P;
-
 namespace Nethermind.Network
 {
     public interface IProtocolsManager

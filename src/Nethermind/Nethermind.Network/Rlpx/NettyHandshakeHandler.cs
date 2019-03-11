@@ -31,9 +31,9 @@ using Nethermind.Network.Rlpx.Handshake;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class NettyHandshakeHandler : ChannelHandlerAdapter
+    public class NettyHandshakeHandler : SimpleChannelInboundHandler<IByteBuffer>
     {
-        private readonly IByteBuffer _buffer = Unpooled.Buffer(256); // TODO: analyze buffer size effect
+        private readonly IByteBuffer _buffer = Unpooled.Buffer(256);
         private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
@@ -133,12 +133,7 @@ namespace Nethermind.Network.Rlpx
             base.ExceptionCaught(context, exception);
         }
 
-        public override void ChannelReadComplete(IChannelHandlerContext context)
-        {
-            context.Flush();
-        }
-
-        public override void ChannelRead(IChannelHandlerContext context, object message)
+        protected override void ChannelRead0(IChannelHandlerContext context, IByteBuffer message)
         {
             if(_logger.IsTrace) _logger.Trace($"Channel read {nameof(NettyHandshakeHandler)} from {context.Channel.RemoteAddress}");
             if (message is IByteBuffer byteBuffer)

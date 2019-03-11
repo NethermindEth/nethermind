@@ -896,5 +896,13 @@ namespace Nethermind.Network
             //_logger.Info($"candidates: \n{string.Join("\n", candidates.Select(x => $"{x.Node.Id}: {x.NodeStats.CurrentNodeReputation}"))}");
             //_logger.Info($"nodesToRemove: \n{string.Join("\n", nodesToRemove.Select(x => $"{x.Node.Id}: {x.NodeStats.CurrentNodeReputation}"))}");
         }
+        
+        private enum ActivePeerSelectionCounter
+        {
+            AllNonActiveCandidates,
+            FilteredByZeroPort,
+            FilteredByDisconnect,
+            FilteredByFailedConnection
+        }
     }
 }
