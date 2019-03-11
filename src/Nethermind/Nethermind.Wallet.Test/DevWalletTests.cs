@@ -83,13 +83,17 @@ namespace Nethermind.Wallet.Test
         {
             IWallet wallet = SetupWallet(walletType);
 
-            for (int i = 1; i <= (walletType == DevWalletType.Memory ? 10 : 3); i++)
+            int count = walletType == DevWalletType.Memory ? 10 : 3;
+            for (int i = 1; i <= count; i++)
             {
                 byte[] keyBytes = new byte[32];
                 keyBytes[31] = (byte) i;
                 PrivateKey key = new PrivateKey(keyBytes);
-                Assert.AreEqual(key.Address, wallet.GetAccounts()[i - 1], $"{i}");
+                TestContext.Write(key.Address.Bytes.ToHexString() + Environment.NewLine);
+                Assert.True(wallet.GetAccounts().Any(a => a == key.Address), $"{i}");
             }
+            
+            Assert.AreEqual(count, wallet.GetAccounts().Length);
         }
 
         [TestCase(DevWalletType.KeyStore)]
