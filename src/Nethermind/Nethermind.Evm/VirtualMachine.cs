@@ -442,7 +442,8 @@ namespace Nethermind.Evm
         }
 
         private CallResult ExecuteCall(EvmState evmState, byte[] previousCallResult, byte[] previousCallOutput, UInt256 previousCallOutputDestination, IReleaseSpec spec)
-        {   
+        {
+            bool traceOpcodes = _txTracer.IsTracingInstructions;
             ExecutionEnvironment env = evmState.Env;
             if (!evmState.IsContinuation)
             {
@@ -482,19 +483,19 @@ namespace Nethermind.Evm
 
             void StartInstructionTrace(Instruction instruction, Span<byte> stack)
             {
-                if (!_txTracer.IsTracingInstructions)
+                if (!traceOpcodes)
                 {
                     return;
                 }
 
-                if (_txTracer.IsTracingInstructions) { _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, (int)programCounter); }
+                _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, (int)programCounter);
                 if (_txTracer.IsTracingMemory) { _txTracer.SetOperationMemory(evmState.Memory.GetTrace()); }
                 if (_txTracer.IsTracingStack) { _txTracer.SetOperationStack(GetStackTrace(stack)); }
             }
 
             void EndInstructionTrace()
             {
-                if (_txTracer.IsTracingInstructions)
+                if (traceOpcodes)
                 {
                     if (_txTracer.IsTracingMemory)
                     {
@@ -507,7 +508,7 @@ namespace Nethermind.Evm
             
             void EndInstructionTraceError(string error)
             {
-                if (_txTracer.IsTracingInstructions)
+                if (traceOpcodes)
                 {
                     _txTracer.SetOperationError(error);
                     _txTracer.SetOperationRemainingGas(gasAvailable);
@@ -788,7 +789,7 @@ namespace Nethermind.Evm
             while (programCounter < code.Length)
             {
                 Instruction instruction = (Instruction)code[(int)programCounter];
-                if (_txTracer.IsTracingInstructions) // TODO: review local method and move them to separate classes where needed and better
+                if (traceOpcodes)
                 {
                     StartInstructionTrace(instruction, bytesOnStack);
                 }

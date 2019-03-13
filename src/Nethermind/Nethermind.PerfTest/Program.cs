@@ -415,6 +415,7 @@ namespace Nethermind.PerfTest
                     _logger.Warn($"TOTAL after {number} receipts DB writes   : {Store.Metrics.ReceiptsDbWrites}");
                     _logger.Warn($"TOTAL after {number} other DB reads       : {Store.Metrics.OtherDbReads}");
                     _logger.Warn($"TOTAL after {number} other DB writes      : {Store.Metrics.OtherDbWrites}");
+                    _logger.Warn($"TOTAL after {number} EVM exceptions       : {Evm.Metrics.EvmExceptions}");
                     // disk space
                     stopwatch.Start();
                 }

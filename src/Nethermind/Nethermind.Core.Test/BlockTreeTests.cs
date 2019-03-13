@@ -472,7 +472,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Sets_head_block_info_in_db_on_new_head_block()
+        public void Sets_head_block_hash_in_db_on_new_head_block()
         {
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
@@ -484,8 +484,8 @@ namespace Nethermind.Core.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            BlockHeader storedInDb = Rlp.Decode<BlockHeader>(new Rlp(blockInfosDb.Get(Keccak.Zero)));
-            Assert.AreEqual(block1.Hash, storedInDb.Hash);
+            Keccak storedInDb = Rlp.Decode<Keccak>(new Rlp(blockInfosDb.Get(Keccak.Zero)));
+            Assert.AreEqual(block1.Hash, storedInDb);
         }
 
         [Test]
