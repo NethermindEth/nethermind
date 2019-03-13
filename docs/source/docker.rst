@@ -4,19 +4,19 @@ Docker
 Using an existing image
 =============
 
-https://hub.docker.com/r/nethermind/nethermind.runner/
+https://hub.docker.com/r/nethermind/nethermind/
 
 Docker pull command::
 
-    docker pull nethermind/nethermind.runner
+    docker pull nethermind/nethermind
 
 In order to start Nethermind.Runner, simply run::
 
-    docker run -it nethermind/nethermind.runner
+    docker run -it nethermind/nethermind
 
 To enable JSON RPC, publish port 8345 and set NETHERMIND_INITCONFIG_JSONRPCENABLED=true::
     
-    docker run -it -p 8345:8345 -e NETHERMIND_INITCONFIG_JSONRPCENABLED=true nethermind/nethermind.runner
+    docker run -it -p 8345:8345 -e NETHERMIND_INITCONFIG_JSONRPCENABLED=true nethermind/nethermind
 
 To enable P2P communication, additionally, publish port 30312.
 
@@ -28,11 +28,10 @@ Available configurations
 - goerli
 - rinkeby
 - ropsten
-- mainnet
 
 For example::
 
-    docker run -it -e NETHERMIND_CONFIG=goerli nethermind/nethermind.runner
+    docker run -it -e NETHERMIND_CONFIG=goerli nethermind/nethermind
 
 It's possible to modify each configuration property via environment variable, using a simple convention::
     
@@ -65,15 +64,15 @@ Building an image
 
 In order to build the images, run either:: 
 
-    docker build -t nethermind.runner .
+    docker build -t nethermind .
     
 or::
 
-    docker build -f Dockerfile_full -t nethermind.runner .
+    docker build -f Dockerfile_full -t nethermind .
 
 Depending on the chosen version.
 
 Example usage of the locally created docker-image::
 
-    docker run -it -e NETHERMIND_CONFIG=goerli nethermind.runner .
+    docker run -it -e NETHERMIND_CONFIG=goerli nethermind .
 
