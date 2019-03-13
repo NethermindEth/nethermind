@@ -439,7 +439,7 @@ namespace Nethermind.Runner.Runners
             IDbConfig dbConfig = _configProvider.GetConfig<IDbConfig>();
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
-                _logger.Info($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
+                if(_logger.IsDebug) _logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
             _dbProvider = HiveEnabled
@@ -794,7 +794,7 @@ namespace Nethermind.Runner.Runners
             genesis.StateRoot = stateProvider.StateRoot;
             genesis.Hash = BlockHeader.CalculateHash(genesis.Header);
 
-            ManualResetEvent genesisProcessedEvent = new ManualResetEvent(false);
+            ManualResetEventSlim genesisProcessedEvent = new ManualResetEventSlim(false);
 
             bool genesisLoaded = false;
 
@@ -807,7 +807,7 @@ namespace Nethermind.Runner.Runners
 
             blockTree.NewHeadBlock += GenesisProcessed;
             blockTree.SuggestBlock(genesis);
-            genesisProcessedEvent.WaitOne(TimeSpan.FromSeconds(5));
+            genesisProcessedEvent.Wait(TimeSpan.FromSeconds(5));
             if (!genesisLoaded)
             {
                 throw new BlockchainException("Genesis block processing failure");

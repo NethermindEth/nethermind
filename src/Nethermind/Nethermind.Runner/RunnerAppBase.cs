@@ -63,7 +63,7 @@ namespace Nethermind.Runner
         public void Run(string[] args)
         {
             var (app, buildConfigProvider, getDbBasePath) = BuildCommandLineApp();
-            ManualResetEvent appClosed = new ManualResetEvent(false);
+            ManualResetEventSlim appClosed = new ManualResetEventSlim(false);
             app.OnExecute(async () =>
             {
                 var configProvider = buildConfigProvider();
@@ -107,7 +107,7 @@ namespace Nethermind.Runner
             });
 
             app.Execute(args);
-            appClosed.WaitOne();
+            appClosed.Wait();
         }
 
         private void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)

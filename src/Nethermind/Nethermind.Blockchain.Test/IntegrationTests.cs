@@ -114,14 +114,14 @@ namespace Nethermind.Blockchain.Test
             MinedBlockProducer minedBlockProducer = new MinedBlockProducer(difficultyCalculator, transactionPool, blockchainProcessor, sealer, blockTree, timestamp, NullLogManager.Instance);
             minedBlockProducer.Start();
 
-            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            ManualResetEventSlim manualResetEvent = new ManualResetEventSlim(false);
 
             blockTree.NewHeadBlock += (sender, args) =>
             {
                 if (args.Block.Number == 6) manualResetEvent.Set();
             };
 
-            manualResetEvent.WaitOne(miningDelay * 12 * timeMultiplier);
+            manualResetEvent.Wait(miningDelay * 12 * timeMultiplier);
             await minedBlockProducer.StopAsync();
 
             int previousCount = 0;
@@ -131,10 +131,10 @@ namespace Nethermind.Blockchain.Test
                 Block block = blockTree.FindBlock(new UInt256(i));
                 logger.Info($"Block {i} with {block.Transactions.Length} txs");
 
-                ManualResetEvent blockProcessedEvent = new ManualResetEvent(false);
+                ManualResetEventSlim blockProcessedEvent = new ManualResetEventSlim(false);
                 blockchainProcessor.ProcessingQueueEmpty += (sender, args) => blockProcessedEvent.Set();
                 blockchainProcessor.SuggestBlock(block.Hash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
-                blockProcessedEvent.WaitOne(1000);
+                blockProcessedEvent.Wait(1000);
 
                 Tracer tracer = new Tracer(blockchainProcessor, receiptStorage, blockTree, new MemDb());
 
