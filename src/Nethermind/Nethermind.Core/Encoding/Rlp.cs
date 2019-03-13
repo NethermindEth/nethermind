@@ -925,10 +925,20 @@ namespace Nethermind.Core.Encoding
                     throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
                 }
 
-                byte[] buffer = Read(32).ToArray();
-                return new Keccak(buffer);
-            }
+                Span<byte> keccakSpan = Read(32);
+                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+                {
+                    return Keccak.OfAnEmptyString;
+                }
+                
+                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+                {
+                    return Keccak.EmptyTreeHash;
+                }
 
+                return new Keccak(keccakSpan.ToArray());
+            }
+            
             public Address DecodeAddress()
             {
                 int prefix = ReadByte();
@@ -984,10 +994,17 @@ namespace Nethermind.Core.Encoding
                     }
                 }
 
-                Bloom bloom = bloomBytes.Length == 256
-                    ? new Bloom(bloomBytes.ToBigEndianBitArray2048())
-                    : throw new InvalidOperationException("Incorrect bloom RLP");
-                return bloom;
+                if (bloomBytes.Length != 256)
+                {
+                    throw new InvalidOperationException("Incorrect bloom RLP");
+                }
+
+                if (bloomBytes.SequenceEqual(Extensions.Bytes.Zero256))
+                {
+                    return Bloom.Empty;
+                }
+                
+                return new Bloom(bloomBytes.ToBigEndianBitArray2048());
             }
 
             public Span<byte> PeekNextItem()

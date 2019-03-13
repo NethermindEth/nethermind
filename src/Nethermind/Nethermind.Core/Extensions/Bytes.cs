@@ -46,6 +46,10 @@ namespace Nethermind.Core.Extensions
             }
         }
 
+        public static readonly byte[] Zero32 = new byte[32];
+        
+        public static readonly byte[] Zero256 = new byte[32];
+        
         public static readonly byte[] Empty = new byte[0];
 
         public enum Endianness
@@ -78,6 +82,11 @@ namespace Nethermind.Core.Extensions
         
         public static bool IsZero(this byte[] bytes)
         {
+            if (bytes.Length == 32)
+            {
+                return bytes[0] == 0 && bytes.AsSpan().SequenceEqual(Bytes.Zero32);
+            }
+            
             for (int i = 0; i < bytes.Length / 2; i++)
             {
                 if (bytes[i] != 0)
@@ -93,7 +102,7 @@ namespace Nethermind.Core.Extensions
 
             return bytes.Length % 2 == 0 || bytes[bytes.Length / 2] == 0;
         }
-
+        
         public static int LeadingZerosCount(this byte[] bytes, int startIndex = 0)
         {
             for (int i = startIndex; i < bytes.Length; i++)
