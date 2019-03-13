@@ -47,6 +47,9 @@ namespace Nethermind.Evm
         XOR = 0x18,
         NOT = 0x19,
         BYTE = 0x1a,
+        SHL = 0x1b, // EIP-145
+        SHR = 0x1c, // EIP-145
+        SAR = 0x1d, // EIP-145
 
         SHA3 = 0x20,
 
@@ -65,6 +68,7 @@ namespace Nethermind.Evm
         EXTCODECOPY = 0x3c,
         RETURNDATASIZE = 0x3d,
         RETURNDATACOPY = 0x3e,
+        EXTCODEHASH = 0x3f,
 
         BLOCKHASH = 0x40,
         COINBASE = 0x41,
@@ -164,16 +168,10 @@ namespace Nethermind.Evm
         CALLCODE = 0xf2,
         RETURN = 0xf3,
         DELEGATECALL = 0xf4,
+        CREATE2 = 0xf5,
         STATICCALL = 0xfa,
         REVERT = 0xfd,
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
-        
-        /* EIP145 */
-        SHL = 0x1b,
-        SHR = 0x1c,
-        SAR = 0x1d,
-        EXTCODEHASH = 0x3f,
-        CREATE2 = 0xf5,
     }
 }
