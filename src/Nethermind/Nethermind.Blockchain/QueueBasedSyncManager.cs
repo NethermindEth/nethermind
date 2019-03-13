@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain
     {
         private int _currentBatchSize = 256;
         public const int MinBatchSize = 8;
-        public const int MaxBatchSize = 256;
+        public const int MaxBatchSize = 512;
         public const int MaxReorganizationLength = 2 * MaxBatchSize;
         private int _sinceLastTimeout;
         private UInt256 _lastSyncNumber = UInt256.Zero;
