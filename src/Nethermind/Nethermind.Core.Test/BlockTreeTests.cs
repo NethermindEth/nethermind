@@ -484,8 +484,8 @@ namespace Nethermind.Core.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            Keccak storedInDb = Rlp.Decode<Keccak>(new Rlp(blockInfosDb.Get(Keccak.Zero)));
-            Assert.AreEqual(block1.Hash, storedInDb);
+            var dec = new Keccak(blockInfosDb.Get(Keccak.Zero));
+            Assert.AreEqual(block1.Hash, dec);
         }
 
         [Test]
