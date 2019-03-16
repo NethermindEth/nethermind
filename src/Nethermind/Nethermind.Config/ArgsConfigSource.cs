@@ -27,13 +27,13 @@ namespace Nethermind.Config
 
         public ArgsConfigSource(Dictionary<string, string> args)
         {
-            _args = new Dictionary<string, string>(args, StringComparer.InvariantCultureIgnoreCase);
+            _args = new Dictionary<string, string>(args, StringComparer.OrdinalIgnoreCase);
         }
 
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)
         {
-            var variableName = $"{category}.{name}".ToUpperInvariant();
-            return !_args.ContainsKey(variableName.ToUpperInvariant()) 
+            var variableName = $"{category}.{name}";
+            return !_args.ContainsKey(variableName) 
                 ? (false, ConfigSourceHelper.GetDefault(type))
                 : (true, ConfigSourceHelper.ParseValue(type, _args[variableName]));
         }

@@ -393,16 +393,38 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Can_init_head_block_from_db()
+        public void Can_init_head_block_from_db_by_header()
         {
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             Block headBlock = genesisBlock;
 
             MemDb blocksDb = new MemDb();
-            blocksDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock).Bytes);
             blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
 
             MemDb blockInfosDb = new MemDb();
+            blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
+            
+            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, (ulong) headBlock.Transactions.Length)});
+            level.BlockInfos[0].WasProcessed = true;
+
+            blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
+
+            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITransactionPool>(), LimboLogs.Instance);
+            Assert.AreEqual(headBlock.Hash, blockTree.Head?.Hash, "head");
+            Assert.AreEqual(headBlock.Hash, blockTree.Genesis?.Hash, "genesis");
+        }
+        
+        [Test]
+        public void Can_init_head_block_from_db_by_hash()
+        {
+            Block genesisBlock = Build.A.Block.Genesis.TestObject;
+            Block headBlock = genesisBlock;
+
+            MemDb blocksDb = new MemDb();
+            blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
+
+            MemDb blockInfosDb = new MemDb();
+            blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash.Bytes);
             ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, (ulong) headBlock.Transactions.Length)});
             level.BlockInfos[0].WasProcessed = true;
 
@@ -556,8 +578,8 @@ namespace Nethermind.Core.Test
             blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
 
-            BlockHeader storedInDb = Rlp.Decode<BlockHeader>(new Rlp(blockInfosDb.Get(Keccak.Zero)));
-            Assert.AreEqual(block1.Hash, storedInDb.Hash);
+            Keccak storedInDb = new Keccak(blockInfosDb.Get(Keccak.Zero));
+            Assert.AreEqual(block1.Hash, storedInDb);
         }
 
         [Test]
