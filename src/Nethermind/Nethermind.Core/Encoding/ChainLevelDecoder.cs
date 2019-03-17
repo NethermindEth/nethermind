@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.IO;
 
 namespace Nethermind.Core.Encoding
 {
@@ -50,6 +51,16 @@ namespace Nethermind.Core.Encoding
             elements[0] = Rlp.Encode(item.HasBlockOnMainChain);
             elements[1] = Rlp.Encode(item.BlockInfos);
             return Rlp.Encode(elements);
+        }
+
+        public void Encode(MemoryStream stream, ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public int GetLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors)
+        {
+            throw new System.NotImplementedException();
         }
     }
 }

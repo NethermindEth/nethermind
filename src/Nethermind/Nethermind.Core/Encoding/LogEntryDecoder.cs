@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.IO;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Encoding
@@ -45,6 +46,16 @@ namespace Nethermind.Core.Encoding
                 Rlp.Encode(item.LoggersAddress),
                 Rlp.Encode(item.Topics),
                 Rlp.Encode(item.Data));
+        }
+
+        public void Encode(MemoryStream stream, LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
+        }
+
+        public int GetLength(LogEntry item, RlpBehaviors rlpBehaviors)
+        {
+            throw new NotImplementedException();
         }
     }
 }

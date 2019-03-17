@@ -34,7 +34,7 @@ namespace Nethermind.Core.Encoding
     public class Rlp
     {
         private const int DebugMessageContentLength = 2048;
-        
+
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
 
         public static readonly Rlp OfEmptySequence = new Rlp(192);
@@ -124,6 +124,23 @@ namespace Nethermind.Core.Encoding
             throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
         }
 
+        public static void Encode<T>(MemoryStream stream, T item, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            if (item is Rlp rlp)
+            {
+                stream.Write(Encode(new[] {rlp}).Bytes);
+                ;
+            }
+
+            if (Decoders.ContainsKey(typeof(T)))
+            {
+                ((IRlpDecoder<T>) Decoders[typeof(T)]).Encode(stream, item, behaviors);
+                return;
+            }
+
+            throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+        }
+
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (Decoders.ContainsKey(typeof(T)))
@@ -182,14 +199,64 @@ namespace Nethermind.Core.Encoding
                 // TODO: below obviously fails when Signature is null
                 sequence[6] = transaction.Signature == null ? OfEmptyByteArray : Encode(transaction.Signature.V);
                 sequence[7] =
-                    Encode(transaction.Signature?.R
+                    Encode(transaction.Signature == null ? null : transaction.Signature.R
                         .WithoutLeadingZeros()); // TODO: consider storing R and S differently
                 sequence[8] =
-                    Encode(transaction.Signature?.S
+                    Encode(transaction.Signature == null ? null : transaction.Signature.S
                         .WithoutLeadingZeros()); // TODO: consider storing R and S differently
             }
 
             return Encode(sequence);
+        }
+
+        public static void Encode(MemoryStream stream, UInt256 value, int length = -1)
+        {
+            if (value.IsZero && length == -1)
+            {
+                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
+            }
+            else
+            {
+                Span<byte> bytes = stackalloc byte[32];
+                value.ToBigEndian(bytes);
+                if (length != -1)
+                {
+                    Encode(stream, bytes.Slice(bytes.Length - length, length));
+                }
+                else
+                {
+                    Encode(stream, bytes.WithoutLeadingZeros());
+                }
+            }
+        }
+
+        public static void Encode(MemoryStream stream, int value)
+        {
+            Encode(stream, (long) value);
+        }
+        
+        public static void Encode(MemoryStream stream, long value)
+        {
+            if (value == 0L)
+            {
+                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
+            }
+            else
+            {
+                if (value < 128L)
+                {
+                    stream.WriteByte((byte)value);
+                }
+                else if (value <= byte.MaxValue)
+                {
+                    stream.WriteByte(129);
+                    stream.WriteByte((byte)value);
+                }
+                else
+                {
+                    Encode(stream, (UInt256)value);    
+                }
+            }
         }
 
         public static Rlp Encode(UInt256 value)
@@ -263,11 +330,20 @@ namespace Nethermind.Core.Encoding
             return EncodeNumber(value);
         }
 
-        // TODO: nonces only
         public static Rlp Encode(ulong value)
         {
             return Encode(value.ToBigEndianByteArray());
         }
+        
+        /// <summary>
+        /// Used for nonce only - different behaviour (treated as a byte array)
+        /// </summary>
+        /// <param name="stream"></param>
+        /// <param name="value"></param>
+        public static void Encode(MemoryStream stream, ulong value)
+        {
+            Encode(stream, (UInt256)value, 8);
+        }        
 
         public static Rlp Encode(short value)
         {
@@ -305,7 +381,7 @@ namespace Nethermind.Core.Encoding
             return Encode(System.Text.Encoding.ASCII.GetBytes(s));
         }
 
-        public static void Encode(MemoryStream stream, byte[] input)
+        public static void Encode(MemoryStream stream, Span<byte> input)
         {
             if (input == null || input.Length == 0)
             {
@@ -329,6 +405,11 @@ namespace Nethermind.Core.Encoding
                 SerializeLength(stream, input.Length);
                 stream.Write(input);
             }
+        }
+        
+        public static void Encode(MemoryStream stream, byte[] data)
+        {
+            Encode(stream, data.AsSpan());
         }
 
         public static int Encode(Span<byte> buffer, int position, byte[] input)
@@ -531,12 +612,40 @@ namespace Nethermind.Core.Encoding
         {
             if (keccak == null)
             {
-                stream.Write(OfEmptyByteArray.Bytes);
+                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
             }
             else
             {
                 stream.WriteByte(160);
                 stream.Write(keccak.Bytes);
+            }
+        }
+
+        public static void Encode(MemoryStream stream, Address address)
+        {
+            if (address == null)
+            {
+                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
+            }
+            else
+            {
+                stream.WriteByte(148);
+                stream.Write(address.Bytes);
+            }
+        }
+
+        public static void Encode(MemoryStream stream, Bloom bloom)
+        {
+            if (bloom == null)
+            {
+                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
+            }
+            else
+            {
+                stream.WriteByte(185);
+                stream.WriteByte(1);
+                stream.WriteByte(0);
+                stream.Write(bloom.Bytes);
             }
         }
 
@@ -577,7 +686,7 @@ namespace Nethermind.Core.Encoding
             return Encode(rlpSequence);
         }
 
-        public static MemoryStream StartEncoding()
+        public static MemoryStream BorrowStream()
         {
             return StreamManager.GetStream();
         }
@@ -593,26 +702,20 @@ namespace Nethermind.Core.Encoding
             return totalLength;
         }
 
-        public static void StartSequence(MemoryStream stream, int sequenceLength)
+        public static void StartSequence(MemoryStream stream, int contentLength)
         {
             byte prefix;
-            long memorizedPosition1 = stream.Position;
-            long memorizedPosition2 = memorizedPosition1 + 1;
-            stream.Seek(memorizedPosition2, SeekOrigin.Begin);
-            if (sequenceLength < 56)
+            if (contentLength < 56)
             {
-                prefix = (byte) (192 + sequenceLength);
+                prefix = (byte) (192 + contentLength);
+                stream.WriteByte(prefix);
             }
             else
             {
-                SerializeLength(stream, sequenceLength);
-                prefix = (byte) (247 + stream.Position - memorizedPosition2);
+                prefix = (byte) (247 + LengthOfLength(contentLength));
+                stream.WriteByte(prefix);
+                SerializeLength(stream, contentLength);
             }
-
-            long memorizedPosition3 = stream.Position;
-            stream.Seek(memorizedPosition1, SeekOrigin.Begin);
-            stream.WriteByte(prefix);
-            stream.Seek(memorizedPosition3, SeekOrigin.Begin);
         }
 
         public static int StartSequence(byte[] buffer, int position, int sequenceLength)
@@ -679,26 +782,6 @@ namespace Nethermind.Core.Encoding
         public const int LengthOfBloomRlp = 259;
         public const int LengthOfEmptyArrayRlp = 1;
         public const int LengthOfEmptySequenceRlp = 1;
-
-        public static int LengthOfByteArray(byte[] array)
-        {
-            if (array == null || array.Length == 0)
-            {
-                return 1;
-            }
-
-            if (array.Length == 1 && array[0] < 128)
-            {
-                return 1;
-            }
-
-            if (array.Length < 56)
-            {
-                return array.Length + 1;
-            }
-
-            return LengthOfLength(array.Length) + 1 + array.Length;
-        }
 
         public class DecoderContext
         {
@@ -930,7 +1013,7 @@ namespace Nethermind.Core.Encoding
                 {
                     return Keccak.OfAnEmptyString;
                 }
-                
+
                 if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
                 {
                     return Keccak.EmptyTreeHash;
@@ -938,7 +1021,7 @@ namespace Nethermind.Core.Encoding
 
                 return new Keccak(keccakSpan.ToArray());
             }
-            
+
             public Address DecodeAddress()
             {
                 int prefix = ReadByte();
@@ -1003,7 +1086,7 @@ namespace Nethermind.Core.Encoding
                 {
                     return Bloom.Empty;
                 }
-                
+
                 return new Bloom(bloomBytes.ToBigEndianBitArray2048());
             }
 
@@ -1097,7 +1180,7 @@ namespace Nethermind.Core.Encoding
                 byte[] bytes = DecodeByteArray();
                 return bytes.Length == 0 ? 0 : bytes.ToInt32();
             }
-            
+
             public uint DecodeUInt()
             {
                 byte[] bytes = DecodeByteArray();
@@ -1201,6 +1284,89 @@ namespace Nethermind.Core.Encoding
         public string ToString(bool withZeroX)
         {
             return Bytes.ToHexString(withZeroX);
+        }
+
+        public static int LengthOf(UInt256 item)
+        {
+            if (item < 128UL)
+            {
+                return 1;
+            }
+            
+            Span<byte> bytes = stackalloc byte[32];
+            item.ToBigEndian(bytes);
+            int length = bytes.WithoutLeadingZeros().Length;
+            return length + 1;
+        }
+
+        public static int LengthOf(BigInteger item)
+        {
+            return Encode(item).Length;
+        }
+
+        public static int LengthOf(ulong item)
+        {
+            return 9;
+        }
+
+        public static int LengthOf(long item)
+        {
+            return Encode(item).Length;
+        }
+        
+        public static int LengthOf(int item)
+        {
+            return LengthOfLength(item);
+        }
+
+        public static int LengthOf(Keccak item)
+        {
+            return item == null ? 1 : 33;
+        }
+
+        public static int LengthOf(Address item)
+        {
+            return item == null ? 1 : 21;
+        }
+
+        public static int LengthOf(Bloom bloom)
+        {
+            return bloom == null ? 1 : 259;
+        }
+
+        public static int LengthOfSequence(int contentLength)
+        {
+            if (contentLength < 56)
+            {
+                return 1 + contentLength;
+            }
+
+            return 1 + LengthOfLength(contentLength) + contentLength;
+        }
+
+        public static int LengthOf(byte[] array)
+        {
+            return LengthOf(array.AsSpan());
+        }
+        
+        public static int LengthOf(Span<byte> array)
+        {
+            if (array == null || array.Length == 0)
+            {
+                return 1;
+            }
+
+            if (array.Length == 1 && array[0] < 128)
+            {
+                return 1;
+            }
+
+            if (array.Length < 56)
+            {
+                return array.Length + 1;
+            }
+
+            return LengthOfLength(array.Length) + 1 + array.Length;
         }
     }
 }

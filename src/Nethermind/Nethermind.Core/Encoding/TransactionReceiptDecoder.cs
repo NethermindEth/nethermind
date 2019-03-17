@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Encoding
@@ -96,6 +97,16 @@ namespace Nethermind.Core.Encoding
                 Rlp.Encode(item.GasUsedTotal),
                 Rlp.Encode(item.Bloom),
                 Rlp.Encode(item.Logs));
+        }
+
+        public void Encode(MemoryStream stream, TransactionReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public int GetLength(TransactionReceipt item, RlpBehaviors rlpBehaviors)
+        {
+            throw new System.NotImplementedException();
         }
     }
 }

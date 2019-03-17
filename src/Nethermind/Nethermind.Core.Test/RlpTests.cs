@@ -17,7 +17,10 @@
  */
 
 using System;
+using System.IO;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -56,6 +59,74 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(new byte[] {1}, output.Bytes);
         }
 
+        [TestCase(1, 0)]
+        [TestCase(1, 1)]
+        [TestCase(1, 55)]
+        [TestCase(2, 56)]
+        [TestCase(2, 128)]
+        [TestCase(3, 16000)]
+        [TestCase(4, 300000)]
+        public void Memory_stream_sequence(int positionAfter, int length)
+        {
+            MemoryStream stream = new MemoryStream();
+            Rlp.StartSequence(stream, length);
+            Assert.AreEqual(positionAfter, stream.Position);
+        }
+        
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(55)]
+        [TestCase(56)]
+        [TestCase(128)]
+        [TestCase(16000)]
+        [TestCase(300000)]
+        public void Memory_stream_uint256(int value)
+        {
+            MemoryStream stream = new MemoryStream();
+            Rlp.Encode(stream, (UInt256)value);
+
+            byte[] bytesNew = stream.ToArray();
+            byte[] bytesOld = Rlp.Encode((UInt256)value).Bytes;
+            Assert.AreEqual(bytesOld.ToHexString(), bytesNew.ToHexString());
+            Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((UInt256)value), "length");
+        }
+        
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(55)]
+        [TestCase(56)]
+        [TestCase(128)]
+        [TestCase(16000)]
+        [TestCase(300000)]
+        public void Memory_stream_long(int value)
+        {
+            MemoryStream stream = new MemoryStream();
+            Rlp.Encode(stream, (long)value);
+
+            byte[] bytesNew = stream.ToArray();
+            byte[] bytesOld = Rlp.Encode((long)value).Bytes;
+            Assert.AreEqual(bytesOld.ToHexString(), bytesNew.ToHexString());
+            Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((long)value), "length");
+        }
+        
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(55)]
+        [TestCase(56)]
+        [TestCase(128)]
+        [TestCase(16000)]
+        [TestCase(300000)]
+        public void Memory_stream_nonce(int value)
+        {
+            MemoryStream stream = new MemoryStream();
+            Rlp.Encode(stream, (ulong)value);
+
+            byte[] bytesNew = stream.ToArray();
+            byte[] bytesOld = Rlp.Encode((ulong)value).Bytes;
+            Assert.AreEqual(bytesOld.ToHexString(), bytesNew.ToHexString());
+            Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((ulong)value), "length");
+        }
+        
         [Test]
         public void Long_negative()
         {

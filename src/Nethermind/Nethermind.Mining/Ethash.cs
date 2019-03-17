@@ -18,6 +18,7 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -232,8 +233,12 @@ namespace Nethermind.Mining
 
         private static Keccak GetTruncatedHash(BlockHeader header)
         {
-            Keccak headerHashed = Keccak.Compute(Rlp.Encode(header, RlpBehaviors.ExcludeBlockMixHashAndNonce)); // sic! Keccak here not Keccak512
-            return headerHashed;
+            using (MemoryStream stream = Rlp.BorrowStream())
+            {
+                Rlp.Encode(stream, header, RlpBehaviors.ForSealing);
+                Keccak headerHashed = Keccak.Compute(stream.ToArray()); // sic! Keccak here not Keccak512
+                return headerHashed;
+            }
         }
 
         public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)

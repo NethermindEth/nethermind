@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -53,6 +54,16 @@ namespace Nethermind.Network
             elements[3] = Rlp.Encode(string.Empty);
             elements[4] = Rlp.Encode(item.Reputation);
             return Rlp.Encode(elements);
+        }
+
+        public void Encode(MemoryStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors)
+        {
+            throw new System.NotImplementedException();
         }
 
         public static void Init()

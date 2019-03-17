@@ -260,7 +260,7 @@ namespace Nethermind.Store
 
         private Rlp RlpEncodeBranch()
         {
-            int valueRlpLength = Rlp.LengthOfByteArray(Value);
+            int valueRlpLength = Rlp.LengthOf(Value);
             int contentLength = valueRlpLength + GetChildrenRlpLength();
             int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
             byte[] result = new byte[sequenceLength];

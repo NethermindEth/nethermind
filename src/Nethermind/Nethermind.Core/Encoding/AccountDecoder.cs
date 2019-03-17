@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
@@ -49,6 +50,16 @@ namespace Nethermind.Core.Encoding
                 Rlp.Encode(item.Balance),
                 Rlp.Encode(item.StorageRoot),
                 Rlp.Encode(item.CodeHash));
+        }
+
+        public void Encode(MemoryStream stream, Account item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public int GetLength(Account item, RlpBehaviors rlpBehaviors)
+        {
+            throw new System.NotImplementedException();
         }
     }
 }

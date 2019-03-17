@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
         [TestCase(256)]
         [TestCase(2048)]
         [TestCase(Int32.MaxValue)]
-        public void MemoryCost(int memoryAllocation, long expectedValue)
+        public void MemoryCost(int memoryAllocation)
         {
             EvmPooledMemory memory = new EvmPooledMemory();
             var result = memory.CalculateMemoryCost(0, (UInt256)memoryAllocation);

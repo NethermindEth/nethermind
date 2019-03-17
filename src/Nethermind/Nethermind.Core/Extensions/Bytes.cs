@@ -129,7 +129,7 @@ namespace Nethermind.Core.Extensions
             return bytes.Length;
         }
 
-        public static byte[] WithoutLeadingZeros(this byte[] bytes)
+        public static Span<byte> WithoutLeadingZeros(this byte[] bytes)
         {
             for (int i = 0; i < bytes.Length; i++)
             {

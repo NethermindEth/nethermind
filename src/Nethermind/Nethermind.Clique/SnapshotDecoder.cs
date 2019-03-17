@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -55,6 +56,16 @@ namespace Nethermind.Clique
                 Rlp.Encode(EncodeVotes(item.Votes)),
                 Rlp.Encode(EncodeTally(item.Tally))
             );
+        }
+
+        public void Encode(MemoryStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public int GetLength(Snapshot item, RlpBehaviors rlpBehaviors)
+        {
+            throw new System.NotImplementedException();
         }
 
         private SortedList<Address, UInt256> DecodeSigners(Rlp.DecoderContext context)

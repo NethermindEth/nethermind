@@ -312,8 +312,18 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.UnknownParent;
             }
 
-            _blockDb.Set(block.Hash, Rlp.Encode(block).Bytes);
-            //            _blockCache.Set(block.Hash, block);
+            using (MemoryStream stream = Rlp.BorrowStream())
+            {
+                Rlp.Encode(stream, block);
+                byte[] newRlp = stream.ToArray();
+                byte[] oldRlp = Rlp.Encode(block).Bytes;
+                if (!newRlp.SequenceEqual(oldRlp))
+                {
+                    string newStr = newRlp.ToHexString();
+                    string oldStr = oldRlp.ToHexString();
+                }
+                _blockDb.Set(block.Hash, newRlp);
+            }
 
             // TODO: when reviewing the entire data chain need to look at the transactional storing of level and block
             SetTotalDifficulty(block);

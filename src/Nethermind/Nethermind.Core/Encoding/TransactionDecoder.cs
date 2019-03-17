@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -86,6 +87,54 @@ namespace Nethermind.Core.Encoding
         public Rlp Encode(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             return Rlp.Encode(item, false);
+        }
+
+        public void Encode(MemoryStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            int contentLength = GetContentLength(item, false);
+            Rlp.StartSequence(stream, contentLength);
+            Rlp.Encode(stream, item.Nonce);
+            Rlp.Encode(stream, item.GasPrice);
+            Rlp.Encode(stream, item.GasLimit);
+            Rlp.Encode(stream, item.To);
+            Rlp.Encode(stream, item.Value);
+            Rlp.Encode(stream, item.To == null ? item.Init : item.Data);
+            Rlp.Encode(stream, item.Signature?.V ?? 0);
+            Rlp.Encode(stream, item.Signature == null ? null : item.Signature.R.WithoutLeadingZeros());
+            Rlp.Encode(stream, item.Signature == null ? null : item.Signature.S.WithoutLeadingZeros());
+        }
+
+        private int GetContentLength(Transaction item, bool forSigning , bool isEip155Enabled = false, int chainId = 0)
+        {
+            int contentLength = Rlp.LengthOf(item.Nonce)
+                                + Rlp.LengthOf(item.GasPrice)
+                                + Rlp.LengthOf(item.GasLimit)
+                                + Rlp.LengthOf(item.To)
+                                + Rlp.LengthOf(item.Value)
+                                + (item.To == null ? Rlp.LengthOf(item.Init) : Rlp.LengthOf(item.Data));
+
+            if (forSigning)
+            {
+                if (isEip155Enabled && chainId != 0)
+                {
+                    contentLength += Rlp.LengthOf(chainId);
+                    contentLength += 1;
+                    contentLength += 1;
+                }
+            }
+            else
+            {
+                contentLength += item.Signature == null ? 1 : Rlp.LengthOf(item.Signature.V);
+                contentLength += Rlp.LengthOf(item.Signature == null ? null : item.Signature.R.WithoutLeadingZeros());
+                contentLength += Rlp.LengthOf(item.Signature == null ? null : item.Signature.S.WithoutLeadingZeros());
+            }
+
+            return contentLength;
+        }
+
+        public int GetLength(Transaction item, RlpBehaviors rlpBehaviors)
+        {
+            return Rlp.GetSequenceRlpLength(GetContentLength(item, false));
         }
     }
 }

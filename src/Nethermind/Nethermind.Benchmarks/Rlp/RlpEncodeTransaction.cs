@@ -20,7 +20,6 @@ using System;
 using System.IO;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Mathematics.StatisticalTesting;
 using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,27 +33,29 @@ namespace Nethermind.Benchmarks.Rlp
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class RlpEncodeBlock
+    public class RlpEncodeTransaction
     {
-        private static Block _block;
+        private Transaction[] _scenarios;
 
-        private Block[] _scenarios;
-
-        public RlpEncodeBlock()
+        public RlpEncodeTransaction()
         {
-            var transactions = new Transaction[100];
-            for (int i = 0; i < 100; i++)
-            {
-                transactions[i] = Build.A.Transaction.WithData(new byte[] {(byte) i}).WithNonce((UInt256) i).WithValue((UInt256) i).Signed(new EthereumSigner(MainNetSpecProvider.Instance, NullLogManager.Instance), TestItem.PrivateKeyA, UInt256.One).TestObject;
-            }
-
             _scenarios = new[]
             {
-                Build.A.Block.WithNumber(1).TestObject,
-                Build.A.Block.WithNumber(1).WithTransactions(transactions).WithOmmers(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject
+                Build.A.Transaction.TestObject,
             };
         }
-        
+
+        [Params(0)]
+        public int ScenarioIndex { get; set; }
+
+        [GlobalSetup]
+        public void Setup()
+        {
+            Console.WriteLine($"Length current: {Current().Length}");
+            Console.WriteLine($"Length improved: {Improved().Length}");
+            Check(Current(), Improved());
+        }
+
         private void Check(byte[] a, byte[] b)
         {
             if (!a.SequenceEqual(b))
@@ -66,32 +67,21 @@ namespace Nethermind.Benchmarks.Rlp
             Console.WriteLine($"Outputs are the same: {a.ToHexString()}");
         }
 
-        [Params(0, 1)]
-        public int ScenarioIndex { get; set; }
+        private static RecyclableMemoryStreamManager _recycler = new RecyclableMemoryStreamManager();
+        private MemoryStream _stream = _recycler.GetStream();
 
-        [GlobalSetup]
-        public void Setup()
-        {
-            _block = _scenarios[ScenarioIndex];
-            Check(Current(), Improved());
-        }
-
-        private RecyclableMemoryStreamManager _recycler = new RecyclableMemoryStreamManager();
-        
         [Benchmark]
         public byte[] Improved()
         {
-            using (MemoryStream stream = _recycler.GetStream())
-            {
-                Nethermind.Core.Encoding.Rlp.Encode(stream, _block);
-                return stream.ToArray();
-            }
+            _stream.Seek(0, SeekOrigin.Begin);
+            Nethermind.Core.Encoding.Rlp.Encode(_stream, _scenarios[ScenarioIndex]);
+            return _stream.ToArray();
         }
 
         [Benchmark]
         public byte[] Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Encode(_block).Bytes;
+            return Nethermind.Core.Encoding.Rlp.Encode(_scenarios[ScenarioIndex]).Bytes;
         }
     }
 }
