@@ -19,11 +19,10 @@
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Benchmarks.Network
+namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]

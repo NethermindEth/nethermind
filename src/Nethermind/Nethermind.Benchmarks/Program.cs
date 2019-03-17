@@ -20,7 +20,6 @@ using BenchmarkDotNet.Running;
 using Nethermind.Benchmarks.Core;
 using Nethermind.Benchmarks.Evm;
 using Nethermind.Benchmarks.Mining;
-using Nethermind.Benchmarks.Network;
 using Nethermind.Benchmarks.Rlp;
 using Nethermind.Benchmarks.Store;
 
@@ -57,11 +56,6 @@ namespace Nethermind.Benchmarks
             BenchmarkRunner.Run<UInt256Divide>();
             
             BenchmarkRunner.Run<EthashHashimoto>();
-            
-            // the following ones may require bigger structural changes to ciphers
-            BenchmarkRunner.Run<NettyFrameEncoder>();
-            BenchmarkRunner.Run<NettyFrameMerger>();
-            BenchmarkRunner.Run<NettyPacketSplitter>();
             
             // here we can try some structural changes to RLP design where allocations are limited and performance improved
             BenchmarkRunner.Run<RlpDecodeAccount>();

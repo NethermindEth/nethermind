@@ -19,7 +19,6 @@
 using System;
 using System.Diagnostics;
 using Nethermind.Core.Extensions;
-using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -37,15 +36,18 @@ namespace Nethermind.Network.Crypto
     ///     -Hash the MAC key before use
     ///     -Include the encryption IV in the MAC computation
     /// </summary>
-    public class EthereumIesEngine
+    public class OldEthereumIesEngine
     {
+        private static OptimizedKdf _optimizedKdf = new OptimizedKdf();
         private byte[] _kdfKey;
 
+        private readonly IBasicAgreement _agreement;
         private readonly IDigest _hash;
 
         private bool _forEncryption;
         private IesParameters _iesParameters;
         private byte[] _iv;
+        private ICipherParameters _privParam, _pubParam;
 
         private byte[] V;
 
@@ -58,11 +60,13 @@ namespace Nethermind.Network.Crypto
      * @param hash   hash ing function
      * @param cipher the actual cipher
      */
-        public EthereumIesEngine(
+        public OldEthereumIesEngine(
+            IBasicAgreement agreement,
             IMac mac,
             IDigest hash,
             BufferedBlockCipher cipher)
         {
+            _agreement = agreement;
             Mac = mac;
             _hash = hash;
             Cipher = cipher;
@@ -83,15 +87,30 @@ namespace Nethermind.Network.Crypto
      */
         public void Init(
             bool forEncryption,
-            byte[] kdfKey,
-            ParametersWithIV parameters)
+            ICipherParameters privParam,
+            ICipherParameters pubParam,
+            ICipherParameters parameters)
         {
-            _kdfKey = kdfKey;
             _forEncryption = forEncryption;
+            _privParam = privParam;
+            _pubParam = pubParam;
             V = new byte[0];
 
-            _iv = parameters.GetIV();
-            _iesParameters = (IesParameters) parameters.Parameters;
+            ExtractParams(parameters);
+        }
+
+        private void ExtractParams(ICipherParameters parameters)
+        {
+            if (parameters is ParametersWithIV parametersWithIv)
+            {
+                _iv = parametersWithIv.GetIV();
+                _iesParameters = (IesParameters) parametersWithIv.Parameters;
+            }
+            else
+            {
+                _iv = null;
+                _iesParameters = (IesParameters) parameters;
+            }
         }
 
         private byte[] EncryptBlock(
@@ -184,7 +203,7 @@ namespace Nethermind.Network.Crypto
             int inLen,
             byte[] macData)
         {
-            byte[] M = null, k = null, k1 = null, k2 = null;
+            byte[] M = null, K = null, K1 = null, K2 = null;
             int len;
 
             // Ensure that the length of the input is greater than the MAC in bytes
@@ -194,22 +213,22 @@ namespace Nethermind.Network.Crypto
             }
 
             // Block cipher mode.
-            k1 = new byte[((IesWithCipherParameters) _iesParameters).CipherKeySize / 8];
-            k2 = new byte[_iesParameters.MacKeySize / 8];
+            K1 = new byte[((IesWithCipherParameters) _iesParameters).CipherKeySize / 8];
+            K2 = new byte[_iesParameters.MacKeySize / 8];
 //                K = new byte[K1.Length + K2.Length];
-            k = _kdfKey;
+            K = _kdfKey;
 //                _kdf.GenerateBytes(K, 0, K.Length);
-            Array.Copy(k, 0, k1, 0, k1.Length);
-            Array.Copy(k, k1.Length, k2, 0, k2.Length);
+            Array.Copy(K, 0, K1, 0, K1.Length);
+            Array.Copy(K, K1.Length, K2, 0, K2.Length);
 
             // If IV provide use it to initialize the cipher
             if (_iv != null)
             {
-                Cipher.Init(false, new ParametersWithIV(new KeyParameter(k1), _iv));
+                Cipher.Init(false, new ParametersWithIV(new KeyParameter(K1), _iv));
             }
             else
             {
-                Cipher.Init(false, new KeyParameter(k1));
+                Cipher.Init(false, new KeyParameter(K1));
             }
 
             M = new byte[Cipher.GetOutputSize(inLen - V.Length - Mac.GetMacSize())];
@@ -229,12 +248,12 @@ namespace Nethermind.Network.Crypto
             {
                 k2A = new byte[_hash.GetDigestSize()];
                 _hash.Reset();
-                _hash.BlockUpdate(k2, 0, k2.Length);
+                _hash.BlockUpdate(K2, 0, K2.Length);
                 _hash.DoFinal(k2A, 0);
             }
             else
             {
-                k2A = k2;
+                k2A = K2;
             }
 
             Mac.Init(new KeyParameter(k2A));
@@ -278,6 +297,13 @@ namespace Nethermind.Network.Crypto
             int inLen,
             byte[] macData)
         {
+            // Compute the common value and convert to byte array.
+            _agreement.Init(_privParam);
+            BigInteger zAsInteger = _agreement.CalculateAgreement(_pubParam);
+            byte[] z = BigIntegers.AsUnsignedByteArray(_agreement.GetFieldSize(), zAsInteger);
+
+            _kdfKey = _optimizedKdf.Derive(z);
+
             return _forEncryption
                 ? EncryptBlock(input, inOff, inLen, macData)
                 : DecryptBlock(input, inOff, inLen, macData);

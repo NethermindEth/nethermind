@@ -19,7 +19,7 @@
 using System;
 using BenchmarkDotNet.Attributes;
 
-namespace Nethermind.Benchmarks.Network
+namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]

@@ -674,16 +674,19 @@ namespace Nethermind.Blockchain
         private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
         {
             Block block = blockEventArgs.Block;
+            int counter = 0;
             foreach ((_, PeerInfo peerInfo) in _peers)
             {
-                int counter = 0;
-                if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero)) // TODO: total difficulty instead
+                if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
                 {
                     peerInfo.Peer.SendNewBlock(block);
                     counter++;
                 }
-                
-                if(_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
+            }
+
+            if (counter > 0)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
             }
         }
 

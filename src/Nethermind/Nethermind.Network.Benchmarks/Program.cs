@@ -16,7 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+using BenchmarkDotNet.Running;
 
-[assembly: InternalsVisibleTo("Nethermind.Network.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Network.Benchmarks")]
+namespace Nethermind.Network.Benchmarks
+{
+    public class Program
+    {
+        public static void Main(string[] args)
+        {   
+//            BenchmarkRunner.Run<KdfDerivation>();
+            BenchmarkRunner.Run<EcdhAgreement>();
+//            BenchmarkRunner.Run<NettyFrameEncoder>();
+//            BenchmarkRunner.Run<NettyFrameMerger>();
+//            BenchmarkRunner.Run<NettyPacketSplitter>();
+        }
+    }
+}
