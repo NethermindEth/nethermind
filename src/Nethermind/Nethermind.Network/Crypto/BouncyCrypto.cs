@@ -36,12 +36,12 @@ namespace Nethermind.Network.Crypto
 
         static BouncyCrypto()
         {
-            X9ECParameters curveParamaters = SecNamedCurves.GetByName("secp256k1");
-            DomainParameters = new ECDomainParameters(curveParamaters.Curve, curveParamaters.G, curveParamaters.N, curveParamaters.H);
+            X9ECParameters curveParameters = SecNamedCurves.GetByName("secp256k1");
+            DomainParameters = new ECDomainParameters(curveParameters.Curve, curveParameters.G, curveParameters.N, curveParameters.H);
 
             ECKeyPairGenerator generator = new ECKeyPairGenerator();
-            ECKeyGenerationParameters keygeneratorParameters = new ECKeyGenerationParameters(DomainParameters, SecureRandom);
-            generator.Init(keygeneratorParameters);
+            ECKeyGenerationParameters keyGeneratorParameters = new ECKeyGenerationParameters(DomainParameters, SecureRandom);
+            generator.Init(keyGeneratorParameters);
         }
 
         internal static ECPrivateKeyParameters WrapPrivateKey(PrivateKey privateKey)

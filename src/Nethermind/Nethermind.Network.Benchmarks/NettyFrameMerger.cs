@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,7 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+using System;
+using BenchmarkDotNet.Attributes;
 
-[assembly: InternalsVisibleTo("Nethermind.Network.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Network.Benchmarks")]
+namespace Nethermind.Network.Benchmarks
+{
+    [MemoryDiagnoser]
+    [CoreJob(baseline: true)]
+    public class NettyFrameMerger
+    {
+        [GlobalSetup]
+        public void Setup()
+        {
+        }
+        
+        [Benchmark]
+        public bool Improved()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Benchmark]
+        public bool Current()
+        {
+            throw new NotImplementedException();
+        }
+    }
+}

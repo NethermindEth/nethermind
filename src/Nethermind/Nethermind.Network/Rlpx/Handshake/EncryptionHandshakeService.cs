@@ -24,6 +24,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Crypto;
+using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nethermind.Network.Rlpx.Handshake
@@ -66,7 +67,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.InitiatorNonce = _cryptoRandom.GenerateRandomBytes(32);
             handshake.EphemeralPrivateKey = _ephemeralGenerator.Generate();
 
-            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, remoteNodeId);
+            byte[] staticSharedSecret = Proxy.EcdhSerialized(remoteNodeId.Bytes, _privateKey.KeyBytes);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
             AuthEip8Message authMessage = new AuthEip8Message();
@@ -123,7 +124,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.EphemeralPrivateKey = _ephemeralGenerator.Generate();
 
             handshake.InitiatorNonce = authMessage.Nonce;
-            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, handshake.RemoteNodeId);
+            byte[] staticSharedSecret = Proxy.EcdhSerialized(handshake.RemoteNodeId.Bytes, _privateKey.KeyBytes);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
             handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
@@ -194,7 +195,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         private void SetSecrets(EncryptionHandshake handshake, HandshakeRole handshakeRole)
         {
-            byte[] ephemeralSharedSecret = BouncyCrypto.Agree(handshake.EphemeralPrivateKey, handshake.RemoteEphemeralPublicKey);
+            byte[] ephemeralSharedSecret = Proxy.EcdhSerialized(handshake.RemoteEphemeralPublicKey.Bytes, handshake.EphemeralPrivateKey.KeyBytes);
             byte[] nonceHash = Keccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).Bytes;
             byte[] sharedSecret = Keccak.Compute(Bytes.Concat(ephemeralSharedSecret, nonceHash)).Bytes;
             byte[] token = Keccak.Compute(sharedSecret).Bytes;

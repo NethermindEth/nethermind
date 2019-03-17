@@ -71,7 +71,6 @@ namespace Nethermind.Network
             ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
-
             _rlpxPeer = rlpxPeer ?? throw new ArgumentNullException(nameof(rlpxPeer));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
@@ -79,9 +78,8 @@ namespace Nethermind.Network
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _peerLoader = peerLoader ?? throw new ArgumentNullException(nameof(peerLoader));
             _peerStorage.StartBatch();
-
-            _stats = stats;
-            _logger = logManager.GetClassLogger();
+            
+            _peerComparer = new PeerComparer(_stats);
         }
 
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -180,6 +178,16 @@ namespace Nethermind.Network
         public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToList().AsReadOnly();
         public IReadOnlyCollection<Peer> CandidatePeers => _candidatePeers.Values.ToList().AsReadOnly();
 
+        private class CandidateSelection
+        {
+            public List<Peer> PreCandidates { get; } = new List<Peer>();
+            public List<Peer> Candidates { get; } = new List<Peer>();
+            public List<Peer> Incompatible { get; } = new List<Peer>();
+            public Dictionary<ActivePeerSelectionCounter, int> Counters { get; } = new Dictionary<ActivePeerSelectionCounter, int>();
+        }
+
+        private CandidateSelection _currentSelection = new CandidateSelection();
+
         private async Task RunPeerUpdateLoop()
         {
             while (true)
@@ -217,8 +225,8 @@ namespace Nethermind.Network
                 int failedInitialConnect = 0;
                 int connectionRounds = 0;
 
-                var candidateSelection = SelectAndRankCandidates();
-                IReadOnlyCollection<Peer> remainingCandidates = candidateSelection.Candidates;
+                SelectAndRankCandidates();
+                IReadOnlyCollection<Peer> remainingCandidates = _currentSelection.Candidates;
                 if (!remainingCandidates.Any())
                 {
                     continue;
@@ -258,6 +266,8 @@ namespace Nethermind.Network
                         }
 
                         bool result = await InitializePeerConnection(peer);
+                        if(_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_activePeers.Count}, CAND: {_candidatePeers.Count}");
+                        
                         if (!result)
                         {
                             _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
@@ -284,8 +294,8 @@ namespace Nethermind.Network
                     int activePeersCount = _activePeers.Count;
                     if (activePeersCount != _prevActivePeersCount)
                     {
-                        string countersLog = string.Join(", ", candidateSelection.Counters.Select(x => $"{x.Key.ToString()}: {x.Value}"));
-                        _logger.Debug($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(candidateSelection.IncompatiblePeers)}, EligibleCandidates: {candidateSelection.Candidates.Count()}, " +
+                        string countersLog = string.Join(", ", _currentSelection.Counters.Select(x => $"{x.Key.ToString()}: {x.Value}"));
+                        _logger.Debug($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count()}, " +
                                       $"Tried: {tryCount}, Rounds: {connectionRounds}, Failed initial connect: {failedInitialConnect}, Established initial connect: {newActiveNodes}, " +
                                       $"Current candidate peers: {_candidatePeers.Count}, Current active peers: {_activePeers.Count} " +
                                       $"[InOut: {_activePeers.Count(x => x.Value.OutSession != null && x.Value.InSession != null)} | " +
@@ -335,65 +345,112 @@ namespace Nethermind.Network
             }
         }
 
-        private (IReadOnlyCollection<Peer> Candidates, IDictionary<ActivePeerSelectionCounter, int> Counters, IReadOnlyCollection<Peer> IncompatiblePeers) SelectAndRankCandidates()
+        private void SelectAndRankCandidates()
         {
-            var counters = Enum.GetValues(typeof(ActivePeerSelectionCounter)).OfType<ActivePeerSelectionCounter>().ToDictionary(x => x, y => 0);
+            _currentSelection.PreCandidates.Clear();
+            _currentSelection.Candidates.Clear();
+            _currentSelection.Incompatible.Clear();
+            foreach (ActivePeerSelectionCounter value in Enum.GetValues(typeof(ActivePeerSelectionCounter)))
+            {
+                _currentSelection.Counters[value] = 0;
+            }
+
             var availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
             if (availableActiveCount <= 0)
             {
-                return (Array.Empty<Peer>(), counters, Array.Empty<Peer>());
+                return;
             }
 
-            var candidatesSnapshot = _candidatePeers.Where(x => !_activePeers.ContainsKey(x.Key)).ToArray();
-            if (!candidatesSnapshot.Any())
+            foreach ((PublicKey key, Peer peer) in _candidatePeers)
             {
-                return (Array.Empty<Peer>(), counters, Array.Empty<Peer>());
-            }
-
-            counters[ActivePeerSelectionCounter.AllNonActiveCandidates] = candidatesSnapshot.Length;
-
-            List<Peer> candidates = new List<Peer>();
-            List<Peer> incompatiblePeers = new List<Peer>();
-            for (int i = 0; i < candidatesSnapshot.Length; i++)
-            {
-                var candidate = candidatesSnapshot[i];
-                if (candidate.Value.Node.Port == 0)
+                if (_activePeers.ContainsKey(key))
                 {
-                    counters[ActivePeerSelectionCounter.FilteredByZeroPort] = counters[ActivePeerSelectionCounter.FilteredByZeroPort] + 1;
+                    continue;
+                }
+                
+                _currentSelection.PreCandidates.Add(peer);
+            }
+            
+            if (!_currentSelection.PreCandidates.Any())
+            {
+                return;
+            }
+            
+            _currentSelection.Counters[ActivePeerSelectionCounter.AllNonActiveCandidates] = _currentSelection.PreCandidates.Count;
+
+            foreach (Peer preCandidate in _currentSelection.PreCandidates)
+            {
+                if (preCandidate.Node.Port == 0)
+                {
+                    _currentSelection.Counters[ActivePeerSelectionCounter.FilteredByZeroPort]++;
                     continue;
                 }
 
-                var delayResult = _stats.IsConnectionDelayed(candidate.Value.Node);
+                var delayResult = _stats.IsConnectionDelayed(preCandidate.Node);
                 if (delayResult.Result)
                 {
                     if (delayResult.DelayReason == NodeStatsEventType.Disconnect)
                     {
-                        counters[ActivePeerSelectionCounter.FilteredByDisconnect] = counters[ActivePeerSelectionCounter.FilteredByDisconnect] + 1;
+                        _currentSelection.Counters[ActivePeerSelectionCounter.FilteredByDisconnect]++;
                     }
                     else if (delayResult.DelayReason == NodeStatsEventType.ConnectionFailed)
                     {
-                        counters[ActivePeerSelectionCounter.FilteredByFailedConnection] = counters[ActivePeerSelectionCounter.FilteredByFailedConnection] + 1;
+                        _currentSelection.Counters[ActivePeerSelectionCounter.FilteredByFailedConnection]++;
                     }
 
                     continue;
                 }
 
-                if (_stats.FindCompatibilityValidationResult(candidate.Value.Node).HasValue)
+                if (_stats.FindCompatibilityValidationResult(preCandidate.Node).HasValue)
                 {
-                    incompatiblePeers.Add(candidate.Value);
+                    _currentSelection.Incompatible.Add(preCandidate);
                     continue;
                 }
 
-                if (!PeerIsDisconnected(candidate.Value))
+                if (!PeerIsDisconnected(preCandidate))
                 {
                     // in transition
                     continue;
                 }
 
-                candidates.Add(candidate.Value);
+                _currentSelection.Candidates.Add(preCandidate);    
             }
+            
+            _currentSelection.Candidates.Sort(_peerComparer);
+        }
 
-            return (candidates.OrderBy(x => x.Node.IsTrusted).ThenByDescending(x => _stats.GetCurrentReputation(x.Node)).ToList(), counters, incompatiblePeers);
+        private PeerComparer _peerComparer;
+
+        public class PeerComparer : IComparer<Peer>
+        {
+            private readonly INodeStatsManager _stats;
+
+            public PeerComparer(INodeStatsManager stats)
+            {
+                _stats = stats;
+            }
+            
+            public int Compare(Peer x, Peer y)
+            {
+                if (x == null)
+                {
+                    return y == null ? 0 : 1;
+                }
+                
+                if (y == null)
+                {
+                    return -1;
+                }
+                
+                int trust = -x.Node.IsTrusted.CompareTo(y.Node.IsTrusted);
+                if (trust != 0)
+                {
+                    return trust;
+                }
+                
+                int reputation = -_stats.GetCurrentReputation(x.Node).CompareTo(_stats.GetCurrentReputation(y.Node));
+                return reputation;
+            }
         }
 
 //        private void LogPeerEventHistory(Peer peer)
@@ -865,12 +922,13 @@ namespace Nethermind.Network
 
         private void CleanupCandidatePeers()
         {
-            var candidates = _candidatePeers.Values.ToArray();
-            if (candidates.Length <= _networkConfig.CandidatePeerCountCleanupThreshold)
+            if (_candidatePeers.Count <= _networkConfig.CandidatePeerCountCleanupThreshold)
             {
                 return;
             }
 
+            // may further optimize allocations here
+            var candidates = _candidatePeers.Values.ToArray();
             var countToRemove = candidates.Length - _networkConfig.MaxCandidatePeerCount;
             var failedValidationCandidates = candidates.Where(x => _stats.HasFailedValidation(x.Node))
                 .OrderBy(x => _stats.GetCurrentReputation(x.Node)).ToArray();

@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Nethermind.Core.Crypto;
@@ -29,11 +30,34 @@ namespace Nethermind.Stats
 {
     public class NodeStatsManager : INodeStatsManager
     {
+        private class NodeComparer : IEqualityComparer<Node>
+        {
+            public bool Equals(Node x, Node y)
+            {
+                if (ReferenceEquals(x, null))
+                {
+                    return ReferenceEquals(y, null);
+                }
+
+                if (ReferenceEquals(y, null))
+                {
+                    return false;
+                }
+
+                return x.Id == y.Id;
+            }
+
+            public int GetHashCode(Node obj)
+            {
+                return obj?.GetHashCode() ?? 0;
+            }
+        }
+        
         private readonly IStatsDumper _statsDumper;
         private readonly IStatsConfig _statsConfig;
         private readonly ILogManager _logManager;
         private readonly bool _useLightStats;
-        private readonly ConcurrentDictionary<PublicKey, INodeStats> _nodeStats = new ConcurrentDictionary<PublicKey, INodeStats>();
+        private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new ConcurrentDictionary<Node, INodeStats>(new NodeComparer());
 
         public NodeStatsManager(IStatsConfig statsConfig, ILogManager logManager, bool useLightStats = true)
         {
@@ -43,14 +67,25 @@ namespace Nethermind.Stats
             _useLightStats = useLightStats;
         }
 
+        private INodeStats AddStats(Node node)
+        {
+            return _useLightStats ? new NodeStatsLight(node, _statsConfig) : (INodeStats) new NodeStats(node, _statsConfig);
+        }
+        
         public INodeStats GetOrAdd(Node node)
         {
             if (node == null)
             {
                 return null;
             }
+
+            // to avoid allocations
+            if (_nodeStats.TryGetValue(node, out INodeStats stats))
+            {
+                return stats;
+            }
             
-            return _nodeStats.GetOrAdd(node.Id, x => _useLightStats ? new NodeStatsLight(node, _statsConfig) : (INodeStats) new NodeStats(node, _statsConfig));
+            return _nodeStats.GetOrAdd(node, AddStats);
         }
 
         public void ReportHandshakeEvent(Node node, ConnectionDirection direction)

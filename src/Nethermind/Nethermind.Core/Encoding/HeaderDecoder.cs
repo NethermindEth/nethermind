@@ -22,7 +22,6 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Encoding
 {
-    // TODO: unit tests
     public class HeaderDecoder : IRlpDecoder<BlockHeader>
     {
         public BlockHeader Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

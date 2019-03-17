@@ -16,14 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+/* ECDH bindings were based on ECDH bindings from Secp256k1.Net (MIT license) */
+
 using System;
 using System.Runtime.InteropServices;
 using System.Security;
 
 namespace Nethermind.Secp256k1
 {
-    // TODO: analyze security concerns for SuppressUnmanagedCodeSecurity
-    // TODO: analyze memory access concerns when passing byte[] through P/Invoke
     public static class Proxy
     {
         // TODO: there was some work planned with .NET Core team to allow to map libraries based on the system in DllImport
@@ -64,6 +64,18 @@ namespace Nethermind.Secp256k1
             [SuppressUnmanagedCodeSecurity]
             [DllImport("secp256k1.dll")]
             public static extern bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, byte[] publicKey, byte[] signature, byte[] message);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.dll")]
+            public static extern bool secp256k1_ecdh( /* secp256k1_context */ IntPtr context, byte[] output, byte[] publicKey, byte[] privateKey, IntPtr hashFunctionPointer, IntPtr data);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.dll")]
+            public static extern unsafe int secp256k1_ec_pubkey_parse(IntPtr ctx, void* pubkey, void* input, uint inputlen);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.dll")]
+            public static extern unsafe int secp256k1_ec_pubkey_serialize(IntPtr ctx, void* output, ref uint outputlen, void* pubkey, uint flags);
         }
 
         private static class PosixLib
@@ -103,6 +115,18 @@ namespace Nethermind.Secp256k1
             [SuppressUnmanagedCodeSecurity]
             [DllImport("secp256k1.so")]
             public static extern bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, byte[] publicKey, byte[] signature, byte[] message);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.so")]
+            public static extern bool secp256k1_ecdh( /* secp256k1_context */ IntPtr context, byte[] output, byte[] publicKey, byte[] privateKey, IntPtr hashFunctionPointer, IntPtr data);
+            
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.so")]
+            public static extern unsafe int secp256k1_ec_pubkey_parse(IntPtr ctx, void* pubkey, void* input, uint inputlen);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.so")]
+            public static extern unsafe int secp256k1_ec_pubkey_serialize(IntPtr ctx, void* output, ref uint outputlen, void* pubkey, uint flags);
         }
 
         private static class MacLib
@@ -142,6 +166,18 @@ namespace Nethermind.Secp256k1
             [SuppressUnmanagedCodeSecurity]
             [DllImport("secp256k1.dylib")]
             public static extern bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, byte[] publicKey, byte[] signature, byte[] message);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.dylib")]
+            public static extern bool secp256k1_ecdh( /* secp256k1_context */ IntPtr context, byte[] output, byte[] publicKey, byte[] privateKey, IntPtr hashFunctionPointer, IntPtr data);
+            
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.dylib")]
+            public static extern unsafe int secp256k1_ec_pubkey_parse(IntPtr ctx, void* pubkey, void* input, uint inputlen);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.dylib")]
+            public static extern unsafe int secp256k1_ec_pubkey_serialize(IntPtr ctx, void* output, ref uint outputlen, void* pubkey, uint flags);
         }
 
         /* constants from pycoin (https://github.com/richardkiss/pycoin)*/
@@ -184,15 +220,17 @@ namespace Nethermind.Secp256k1
 
         private static OsPlatform GetPlatform()
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) 
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 return OsPlatform.Windows;
             }
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) 
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 return OsPlatform.Linux;
             }
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) 
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
                 return OsPlatform.Mac;
             }
@@ -235,22 +273,22 @@ namespace Nethermind.Secp256k1
             byte[] publicKey = new byte[64];
             byte[] serializedPublicKey = new byte[compressed ? 33 : 65];
 
-            if (Platform == OsPlatform.Windows ? 
-                !Win64Lib.secp256k1_ec_pubkey_create(Context, publicKey, privateKey)
-                : !(Platform == OsPlatform.Linux ? 
-                    PosixLib.secp256k1_ec_pubkey_create(Context, publicKey, privateKey)
+            if (Platform == OsPlatform.Windows
+                ? !Win64Lib.secp256k1_ec_pubkey_create(Context, publicKey, privateKey)
+                : !(Platform == OsPlatform.Linux
+                    ? PosixLib.secp256k1_ec_pubkey_create(Context, publicKey, privateKey)
                     : MacLib.secp256k1_ec_pubkey_create(Context, publicKey, privateKey)))
             {
                 return null;
             }
 
-            uint outputSize = (uint)serializedPublicKey.Length;
+            uint outputSize = (uint) serializedPublicKey.Length;
             uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
 
-            if (Platform == OsPlatform.Windows ? 
-                !Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
-                : !(Platform == OsPlatform.Linux ? 
-                    PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
+            if (Platform == OsPlatform.Windows
+                ? !Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
+                : !(Platform == OsPlatform.Linux
+                    ? PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
                     : MacLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)))
             {
                 return null;
@@ -265,19 +303,19 @@ namespace Nethermind.Secp256k1
             byte[] compactSignature = new byte[64];
             recoveryId = 0;
 
-            if (Platform == OsPlatform.Windows ? 
-                !Win64Lib.secp256k1_ecdsa_sign_recoverable(Context, recoverableSignature, messageHash, privateKey, IntPtr.Zero, IntPtr.Zero)
-                : !(Platform == OsPlatform.Linux ? 
-                    PosixLib.secp256k1_ecdsa_sign_recoverable(Context, recoverableSignature, messageHash, privateKey, IntPtr.Zero, IntPtr.Zero)
+            if (Platform == OsPlatform.Windows
+                ? !Win64Lib.secp256k1_ecdsa_sign_recoverable(Context, recoverableSignature, messageHash, privateKey, IntPtr.Zero, IntPtr.Zero)
+                : !(Platform == OsPlatform.Linux
+                    ? PosixLib.secp256k1_ecdsa_sign_recoverable(Context, recoverableSignature, messageHash, privateKey, IntPtr.Zero, IntPtr.Zero)
                     : MacLib.secp256k1_ecdsa_sign_recoverable(Context, recoverableSignature, messageHash, privateKey, IntPtr.Zero, IntPtr.Zero)))
             {
                 return null;
             }
 
-            if (Platform == OsPlatform.Windows ? 
-                !Win64Lib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)
-                : !(Platform == OsPlatform.Linux ? 
-                    PosixLib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)
+            if (Platform == OsPlatform.Windows
+                ? !Win64Lib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)
+                : !(Platform == OsPlatform.Linux
+                    ? PosixLib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)
                     : MacLib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)))
             {
                 return null;
@@ -290,38 +328,197 @@ namespace Nethermind.Secp256k1
         {
             byte[] publicKey = new byte[64];
             byte[] serializedPublicKey = new byte[compressed ? 33 : 65];
-            uint outputSize = (uint)serializedPublicKey.Length;
+            uint outputSize = (uint) serializedPublicKey.Length;
             uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
             byte[] recoverableSignature = new byte[65];
 
-            if (Platform == OsPlatform.Windows ? 
-                !Win64Lib.secp256k1_ecdsa_recoverable_signature_parse_compact(Context, recoverableSignature, compactSignature, recoveryId)
-                : !(Platform == OsPlatform.Linux ? 
-                    PosixLib.secp256k1_ecdsa_recoverable_signature_parse_compact(Context, recoverableSignature, compactSignature, recoveryId)
+            if (Platform == OsPlatform.Windows
+                ? !Win64Lib.secp256k1_ecdsa_recoverable_signature_parse_compact(Context, recoverableSignature, compactSignature, recoveryId)
+                : !(Platform == OsPlatform.Linux
+                    ? PosixLib.secp256k1_ecdsa_recoverable_signature_parse_compact(Context, recoverableSignature, compactSignature, recoveryId)
                     : MacLib.secp256k1_ecdsa_recoverable_signature_parse_compact(Context, recoverableSignature, compactSignature, recoveryId)))
             {
                 return null;
             }
 
-            if (Platform == OsPlatform.Windows ? 
-                !Win64Lib.secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash)
-                : !(Platform == OsPlatform.Linux ? 
-                    PosixLib.secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash)
+            if (Platform == OsPlatform.Windows
+                ? !Win64Lib.secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash)
+                : !(Platform == OsPlatform.Linux
+                    ? PosixLib.secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash)
                     : MacLib.secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash)))
             {
                 return null;
             }
 
-            if (Platform == OsPlatform.Windows ? 
-                !Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
-                : !(Platform == OsPlatform.Linux ? 
-                    PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
+            if (Platform == OsPlatform.Windows
+                ? !Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
+                : !(Platform == OsPlatform.Linux
+                    ? PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
                     : MacLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)))
             {
                 return null;
             }
 
             return serializedPublicKey;
+        }
+
+        unsafe delegate int secp256k1_ecdh_hash_function(void* output, void* x, void* y, IntPtr data);
+
+        public static unsafe bool Ecdh(byte[] agreement, byte[] publicKey, byte[] privateKey)
+        {
+            int outputLength = agreement.Length;
+
+            secp256k1_ecdh_hash_function hashFunctionPtr = (void* output, void* x, void* y, IntPtr d) =>
+            {
+                var outputSpan = new Span<byte>(output, outputLength);
+                var xSpan = new Span<byte>(x, 32);
+                if (xSpan.Length < 32)
+                {
+                    return 0;
+                }
+
+                xSpan.CopyTo(outputSpan);
+                return 1;
+            };
+
+            GCHandle gch = GCHandle.Alloc(hashFunctionPtr);
+            try
+            {
+                IntPtr fp = Marshal.GetFunctionPointerForDelegate(hashFunctionPtr);
+                {
+                    return Platform == OsPlatform.Windows
+                        ? Win64Lib.secp256k1_ecdh(Context, agreement, publicKey, privateKey, fp, IntPtr.Zero)
+                        : Platform == OsPlatform.Linux
+                            ? PosixLib.secp256k1_ecdh(Context, agreement, publicKey, privateKey, fp, IntPtr.Zero)
+                            : MacLib.secp256k1_ecdh(Context, agreement, publicKey, privateKey, fp, IntPtr.Zero);
+                }
+            }
+            finally
+            {
+                gch.Free();
+            }
+        }
+
+        public static byte[] EcdhSerialized(byte[] publicKey, byte[] privateKey)
+        {
+            byte[] array = ToPublicKeyArray(publicKey, false, false);
+            byte[] key = new byte[64];
+            PublicKeyParse(key, array);
+            byte[] result = new byte[32];
+            Ecdh(result, key, privateKey);
+            return result;
+        }
+
+        /// <summary>
+        /// Parse a variable-length public key into the pubkey object.
+        /// This function supports parsing compressed (33 bytes, header byte 0x02 or
+        /// 0x03), uncompressed(65 bytes, header byte 0x04), or hybrid(65 bytes, header
+        /// byte 0x06 or 0x07) format public keys.
+        /// </summary>
+        /// <param name="publicKeyOutput">(Output) pointer to a pubkey object. If 1 is returned, it is set to a parsed version of input. If not, its value is undefined.</param>
+        /// <param name="serializedPublicKey">Serialized public key.</param>
+        /// <returns>True if the public key was fully valid, false if the public key could not be parsed or is invalid.</returns>
+        public static unsafe bool PublicKeyParse(Span<byte> publicKeyOutput, Span<byte> serializedPublicKey)
+        {
+            var inputLen = serializedPublicKey.Length;
+            if (inputLen != 33 && inputLen != 65)
+            {
+                throw new ArgumentException($"{nameof(serializedPublicKey)} must be 33 or 65 bytes");
+            }
+
+            if (publicKeyOutput.Length < 64)
+            {
+                throw new ArgumentException($"{nameof(publicKeyOutput)} must be {64} bytes");
+            }
+
+            fixed (byte* pubKeyPtr = &MemoryMarshal.GetReference(publicKeyOutput),
+                serializedPtr = &MemoryMarshal.GetReference(serializedPublicKey))
+            {
+                return (Platform == OsPlatform.Windows
+                    ? Win64Lib.secp256k1_ec_pubkey_parse(Context, pubKeyPtr, serializedPtr, (uint) inputLen)
+                    : Platform == OsPlatform.Linux
+                        ? PosixLib.secp256k1_ec_pubkey_parse(Context, pubKeyPtr, serializedPtr, (uint) inputLen)
+                        : MacLib.secp256k1_ec_pubkey_parse(Context, pubKeyPtr, serializedPtr, (uint) inputLen)) == 1;
+            }
+        }
+        
+        /// <summary>
+        /// Serialize a pubkey object into a serialized byte sequence.
+        /// </summary>
+        /// <param name="serializedPublicKeyOutput">65-byte (if compressed==0) or 33-byte (if compressed==1) output to place the serialized key in.</param>
+        /// <param name="publicKey">The secp256k1_pubkey initialized public key.</param>
+        /// <param name="flags">SECP256K1_EC_COMPRESSED if serialization should be in compressed format, otherwise SECP256K1_EC_UNCOMPRESSED.</param>
+        public static unsafe bool PublicKeySerialize(Span<byte> serializedPublicKeyOutput, Span<byte> publicKey, uint flags = Secp256K1EcUncompressed)
+        {
+            bool compressed = (flags & Secp256K1EcCompressed) == Secp256K1EcCompressed;
+            int serializedPubKeyLength = compressed ? 33 : 65;
+            if (serializedPublicKeyOutput.Length < serializedPubKeyLength)
+            {
+                string compressedStr = compressed ? "compressed" : "uncompressed";
+                throw new ArgumentException($"{nameof(serializedPublicKeyOutput)} ({compressedStr}) must be {serializedPubKeyLength} bytes");
+            }
+            if (publicKey.Length < 64)
+            {
+                throw new ArgumentException($"{nameof(publicKey)} must be {64} bytes");
+            }
+
+            uint newLength = (uint)serializedPubKeyLength;
+
+            fixed (byte* serializedPtr = &MemoryMarshal.GetReference(serializedPublicKeyOutput),
+                pubKeyPtr = &MemoryMarshal.GetReference(publicKey))
+            {
+                var result = (Platform == OsPlatform.Windows
+                           ? Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPtr, ref newLength, pubKeyPtr, (uint) flags)
+                           : Platform == OsPlatform.Linux
+                               ? PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPtr, ref newLength, pubKeyPtr, (uint) flags)
+                               : MacLib.secp256k1_ec_pubkey_serialize(Context, serializedPtr, ref newLength, pubKeyPtr, (uint) flags));
+                
+                return result == 1 && newLength == serializedPubKeyLength;
+            }
+        }
+
+        public static byte[] ToPublicKeyArray(byte[] unmanaged, bool compressed = false, bool slicedPrefix = true)
+        {
+            // Throw an error if trying to slice prefix off of compressed public key
+            if (compressed && slicedPrefix)
+            {
+                throw new ArgumentException("Should not be slicing the prefix off of a compressed public key, as compressed keys solely include X and Y is derived using the prefix.");
+            }
+
+            // Define the public key array
+            Span<byte> publicKey = new byte[64];
+
+
+            // Add our uncompressed prefix to our key.
+            byte[] uncompressedPrefixedPublicKey = new byte[65];
+            uncompressedPrefixedPublicKey[0] = 4;
+            unmanaged.AsSpan().CopyTo(uncompressedPrefixedPublicKey.AsSpan().Slice(1));
+
+            // Parse our public key from the serialized data.
+            if (!PublicKeyParse(publicKey, uncompressedPrefixedPublicKey))
+            {
+                var errMsg = "Unmanaged EC library failed to deserialize public key. ";
+                throw new Exception(errMsg);
+            }
+
+            // Serialize the public key
+            int serializedKeyLength = compressed ? 33 : 65;
+            uint serializedKeyFlags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
+            Span<byte> serializedKey = new byte[serializedKeyLength];
+            if (!PublicKeySerialize(serializedKey, publicKey, serializedKeyFlags))
+            {
+                var errMsg = "Unmanaged EC library failed to serialize public key. ";
+                throw new Exception(errMsg);
+            }
+
+            // Slice off any prefix.
+            if (slicedPrefix)
+            {
+                serializedKey = serializedKey.Slice(1);
+            }
+
+            // Return it
+            return serializedKey.ToArray();
         }
     }
 }

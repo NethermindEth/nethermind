@@ -16,30 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using BenchmarkDotNet.Attributes;
-
-namespace Nethermind.Benchmarks.Network
+namespace Nethermind.Network.Crypto
 {
-    [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
-    public class NettyPacketSplitter
+    public interface IIesEngine
     {
-        [GlobalSetup]
-        public void Setup()
-        {
-        }
-        
-        [Benchmark]
-        public bool Improved()
-        {
-            throw new NotImplementedException();
-        }
-        
-        [Benchmark]
-        public bool Current()
-        {
-            throw new NotImplementedException();
-        }
+        byte[] ProcessBlock(
+            byte[] input,
+            int inOff,
+            int inLen,
+            byte[] macData);
     }
 }
