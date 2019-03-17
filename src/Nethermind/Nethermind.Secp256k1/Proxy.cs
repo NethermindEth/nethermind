@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+/* ECDH bindings were based on ECDH bindings from Secp256k1.Net (MIT license) */
+
 using System;
 using System.Runtime.InteropServices;
 using System.Security;
