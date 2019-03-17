@@ -29,6 +29,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Db
 {
+    // TODO: replace or optimize
     public class SimpleFilePublicKeyDb : IFullDb
     {
         private readonly ILogger _logger;
@@ -92,13 +93,13 @@ namespace Nethermind.Db
             {
                 foreach (var keyValuePair in snapshot)
                 {
-                    streamWriter.WriteLine($"{keyValuePair.Key},{keyValuePair.Value.ToHexString()}");
+                    streamWriter.Write(string.Concat(keyValuePair.Key, ",", keyValuePair.Value.ToHexString()));
                 }
             }
 
             RemoveBackup(tempFilePath);
 
-            _perfService.EndPerfCalc(key, $"Db commit ({_dbLastDirName}), items count: {snapshot.Length}");
+            _perfService.EndPerfCalc(key);
         }
 
         private void RemoveBackup(string tempFilePath)
