@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Precompiles
 
             // TODO: do I need to strip leading zeros here? // probably not
             w1.WithoutLeadingZeros().CopyTo(result.AsSpan().Slice(32 - w1.Length, w1.Length));
-            w2.WithoutLeadingZeros().CopyTo(result.AsSpan().Slice(64 - w1.Length, w2.Length));
+            w2.WithoutLeadingZeros().CopyTo(result.AsSpan().Slice(64 - w2.Length, w2.Length));
             return result;
         }
     }
