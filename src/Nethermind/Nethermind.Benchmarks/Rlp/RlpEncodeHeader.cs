@@ -20,7 +20,6 @@ using System;
 using System.IO;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Mathematics.StatisticalTesting;
 using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,13 +33,13 @@ namespace Nethermind.Benchmarks.Rlp
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public class RlpEncodeBlock
+    public class RlpEncodeHeader
     {
-        private static Block _block;
+        private static BlockHeader _header;
 
-        private Block[] _scenarios;
+        private BlockHeader[] _scenarios;
 
-        public RlpEncodeBlock()
+        public RlpEncodeHeader()
         {
             var transactions = new Transaction[100];
             for (int i = 0; i < 100; i++)
@@ -50,9 +49,21 @@ namespace Nethermind.Benchmarks.Rlp
 
             _scenarios = new[]
             {
-                Build.A.Block.WithNumber(1).TestObject,
-                Build.A.Block.WithNumber(1).WithTransactions(transactions).WithOmmers(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject
+                Build.A.BlockHeader.WithNumber(1).TestObject,
             };
+        }
+
+        [Params(0)]
+        public int ScenarioIndex { get; set; }
+
+        [GlobalSetup]
+        public void Setup()
+        {
+            _header = _scenarios[ScenarioIndex];
+            
+            Console.WriteLine($"Length current: {Current().Length}");
+            Console.WriteLine($"Length improved: {Improved().Length}");
+            Check(Current(), Improved());
         }
         
         private void Check(byte[] a, byte[] b)
@@ -66,16 +77,6 @@ namespace Nethermind.Benchmarks.Rlp
             Console.WriteLine($"Outputs are the same: {a.ToHexString()}");
         }
 
-        [Params(0, 1)]
-        public int ScenarioIndex { get; set; }
-
-        [GlobalSetup]
-        public void Setup()
-        {
-            _block = _scenarios[ScenarioIndex];
-            Check(Current(), Improved());
-        }
-
         private RecyclableMemoryStreamManager _recycler = new RecyclableMemoryStreamManager();
         
         [Benchmark]
@@ -83,7 +84,7 @@ namespace Nethermind.Benchmarks.Rlp
         {
             using (MemoryStream stream = _recycler.GetStream())
             {
-                Nethermind.Core.Encoding.Rlp.Encode(stream, _block);
+                Nethermind.Core.Encoding.Rlp.Encode(stream, _header);
                 return stream.ToArray();
             }
         }
@@ -91,7 +92,7 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public byte[] Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Encode(_block).Bytes;
+            return Nethermind.Core.Encoding.Rlp.Encode(_header).Bytes;
         }
     }
 }

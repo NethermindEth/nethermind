@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
@@ -145,6 +146,16 @@ namespace Nethermind.Evm.Tracing
             traceElements[6] = Rlp.OfEmptySequence; // vmTrace placeholder
 
             return Rlp.Encode(traceElements);
+        }
+
+        public void Encode(MemoryStream stream, ParityLikeTxTrace item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
+        }
+
+        public int GetLength(ParityLikeTxTrace item, RlpBehaviors rlpBehaviors)
+        {
+            throw new NotImplementedException();
         }
 
         private static ParityTraceAction DecodeAction(Rlp.DecoderContext context)

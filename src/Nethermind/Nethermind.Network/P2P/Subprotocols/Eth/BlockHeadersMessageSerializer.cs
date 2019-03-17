@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
@@ -24,9 +25,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class BlockHeadersMessageSerializer : IMessageSerializer<BlockHeadersMessage>
     {
+        private HeaderDecoder _headerDecoder = new HeaderDecoder();
+        
         public byte[] Serialize(BlockHeadersMessage message)
         {
-            return Rlp.Encode(message.BlockHeaders).Bytes;
+            int contentLength = 0;
+            for (int i = 0; i < message.BlockHeaders.Length; i++)
+            {
+                contentLength += _headerDecoder.GetLength(message.BlockHeaders[i], RlpBehaviors.None);
+            }
+            
+            using (MemoryStream stream = Rlp.BorrowStream())
+            {
+                Rlp.StartSequence(stream, contentLength);
+                for (int i = 0; i < message.BlockHeaders.Length; i++)
+                {
+                    _headerDecoder.Encode(stream, message.BlockHeaders[i]);
+                }
+
+                return stream.ToArray();
+            }
         }
 
         public BlockHeadersMessage Deserialize(byte[] bytes)

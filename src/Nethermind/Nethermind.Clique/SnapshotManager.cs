@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Nethermind.Blockchain;
@@ -76,7 +77,7 @@ namespace Nethermind.Clique
         {
             return (blockHeader.ExtraData.Length - Clique.ExtraVanityLength - Clique.ExtraSealLength) / Address.ByteLength;
         }
-        
+
         public Keccak CalculateCliqueHeaderHash(BlockHeader blockHeader)
         {
             int extraSeal = 65;
@@ -84,14 +85,13 @@ namespace Nethermind.Clique
             byte[] fullExtraData = blockHeader.ExtraData;
             byte[] shortExtraData = blockHeader.ExtraData.Slice(0, shortExtraLength);
             blockHeader.ExtraData = shortExtraData;
-            Rlp rlp = Rlp.Encode(blockHeader);
-            Keccak sigHash = Keccak.Compute(rlp);
+            Keccak sigHash = BlockHeader.CalculateHash(blockHeader);
             blockHeader.ExtraData = fullExtraData;
             return sigHash;
         }
-        
+
         private object _snapshotCreationLock = new object();
-        
+
         public Snapshot GetOrCreateSnapshot(UInt256 number, Keccak hash)
         {
             Snapshot snapshot = GetSnapshot(number, hash);
@@ -99,7 +99,7 @@ namespace Nethermind.Clique
             {
                 return snapshot;
             }
-            
+
             var headers = new List<BlockHeader>();
             lock (_snapshotCreationLock)
             {
@@ -115,6 +115,7 @@ namespace Nethermind.Clique
                     {
                         throw new InvalidOperationException("Unknown ancestor");
                     }
+
                     if (header.Hash == null) throw new InvalidOperationException("Block tree block without hash set");
 
                     Keccak parentHash = header.ParentHash;
@@ -140,7 +141,7 @@ namespace Nethermind.Clique
                 }
 
                 if (headers.Count > 0)
-                {                   
+                {
                     // Previous snapshot found, apply any pending headers on top of it
                     headers.Reverse();
 
@@ -163,7 +164,7 @@ namespace Nethermind.Clique
                 _snapshotCache.Set(snapshot.Hash, snapshot);
                 // If we've generated a new checkpoint snapshot, save to disk
             }
-            
+
             if ((ulong) snapshot.Number % Clique.CheckpointInterval == 0 && headers.Count > 0)
             {
                 Store(snapshot);
@@ -185,7 +186,7 @@ namespace Nethermind.Clique
             bool signer = snapshot.Signers.ContainsKey(address);
             return signer && !authorize || !signer && authorize;
         }
-        
+
         public bool IsInTurn(Snapshot snapshot, UInt256 number, Address signer)
         {
             return (long) number % snapshot.Signers.Count == snapshot.Signers.IndexOfKey(signer);
@@ -220,7 +221,7 @@ namespace Nethermind.Clique
 
             return new Keccak(keyBytes);
         }
-        
+
         private SnapshotDecoder _decoder = new SnapshotDecoder();
 
         [Todo(Improve.Refactor, "I guess it was only added here because of the use of blocksdb")]

@@ -18,7 +18,9 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
@@ -68,19 +70,24 @@ namespace Nethermind.Core
         public UInt256? TotalTransactions { get; set; }
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
 
-        public static Keccak CalculateHash(Rlp headerRlp)
-        {
-            return Keccak.Compute(headerRlp);
-        }
-
+        private static ThreadLocal<byte[]> _rlpBuffer = new ThreadLocal<byte[]>(() => new byte[1024]);
+        
         public static Keccak CalculateHash(BlockHeader header)
         {
-            return CalculateHash(Rlp.Encode(header));
+            using (MemoryStream stream = Rlp.BorrowStream())
+            {
+                Rlp.Encode(stream, header);
+                byte[] buffer = _rlpBuffer.Value;
+                stream.Seek(0, SeekOrigin.Begin);
+                stream.Read(buffer, 0, (int)stream.Length);
+                Keccak newOne = Keccak.Compute(buffer.AsSpan().Slice(0, (int)stream.Length));
+                return newOne;
+            }
         }
         
         public static Keccak CalculateHash(Block block)
         {
-            return CalculateHash(Rlp.Encode(block.Header));
+            return CalculateHash(block.Header);
         }
 
         public string ToString(string indent)

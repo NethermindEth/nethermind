@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -30,7 +31,7 @@ namespace Nethermind.Core.Encoding
             {
                 return null;
             }
-            
+
             var headerRlp = context.PeekNextItem();
 
             int headerSequenceLength = context.ReadSequenceLength();
@@ -63,7 +64,7 @@ namespace Nethermind.Core.Encoding
                 beneficiary,
                 difficulty,
                 number,
-                (long)gasLimit,
+                (long) gasLimit,
                 timestamp,
                 extraData);
 
@@ -71,9 +72,9 @@ namespace Nethermind.Core.Encoding
             blockHeader.TransactionsRoot = transactionsRoot;
             blockHeader.ReceiptsRoot = receiptsRoot;
             blockHeader.Bloom = bloom;
-            blockHeader.GasUsed = (long)gasUsed;
+            blockHeader.GasUsed = (long) gasUsed;
             blockHeader.MixHash = mixHash;
-            blockHeader.Nonce = (ulong)nonce;
+            blockHeader.Nonce = (ulong) nonce;
             blockHeader.Hash = Keccak.Compute(headerRlp);
             return blockHeader;
         }
@@ -84,8 +85,8 @@ namespace Nethermind.Core.Encoding
             {
                 return Rlp.OfEmptySequence;
             }
-            
-            bool withMixHashAndNonce = !behaviors.HasFlag(RlpBehaviors.ExcludeBlockMixHashAndNonce);
+
+            bool withMixHashAndNonce = !behaviors.HasFlag(RlpBehaviors.ForSealing);
             int numberOfElements = withMixHashAndNonce ? 15 : 13;
             Rlp[] elements = new Rlp[numberOfElements];
             elements[0] = Rlp.Encode(item.ParentHash);
@@ -108,6 +109,62 @@ namespace Nethermind.Core.Encoding
             }
 
             return Rlp.Encode(elements);
+        }
+
+        public void Encode(MemoryStream stream, BlockHeader item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            bool forSealing = (rlpBehaviors & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
+            Rlp.StartSequence(stream, GetContentLength(item, rlpBehaviors));
+            Rlp.Encode(stream, item.ParentHash);
+            Rlp.Encode(stream, item.OmmersHash);
+            Rlp.Encode(stream, item.Beneficiary);
+            Rlp.Encode(stream, item.StateRoot);
+            Rlp.Encode(stream, item.TransactionsRoot);
+            Rlp.Encode(stream, item.ReceiptsRoot);
+            Rlp.Encode(stream, item.Bloom);
+            Rlp.Encode(stream, item.Difficulty);
+            Rlp.Encode(stream, item.Number);
+            Rlp.Encode(stream, item.GasLimit);
+            Rlp.Encode(stream, item.GasUsed);
+            Rlp.Encode(stream, item.Timestamp);
+            Rlp.Encode(stream, item.ExtraData);
+            
+            if (!forSealing)
+            {
+                Rlp.Encode(stream, item.MixHash);
+                Rlp.Encode(stream, item.Nonce);
+            }
+        }
+
+        private int GetContentLength(BlockHeader item, RlpBehaviors rlpBehaviors)
+        {
+            bool forSealing = (rlpBehaviors & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
+            int contentLength = 0
+                                + Rlp.LengthOf(item.ParentHash)
+                                + Rlp.LengthOf(item.OmmersHash)
+                                + Rlp.LengthOf(item.Beneficiary)
+                                + Rlp.LengthOf(item.StateRoot)
+                                + Rlp.LengthOf(item.TransactionsRoot)
+                                + Rlp.LengthOf(item.ReceiptsRoot)
+                                + Rlp.LengthOf(item.Bloom)
+                                + Rlp.LengthOf(item.Difficulty)
+                                + Rlp.LengthOf(item.Number)
+                                + Rlp.LengthOf(item.GasLimit)
+                                + Rlp.LengthOf(item.GasUsed)
+                                + Rlp.LengthOf(item.Timestamp)
+                                + Rlp.LengthOf(item.ExtraData);
+
+            if (!forSealing)
+            {
+                contentLength += Rlp.LengthOf(item.MixHash) + Rlp.LengthOf(item.Nonce);
+            }
+
+            return contentLength;
+        }
+
+        public int GetLength(BlockHeader item, RlpBehaviors rlpBehaviors)
+        {
+            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
     }
 }

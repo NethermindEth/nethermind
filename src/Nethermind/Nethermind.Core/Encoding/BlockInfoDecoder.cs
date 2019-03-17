@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
+
 namespace Nethermind.Core.Encoding
 {
     public class BlockInfoDecoder : IRlpDecoder<BlockInfo>
@@ -46,6 +48,16 @@ namespace Nethermind.Core.Encoding
             elements[2] = Rlp.Encode(item.TotalDifficulty);
             elements[3] = Rlp.Encode(item.TotalTransactions);
             return Rlp.Encode(elements);
+        }
+
+        public void Encode(MemoryStream stream, BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            stream.Write(Encode(item, rlpBehaviors).Bytes);
+        }
+
+        public int GetLength(BlockInfo item, RlpBehaviors rlpBehaviors)
+        {
+            throw new System.NotImplementedException();
         }
     }
 }
