@@ -241,6 +241,7 @@ namespace Nethermind.Network
 
                     availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
                     int nodesToTry = Math.Min(remainingCandidates.Count, availableActiveCount);
+                    _logger.Warn($"TO TRY to {nodesToTry}");
                     if (nodesToTry == 0)
                     {
                         break;
@@ -266,6 +267,7 @@ namespace Nethermind.Network
                         }
 
                         bool result = await InitializePeerConnection(peer);
+                        _logger.Warn($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_activePeers.Count}, CAND: {_candidatePeers.Count}");
                         if (!result)
                         {
                             _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
@@ -440,13 +442,13 @@ namespace Nethermind.Network
                     return -1;
                 }
                 
-                int trust = x.Node.IsTrusted.CompareTo(y.Node.IsTrusted);
+                int trust = -x.Node.IsTrusted.CompareTo(y.Node.IsTrusted);
                 if (trust != 0)
                 {
                     return trust;
                 }
                 
-                int reputation = _stats.GetCurrentReputation(x.Node).CompareTo(_stats.GetCurrentReputation(y.Node));
+                int reputation = -_stats.GetCurrentReputation(x.Node).CompareTo(_stats.GetCurrentReputation(y.Node));
                 return reputation;
             }
         }
