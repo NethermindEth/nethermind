@@ -22,7 +22,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Secp256k1.Test
 {
-    // TODO: test the output values
     [TestFixture]
     public class ProxyTests
     {
@@ -117,10 +116,9 @@ namespace Nethermind.Secp256k1.Test
         public void Can_calculate_agreement_serialized(string privateKeyStr, string publicKeyStr, string expectedSecretStr)
         {
             // Compute a shared key.
-            byte[] result = new byte[32];
             byte[] publicKey = Bytes.FromHexString(publicKeyStr);
             byte[] privateKey = Bytes.FromHexString(privateKeyStr);
-            Proxy.EcdhSerialized(result, publicKey, privateKey);
+            byte[] result = Proxy.EcdhSerialized(publicKey, privateKey);
             Assert.AreEqual(expectedSecretStr, result.ToHexString(false));
         }
         

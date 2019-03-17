@@ -390,12 +390,14 @@ namespace Nethermind.Secp256k1
             }
         }
 
-        public static bool EcdhSerialized(byte[] result, byte[] publicKey, byte[] privateKey)
+        public static byte[] EcdhSerialized(byte[] publicKey, byte[] privateKey)
         {
             byte[] array = ToPublicKeyArray(publicKey, false, false);
             byte[] key = new byte[64];
             PublicKeyParse(key, array);
-            return Ecdh(result, key, privateKey);
+            byte[] result = new byte[32];
+            Ecdh(result, key, privateKey);
+            return result;
         }
 
         /// <summary>

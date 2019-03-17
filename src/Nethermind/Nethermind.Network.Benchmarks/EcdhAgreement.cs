@@ -55,8 +55,7 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark]
         public byte[] Current()
         {
-            byte[] result = new byte[32];
-            Proxy.EcdhSerialized(result, ephemeral.Bytes, privateKey.KeyBytes);
+            byte[] result = Proxy.EcdhSerialized(ephemeral.Bytes, privateKey.KeyBytes);
             return result;
         }
 

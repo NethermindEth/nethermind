@@ -16,11 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
@@ -71,7 +69,7 @@ namespace Nethermind.Network.Crypto
             byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
             PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();
 
-            EthereumIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
+            IIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
 
             try
             {
@@ -96,6 +94,12 @@ namespace Nethermind.Network.Crypto
 
         private byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
         {
+            IIesEngine iesEngine = MakeIesEngine(false, ephemeralPublicKey, privateKey, iv);
+            return iesEngine.ProcessBlock(ciphertextBody, 0, ciphertextBody.Length, macData);
+        }
+
+        private IIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
+        {
             AesEngine aesFastEngine = new AesEngine();
 
             EthereumIesEngine iesEngine = new EthereumIesEngine(
@@ -105,32 +109,27 @@ namespace Nethermind.Network.Crypto
 
             IesParameters iesParameters = new IesWithCipherParameters(new byte[] { }, new byte[] { }, KeySize, KeySize);
             ParametersWithIV parametersWithIV = new ParametersWithIV(iesParameters, iv);
-
-            byte[] secret = new byte[32];
-            Proxy.EcdhSerialized(secret, ephemeralPublicKey.Bytes, privateKey.KeyBytes);
-            Console.WriteLine(secret.ToHexString());
-            iesEngine.Init(false, _optimizedKdf.Derive(secret), parametersWithIV);
-
-            return iesEngine.ProcessBlock(ciphertextBody, 0, ciphertextBody.Length, macData);
-        }
-
-        private EthereumIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
-        {
-            AesEngine aesFastEngine = new AesEngine();
-
-            EthereumIesEngine iesEngine = new EthereumIesEngine(
-                new HMac(new Sha256Digest()),
-                new Sha256Digest(),
-                new BufferedBlockCipher(new SicBlockCipher(aesFastEngine)));
-
-            IesParameters iseParameters = new IesWithCipherParameters(new byte[] { }, new byte[] { }, KeySize, KeySize);
-            ParametersWithIV parametersWithIV = new ParametersWithIV(iseParameters, iv);
-
-            byte[] secret = new byte[32];
-            Console.WriteLine(secret.ToHexString());
-            Proxy.EcdhSerialized(secret, publicKey.Bytes, privateKey.KeyBytes);
+            byte[] secret = Proxy.EcdhSerialized(publicKey.Bytes, privateKey.KeyBytes);
             iesEngine.Init(isEncrypt, _optimizedKdf.Derive(secret), parametersWithIV);
             return iesEngine;
         }
+        
+//        private IIesEngine MakeOldIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
+//        {
+//            AesEngine aesFastEngine = new AesEngine();
+//            OldEthereumIesEngine iesEngine = new OldEthereumIesEngine(
+//                new ECDHBasicAgreement(),
+//                new HMac(new Sha256Digest()),
+//                new Sha256Digest(),
+//                new BufferedBlockCipher(new SicBlockCipher(aesFastEngine)));
+//
+//            IesParameters iseParameters = new IesWithCipherParameters(new byte[] { }, new byte[] { }, KeySize, KeySize);
+//            ParametersWithIV parametersWithIV = new ParametersWithIV(iseParameters, iv);
+//
+//            byte[] secret = new byte[32];
+//            Proxy.EcdhSerialized(secret, publicKey.Bytes, privateKey.KeyBytes);
+//            iesEngine.Init(isEncrypt, BouncyCrypto.WrapPrivateKey(privateKey), BouncyCrypto.WrapPublicKey(publicKey), parametersWithIV);
+//            return iesEngine;
+//        }
     }
 }

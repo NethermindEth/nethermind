@@ -37,7 +37,7 @@ namespace Nethermind.Network.Crypto
     ///     -Hash the MAC key before use
     ///     -Include the encryption IV in the MAC computation
     /// </summary>
-    public class EthereumIesEngine
+    public class EthereumIesEngine : IIesEngine
     {
         private byte[] _kdfKey;
 

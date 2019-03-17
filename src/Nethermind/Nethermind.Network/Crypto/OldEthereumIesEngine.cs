@@ -36,7 +36,7 @@ namespace Nethermind.Network.Crypto
     ///     -Hash the MAC key before use
     ///     -Include the encryption IV in the MAC computation
     /// </summary>
-    public class OldEthereumIesEngine
+    public class OldEthereumIesEngine : IIesEngine
     {
         private static OptimizedKdf _optimizedKdf = new OptimizedKdf();
         private byte[] _kdfKey;
