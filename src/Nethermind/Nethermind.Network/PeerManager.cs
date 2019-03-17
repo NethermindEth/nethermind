@@ -865,12 +865,13 @@ namespace Nethermind.Network
 
         private void CleanupCandidatePeers()
         {
-            var candidates = _candidatePeers.Values.ToArray();
-            if (candidates.Length <= _networkConfig.CandidatePeerCountCleanupThreshold)
+            if (_candidatePeers.Count <= _networkConfig.CandidatePeerCountCleanupThreshold)
             {
                 return;
             }
 
+            // may further optimize allocations here
+            var candidates = _candidatePeers.Values.ToArray();
             var countToRemove = candidates.Length - _networkConfig.MaxCandidatePeerCount;
             var failedValidationCandidates = candidates.Where(x => _stats.HasFailedValidation(x.Node))
                 .OrderBy(x => _stats.GetCurrentReputation(x.Node)).ToArray();
