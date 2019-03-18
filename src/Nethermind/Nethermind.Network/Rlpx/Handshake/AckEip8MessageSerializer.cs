@@ -55,7 +55,6 @@ namespace Nethermind.Network.Rlpx.Handshake
             context.ReadSequenceLength();
             authEip8Message.EphemeralPublicKey = new PublicKey(context.DecodeByteArray());
             authEip8Message.Nonce = context.DecodeByteArray();
-            // TODO: check the version? /Postel
             return authEip8Message;
         }
     }

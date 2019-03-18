@@ -16,9 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Blockchain;
 using Nethermind.Network.P2P;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
@@ -33,6 +31,5 @@ namespace Nethermind.Network
         public Node Node { get; }
         public ISession InSession { get; set; }
         public ISession OutSession { get; set; }
-        public ISynchronizationPeer SynchronizationPeer { get; set; }
     }
 }

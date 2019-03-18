@@ -58,7 +58,6 @@ namespace Nethermind.Network.P2P
             string clientId = _session?.Node.ClientId ?? $"unknown {_session?.RemoteHost}";
             if (exception is SocketException)
             {
-                
                 if (_logger.IsTrace) _logger.Trace($"Error in commmunication with {clientId} (SocketException): {exception}");
             }
             else

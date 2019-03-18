@@ -36,7 +36,7 @@ namespace Nethermind.Network
         public Enode(string enodeString)
         {
             string[] enodeParts = enodeString.Split(':');
-            Address address = new Address(enodeParts[1].Split('@')[0]);
+            _nodeKey = new PublicKey(enodeParts[1].Split('@')[0]);
             P2PPort = int.Parse(enodeParts[2]);
             IpAddress = IPAddress.Parse(enodeParts[1].Split('@')[1]);
         }

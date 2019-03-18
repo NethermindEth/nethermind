@@ -152,12 +152,13 @@ namespace Nethermind.Clique
 
                     int countBefore = snapshot.Signers.Count;
                     snapshot = Apply(snapshot, headers, _cliqueConfig.Epoch);
+                    
                     int countAfter = snapshot.Signers.Count;
-
-                    if (countAfter != countBefore)
+                    if (countAfter != countBefore && _logger.IsInfo)
                     {
+                        int signerIndex = 0;
                         string word = countAfter > countBefore ? "added to" : "removed from";
-                        _logger.Warn($"A signer has been {word} the signer list - {string.Join(", ", snapshot.Signers.OrderBy(s => s.Key, CliqueAddressComparer.Instance).Select(s => s.Key.ToString()))}");
+                        _logger.Info($"At block {number } a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, CliqueAddressComparer.Instance).Select(s => $"Signer {signerIndex++}: " +  s.Key.ToString()))}");
                     }
                 }
 
