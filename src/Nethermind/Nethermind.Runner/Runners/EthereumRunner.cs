@@ -680,7 +680,7 @@ namespace Nethermind.Runner.Runners
 
             await InitializeNetwork(
                 _receiptStorage,
-                headerValidator,
+                _sealValidator,
                 txValidator);
         }
 
@@ -710,7 +710,7 @@ namespace Nethermind.Runner.Runners
 
         private async Task InitializeNetwork(
             IReceiptStorage receiptStorage,
-            IHeaderValidator headerValidator,
+            ISealValidator sealValidator,
             TransactionValidator txValidator)
         {
             if (!_initConfig.NetworkEnabled)
@@ -723,7 +723,7 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.StateDb,
                 _blockTree,
                 _blockValidator,
-                headerValidator,
+                sealValidator,
                 txValidator,
                 _logManager,
                 _configProvider.GetConfig<IBlockchainConfig>(),

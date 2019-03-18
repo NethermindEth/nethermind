@@ -22,7 +22,6 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Numerics;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
@@ -30,8 +29,8 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Mining;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
@@ -49,7 +48,7 @@ namespace Nethermind.Blockchain
 
         private readonly ILogger _logger;
         private readonly IBlockValidator _blockValidator;
-        private readonly IHeaderValidator _headerValidator;
+        private readonly ISealValidator _sealValidator;
         private readonly IPerfService _perfService;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
@@ -78,7 +77,7 @@ namespace Nethermind.Blockchain
             IDb stateDb,
             IBlockTree blockTree,
             IBlockValidator blockValidator,
-            IHeaderValidator headerValidator,
+            ISealValidator sealValidator,
             ITransactionValidator transactionValidator,
             ILogManager logManager,
             IBlockchainConfig blockchainConfig,
@@ -97,7 +96,7 @@ namespace Nethermind.Blockchain
 
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
+            _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
 
             if (_logger.IsDebug && Head != null) _logger.Debug($"Initialized SynchronizationManager with head block {Head.ToString(BlockHeader.Format.Short)}");
         }
@@ -131,12 +130,12 @@ namespace Nethermind.Blockchain
                         {
                             _syncRequested.Set();
                         }
-                        else if(peerInfo.TotalDifficulty == _blockTree.BestSuggested.TotalDifficulty 
-                                && peerInfo.HeadHash != _blockTree.BestSuggested.Hash)
+                        else if (peerInfo.TotalDifficulty == _blockTree.BestSuggested.TotalDifficulty
+                                 && peerInfo.HeadHash != _blockTree.BestSuggested.Hash)
                         {
                             Block block = _blockTree.FindBlock(_blockTree.BestSuggested.Hash, false);
                             peerInfo.Peer.SendNewBlock(block);
-                            if(_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {peerInfo.ToString()}");
+                            if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {peerInfo.ToString()}");
                         }
                     }
 
@@ -871,6 +870,33 @@ namespace Nethermind.Blockchain
                         if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {peerInfo}");
                         throw new EthSynchronizationException("Peer sent an inconsistent block list");
                     }
+                }
+
+                var exceptions = new ConcurrentQueue<Exception>();
+                Parallel.For(0, blocks.Length, (i, state) =>
+                {
+                    if (_peerSyncCancellationTokenSource.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        if (!_sealValidator.ValidateSeal(blocks[i].Header))
+                        {
+                            state.Stop();
+                            throw new EthSynchronizationException("Peer sent a block with an invalid seal");
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        exceptions.Enqueue(e);
+                    }
+                });
+
+                if (exceptions.Count > 0)
+                {
+                    throw new AggregateException(exceptions);
                 }
 
                 for (int i = 0; i < blocks.Length; i++)

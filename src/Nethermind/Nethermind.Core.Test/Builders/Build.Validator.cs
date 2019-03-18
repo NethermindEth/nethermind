@@ -20,6 +20,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public partial class Build
     {
+        public SealValidatorBuilder SealValidator => new SealValidatorBuilder();
         public HeaderValidatorBuilder HeaderValidator => new HeaderValidatorBuilder();
         public BlockValidatorBuilder BlockValidator => new BlockValidatorBuilder();
         public TransactionValidatorBuilder TransactionValidator => new TransactionValidatorBuilder();
