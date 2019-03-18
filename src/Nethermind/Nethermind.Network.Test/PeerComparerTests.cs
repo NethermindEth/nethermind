@@ -51,7 +51,7 @@ namespace Nethermind.Network.Test
             Node c = new Node(TestItem.PublicKeyC, "127.0.0.1", 30303);
             Peer peerC = new Peer(c);
 
-            Assert.AreEqual(1, _comparer.Compare(peerA, peerB));
+            Assert.AreEqual(-1, _comparer.Compare(peerA, peerB));
             Assert.AreEqual(0, _comparer.Compare(peerB, peerC));
         }
 
@@ -71,9 +71,9 @@ namespace Nethermind.Network.Test
             _statsManager.GetCurrentReputation(b).Returns(50);
             _statsManager.GetCurrentReputation(c).Returns(200);
 
-            Assert.AreEqual(1, _comparer.Compare(peerA, peerB));
-            Assert.AreEqual(-1, _comparer.Compare(peerA, peerC));
-            Assert.AreEqual(-1, _comparer.Compare(peerB, peerC));
+            Assert.AreEqual(-1, _comparer.Compare(peerA, peerB));
+            Assert.AreEqual(1, _comparer.Compare(peerA, peerC));
+            Assert.AreEqual(1, _comparer.Compare(peerB, peerC));
             Assert.AreEqual(0, _comparer.Compare(peerA, peerA));
             Assert.AreEqual(0, _comparer.Compare(peerB, peerB));
             Assert.AreEqual(0, _comparer.Compare(peerC, peerC));
