@@ -41,6 +41,38 @@ namespace Nethermind.Clique
 
         public bool ValidateParams(Block parent, BlockHeader header)
         {
+            UInt256 number = header.Number;
+            // Retrieve the snapshot needed to validate this header and cache it
+            Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
+            // Resolve the authorization key and check against signers
+            header.Author = header.Author ?? _snapshotManager.GetBlockSealer(header);
+            Address signer = header.Author;
+            if (!snapshot.Signers.ContainsKey(signer))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block signer {signer} - not authorized to sign a block");
+                return false;
+            }
+
+            if (_snapshotManager.HasSignedRecently(snapshot, number, signer))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block signer {signer} - the signer is among recents");
+                return false;
+            }
+
+            // Ensure that the difficulty corresponds to the turn-ness of the signer
+            bool inTurn = _snapshotManager.IsInTurn(snapshot, header.Number, signer);
+            if (inTurn && header.Difficulty != Clique.DifficultyInTurn)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {Clique.DifficultyInTurn}");
+                return false;
+            }
+
+            if (!inTurn && header.Difficulty != Clique.DifficultyNoTurn)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be no-turn {Clique.DifficultyNoTurn}");
+                return false;
+            }
+            
             bool isEpochTransition = IsEpochTransition(header.Number);
             // Checkpoint blocks need to enforce zero beneficiary
             if (isEpochTransition && header.Beneficiary != Address.Zero)
@@ -113,39 +145,8 @@ namespace Nethermind.Clique
 
         public bool ValidateSeal(BlockHeader header)
         {
-            UInt256 number = header.Number;
-            // Retrieve the snapshot needed to validate this header and cache it
-            Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
-            // Resolve the authorization key and check against signers
             header.Author = header.Author ?? _snapshotManager.GetBlockSealer(header);
-            Address signer = header.Author;
-            if (!snapshot.Signers.ContainsKey(signer))
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block signer {signer} - not authorized to sign a block");
-                return false;
-            }
-
-            if (_snapshotManager.HasSignedRecently(snapshot, number, signer))
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block signer {signer} - the signer is among recents");
-                return false;
-            }
-
-            // Ensure that the difficulty corresponds to the turn-ness of the signer
-            bool inTurn = _snapshotManager.IsInTurn(snapshot, header.Number, signer);
-            if (inTurn && header.Difficulty != Clique.DifficultyInTurn)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {Clique.DifficultyInTurn}");
-                return false;
-            }
-
-            if (!inTurn && header.Difficulty != Clique.DifficultyNoTurn)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be no-turn {Clique.DifficultyNoTurn}");
-                return false;
-            }
-
-            return true;
+            return header.Author != null;
         }
 
         private bool IsEpochTransition(UInt256 number)

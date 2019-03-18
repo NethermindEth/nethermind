@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Mining;
 using Nethermind.Stats;
 using Nethermind.Store;
 using NSubstitute;
@@ -48,11 +49,11 @@ namespace Nethermind.Blockchain.Test
             BlockchainConfig quickConfig = new BlockchainConfig();
             quickConfig.SyncTimerInterval = 100;
 
-            IHeaderValidator headerValidator = Build.A.HeaderValidator.ThatAlwaysReturnsTrue.TestObject;
+            ISealValidator sealValidator = Build.A.SealValidator.ThatAlwaysReturnsTrue.TestObject;
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
             ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 
-            _manager = new QueueBasedSyncManager(_stateDb, _blockTree, blockValidator, headerValidator, transactionValidator, NullLogManager.Instance, quickConfig, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),  new PerfService(NullLogManager.Instance), _receiptStorage);
+            _manager = new QueueBasedSyncManager(_stateDb, _blockTree, blockValidator, sealValidator, transactionValidator, NullLogManager.Instance, quickConfig, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),  new PerfService(NullLogManager.Instance), _receiptStorage);
         }
 
         [TearDown]

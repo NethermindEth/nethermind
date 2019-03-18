@@ -225,8 +225,8 @@ namespace Nethermind.Blockchain.Test
                 SyncManager = new QueueBasedSyncManager(
                     stateDb,
                     BlockTree,
-                    TestBlockValidator.AlwaysValid,
-                    TestHeaderValidator.AlwaysValid,
+                    Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject,
+                    Build.A.SealValidator.ThatAlwaysReturnsTrue.TestObject,
                     TestTransactionValidator.AlwaysValid,
                     LimboLogs.Instance,
                     new BlockchainConfig(),
