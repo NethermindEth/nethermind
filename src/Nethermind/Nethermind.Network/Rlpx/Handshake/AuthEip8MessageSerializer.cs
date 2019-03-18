@@ -46,7 +46,6 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         public AuthEip8Message Deserialize(byte[] data)
         {
-            // TODO: support rlp without checking length?
             // TODO: this would not be compatible with future versions... ? if the length of prefixes changes
             Rlp.DecoderContext context = data.AsRlpContext();
             AuthEip8Message authMessage = new AuthEip8Message();
