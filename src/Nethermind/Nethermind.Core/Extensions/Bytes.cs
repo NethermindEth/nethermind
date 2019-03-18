@@ -48,7 +48,7 @@ namespace Nethermind.Core.Extensions
 
         public static readonly byte[] Zero32 = new byte[32];
         
-        public static readonly byte[] Zero256 = new byte[32];
+        public static readonly byte[] Zero256 = new byte[256];
         
         public static readonly byte[] Empty = new byte[0];
 

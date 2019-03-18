@@ -27,6 +27,8 @@ namespace Nethermind.Core
     public class Bloom : IEquatable<Bloom>
     {
         public static readonly Bloom Empty = new Bloom();
+        
+        private static readonly byte[] EmptyBloomBytes = new byte[256];
 
         private readonly BitArray _bits;
 
@@ -51,7 +53,7 @@ namespace Nethermind.Core
             _bits = bitArray;
         }
 
-        public byte[] Bytes => _bits.ToBytes();
+        public byte[] Bytes => ReferenceEquals(this, Empty) ?  EmptyBloomBytes : _bits.ToBytes();
 
         public void Set(byte[] sequence)
         {
