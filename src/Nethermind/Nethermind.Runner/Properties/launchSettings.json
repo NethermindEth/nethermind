@@ -23,7 +23,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath C:\\nethermind_db"
+      "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath D:\\nethermind_db"
     }
   }
 }

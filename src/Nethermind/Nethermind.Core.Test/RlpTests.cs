@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using System.Numerics;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
@@ -125,6 +126,36 @@ namespace Nethermind.Core.Test
             byte[] bytesOld = Rlp.Encode((ulong)value).Bytes;
             Assert.AreEqual(bytesOld.ToHexString(), bytesNew.ToHexString());
             Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((ulong)value), "length");
+        }
+        
+        [Test]
+        public void Length_of_uint()
+        {
+            Assert.AreEqual(1, Rlp.LengthOf(UInt256.Zero));
+            Assert.AreEqual(1, Rlp.LengthOf((UInt256)127));
+            Assert.AreEqual(2, Rlp.LengthOf((UInt256)128));
+            
+            UInt256 item = 255;
+            for (int i = 0; i < 32; i++)
+            {
+                Assert.AreEqual(i + 2, Rlp.LengthOf(item));
+                item *= 256;
+            }
+        }
+        
+        [Test]
+        public void Length_of_bigint()
+        {
+            Assert.AreEqual(1, Rlp.LengthOf(BigInteger.Zero));
+            Assert.AreEqual(1, Rlp.LengthOf((BigInteger)127));
+            Assert.AreEqual(2, Rlp.LengthOf((BigInteger)128));
+            
+            BigInteger item = 255;
+            for (int i = 0; i < 32; i++)
+            {
+                Assert.AreEqual(i + 2, Rlp.LengthOf(item));
+                item *= 256;
+            }
         }
         
         [Test]

@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain
             _blockTree = blockTree;
         }
 
-        public Keccak GetBlockhash(BlockHeader currentBlock, UInt256 number)
+        public Keccak GetBlockhash(BlockHeader currentBlock, in UInt256 number)
         {
             UInt256 current = currentBlock.Number;
             if (number >= current || number < current - UInt256.Min(current, (UInt256)_maxDepth))
