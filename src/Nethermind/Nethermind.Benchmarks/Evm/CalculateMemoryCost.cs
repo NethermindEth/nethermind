@@ -53,13 +53,15 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark]
         public long Improved()
         {
-            return _improved.CalculateMemoryCost(_location, _length);
+            UInt256 dest = _location;
+            return _improved.CalculateMemoryCost(ref dest, _length);
         }
 
         [Benchmark]
         public long Current()
         {
-            return _current.CalculateMemoryCost(_location, _length);
+            UInt256 dest = _location;
+            return _current.CalculateMemoryCost(ref dest, _length);
         }
     }
 }

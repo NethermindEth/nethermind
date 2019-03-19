@@ -27,19 +27,21 @@ namespace Nethermind.Evm.Test
     public abstract class EvmMemoryTestsBase
     {
         protected abstract IEvmMemory CreateEvmMemory();
-
+        
         [Test]
         public void Save_empty_beyond_reasonable_size_does_not_throw()
         {
             IEvmMemory memory = CreateEvmMemory();
-            memory.Save((UInt256)int.MaxValue + 1, new byte[0]);
+            UInt256 dest = (UInt256) int.MaxValue + 1;
+            memory.Save(ref dest, new byte[0]);
         }
 
         [Test]
         public void Trace_one_word()
         {
             IEvmMemory memory = CreateEvmMemory();
-            memory.SaveWord(0, new byte[EvmPooledMemory.WordSize]);
+            UInt256 dest = UInt256.Zero;
+            memory.SaveWord(ref dest, new byte[EvmPooledMemory.WordSize]);
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(1, trace.Count);
         }
@@ -48,7 +50,8 @@ namespace Nethermind.Evm.Test
         public void Trace_two_words()
         {
             IEvmMemory memory = CreateEvmMemory();
-            memory.SaveWord(EvmPooledMemory.WordSize, new byte[EvmPooledMemory.WordSize]);
+            UInt256 dest = EvmPooledMemory.WordSize;
+            memory.SaveWord(ref dest, new byte[EvmPooledMemory.WordSize]);
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(2, trace.Count);
         }
@@ -57,8 +60,9 @@ namespace Nethermind.Evm.Test
         public void Trace_overwrite()
         {
             IEvmMemory memory = CreateEvmMemory();
-            memory.SaveWord(EvmPooledMemory.WordSize, new byte[EvmPooledMemory.WordSize]);
-            memory.SaveWord(EvmPooledMemory.WordSize, new byte[EvmPooledMemory.WordSize]);
+            UInt256 dest = EvmPooledMemory.WordSize;
+            memory.SaveWord(ref dest, new byte[EvmPooledMemory.WordSize]);
+            memory.SaveWord(ref dest, new byte[EvmPooledMemory.WordSize]);
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(2, trace.Count);
         }
@@ -67,7 +71,8 @@ namespace Nethermind.Evm.Test
         public void Trace_when_position_not_on_word_border()
         {
             IEvmMemory memory = CreateEvmMemory();
-            memory.SaveByte(EvmPooledMemory.WordSize / 2, new byte[] {1});
+            UInt256 dest = EvmPooledMemory.WordSize / 2;
+            memory.SaveByte(ref dest, new byte[] {1});
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(1, trace.Count);
         }
@@ -76,8 +81,9 @@ namespace Nethermind.Evm.Test
         public void Calculate_memory_cost_returns_0_for_subsequent_calls()
         {
             IEvmMemory memory = CreateEvmMemory();
-            long cost1 = memory.CalculateMemoryCost(UInt256.One, UInt256.One);
-            long cost2 = memory.CalculateMemoryCost(UInt256.One, UInt256.One);
+            UInt256 dest = UInt256.One;
+            long cost1 = memory.CalculateMemoryCost(ref dest, UInt256.One);
+            long cost2 = memory.CalculateMemoryCost(ref dest, UInt256.One);
             Assert.AreEqual(0L, cost2);
         }
         
@@ -85,7 +91,8 @@ namespace Nethermind.Evm.Test
         public void Calculate_memory_cost_returns_0_for_0_length()
         {
             IEvmMemory memory = CreateEvmMemory();
-            long cost = memory.CalculateMemoryCost(long.MaxValue, UInt256.Zero);
+            UInt256 dest = long.MaxValue;
+            long cost = memory.CalculateMemoryCost(ref dest, UInt256.Zero);
             Assert.AreEqual(0L, cost);
         }
     }
