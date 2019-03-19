@@ -78,12 +78,12 @@ namespace Nethermind.Blockchain
             {
                 options |= ProcessingOptions.StoreReceipts;
             }
-            
+
             if (_storeTracesByDefault)
             {
                 options |= ProcessingOptions.StoreTraces;
             }
-            
+
             SuggestBlock(blockEventArgs.Block, options);
         }
 
@@ -97,12 +97,22 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
-            _currentRecoveryQueueSize += block.Transactions.Length;
-            BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx ? new BlockRef(block.Hash, processingOptions) : new BlockRef(block, processingOptions);
+            int currentRecoveryQueueSize = Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
+            BlockRef blockRef = currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx ? new BlockRef(block.Hash, processingOptions) : new BlockRef(block, processingOptions);
             if (!_recoveryQueue.IsAddingCompleted)
             {
-                _recoveryQueue.Add(blockRef);
-                if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
+                try
+                {
+                    _recoveryQueue.Add(blockRef);
+                    if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
+                }
+                catch (InvalidOperationException)
+                {
+                    if (!_recoveryQueue.IsAddingCompleted)
+                    {
+                        throw;
+                    }
+                }
             }
         }
 
@@ -179,8 +189,8 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTrace) _logger.Trace("Block was removed from the DB and cannot be recovered (it belonged to an invalid branch). Skipping.");
                     continue;
                 }
-                
-                _currentRecoveryQueueSize -= blockRef.Block.Transactions.Length;
+
+                Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block.Transactions.Length);
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash ?? blockRef.Block.Hash}.");
                 _recoveryStep.RecoverData(blockRef.Block);
 
@@ -210,10 +220,10 @@ namespace Nethermind.Blockchain
                 blockRef.BlockHash = null;
                 blockRef.IsInDb = false;
             }
-            
+
             return true;
         }
-        
+
         private void RunProcessingLoop()
         {
             _stats.Start();
@@ -244,21 +254,21 @@ namespace Nethermind.Blockchain
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, tracer);
                 if (processedBlock == null)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");    
+                    if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
                 }
                 else
                 {
                     if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
                     _stats.UpdateStats(block, _recoveryQueue.Count, _blockQueue.Count);
                 }
-                
+
                 if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
                 if (_blockQueue.Count == 0)
                 {
                     ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
                 }
             }
-            
+
             if (_logger.IsTrace) _logger.Trace($"Return");
         }
 
@@ -285,7 +295,7 @@ namespace Nethermind.Blockchain
                 do
                 {
                     blocksToBeAddedToMain.Add(toBeProcessed);
-                    toBeProcessed = toBeProcessed.Number == 0 ? null : _blockTree.FindParent(toBeProcessed); 
+                    toBeProcessed = toBeProcessed.Number == 0 ? null : _blockTree.FindParent(toBeProcessed);
                     if (toBeProcessed == null)
                     {
                         break;
@@ -354,12 +364,12 @@ namespace Nethermind.Blockchain
                         if (blocks[i].Hash == ex.InvalidBlockHash)
                         {
                             _blockTree.DeleteInvalidBlock(blocks[i]);
-                            if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} because of {blocks[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
+                            if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} because of {blocks[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
                             return null;
                         }
                     }
                 }
-                
+
                 if ((options & ProcessingOptions.ReadOnlyChain) == 0)
                 {
                     _blockTree.UpdateMainChain(blocksToBeAddedToMain.ToArray());
@@ -367,7 +377,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
+                if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
             }
 
             Block lastProcessed = null;
@@ -380,31 +390,31 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                if(_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {lastProcessed == null}, processedBlocks.Length: {processedBlocks?.Length}");
+                if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {lastProcessed == null}, processedBlocks.Length: {processedBlocks?.Length}");
             }
-            
+
             return lastProcessed;
         }
 
         [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
         private bool RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)
-        {   
+        {
             /* a bit hacky way to get the invalid branch out of the processing loop */
             if (suggestedBlock.Number != 0 && _blockTree.FindParent(suggestedBlock) == null)
             {
-                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
+                if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
                 return false;
             }
 
             if (suggestedBlock.Header.TotalDifficulty == null)
             {
-                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
+                if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
                 throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
             }
 
             if ((options & ProcessingOptions.ReadOnlyChain) == 0 && suggestedBlock.Hash == null)
             {
-                if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without calculated hash");
+                if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without calculated hash");
                 throw new InvalidOperationException("Block hash should be known at this stage if the block is not read only");
             }
 
@@ -412,7 +422,7 @@ namespace Nethermind.Blockchain
             {
                 if (suggestedBlock.Ommers[i].Hash == null)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null ommer hash ar {i}");
+                    if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null ommer hash ar {i}");
                     throw new InvalidOperationException($"Ommer's {i} hash is null when processing block");
                 }
             }
