@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Dirichlet.Numerics;
@@ -30,14 +31,16 @@ using Nethermind.Store;
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     public class DebugBridge : IDebugBridge
-    {        
+    {
+        private readonly IConfigProvider _configProvider;
         private readonly ITracer _tracer;
         private Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockchainProcessor receiptsProcessor)
+        public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockchainProcessor receiptsProcessor)
         {
             IBlockchainProcessor receiptsProcessor1 = receiptsProcessor ?? throw new ArgumentNullException(nameof(receiptsProcessor));
             receiptsProcessor1.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
+            _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider)); 
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
@@ -89,6 +92,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp)
         {
             return _tracer.TraceBlock(blockRlp);
+        }
+        
+        public string GetConfigValue(string category, string name)
+        {
+            return _configProvider.GetRawValue(category, name);
         }
         
         private AutoResetEvent _receiptProcessedEvent = new AutoResetEvent(false);

@@ -32,5 +32,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber);
         GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp);
         byte[] GetDbValue(string dbName, byte[] key);
+        string GetConfigValue(string category, string name);
     }
 }

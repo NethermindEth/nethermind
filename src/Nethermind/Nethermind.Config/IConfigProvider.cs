@@ -22,6 +22,8 @@ namespace Nethermind.Config
     {    
         T GetConfig<T>() where T : IConfig;
         
+        string GetRawValue(string category, string name);
+        
         void AddSource(IConfigSource configSource);
     }
 }

@@ -23,5 +23,7 @@ namespace Nethermind.Config
     public interface IConfigSource
     {
         (bool IsSet, object Value) GetValue(Type type, string category, string name);
+        
+        (bool IsSet, string Value) GetRawValue(string category, string name);
     }
 }

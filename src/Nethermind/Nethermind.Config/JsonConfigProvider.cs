@@ -32,6 +32,11 @@ namespace Nethermind.Config
             return _provider.GetConfig<T>();
         }
 
+        public string GetRawValue(string category, string name)
+        {
+            return _provider.GetRawValue(category, name);
+        }
+
         public void AddSource(IConfigSource configSource)
         {
             _provider.AddSource(configSource);

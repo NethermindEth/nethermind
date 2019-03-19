@@ -164,10 +164,15 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
         {
             var dbValue = _debugBridge.GetDbValue(dbName, key);
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_getFromDb)} request [{dbName}, {key.ToHexString()}], result: {dbValue.ToHexString()}");
             return ResultWrapper<byte[]>.Success(dbValue);
         }
-        
+
+        public ResultWrapper<string> debug_getConfigValue(string category, string name)
+        {
+            var configValue = _debugBridge.GetConfigValue(category, name);
+            return ResultWrapper<string>.Success(configValue);
+        }
+
         public override ModuleType ModuleType => ModuleType.Debug;
     }
 }

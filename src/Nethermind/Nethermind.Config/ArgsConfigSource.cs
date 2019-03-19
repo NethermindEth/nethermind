@@ -32,10 +32,15 @@ namespace Nethermind.Config
 
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)
         {
+            (bool isSet, string value) = GetRawValue(category, name);
+            return (isSet, isSet ? ConfigSourceHelper.ParseValue(type, value) : ConfigSourceHelper.GetDefault(type));
+        }
+
+        public (bool IsSet, string Value) GetRawValue(string category, string name)
+        {
             var variableName = $"{category}.{name}";
-            return !_args.ContainsKey(variableName) 
-                ? (false, ConfigSourceHelper.GetDefault(type))
-                : (true, ConfigSourceHelper.ParseValue(type, _args[variableName]));
+            bool isSet = _args.ContainsKey(variableName);
+            return (isSet, isSet ? _args[variableName] : null);
         }
     }
 }

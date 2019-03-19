@@ -122,17 +122,24 @@ namespace Nethermind.Config
 
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)
         {
-            if (!_values.ContainsKey(category) || !_values[category].ContainsKey(name))
+            (bool isSet, _) = GetRawValue(category, name);
+            if (isSet)
             {
-                return (false, ConfigSourceHelper.GetDefault(type));
+                if (!_parsedValues[category].ContainsKey(name))
+                {
+                    ParseValue(type, category, name);
+                }
+                
+                return (true, _parsedValues[category][name]);
             }
 
-            if (!_parsedValues[category].ContainsKey(name))
-            {
-                ParseValue(type, category, name);
-            }
-            
-            return (true, _parsedValues[category][name]);
+            return (false, ConfigSourceHelper.GetDefault(type));
+        }
+
+        public (bool IsSet, string Value) GetRawValue(string category, string name)
+        {
+            bool isSet = _values.ContainsKey(category) && _values[category].ContainsKey(name);
+            return (isSet, isSet ? _values[category][name] : null);
         }
     }
 }

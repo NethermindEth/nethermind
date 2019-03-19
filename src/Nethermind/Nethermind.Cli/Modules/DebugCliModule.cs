@@ -26,6 +26,12 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post("debug_traceBlock", rlp).Result;
         }
+        
+        [CliFunction("debug", "config")]
+        public string GetConfigValue(string category, string name)
+        {
+            return NodeManager.Post<string>("debug_getConfigValue", category, name).Result;
+        }
 
         public DebugCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {

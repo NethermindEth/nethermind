@@ -24,11 +24,15 @@ namespace Nethermind.Config
     {
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)
         {
+            (bool isSet, string value) = GetRawValue(category, name);
+            return (isSet, isSet ? ConfigSourceHelper.ParseValue(type, value) : ConfigSourceHelper.GetDefault(type));
+        }
+
+        public (bool IsSet, string Value) GetRawValue(string category, string name)
+        {
             var variableName = $"NETHERMIND_{category.ToUpperInvariant()}_{name.ToUpperInvariant()}";
             var variableValueString = Environment.GetEnvironmentVariable(variableName);
-            return string.IsNullOrWhiteSpace(variableValueString) 
-                ? (false, ConfigSourceHelper.GetDefault(type))
-                : (true, ConfigSourceHelper.ParseValue(type, variableValueString));
+            return string.IsNullOrWhiteSpace(variableValueString) ? (false, null) : (true, variableValueString); 
         }
     }
 }

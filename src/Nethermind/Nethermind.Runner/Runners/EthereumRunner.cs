@@ -250,7 +250,7 @@ namespace Nethermind.Runner.Runners
             var debugReceiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
             AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, debugTransactionPool, debugReceiptStorage);
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            var debugBridge = new DebugBridge(debugDbProvider, tracer, debugChain.Processor);
+            var debugBridge = new DebugBridge(_configProvider, debugDbProvider, tracer, debugChain.Processor);
 
             EthModule module = new EthModule(_jsonSerializer, _configProvider, _logManager, blockchainBridge);
             _rpcModuleProvider.Register<IEthModule>(module);

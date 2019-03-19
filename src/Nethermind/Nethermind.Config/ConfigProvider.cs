@@ -68,6 +68,20 @@ namespace Nethermind.Config
             return (T)_instances[typeof(T)];
         }
 
+        public string GetRawValue(string category, string name)
+        {
+            for (int i = 0; i < _configSource.Count; i++)
+            {
+                (bool isSet, string value) = _configSource[i].GetRawValue(category, name);
+                if (isSet)
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+
         public void AddSource(IConfigSource configSource)
         {
             _configSource.Add(configSource);
