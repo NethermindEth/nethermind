@@ -99,10 +99,12 @@ namespace Nethermind.Cli
 
                 if (isProperty)
                 {
+                    Console.WriteLine($"{objectName}.{itemName}");
                     AddProperty(instance, itemName, nativeDelegate);
                 }
                 else
                 {
+                    Console.WriteLine($"{objectName}.{itemName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})");
                     AddMethod(instance, itemName, nativeDelegate);
                 }
             }
