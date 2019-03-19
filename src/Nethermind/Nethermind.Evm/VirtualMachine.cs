@@ -598,7 +598,7 @@ namespace Nethermind.Evm
                 }
             }
             
-            void PushUInt(BigInteger value, Span<byte> stack)
+            void PushUInt(in BigInteger value, Span<byte> stack)
             {
                 Span<byte> target = stack.Slice(stackHead * 32, 32);
                 int bytesToWrite = value.GetByteCount(true);
@@ -618,7 +618,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            void PushSignedInt(BigInteger value, Span<byte> stack)
+            void PushSignedInt(in BigInteger value, Span<byte> stack)
             {
                 Span<byte> target = stack.Slice(stackHead * 32, 32);
                 int bytesToWrite = value.GetByteCount(false);
@@ -741,14 +741,14 @@ namespace Nethermind.Evm
                 UInt256.CreateFromBigEndian(out result, PopBytes(stack));
             }
             
-            BigInteger PopUInt(Span<byte> stack)
+            void PopUInt(out BigInteger result, Span<byte> stack)
             {
-                return PopBytes(stack).ToUnsignedBigInteger();
+                result = PopBytes(stack).ToUnsignedBigInteger();
             }
 
-            BigInteger PopInt(Span<byte> stack)
+            void PopInt(out BigInteger result, Span<byte> stack)
             {
-                return PopBytes(stack).ToSignedBigInteger(32);
+                result = PopBytes(stack).ToSignedBigInteger(32);
             }
 
             Address PopAddress(Span<byte> stack)
@@ -832,8 +832,8 @@ namespace Nethermind.Evm
                         }
 
                         // TODO: can calculate in place with Karatsuba
-                        BigInteger a = PopUInt(bytesOnStack);
-                        BigInteger b = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger a, bytesOnStack);
+                        PopUInt(out BigInteger b, bytesOnStack);
                         PushUInt(BigInteger.Remainder(a * b, P256Int), bytesOnStack);
                         break;
                     }
@@ -862,8 +862,8 @@ namespace Nethermind.Evm
                         }
 
                         // TODO: can calculate in place...
-                        BigInteger a = PopUInt(bytesOnStack);
-                        BigInteger b = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger a, bytesOnStack);
+                        PopUInt(out BigInteger b, bytesOnStack);
                         if (b.IsZero)
                         {
                             PushZero(bytesOnStack);
@@ -883,8 +883,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopInt(bytesOnStack);
-                        BigInteger b = PopInt(bytesOnStack);
+                        PopInt(out BigInteger a, bytesOnStack);
+                        PopInt(out BigInteger b, bytesOnStack);
                         if (b.IsZero)
                         {
                             PushZero(bytesOnStack);
@@ -908,8 +908,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopUInt(bytesOnStack);
-                        BigInteger b = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger a, bytesOnStack);
+                        PopUInt(out BigInteger b, bytesOnStack);
                         PushUInt(b.IsZero ? BigInteger.Zero : BigInteger.Remainder(a, b), bytesOnStack);
                         break;
                     }
@@ -921,8 +921,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopInt(bytesOnStack);
-                        BigInteger b = PopInt(bytesOnStack);
+                        PopInt(out BigInteger a, bytesOnStack);
+                        PopInt(out BigInteger b, bytesOnStack);
                         if (b.IsZero)
                         {
                             PushZero(bytesOnStack);
@@ -942,9 +942,9 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopUInt(bytesOnStack);
-                        BigInteger b = PopUInt(bytesOnStack);
-                        BigInteger mod = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger a, bytesOnStack);
+                        PopUInt(out BigInteger b, bytesOnStack);
+                        PopUInt(out BigInteger mod, bytesOnStack);
 
                         if (mod.IsZero)
                         {
@@ -965,9 +965,9 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopUInt(bytesOnStack);
-                        BigInteger b = PopUInt(bytesOnStack);
-                        BigInteger mod = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger a, bytesOnStack);
+                        PopUInt(out BigInteger b, bytesOnStack);
+                        PopUInt(out BigInteger mod, bytesOnStack);
 
                         if (mod.IsZero)
                         {
@@ -988,8 +988,9 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger baseInt = PopUInt(bytesOnStack);
-                        BigInteger exp = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger baseInt, bytesOnStack);
+                        PopUInt(out BigInteger exp, bytesOnStack);
+
                         if (exp > BigInteger.Zero)
                         {
                             int expSize = (int)BigInteger.Log(exp, 256);
@@ -1039,7 +1040,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger a, bytesOnStack);
                         if (a >= BigInt32)
                         {
                             break;
@@ -1065,8 +1066,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopUInt(bytesOnStack);
-                        BigInteger b = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger a, bytesOnStack);
+                        PopUInt(out BigInteger b, bytesOnStack);
                         if (a < b)
                         {
                             PushOne(bytesOnStack);
@@ -1086,8 +1087,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopUInt(bytesOnStack);
-                        BigInteger b = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger a, bytesOnStack);
+                        PopUInt(out BigInteger b, bytesOnStack);
                         if (a > b)
                         {
                             PushOne(bytesOnStack);
@@ -1107,8 +1108,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopInt(bytesOnStack);
-                        BigInteger b = PopInt(bytesOnStack);
+                        PopInt(out BigInteger a, bytesOnStack);
+                        PopInt(out BigInteger b, bytesOnStack);
 
                         if (BigInteger.Compare(a, b) < 0)
                         {
@@ -1129,8 +1130,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopInt(bytesOnStack);
-                        BigInteger b = PopInt(bytesOnStack);
+                        PopInt(out BigInteger a, bytesOnStack);
+                        PopInt(out BigInteger b, bytesOnStack);
                         if (BigInteger.Compare(a, b) > 0)
                         {
                             PushOne(bytesOnStack);
@@ -1262,7 +1263,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger position = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger position, bytesOnStack);
                         Span<byte> bytes = PopBytes(bytesOnStack);
 
                         if (position >= BigInt32)
@@ -1365,7 +1366,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger src = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger src, bytesOnStack);
                         PushBytes(env.InputData.SliceWithZeroPadding(src, 32), bytesOnStack);
                         break;
                     }
@@ -2193,7 +2194,7 @@ namespace Nethermind.Evm
                             return CallResult.InvalidInstructionException;
                         }
 
-                        BigInteger gasLimit = PopUInt(bytesOnStack);
+                        PopUInt(out BigInteger gasLimit, bytesOnStack);                        
                         Address codeSource = PopAddress(bytesOnStack);
                         UInt256 callValue;
                         switch (instruction)
@@ -2515,8 +2516,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopUInt(bytesOnStack);
-                        BigInteger b = PopInt(bytesOnStack);
+                        PopUInt(out BigInteger a, bytesOnStack);
+                        PopInt(out BigInteger b, bytesOnStack);
                         if (a >= BigInt256)
                         {
                             if (b.Sign >= 0)
