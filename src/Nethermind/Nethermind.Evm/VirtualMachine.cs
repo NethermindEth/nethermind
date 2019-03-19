@@ -1285,8 +1285,8 @@ namespace Nethermind.Evm
                     }
                     case Instruction.SHA3:
                     {
-                        UInt256 memSrc = PopUInt256(bytesOnStack);
-                        UInt256 memLength = PopUInt256(bytesOnStack);
+                        PopUInt256(out UInt256 memSrc, bytesOnStack);
+                        PopUInt256(out UInt256 memLength, bytesOnStack);
                         if (!UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(memLength),
                             ref gasAvailable))
                         {
@@ -1382,9 +1382,9 @@ namespace Nethermind.Evm
                     }
                     case Instruction.CALLDATACOPY:
                     {
-                        UInt256 dest = PopUInt256(bytesOnStack);
-                        UInt256 src = PopUInt256(bytesOnStack);
-                        UInt256 length = PopUInt256(bytesOnStack);
+                        PopUInt256(out UInt256 dest, bytesOnStack);
+                        PopUInt256(out UInt256 src, bytesOnStack);
+                        PopUInt256(out UInt256 length, bytesOnStack);
                         if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
                             ref gasAvailable))
                         {
@@ -1411,9 +1411,9 @@ namespace Nethermind.Evm
                     }
                     case Instruction.CODECOPY:
                     {
-                        UInt256 dest = PopUInt256(bytesOnStack);
-                        UInt256 src = PopUInt256(bytesOnStack);
-                        UInt256 length = PopUInt256(bytesOnStack);
+                        PopUInt256(out UInt256 dest, bytesOnStack);
+                        PopUInt256(out UInt256 src, bytesOnStack);
+                        PopUInt256(out UInt256 length, bytesOnStack);
                         if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable))
                         {
                             EndInstructionTraceError(OutOfGasErrorText);
@@ -1792,7 +1792,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 jumpDest = PopUInt256(bytesOnStack);
+                        PopUInt256(out UInt256 jumpDest, bytesOnStack);
                         if (jumpDest > int.MaxValue)
                         {
                             Metrics.EvmExceptions++;
@@ -1821,7 +1821,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 jumpDest = PopUInt256(bytesOnStack);
+                        PopUInt256(out UInt256 jumpDest, bytesOnStack);
                         Span<byte> condition = PopBytes(bytesOnStack);
                         if (!condition.SequenceEqual(BytesZero32))
                         {
@@ -2024,10 +2024,10 @@ namespace Nethermind.Evm
                             return CallResult.StaticCallViolationException;
                         }
 
-                        PopUInt256(out UInt256 memporyPos, bytesOnStack);
+                        PopUInt256(out UInt256 memoryPos, bytesOnStack);
                         PopUInt256(out UInt256 length, bytesOnStack);
                         long topicsCount = instruction - Instruction.LOG0;
-                        UpdateMemoryCost(memoryPos, length);
+                        UpdateMemoryCost(in memoryPos, length);
                         if (!UpdateGas(
                             GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
                             (long)length * GasCostOf.LogData, ref gasAvailable))
@@ -2036,7 +2036,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        byte[] data = evmState.Memory.Load(memoryPos, length);
+                        byte[] data = evmState.Memory.Load(in memoryPos, length);
                         Keccak[] topics = new Keccak[topicsCount];
                         for (int i = 0; i < topicsCount; i++)
                         {
@@ -2071,9 +2071,9 @@ namespace Nethermind.Evm
                             _state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
                         }
 
-                        UInt256 value = PopUInt256(bytesOnStack);
-                        UInt256 memoryPositionOfInitCode = PopUInt256(bytesOnStack);
-                        UInt256 initCodeLength = PopUInt256(bytesOnStack);
+                        PopUInt256(out UInt256 value, bytesOnStack);
+                        PopUInt256(out UInt256 memoryPositionOfInitCode, bytesOnStack);
+                        PopUInt256(out UInt256 initCodeLength, bytesOnStack);
                         Span<byte> salt = null;
                         if (instruction == Instruction.CREATE2)
                         {
@@ -2205,15 +2205,15 @@ namespace Nethermind.Evm
                                 callValue = env.Value;
                                 break;
                             default:
-                                callValue = PopUInt256(bytesOnStack);
+                                PopUInt256(out callValue, bytesOnStack);
                                 break;
                         }
 
                         UInt256 transferValue = instruction == Instruction.DELEGATECALL ? UInt256.Zero : callValue;
-                        UInt256 dataOffset = PopUInt256(bytesOnStack);
-                        UInt256 dataLength = PopUInt256(bytesOnStack);
-                        UInt256 outputOffset = PopUInt256(bytesOnStack);
-                        UInt256 outputLength = PopUInt256(bytesOnStack);
+                        PopUInt256(out UInt256 dataOffset, bytesOnStack);
+                        PopUInt256(out UInt256 dataLength, bytesOnStack);
+                        PopUInt256(out UInt256 outputOffset, bytesOnStack);
+                        PopUInt256(out UInt256 outputLength, bytesOnStack);
 
                         if (evmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE)
                         {
