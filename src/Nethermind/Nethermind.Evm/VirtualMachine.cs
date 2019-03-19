@@ -443,7 +443,7 @@ namespace Nethermind.Evm
             }
         }
 
-        private CallResult ExecuteCall(EvmState evmState, byte[] previousCallResult, byte[] previousCallOutput, UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        private CallResult ExecuteCall(EvmState evmState, byte[] previousCallResult, byte[] previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             bool isTrace = _logger.IsTrace;
             bool traceOpcodes = _txTracer.IsTracingInstructions;
@@ -585,7 +585,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            void PushUInt256(UInt256 value, Span<byte> stack)
+            void PushUInt256(in UInt256 value, Span<byte> stack)
             {
                 Span<byte> target = stack.Slice(stackHead * 32, 32);
                 value.ToBigEndian(target);
