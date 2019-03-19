@@ -16,21 +16,21 @@
   * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
   */
 
-using Nethermind.Blockchain.Validators;
+using Nethermind.Mining;
 using NSubstitute;
 
 namespace Nethermind.Core.Test.Builders
 {
-    public class HeaderValidatorBuilder : BuilderBase<IHeaderValidator>
+    public class SealValidatorBuilder : BuilderBase<ISealValidator>
     {
         private bool _alwaysTrue;
 
-        public HeaderValidatorBuilder()
+        public SealValidatorBuilder()
         {
-            TestObject = Substitute.For<IHeaderValidator>();
+            TestObject = Substitute.For<ISealValidator>();
         }
 
-        public HeaderValidatorBuilder ThatAlwaysReturnsFalse
+        public SealValidatorBuilder ThatAlwaysReturnsFalse
         {
             get
             {
@@ -39,7 +39,7 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public HeaderValidatorBuilder ThatAlwaysReturnsTrue
+        public SealValidatorBuilder ThatAlwaysReturnsTrue
         {
             get
             {
@@ -50,7 +50,8 @@ namespace Nethermind.Core.Test.Builders
 
         protected override void BeforeReturn()
         {
-            TestObjectInternal.Validate(Arg.Any<BlockHeader>()).Returns(_alwaysTrue);
+            TestObjectInternal.ValidateSeal(Arg.Any<BlockHeader>()).Returns(_alwaysTrue);
+            TestObjectInternal.ValidateParams(Arg.Any<Block>(), Arg.Any<BlockHeader>()).Returns(_alwaysTrue);
             base.BeforeReturn();
         }
     }

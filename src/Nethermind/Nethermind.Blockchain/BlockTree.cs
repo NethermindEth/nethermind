@@ -316,15 +316,6 @@ namespace Nethermind.Blockchain
             {
                 Rlp.Encode(stream, block);
                 byte[] newRlp = stream.ToArray();
-//                byte[] oldRlp = Rlp.Encode(block).Bytes;
-//                if (!newRlp.SequenceEqual(oldRlp))
-//                {
-//                    string newStr = newRlp.ToHexString();
-//                    string oldStr = oldRlp.ToHexString();
-//                    Console.WriteLine(newStr);
-//                    Console.WriteLine(oldStr);
-//                    throw new Exception();
-//                }
                 _blockDb.Set(block.Hash, newRlp);
             }
 
