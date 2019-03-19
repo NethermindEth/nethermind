@@ -25,7 +25,7 @@ namespace Ethereum.Test.Base
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public Keccak GetBlockhash(BlockHeader currentBlock, UInt256 number)
+        public Keccak GetBlockhash(BlockHeader currentBlock, in UInt256 number)
         {
             return Keccak.Compute(number.ToString());
         }
