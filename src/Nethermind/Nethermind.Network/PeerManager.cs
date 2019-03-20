@@ -628,7 +628,7 @@ namespace Nethermind.Network
                 }
             }
 
-            AddActivePeer(peer.Node.Id, peer, "IN session");
+            AddActivePeer(peer.Node.Id, peer, newSessionIsIn ? "IN session" : "OUT session");
         }
 
         private static bool PeerIsDisconnected(Peer peer)
