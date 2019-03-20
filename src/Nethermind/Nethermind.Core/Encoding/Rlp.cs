@@ -1316,7 +1316,7 @@ namespace Nethermind.Core.Encoding
         
         public static int LengthOf(int item)
         {
-            return LengthOfLength(item);
+            return Encode(item).Length;
         }
 
         public static int LengthOf(Keccak item)

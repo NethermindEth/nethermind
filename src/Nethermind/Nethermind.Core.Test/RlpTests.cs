@@ -72,7 +72,7 @@ namespace Nethermind.Core.Test
             Rlp.StartSequence(stream, length);
             Assert.AreEqual(positionAfter, stream.Position);
         }
-        
+
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(55)]
@@ -83,14 +83,14 @@ namespace Nethermind.Core.Test
         public void Memory_stream_uint256(int value)
         {
             MemoryStream stream = new MemoryStream();
-            Rlp.Encode(stream, (UInt256)value);
+            Rlp.Encode(stream, (UInt256) value);
 
             byte[] bytesNew = stream.ToArray();
-            byte[] bytesOld = Rlp.Encode((UInt256)value).Bytes;
+            byte[] bytesOld = Rlp.Encode((UInt256) value).Bytes;
             Assert.AreEqual(bytesOld.ToHexString(), bytesNew.ToHexString());
-            Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((UInt256)value), "length");
+            Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((UInt256) value), "length");
         }
-        
+
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(55)]
@@ -101,14 +101,32 @@ namespace Nethermind.Core.Test
         public void Memory_stream_long(int value)
         {
             MemoryStream stream = new MemoryStream();
-            Rlp.Encode(stream, (long)value);
+            Rlp.Encode(stream, (long) value);
 
             byte[] bytesNew = stream.ToArray();
-            byte[] bytesOld = Rlp.Encode((long)value).Bytes;
+            byte[] bytesOld = Rlp.Encode((long) value).Bytes;
             Assert.AreEqual(bytesOld.ToHexString(), bytesNew.ToHexString());
-            Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((long)value), "length");
+            Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((long) value), "length");
         }
-        
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(55)]
+        [TestCase(56)]
+        [TestCase(128)]
+        [TestCase(16000)]
+        [TestCase(300000)]
+        public void Memory_stream_int(int value)
+        {
+            MemoryStream stream = new MemoryStream();
+            Rlp.Encode(stream, value);
+
+            byte[] bytesNew = stream.ToArray();
+            byte[] bytesOld = Rlp.Encode(value).Bytes;
+            Assert.AreEqual(bytesOld.ToHexString(), bytesNew.ToHexString());
+            Assert.AreEqual(bytesOld.Length, Rlp.LengthOf(value), "length");
+        }
+
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(55)]
@@ -119,14 +137,14 @@ namespace Nethermind.Core.Test
         public void Memory_stream_nonce(int value)
         {
             MemoryStream stream = new MemoryStream();
-            Rlp.Encode(stream, (ulong)value);
+            Rlp.Encode(stream, (ulong) value);
 
             byte[] bytesNew = stream.ToArray();
-            byte[] bytesOld = Rlp.Encode((ulong)value).Bytes;
+            byte[] bytesOld = Rlp.Encode((ulong) value).Bytes;
             Assert.AreEqual(bytesOld.ToHexString(), bytesNew.ToHexString());
-            Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((ulong)value), "length");
+            Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((ulong) value), "length");
         }
-        
+
         [Test]
         public void Long_negative()
         {
@@ -156,11 +174,11 @@ namespace Nethermind.Core.Test
             byte[] bytes = {value};
             Rlp rlp = Rlp.Encode(bytes);
             Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
-            Rlp expectedResult = new Rlp(new [] {value});
+            Rlp expectedResult = new Rlp(new[] {value});
             Assert.AreEqual(expectedResult, rlp, "byte array");
             Assert.AreEqual(expectedResult, rlpSpan, "span");
         }
-        
+
         [TestCase(128)]
         [TestCase(255)]
         public void Byte_array_of_length_1_and_first_byte_value_equal_or_more_than_128(byte value)
@@ -168,11 +186,11 @@ namespace Nethermind.Core.Test
             byte[] bytes = {value};
             Rlp rlp = Rlp.Encode(bytes);
             Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
-            Rlp expectedResult = new Rlp(new [] {(byte)129, value});
+            Rlp expectedResult = new Rlp(new[] {(byte) 129, value});
             Assert.AreEqual(expectedResult, rlp, "byte array");
             Assert.AreEqual(expectedResult, rlpSpan, "span");
         }
-        
+
         [Test]
         public void Byte_array_of_length_55()
         {
@@ -182,17 +200,17 @@ namespace Nethermind.Core.Test
             input[2] = 1;
 
             byte[] expectedResultBytes = new byte[1 + input.Length];
-            expectedResultBytes[0] = (byte)(128 + input.Length);
+            expectedResultBytes[0] = (byte) (128 + input.Length);
             expectedResultBytes[1] = input[0];
             expectedResultBytes[2] = input[1];
             expectedResultBytes[3] = input[2];
-            
+
             Rlp expectedResult = new Rlp(expectedResultBytes);
-            
+
             Assert.AreEqual(expectedResult, Rlp.Encode(input), "byte array");
             Assert.AreEqual(expectedResult, Rlp.Encode(input.AsSpan()), "span");
         }
-        
+
         [Test]
         public void Byte_array_of_length_56()
         {
@@ -203,17 +221,17 @@ namespace Nethermind.Core.Test
 
             byte[] expectedResultBytes = new byte[1 + 1 + input.Length];
             expectedResultBytes[0] = 183 + 1;
-            expectedResultBytes[1] = (byte)input.Length;
+            expectedResultBytes[1] = (byte) input.Length;
             expectedResultBytes[2] = input[0];
             expectedResultBytes[3] = input[1];
             expectedResultBytes[4] = input[2];
-            
+
             Rlp expectedResult = new Rlp(expectedResultBytes);
-            
+
             Assert.AreEqual(expectedResult, Rlp.Encode(input), "byte array");
             Assert.AreEqual(expectedResult, Rlp.Encode(input.AsSpan()), "span");
         }
-        
+
         [Test]
         public void Long_byte_array()
         {
@@ -224,14 +242,14 @@ namespace Nethermind.Core.Test
 
             byte[] expectedResultBytes = new byte[1 + 2 + input.Length];
             expectedResultBytes[0] = 183 + 2;
-            expectedResultBytes[1] = (byte)(input.Length / (16 * 16));
-            expectedResultBytes[2] = (byte)(input.Length % (16 * 16));
+            expectedResultBytes[1] = (byte) (input.Length / (16 * 16));
+            expectedResultBytes[2] = (byte) (input.Length % (16 * 16));
             expectedResultBytes[3] = input[0];
             expectedResultBytes[4] = input[1];
             expectedResultBytes[5] = input[2];
-            
+
             Rlp expectedResult = new Rlp(expectedResultBytes);
-            
+
             Assert.AreEqual(expectedResult, Rlp.Encode(input), "byte array");
             Assert.AreEqual(expectedResult, Rlp.Encode(input.AsSpan()), "span");
         }
