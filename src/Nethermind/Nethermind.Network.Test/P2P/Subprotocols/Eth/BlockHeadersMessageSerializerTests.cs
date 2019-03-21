@@ -46,6 +46,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
 
             Console.WriteLine(bytes.ToHexString());
         }
+        
+        [Test]
+        public void Roundtrip_nulls()
+        {
+            BlockHeadersMessage message = new BlockHeadersMessage();
+            message.BlockHeaders = new[] {Build.A.BlockHeader.TestObject, null};
+
+            BlockHeadersMessageSerializer serializer = new BlockHeadersMessageSerializer();
+            byte[] bytes = serializer.Serialize(message);
+
+            BlockHeadersMessage deserialized = serializer.Deserialize(bytes);
+            Assert.AreEqual(message.BlockHeaders.Length, deserialized.BlockHeaders.Length, "length");
+            Assert.AreEqual(message.BlockHeaders[0].Hash, deserialized.BlockHeaders[0].Hash, "hash");
+            Assert.Null(message.BlockHeaders[1]);
+
+            Console.WriteLine(bytes.ToHexString());
+        }
 
         [Test]
         public void Can_decode_249_bloom()

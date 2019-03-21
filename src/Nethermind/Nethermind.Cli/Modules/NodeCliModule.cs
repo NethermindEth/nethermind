@@ -36,15 +36,29 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("node", "switch")]
-        public void Switch(string uri)
+        public string Switch(string uri)
         {
-            NodeManager.SwitchUri(new Uri($"http://localhost:{uri}"));
+            if (!uri.StartsWith("http://"))
+            {
+                uri = "http://" + uri;
+            }
+            
+            NodeManager.SwitchUri(new Uri($"{uri}"));
+            return uri;
         }
         
         [CliFunction("node", "switchLocal")]
-        public void SwitchLocal(string uri)
+        public string SwitchLocal(string uri)
         {
-            NodeManager.SwitchUri(new Uri($"http://localhost:{uri}"));
+            uri = $"{GetVariable("NETHERMIND_CLI_SWITCH_LOCAL", "http://localhost")}:{uri}";
+            NodeManager.SwitchUri(new Uri(uri));
+            return uri;
+        }
+        
+        private string GetVariable(string name, string defaultValue)
+        {
+            var value = Environment.GetEnvironmentVariable(name.ToUpperInvariant());
+            return string.IsNullOrWhiteSpace(value) ? value : defaultValue;
         }
         
         [CliProperty("node", "address")]
@@ -56,11 +70,24 @@ namespace Nethermind.Cli.Modules
         [CliProperty("node", "enode")]
         public string Enode()
         {
-            return NodeManager.Post<string>("net_localEnode").Result;
+            string result = NodeManager.Post<string>("net_localEnode").Result;
+            return result;
         }
         
         [CliProperty("node", "uri")]
         public string Uri()
+        {
+            return NodeManager.CurrentUri;
+        }
+        
+        [CliFunction("node", "testConnection")]
+        public string TestConnection()
+        {
+            return NodeManager.CurrentUri;
+        }
+        
+        [CliProperty("node", "cliVersion")]
+        public string CliVersion()
         {
             return NodeManager.CurrentUri;
         }

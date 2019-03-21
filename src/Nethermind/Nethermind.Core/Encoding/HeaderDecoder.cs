@@ -113,6 +113,12 @@ namespace Nethermind.Core.Encoding
 
         public void Encode(MemoryStream stream, BlockHeader item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item == null)
+            {
+                stream.Write(Rlp.OfEmptySequence.Bytes);
+                return;
+            }
+            
             bool forSealing = (rlpBehaviors & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
             Rlp.StartSequence(stream, GetContentLength(item, rlpBehaviors));
             Rlp.Encode(stream, item.ParentHash);

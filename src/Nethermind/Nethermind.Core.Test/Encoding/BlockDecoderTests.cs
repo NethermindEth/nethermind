@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
 using Nethermind.Core.Encoding;
 using NUnit.Framework;
 
@@ -30,6 +31,17 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlp = Rlp.Encode((Block) null);
             Block decoded = Rlp.Decode<Block>(rlp);
             Assert.IsNull(decoded);
+        }
+        
+        [Test]
+        public void Can_do_roundtrip_null_memory_stream()
+        {
+            using (MemoryStream stream = Rlp.BorrowStream())
+            {
+                Rlp.Encode(stream,(Block) null);
+                Block decoded = Rlp.Decode<Block>(stream.ToArray());
+                Assert.IsNull(decoded);
+            }
         }
     }
 }
