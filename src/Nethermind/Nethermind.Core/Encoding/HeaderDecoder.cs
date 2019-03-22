@@ -27,7 +27,7 @@ namespace Nethermind.Core.Encoding
     {
         public BlockHeader Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (context.Length == 1 && context.Data[0] == 192)
+            if (context.Data[context.Position] == Rlp.OfEmptySequence.Bytes[0])
             {
                 return null;
             }
@@ -144,6 +144,11 @@ namespace Nethermind.Core.Encoding
 
         private int GetContentLength(BlockHeader item, RlpBehaviors rlpBehaviors)
         {
+            if (item == null)
+            {
+                return 0;
+            }
+            
             bool forSealing = (rlpBehaviors & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
             int contentLength = 0
                                 + Rlp.LengthOf(item.ParentHash)
@@ -170,6 +175,7 @@ namespace Nethermind.Core.Encoding
 
         public int GetLength(BlockHeader item, RlpBehaviors rlpBehaviors)
         {
+          
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
     }

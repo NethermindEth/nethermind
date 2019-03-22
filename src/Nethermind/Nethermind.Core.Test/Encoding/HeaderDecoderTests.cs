@@ -36,5 +36,12 @@ namespace Nethermind.Core.Test.Encoding
             
             Assert.AreEqual(header.Hash, decoded.Hash, "hash");
         }
+        
+        [Test]
+        public void Get_length_null()
+        {
+            HeaderDecoder decoder = new HeaderDecoder();
+            Assert.AreEqual(1, decoder.GetLength(null, RlpBehaviors.None));
+        }
     }
 }

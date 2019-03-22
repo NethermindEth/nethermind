@@ -80,7 +80,7 @@ namespace Nethermind.Core.Encoding
         }
         
         private (int Total, int Txs, int Ommers) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
-        {
+        {   
             int contentLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
             
             int txLength = GetTxLength(item, rlpBehaviors);
@@ -140,6 +140,11 @@ namespace Nethermind.Core.Encoding
 
         public int GetLength(Block item, RlpBehaviors rlpBehaviors)
         {
+            if (item == null)
+            {
+                return 1;
+            }
+            
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
     }

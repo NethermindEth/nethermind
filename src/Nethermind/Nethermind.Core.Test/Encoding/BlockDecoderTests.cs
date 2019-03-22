@@ -43,5 +43,12 @@ namespace Nethermind.Core.Test.Encoding
                 Assert.IsNull(decoded);
             }
         }
+        
+        [Test]
+        public void Get_length_null()
+        {
+            BlockDecoder decoder = new BlockDecoder();
+            Assert.AreEqual(1, decoder.GetLength(null, RlpBehaviors.None));
+        }
     }
 }
