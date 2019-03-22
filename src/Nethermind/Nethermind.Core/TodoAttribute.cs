@@ -54,6 +54,7 @@ namespace Nethermind.Core
         Refactor = 32,
         MissingFunctionality = 64,
         Documentation = 128,
-        All = 255
+        Security = 256,
+        All = 511
     }
 }

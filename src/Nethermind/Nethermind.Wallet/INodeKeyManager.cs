@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,19 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Core
-{    
-    [AttributeUsage(AttributeTargets.All)]
-    public class DoNotUseInSecuredContext : Attribute
+namespace Nethermind.Wallet
+{
+    public interface INodeKeyManager
     {
-        private readonly string _comment;
-
-        [Todo(Improve.Security, "In config file add a switch for secured context and if set then throw an exception whenever this attribute is loaded?")]
-        public DoNotUseInSecuredContext(string comment)
-        {
-            _comment = comment;
-        }
+        PrivateKey LoadNodeKey();
     }
 }

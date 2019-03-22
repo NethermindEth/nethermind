@@ -36,5 +36,6 @@ namespace Nethermind.KeyStore.Config
         int SymmetricEncrypterBlockSize { get; }
         int SymmetricEncrypterKeySize { get; }
         int IVSize { get; }
+        string TestNodeKey { get; set; }
     }
 }

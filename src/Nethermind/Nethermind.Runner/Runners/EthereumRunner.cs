@@ -155,7 +155,7 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsInfo) _logger.Info("Initializing Ethereum");
             _runnerCancellation = new CancellationTokenSource();
 
-            GenerateNodeKey();
+            SetupKeyStore();
             LoadChainSpec();
             UpdateNetworkConfig();
             await InitBlockchain();
@@ -176,27 +176,37 @@ namespace Nethermind.Runner.Runners
             NetworkNodeDecoder.Init();
         }
 
-        private void GenerateNodeKey()
+        private void SetupKeyStore()
         {
-// this is not secure at all but this is just the node key, nothing critical so far, will use the key store here later and allow to manage by password when launching the node
-            if (_initConfig.TestNodeKey == null)
+            var encrypter = new AesEncrypter(
+                _configProvider.GetConfig<IKeyStoreConfig>(),
+                _logManager);
+
+            _keyStore = new FileKeyStore(
+                _configProvider.GetConfig<IKeyStoreConfig>(),
+                _ethereumJsonSerializer,
+                encrypter,
+                _cryptoRandom,
+                _logManager);
+
+            switch (_initConfig)
             {
-                if (!File.Exists(UnsecuredNodeKeyFilePath))
-                {
-                    if (_logger.IsInfo)
-                        _logger.Info("Generating private key for the node (no node key in configuration)");
-                    _nodeKey = new PrivateKeyGenerator(_cryptoRandom).Generate();
-                    File.WriteAllBytes(UnsecuredNodeKeyFilePath, _nodeKey.KeyBytes);
-                }
-                else
-                {
-                    _nodeKey = new PrivateKey(File.ReadAllBytes(UnsecuredNodeKeyFilePath));
-                }
+                case var _ when HiveEnabled:
+                    _wallet = new HiveWallet();
+                    break;
+                case var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory:
+                    _wallet = new DevWallet(_logManager);
+                    break;
+                case var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory:
+                    _wallet = new DevKeyStoreWallet(_keyStore, _logManager);
+                    break;
+                default:
+                    _wallet = new NullWallet();
+                    break;
             }
-            else
-            {
-                _nodeKey = new PrivateKey(_initConfig.TestNodeKey);
-            }
+            
+            INodeKeyManager nodeKeyManager = new NodeKeyManager(_cryptoRandom, _keyStore, _configProvider.GetConfig<IKeyStoreConfig>(), _logManager);
+            _nodeKey = nodeKeyManager.LoadNodeKey();
 
             var ipVariable = Environment.GetEnvironmentVariable("NETHERMIND_ENODE_IPADDRESS");
             var localIp = string.IsNullOrWhiteSpace(ipVariable)
@@ -603,33 +613,6 @@ namespace Nethermind.Runner.Runners
             // create shared objects between discovery and peer manager
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
             _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager, !statsConfig.CaptureNodeStatsEventHistory);
-
-            var encrypter = new AesEncrypter(
-                _configProvider.GetConfig<IKeyStoreConfig>(),
-                _logManager);
-
-            _keyStore = new FileKeyStore(
-                _configProvider.GetConfig<IKeyStoreConfig>(),
-                _ethereumJsonSerializer,
-                encrypter,
-                _cryptoRandom,
-                _logManager);
-
-            switch (_initConfig)
-            {
-                case var _ when HiveEnabled:
-                    _wallet = new HiveWallet();
-                    break;
-                case var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory:
-                    _wallet = new DevWallet(_logManager);
-                    break;
-                case var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory:
-                    _wallet = new DevKeyStoreWallet(_keyStore, _logManager);
-                    break;
-                default:
-                    _wallet = new NullWallet();
-                    break;
-            }
 
             if (_initConfig.IsMining)
             {

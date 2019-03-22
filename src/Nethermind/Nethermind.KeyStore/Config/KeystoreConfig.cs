@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.IO;
-
 namespace Nethermind.KeyStore.Config
 {
     public class KeyStoreConfig : IKeyStoreConfig
@@ -35,5 +33,6 @@ namespace Nethermind.KeyStore.Config
         public int SymmetricEncrypterBlockSize { get; set; } = 128;
         public int SymmetricEncrypterKeySize { get; set; } = 128;
         public int IVSize { get; set; } = 16;
+        public string TestNodeKey { get; set; }
     }
 }

@@ -37,7 +37,6 @@ namespace Nethermind.Runner.Config
         public string ChainSpecPath { get; set; }
         public string ChainSpecFormat { get; set; } = "chainspec";
         public string BaseDbPath { get; set; } = "db";
-        public string TestNodeKey { get; set; }
         public string LogFileName { get; set; } = "log.txt";
         public string GenesisHash { get; set; }
         public string[] JsonRpcEnabledModules { get; set; } = { "Clique", "Eth", "Net", "Web3", "Db", "Debug", "TxPool" };
