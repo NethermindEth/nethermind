@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -33,13 +33,13 @@ namespace Ethereum.KeyAddress.Test
 {
     public class KeyAddressTests
     {
-        private IEthereumSigner _signer;
+        private IEthereumEcdsa _ethereumEcdsa;
         
         [OneTimeSetUp]
         public void SetUp()
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            _signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, NullLogManager.Instance);
         }
 
         private static IEnumerable<KeyAddressTest> LoadTests()
@@ -66,7 +66,7 @@ namespace Ethereum.KeyAddress.Test
         {
             Keccak messageHash = Keccak.Compute(message);
             Signature sig = new Signature(sigHex);
-            Address recovered = _signer.RecoverAddress(sig, messageHash);
+            Address recovered = _ethereumEcdsa.RecoverAddress(sig, messageHash);
             Address address = new Address(addressHex);
 
             // TODO: check - at the moment they are failing when running in the test mode but not in Debug
@@ -82,7 +82,7 @@ namespace Ethereum.KeyAddress.Test
             
             PrivateKey privateKey = new PrivateKey(test.Key);
             Address actualAddress = privateKey.Address;
-            Signature actualSig = _signer.Sign(privateKey, Keccak.OfAnEmptyString);
+            Signature actualSig = _ethereumEcdsa.Sign(privateKey, Keccak.OfAnEmptyString);
             string actualSigHex = actualSig.ToString();
 
             Signature expectedSig = new Signature(test.R, test.S, test.V);
@@ -91,13 +91,13 @@ namespace Ethereum.KeyAddress.Test
 
             Assert.AreEqual(expectedAddress, actualAddress, "address vs adress from private key");
 
-            Address recoveredActualAddress = _signer.RecoverAddress(actualSig, Keccak.OfAnEmptyString);
+            Address recoveredActualAddress = _ethereumEcdsa.RecoverAddress(actualSig, Keccak.OfAnEmptyString);
             Assert.AreEqual(actualAddress, recoveredActualAddress);
 
             // it does not work
             Assert.AreEqual(expectedSigHex, actualSigHex, "expected vs actual signature hex");
 
-            Address recovered = _signer.RecoverAddress(expectedSig, Keccak.OfAnEmptyString);
+            Address recovered = _ethereumEcdsa.RecoverAddress(expectedSig, Keccak.OfAnEmptyString);
             Assert.AreEqual(expectedAddress, recovered);
         }
 
