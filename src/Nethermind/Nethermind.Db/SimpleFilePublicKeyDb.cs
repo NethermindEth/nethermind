@@ -29,7 +29,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Db
 {
-    // TODO: replace or optimize
+    [Todo(Improve.Performance, "Remove this entirely and replace with RocksDB")]
     public class SimpleFilePublicKeyDb : IFullDb
     {
         private readonly ILogger _logger;

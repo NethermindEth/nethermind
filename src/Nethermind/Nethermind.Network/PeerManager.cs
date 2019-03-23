@@ -867,6 +867,7 @@ namespace Nethermind.Network
             }
         }
 
+        [Todo(Improve.Allocations, "Remove ToDictionary and ToArray here")]
         private void UpdateReputationAndMaxPeersCount()
         {
             var storedNodes = _peerStorage.GetPersistedNodes();

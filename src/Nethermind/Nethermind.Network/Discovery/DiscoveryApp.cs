@@ -501,6 +501,7 @@ namespace Nethermind.Network.Discovery
             await _nodesLocator.LocateNodesAsync(randomId, cancellationToken);
         }
 
+        [Todo(Improve.Allocations, "Remove ToArray here - address as a part of the network DB rewrite")]
         private void RunDiscoveryCommit()
         {
             try
