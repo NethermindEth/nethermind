@@ -79,7 +79,7 @@ namespace Nethermind.Network
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _peerLoader = peerLoader ?? throw new ArgumentNullException(nameof(peerLoader));
             _peerStorage.StartBatch();
-            
+
             _peerComparer = new PeerComparer(_stats);
         }
 
@@ -189,6 +189,11 @@ namespace Nethermind.Network
 
         private CandidateSelection _currentSelection = new CandidateSelection();
 
+        private int tryCount;
+        private int newActiveNodes;
+        private int failedInitialConnect;
+        private int connectionRounds;
+        
         private async Task RunPeerUpdateLoop()
         {
             while (true)
@@ -221,11 +226,11 @@ namespace Nethermind.Network
                     break;
                 }
 
-                int tryCount = 0;
-                int newActiveNodes = 0;
-                int failedInitialConnect = 0;
-                int connectionRounds = 0;
-
+                Interlocked.Exchange(ref tryCount, 0);
+                Interlocked.Exchange(ref newActiveNodes, 0);
+                Interlocked.Exchange(ref failedInitialConnect, 0);
+                Interlocked.Exchange(ref connectionRounds, 0);
+                
                 SelectAndRankCandidates();
                 IReadOnlyCollection<Peer> remainingCandidates = _currentSelection.Candidates;
                 if (!remainingCandidates.Any())
@@ -249,67 +254,26 @@ namespace Nethermind.Network
 
                     IEnumerable<Peer> candidatesToTry = remainingCandidates.Take(nodesToTry);
                     remainingCandidates = remainingCandidates.Skip(nodesToTry).ToList();
-                  
+
                     var workerBlock = new ActionBlock<Peer>(
-                       
-                        async peer =>  await SetupPeerConnection(peer),
-                        // think of specifying a maximum degree of parallelism.
+                        SetupPeerConnection,
                         new ExecutionDataflowBlockOptions
                         {
-                            MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded
+                            MaxDegreeOfParallelism = Environment.ProcessorCount,
+                            CancellationToken = _cancellationTokenSource.Token
                         });
 
                     foreach (var candidateToTry in candidatesToTry)
                     {
-                        
-                        workerBlock.Post(candidateToTry);                  
+                        await workerBlock.SendAsync(candidateToTry);
                     }
-                    
+
                     workerBlock.Complete();
 
                     // Wait for all messages to propagate through the network.
                     workerBlock.Completion.Wait();
-                    
-                  /*  
-                    Parallel.ForEach(candidatesToTry, async (peer, loopState) =>
-                    {
-                        if (loopState.ShouldExitCurrentIteration || _cancellationTokenSource.IsCancellationRequested)
-                        {
-                            return;
-                        }
 
-                        Interlocked.Increment(ref tryCount);
-
-                        // Can happen when In connection is received from the same peer and is initialized before we get here
-                        // In this case we do not initialize OUT connection
-                        if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
-                            return;
-                        }
-
-                        bool result = await InitializePeerConnection(peer);
-                        if(_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_activePeers.Count}, CAND: {_candidatePeers.Count}");
-                        
-                        if (!result)
-                        {
-                            _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
-                            Interlocked.Increment(ref failedInitialConnect);
-                            if (peer.OutSession != null)
-                            {
-                                if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
-                                peer.OutSession?.Disconnect(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local);
-                            }
-
-                            DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
-
-                            return;
-                        }
-
-                        Interlocked.Increment(ref newActiveNodes);
-                    });*/
-
-                    connectionRounds++;
+                    Interlocked.Increment(ref connectionRounds);
                 }
 
                 if (_logger.IsDebug)
@@ -351,20 +315,27 @@ namespace Nethermind.Network
             await Task.CompletedTask;
         }
 
-        private async Task SetupPeerConnection(Peer peer){ 
+        [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
+        private async Task SetupPeerConnection(Peer peer)
+        {
+            Console.WriteLine($"{Thread.CurrentThread.ManagedThreadId} THREAD");
+            
+            // Can happen when In connection is received from the same peer and is initialized before we get here
+            // In this case we do not initialize OUT connection
             if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
             {
                 if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
                 return;
             }
 
+            Interlocked.Increment(ref tryCount);
             bool result = await InitializePeerConnection(peer);
-            if(_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_activePeers.Count}, CAND: {_candidatePeers.Count}");
-                        
+            if (_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_activePeers.Count}, CAND: {_candidatePeers.Count}");
+
             if (!result)
             {
                 _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
-                // Interlocked.Increment(ref failedInitialConnect);
+                Interlocked.Increment(ref failedInitialConnect);
                 if (peer.OutSession != null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
@@ -372,9 +343,12 @@ namespace Nethermind.Network
                 }
 
                 DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
-
                 return;
-            }}
+            }
+            
+            Interlocked.Increment(ref newActiveNodes);
+        }
+
         private bool AddActivePeer(PublicKey nodeId, Peer peer, string reason)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| ADDING {nodeId} {reason}");
@@ -414,15 +388,15 @@ namespace Nethermind.Network
                 {
                     continue;
                 }
-                
+
                 _currentSelection.PreCandidates.Add(peer);
             }
-            
+
             if (!_currentSelection.PreCandidates.Any())
             {
                 return;
             }
-            
+
             _currentSelection.Counters[ActivePeerSelectionCounter.AllNonActiveCandidates] = _currentSelection.PreCandidates.Count;
 
             foreach (Peer preCandidate in _currentSelection.PreCandidates)
@@ -460,9 +434,9 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                _currentSelection.Candidates.Add(preCandidate);    
+                _currentSelection.Candidates.Add(preCandidate);
             }
-            
+
             _currentSelection.Candidates.Sort(_peerComparer);
         }
 
@@ -476,25 +450,25 @@ namespace Nethermind.Network
             {
                 _stats = stats;
             }
-            
+
             public int Compare(Peer x, Peer y)
             {
                 if (x == null)
                 {
                     return y == null ? 0 : 1;
                 }
-                
+
                 if (y == null)
                 {
                     return -1;
                 }
-                
+
                 int trust = -x.Node.IsTrusted.CompareTo(y.Node.IsTrusted);
                 if (trust != 0)
                 {
                     return trust;
                 }
-                
+
                 int reputation = -_stats.GetCurrentReputation(x.Node).CompareTo(_stats.GetCurrentReputation(y.Node));
                 return reputation;
             }
@@ -1002,7 +976,7 @@ namespace Nethermind.Network
             //_logger.Info($"candidates: \n{string.Join("\n", candidates.Select(x => $"{x.Node.Id}: {x.NodeStats.CurrentNodeReputation}"))}");
             //_logger.Info($"nodesToRemove: \n{string.Join("\n", nodesToRemove.Select(x => $"{x.Node.Id}: {x.NodeStats.CurrentNodeReputation}"))}");
         }
-        
+
         private enum ActivePeerSelectionCounter
         {
             AllNonActiveCandidates,
