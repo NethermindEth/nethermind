@@ -318,8 +318,6 @@ namespace Nethermind.Network
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupPeerConnection(Peer peer)
         {
-            Console.WriteLine($"{Thread.CurrentThread.ManagedThreadId} THREAD");
-            
             // Can happen when In connection is received from the same peer and is initialized before we get here
             // In this case we do not initialize OUT connection
             if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
