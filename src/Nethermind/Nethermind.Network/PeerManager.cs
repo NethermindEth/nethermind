@@ -416,6 +416,11 @@ namespace Nethermind.Network
                     continue;
                 }
 
+                if (peer.Node.Port > 65535)
+                {
+                    continue;
+                }
+
                 _currentSelection.PreCandidates.Add(peer);
             }
 
