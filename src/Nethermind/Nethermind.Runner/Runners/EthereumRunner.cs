@@ -860,7 +860,6 @@ namespace Nethermind.Runner.Runners
                 _initConfig.P2PPort,
                 encryptionHandshakeServiceA,
                 _logManager,
-                _perfService,
                 _sessionMonitor);
 
             await _rlpxPeer.Init();
