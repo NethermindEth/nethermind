@@ -26,7 +26,7 @@ namespace Nethermind.Core.Crypto
     ///     for signer tests
     ///     http://blog.enuma.io/update/2016/11/01/a-tale-of-two-curves-hardware-signing-for-ethereum.html
     /// </summary>
-    public class Signer : ISigner
+    public class Ecdsa : IEcdsa
     {
         public Signature Sign(PrivateKey privateKey, Keccak message)
         {

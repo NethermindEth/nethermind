@@ -29,7 +29,7 @@ namespace Nethermind.Core.Crypto
     ///     for signer tests
     ///     http://blog.enuma.io/update/2016/11/01/a-tale-of-two-curves-hardware-signing-for-ethereum.html
     /// </summary>
-    public class EthereumSigner : Signer, IEthereumSigner
+    public class EthereumEcdsa : Ecdsa, IEthereumEcdsa
     {
         public static readonly BigInteger MaxLowS = BigInteger.Parse("7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0", NumberStyles.HexNumber);
         public static readonly BigInteger LowSTransform = BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
@@ -38,7 +38,7 @@ namespace Nethermind.Core.Crypto
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public EthereumSigner(ISpecProvider specProvider, ILogManager logManager)
+        public EthereumEcdsa(ISpecProvider specProvider, ILogManager logManager)
         {
             _specProvider = specProvider;
             _logger = logManager.GetClassLogger();

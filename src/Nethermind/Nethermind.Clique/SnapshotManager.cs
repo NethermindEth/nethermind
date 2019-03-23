@@ -39,16 +39,16 @@ namespace Nethermind.Clique
         private readonly ICliqueConfig _cliqueConfig;
         private readonly ILogger _logger;
         private readonly ICache<Keccak, Address> _signatures;
-        private readonly IEthereumSigner _signer;
+        private readonly IEthereumEcdsa _ecdsa;
         private IDb _blocksDb;
         private ICache<Keccak, Snapshot> _snapshotCache = new LruCache<Keccak, Snapshot>(Clique.InMemorySnapshots);
 
-        public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumSigner signer, ILogManager logManager)
+        public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
             _signatures = new LruCache<Keccak, Address>(Clique.InMemorySignatures);
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
@@ -68,7 +68,7 @@ namespace Nethermind.Clique
             Signature signature = new Signature(signatureBytes);
             signature.V += 27;
             Keccak message = CalculateCliqueHeaderHash(header);
-            Address address = _signer.RecoverAddress(signature, message);
+            Address address = _ecdsa.RecoverAddress(signature, message);
             _signatures.Set(header.Hash, address);
             return address;
         }

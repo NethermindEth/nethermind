@@ -97,7 +97,7 @@ namespace Nethermind.Runner.Runners
         private PrivateKey _nodeKey;
         private ChainSpec _chainSpec;
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
-        private ISigner _signer = new Signer();
+        private IEcdsa _ecdsa = new Ecdsa();
         private IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
         private IJsonSerializer _ethereumJsonSerializer = new EthereumJsonSerializer();
         private CancellationTokenSource _runnerCancellation;
@@ -110,7 +110,7 @@ namespace Nethermind.Runner.Runners
         private ITransactionPool _transactionPool;
         private ITransactionPoolInfoProvider _transactionPoolInfoProvider;
         private IReceiptStorage _receiptStorage;
-        private IEthereumSigner _ethereumSigner;
+        private IEthereumEcdsa _ethereumEcdsa;
         private ISynchronizationManager _syncManager;
         private IKeyStore _keyStore;
         private IPeerManager _peerManager;
@@ -251,7 +251,7 @@ namespace Nethermind.Runner.Runners
             TransactionPool debugTransactionPool = new TransactionPool(new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
                 new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval, _initConfig.RemovePendingTransactionInterval),
                 _timestamp,
-                _ethereumSigner,
+                _ethereumEcdsa,
                 _specProvider,
                 _logManager,
                 _initConfig.RemovePendingTransactionInterval,
@@ -460,12 +460,12 @@ namespace Nethermind.Runner.Runners
                 ? (IDbProvider) new MemDbProvider()
                 : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts);
 
-            _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
             _transactionPool = new TransactionPool(
                 new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
                 new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
                     _initConfig.RemovePendingTransactionInterval), new Timestamp(),
-                _ethereumSigner, _specProvider, _logManager, _initConfig.RemovePendingTransactionInterval,
+                _ethereumEcdsa, _specProvider, _logManager, _initConfig.RemovePendingTransactionInterval,
                 _initConfig.PeerNotificationThreshold);
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
 
@@ -482,7 +482,7 @@ namespace Nethermind.Runner.Runners
                 _transactionPool,
                 _logManager);
 
-            _recoveryStep = new TxSignaturesRecoveryStep(_ethereumSigner, _transactionPool);
+            _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _transactionPool);
 
             CliqueConfig cliqueConfig = null;
             _snapshotManager = null;
@@ -498,7 +498,7 @@ namespace Nethermind.Runner.Runners
                     cliqueConfig = new CliqueConfig();
                     cliqueConfig.BlockPeriod = _chainSpec.CliquePeriod;
                     cliqueConfig.Epoch = _chainSpec.CliqueEpoch;
-                    _snapshotManager = new SnapshotManager(cliqueConfig, _dbProvider.BlocksDb, _blockTree, _ethereumSigner, _logManager);
+                    _snapshotManager = new SnapshotManager(cliqueConfig, _dbProvider.BlocksDb, _blockTree, _ethereumEcdsa, _logManager);
                     _sealValidator = new CliqueSealValidator(cliqueConfig, _snapshotManager, _logManager);
                     _recoveryStep = new CompositeDataRecoveryStep(_recoveryStep, new AuthorRecoveryStep(_snapshotManager));
                     if (_initConfig.IsMining)
@@ -829,7 +829,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             _messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
             var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher,
-                _cryptoRandom, new Signer(), _nodeKey, _logManager);
+                _cryptoRandom, new Ecdsa(), _nodeKey, _logManager);
 
             /* p2p */
             _messageSerializationService.Register(new HelloMessageSerializer());
@@ -900,11 +900,11 @@ namespace Nethermind.Runner.Runners
 
             var privateKeyProvider = new SameKeyGenerator(_nodeKey);
             var discoveryMessageFactory = new DiscoveryMessageFactory(networkConfig, _timestamp);
-            var nodeIdResolver = new NodeIdResolver(_signer);
+            var nodeIdResolver = new NodeIdResolver(_ecdsa);
 
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
                 _messageSerializationService,
-                _signer,
+                _ecdsa,
                 privateKeyProvider,
                 discoveryMessageFactory,
                 nodeIdResolver);

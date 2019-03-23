@@ -48,7 +48,7 @@ namespace Nethermind.Clique.Test
         {
             private static Timestamp _timestamp = new Timestamp(new DateTimeProvider());
             private CliqueConfig _cliqueConfig;
-            private EthereumSigner _ethereumSigner = new EthereumSigner(GoerliSpecProvider.Instance, NullLogManager.Instance);
+            private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(GoerliSpecProvider.Instance, NullLogManager.Instance);
             private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new Dictionary<PrivateKey, ISnapshotManager>();
             private Dictionary<PrivateKey, BlockTree> _blockTrees = new Dictionary<PrivateKey, BlockTree>();
             private Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new Dictionary<PrivateKey, AutoResetEvent>();
@@ -77,7 +77,7 @@ namespace Nethermind.Clique.Test
                 MemDb blocksDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
 
-                TransactionPool transactionPool = new TransactionPool(new InMemoryTransactionStorage(), new PendingTransactionThresholdValidator(), _timestamp, _ethereumSigner, GoerliSpecProvider.Instance, NullLogManager.Instance);
+                TransactionPool transactionPool = new TransactionPool(new InMemoryTransactionStorage(), new PendingTransactionThresholdValidator(), _timestamp, _ethereumEcdsa, GoerliSpecProvider.Instance, NullLogManager.Instance);
                 _pools[privateKey] = transactionPool;
 
                 BlockTree blockTree = new BlockTree(blocksDb, blockInfoDb, GoerliSpecProvider.Instance, transactionPool, NullLogManager.Instance);
@@ -87,7 +87,7 @@ namespace Nethermind.Clique.Test
                 _blockTrees.Add(privateKey, blockTree);
 
                 IBasicWallet wallet = new BasicWallet(privateKey);
-                SnapshotManager snapshotManager = new SnapshotManager(_cliqueConfig, blocksDb, blockTree, _ethereumSigner, LimboLogs.Instance);
+                SnapshotManager snapshotManager = new SnapshotManager(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, LimboLogs.Instance);
                 _snapshotManager[privateKey] = snapshotManager;
                 CliqueSealer cliqueSealer = new CliqueSealer(wallet, _cliqueConfig, snapshotManager, privateKey.Address, NullLogManager.Instance);
 
@@ -360,7 +360,7 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = _currentNonce++;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                _ethereumSigner.Sign(TestItem.PrivateKeyD, transaction, 1);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
 
                 return this;
@@ -377,7 +377,7 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = _currentNonce;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                _ethereumSigner.Sign(TestItem.PrivateKeyD, transaction, 1);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
 
                 // bad nonce
@@ -389,7 +389,7 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = 0;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                _ethereumSigner.Sign(TestItem.PrivateKeyD, transaction, 1);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
 
                 // gas limit too high
@@ -401,7 +401,7 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = _currentNonce;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                _ethereumSigner.Sign(TestItem.PrivateKeyD, transaction, 1);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
                 
                 // insufficient balance
@@ -413,7 +413,7 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = _currentNonce;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                _ethereumSigner.Sign(TestItem.PrivateKeyD, transaction, 1);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
 
                 return this;
@@ -429,7 +429,7 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = _currentNonce + 1000;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                _ethereumSigner.Sign(TestItem.PrivateKeyD, transaction, 1);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
                 _pools[nodeKey].AddTransaction(transaction, 1);
 
                 return this;

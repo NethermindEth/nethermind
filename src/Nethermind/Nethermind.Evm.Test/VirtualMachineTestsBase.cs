@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Test
 {
     public class VirtualMachineTestsBase
     {
-        private readonly IEthereumSigner _ethereumSigner;
+        private readonly IEthereumEcdsa _ethereumEcdsa;
         private readonly ITransactionProcessor _processor;
         private readonly ISnapshotableDb _stateDb;
         protected internal IStateProvider TestState { get; }
@@ -59,7 +59,7 @@ namespace Nethermind.Evm.Test
             StateTree stateTree = new StateTree(_stateDb);
             TestState = new StateProvider(stateTree, codeDb, logger);
             Storage = new StorageProvider(_stateDb, TestState, logger);
-            _ethereumSigner = new EthereumSigner(SpecProvider, logger);
+            _ethereumEcdsa = new EthereumEcdsa(SpecProvider, logger);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IVirtualMachine virtualMachine = new VirtualMachine(TestState, Storage, blockhashProvider, logger);
 
@@ -155,7 +155,7 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit((ulong) gasLimit)
                 .WithGasPrice(1)
                 .To(TestItem.AddressB)
-                .SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, blockNumber)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber);
@@ -177,7 +177,7 @@ namespace Nethermind.Evm.Test
                 .WithData(input)
                 .WithValue(value)
                 .To(TestItem.AddressB)
-                .SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, blockNumber)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber);
@@ -195,7 +195,7 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit((ulong) gasLimit)
                 .WithGasPrice(1)
                 .WithInit(code)
-                .SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, blockNumber)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber);

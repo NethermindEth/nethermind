@@ -32,10 +32,10 @@ namespace Nethermind.Network.Discovery.Serializers
     public class NeighborsMessageSerializer : DiscoveryMessageSerializerBase, IMessageSerializer<NeighborsMessage>
     {
         public NeighborsMessageSerializer(
-            ISigner signer,
+            IEcdsa ecdsa,
             IPrivateKeyGenerator privateKeyGenerator,
             IDiscoveryMessageFactory messageFactory,
-            INodeIdResolver nodeIdResolver) : base(signer, privateKeyGenerator, messageFactory, nodeIdResolver)
+            INodeIdResolver nodeIdResolver) : base(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver)
         {
         }
 

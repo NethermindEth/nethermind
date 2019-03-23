@@ -25,13 +25,13 @@ namespace Nethermind.Blockchain
 {
     public class TxSignaturesRecoveryStep : IBlockDataRecoveryStep
     {
-        private readonly IEthereumSigner _signer;
+        private readonly IEthereumEcdsa _ecdsa;
         private readonly ITransactionPool _transactionPool;
 
-        public TxSignaturesRecoveryStep(IEthereumSigner signer, ITransactionPool transactionPool)
+        public TxSignaturesRecoveryStep(IEthereumEcdsa ecdsa, ITransactionPool transactionPool)
         {
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(signer));
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(ecdsa));
         }
         
         public void RecoverData(Block block)
@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 _transactionPool.TryGetSender(block.Transactions[i].Hash, out Address sender);
-                block.Transactions[i].SenderAddress = sender ?? _signer.RecoverAddress(block.Transactions[i], block.Number);
+                block.Transactions[i].SenderAddress = sender ?? _ecdsa.RecoverAddress(block.Transactions[i], block.Number);
             }
         }
     }

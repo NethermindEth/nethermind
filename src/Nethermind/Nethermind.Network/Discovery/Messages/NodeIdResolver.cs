@@ -24,16 +24,16 @@ namespace Nethermind.Network.Discovery.Messages
 {
     public class NodeIdResolver : INodeIdResolver
     {
-        private readonly ISigner _signer;
+        private readonly IEcdsa _ecdsa;
 
-        public NodeIdResolver(ISigner signer)
+        public NodeIdResolver(IEcdsa ecdsa)
         {
-            _signer = signer;
+            _ecdsa = ecdsa;
         }
 
         public PublicKey GetNodeId(byte[] signature, int recoveryId, byte[] messageType, byte[] data)
         {
-            return _signer.RecoverPublicKey(new Signature(signature, recoveryId), Keccak.Compute(Bytes.Concat(messageType, data)));   
+            return _ecdsa.RecoverPublicKey(new Signature(signature, recoveryId), Keccak.Compute(Bytes.Concat(messageType, data)));   
         }
     }
 }

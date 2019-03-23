@@ -30,18 +30,18 @@ namespace Nethermind.Network.Discovery.Serializers
     public abstract class DiscoveryMessageSerializerBase
     {
         private readonly PrivateKey _privateKey;
-        private readonly ISigner _signer;
+        private readonly IEcdsa _ecdsa;
 
         protected readonly IDiscoveryMessageFactory MessageFactory;
         protected readonly INodeIdResolver NodeIdResolver;
 
         protected DiscoveryMessageSerializerBase(
-            ISigner signer,
+            IEcdsa ecdsa,
             IPrivateKeyGenerator privateKeyGenerator,
             IDiscoveryMessageFactory messageFactory,
             INodeIdResolver nodeIdResolver)
         {
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _privateKey = privateKeyGenerator.Generate() ?? throw new ArgumentNullException(nameof(_privateKey));
             MessageFactory = messageFactory ?? throw new ArgumentNullException(nameof(messageFactory));
             NodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
@@ -51,7 +51,7 @@ namespace Nethermind.Network.Discovery.Serializers
         {
             byte[] payload = Bytes.Concat(type[0], data);
             Keccak toSign = Keccak.Compute(payload);
-            Signature signature = _signer.Sign(_privateKey, toSign);
+            Signature signature = _ecdsa.Sign(_privateKey, toSign);
             byte[] signatureBytes = Bytes.Concat(signature.Bytes, signature.RecoveryId);
             byte[] mdc = Keccak.Compute(Bytes.Concat(signatureBytes, type, data)).Bytes;
             return Bytes.Concat(mdc, signatureBytes, type, data);

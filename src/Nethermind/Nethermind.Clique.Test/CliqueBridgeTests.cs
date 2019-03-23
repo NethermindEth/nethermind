@@ -50,7 +50,7 @@ namespace Nethermind.Clique.Test
                 cliqueConfig,
                 NullLogManager.Instance);
             
-            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumSigner.Instance, LimboLogs.Instance);
+            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumEcdsa.Instance, LimboLogs.Instance);
             
             CliqueBridge bridge = new CliqueBridge(producer, snapshotManager, blockTree);
             Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, true));

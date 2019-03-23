@@ -18,7 +18,7 @@
 
 namespace Nethermind.Core.Crypto
 {
-    public interface ISigner
+    public interface IEcdsa
     {
         Signature Sign(PrivateKey privateKey, Keccak message);
         PublicKey RecoverPublicKey(Signature signature, Keccak message);
