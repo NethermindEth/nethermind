@@ -107,6 +107,8 @@ namespace Nethermind.Blockchain
             {
                 foreach (PeerInfo peerInfo in _peerRefreshQueue.GetConsumingEnumerable(_syncLoopCancelTokenSource.Token))
                 {
+                    if (_logger.IsTrace) _logger.Trace($"Running refresh peer info for {peerInfo}.");
+
                     ISynchronizationPeer peer = peerInfo.Peer;
                     var initCancelSource = _initCancelTokens[peer.Node.Id] = new CancellationTokenSource();
                     var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _syncLoopCancelTokenSource.Token);
@@ -148,16 +150,18 @@ namespace Nethermind.Blockchain
             }
             catch (Exception e) when (!(e is OperationCanceledException))
             {
-                if(_logger.IsError) _logger.Error($"Init peer loop encountered an exception {e}");
+                if (_logger.IsError) _logger.Error($"Init peer loop encountered an exception {e}");
             }
-            
-            if(_logger.IsError) _logger.Error($"Exiting the peer loop");
+
+            if (_logger.IsError) _logger.Error($"Exiting the peer loop");
         }
 
         private async Task RunSyncLoop()
         {
             while (true)
             {
+                if (_logger.IsTrace) _logger.Trace("Sync loop - next iteration.");
+
                 _syncRequested.Wait(_syncLoopCancelTokenSource.Token);
                 _syncRequested.Reset();
                 /* If block tree is processing blocks from DB then we are not going to start the sync process.
@@ -172,6 +176,7 @@ namespace Nethermind.Blockchain
                 {
                     if (_syncLoopCancelTokenSource.IsCancellationRequested)
                     {
+                        if (_logger.IsTrace) _logger.Trace("Sync loop cancellation requested - leaving.");
                         break;
                     }
 
@@ -565,10 +570,10 @@ namespace Nethermind.Blockchain
 
                     if (DateTime.Now - _lastFullInfo > TimeSpan.FromSeconds(120) && _logger.IsDebug)
                     {
-                        if(_logger.IsDebug) _logger.Debug("Sync peers list:");
-                        foreach ((PublicKey nodeId,  PeerInfo peerInfo) in _peers)
+                        if (_logger.IsDebug) _logger.Debug("Sync peers list:");
+                        foreach ((PublicKey nodeId, PeerInfo peerInfo) in _peers)
                         {
-                            if(_logger.IsDebug) _logger.Debug($"{peerInfo}");
+                            if (_logger.IsDebug) _logger.Debug($"{peerInfo}");
                         }
 
                         _lastFullInfo = DateTime.Now;
@@ -787,6 +792,12 @@ namespace Nethermind.Blockchain
                     headersByHash[headers[i].Hash] = headers[i];
                 }
 
+                if (hashes.Count == 0)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"{peerInfo} does not have headers starting from {currentNumber}");
+                    break;
+                }
+
                 Task<Block[]> bodiesTask = peer.GetBlocks(hashes.ToArray(), _peerSyncCancellationTokenSource.Token);
                 Block[] blocks = await bodiesTask;
                 if (bodiesTask.IsCanceled)
@@ -815,7 +826,7 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsDebug) _logger.Debug($"{peerInfo} does not have block body for {hashes[0]}");
                 }
-                
+
                 if (blocks.Length == 0 && ++emptyBlockListCounter >= 10)
                 {
                     if (_currentBatchSize == MinBatchSize)
