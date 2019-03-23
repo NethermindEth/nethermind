@@ -38,7 +38,6 @@ namespace Nethermind.Evm
     {
         private const string BadInstructionErrorText = "BadInstruction";
         private const string OutOfGasErrorText = "OutOfGas";
-        private bool _isTrace;
         
         public const int MaxCallDepth = 1024;
         public const int MaxStackSize = 1025;
@@ -86,7 +85,6 @@ namespace Nethermind.Evm
             _state = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storage = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
-            _isTrace = _logger.IsTrace;
 
             InitializePrecompiledContracts();
         }
@@ -95,7 +93,6 @@ namespace Nethermind.Evm
         public TransactionSubstate Run(EvmState state, IReleaseSpec releaseSpec, ITxTracer txTracer)
         {
             _txTracer = txTracer;
-            bool isTrace = _isTrace;
 
             IReleaseSpec spec = releaseSpec;
             EvmState currentState = state;
@@ -111,12 +108,6 @@ namespace Nethermind.Evm
 
                 try
                 {
-                    if (isTrace)
-                    {
-                        string intro = (currentState.IsContinuation ? "CONTINUE" : "BEGIN") + (currentState.IsStatic ? " STATIC" : string.Empty);
-                        _logger.Trace($"{intro} {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} (at {currentState.Env.ExecutingAccount})");
-                    }
-
                     CallResult callResult;
                     if (currentState.IsPrecompile)
                     {
@@ -263,16 +254,9 @@ namespace Nethermind.Evm
                                 currentState.Logs.Add(logEntry);
                             }
                         }
-
-                        if (isTrace) _logger.Trace($"END {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {(previousCallResult ?? Bytes.Empty).ToHexString(true)}) RETURNS ({previousCallOutputDestination} : {previousCallOutput.ToHexString(true)})");
                     }
                     else
                     {
-                        if (isTrace)
-                        {
-                            _logger.Trace($"REVERT {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {(previousCallResult ?? Bytes.Empty).ToHexString(true)}) RETURNS ({previousCallOutputDestination} : {previousCallOutput.ToHexString(true)})");
-                        }
-
                         _state.Restore(previousState.StateSnapshot);
                         _storage.Restore(previousState.StorageSnapshot);
                         _returnDataBuffer = callResult.Output;
@@ -285,7 +269,7 @@ namespace Nethermind.Evm
                 }
                 catch (Exception ex) when (ex is EvmException || ex is OverflowException)
                 {
-                    if (isTrace) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restorign snapshot");
+                    if (isTrace) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
 
                     _state.Restore(currentState.StateSnapshot);
                     _storage.Restore(currentState.StorageSnapshot);
@@ -359,7 +343,6 @@ namespace Nethermind.Evm
 
         private bool UpdateGas(long gasCost, ref long gasAvailable)
         {
-            if (_isTrace) _logger.Trace($"  UPDATE GAS (-{gasCost})");
             if (gasAvailable < gasCost)
             {
                 Metrics.EvmExceptions++;
@@ -372,7 +355,6 @@ namespace Nethermind.Evm
 
         private void RefundGas(long refund, ref long gasAvailable)
         {
-            if (_isTrace) _logger.Trace($"  UPDATE GAS (+{refund})");
             gasAvailable += refund;
         }
 
@@ -767,8 +749,6 @@ namespace Nethermind.Evm
             void UpdateMemoryCost(ref UInt256 position, in UInt256 length)
             {
                 long memoryCost = evmState.Memory.CalculateMemoryCost(ref position, length);
-                if (isTrace) _logger.Trace($"  MEMORY COST {memoryCost}");                
-
                 if (!UpdateGas(memoryCost, ref gasAvailable))
                 {
                     Metrics.EvmExceptions++;
@@ -798,8 +778,6 @@ namespace Nethermind.Evm
                 }
 
                 programCounter++;
-                if (isTrace) _logger.Trace($"{instruction} (0x{instruction:X})");
-
                 switch (instruction)
                 {
                     case Instruction.STOP:
@@ -1794,7 +1772,6 @@ namespace Nethermind.Evm
                         {
                             byte[] valueToStore = newIsZero ? BytesZero : newValue;
                             _storage.Set(storageAddress, valueToStore);
-                            if (isTrace) _logger.Trace($"Updating storage: {env.ExecutingAccount} {storageIndex} {valueToStore.ToHexString(true)}");
                         }
                         
                         if (_txTracer.IsTracingOpLevelStorage)
@@ -2125,7 +2102,6 @@ namespace Nethermind.Evm
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                         if (value > _state.GetBalance(env.ExecutingAccount))
                         {
-                            if (isTrace) _logger.Trace($"Insufficient balance when calling create - value = {value} > {balance} = balance");
                             PushZero(bytesOnStack);
                             break;
                         }
@@ -2308,7 +2284,6 @@ namespace Nethermind.Evm
                         if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
                         {
                             RefundGas(gasLimitUl, ref gasAvailable);
-                            //evmState.Memory.Save(outputOffset, new byte[(int)outputLength]); // TODO: probably should not save memory here
                             _returnDataBuffer = EmptyBytes;
                             PushZero(bytesOnStack);
                             if (isTrace) _logger.Trace("FAIL - call depth");
