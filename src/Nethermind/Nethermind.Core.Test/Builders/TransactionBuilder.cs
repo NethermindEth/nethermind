@@ -101,7 +101,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        // TODO: auto create signer here
+        // TODO: auto create ecdsa here
         public TransactionBuilder SignedAndResolved(IEthereumEcdsa ecdsa, PrivateKey privateKey, UInt256 blockNumber)
         {
             ecdsa.Sign(privateKey, TestObjectInternal, blockNumber);

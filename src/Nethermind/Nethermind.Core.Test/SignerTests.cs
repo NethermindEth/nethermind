@@ -27,7 +27,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test
 {
     [TestFixture]
-    public class SignerTests
+    public class EcdsaTEsts
     {
         [OneTimeSetUp]
         public void SetUp()

@@ -52,7 +52,7 @@ namespace Ethereum.Basic.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(TransactionTest test)
         {
-            EthereumSigner ethereumSigner = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
+            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, NullLogManager.Instance);
             Transaction decodedUnsigned = Rlp.Decode<Transaction>(test.Unsigned);
             Assert.AreEqual(test.Value, decodedUnsigned.Value, "value");
             Assert.AreEqual(test.GasPrice, decodedUnsigned.GasPrice, "gasPrice");
@@ -62,11 +62,11 @@ namespace Ethereum.Basic.Test
             Assert.AreEqual(test.Nonce, decodedUnsigned.Nonce, "nonce");
 
             Transaction decodedSigned = Rlp.Decode<Transaction>(test.Signed);
-            ethereumSigner.Sign(test.PrivateKey, decodedUnsigned, 0);
+            ethereumEcdsa.Sign(test.PrivateKey, decodedUnsigned, 0);
             Assert.AreEqual(decodedSigned.Signature.R, decodedUnsigned.Signature.R, "R");
             BigInteger expectedS = decodedSigned.Signature.S.ToUnsignedBigInteger();
             BigInteger actualS = decodedUnsigned.Signature.S.ToUnsignedBigInteger();
-            BigInteger otherS = EthereumSigner.LowSTransform - actualS;
+            BigInteger otherS = EthereumEcdsa.LowSTransform - actualS;
 
             // test does not use normalized signature
             if (otherS != expectedS && actualS != expectedS)

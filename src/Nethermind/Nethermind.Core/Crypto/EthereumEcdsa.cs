@@ -26,7 +26,7 @@ using Nethermind.Dirichlet.Numerics;
 namespace Nethermind.Core.Crypto
 {
     /// <summary>
-    ///     for signer tests
+    ///     for ecdsa tests
     ///     http://blog.enuma.io/update/2016/11/01/a-tale-of-two-curves-hardware-signing-for-ethereum.html
     /// </summary>
     public class EthereumEcdsa : Ecdsa, IEthereumEcdsa

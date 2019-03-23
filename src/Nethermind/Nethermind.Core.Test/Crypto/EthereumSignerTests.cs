@@ -28,7 +28,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Crypto
 {
     [TestFixture]
-    public class EthereumSignerTests
+    public class EthereumEcdsaTests
     {   
         [TestCase(0U)]
         [TestCase(1U)]
