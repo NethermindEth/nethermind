@@ -252,7 +252,7 @@ namespace Nethermind.Network
                   
                     var workerBlock = new ActionBlock<Peer>(
                        
-                        async peer =>  await SetupPeerInitialisation(peer),
+                        async peer =>  await SetupPeerConnection(peer),
                         // think of specifying a maximum degree of parallelism.
                         new ExecutionDataflowBlockOptions
                         {
@@ -349,9 +349,9 @@ namespace Nethermind.Network
 
             if (_logger.IsWarn) _logger.Warn("Exiting peer update loop");
             await Task.CompletedTask;
-        }
+        }F
 
-        private async Task SetupPeerInitialisation(Peer peer){ 
+        private async Task SetupPeerConnection(Peer peer){ 
             if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
             {
                 if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
