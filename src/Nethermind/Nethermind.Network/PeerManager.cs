@@ -349,7 +349,7 @@ namespace Nethermind.Network
 
             if (_logger.IsWarn) _logger.Warn("Exiting peer update loop");
             await Task.CompletedTask;
-        }F
+        }
 
         private async Task SetupPeerConnection(Peer peer){ 
             if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
