@@ -21,18 +21,16 @@ using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
+using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Rlpx
@@ -49,23 +47,21 @@ namespace Nethermind.Network.Rlpx
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
-        private readonly IPerfService _perfService;
         private readonly ISessionMonitor _sessionMonitor;
+        private IEventExecutorGroup _group;
 
         public RlpxPeer(
             PublicKey localNodeId,
             int localPort,
             IEncryptionHandshakeService encryptionHandshakeService,
             ILogManager logManager,
-            IPerfService perfService,
             ISessionMonitor sessionMonitor)
         {
-            _encryptionHandshakeService = encryptionHandshakeService ??
-                                          throw new ArgumentNullException(nameof(encryptionHandshakeService));
+            _group = new SingleThreadEventLoop();
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
-            _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
             _logger = logManager.GetClassLogger();
+            _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
+            _encryptionHandshakeService = encryptionHandshakeService ?? throw new ArgumentNullException(nameof(encryptionHandshakeService));
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             LocalPort = localPort;
         }
@@ -92,7 +88,7 @@ namespace Nethermind.Network.Rlpx
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
                     {
-                        Session session = new Session(LocalPort,  _logManager, ch);
+                        Session session = new Session(LocalPort, _logManager, ch);
                         session.RemoteHost = ((IPEndPoint) ch.RemoteAddress).Address.ToString();
                         session.RemotePort = ((IPEndPoint) ch.RemoteAddress).Port;
                         InitializeChannel(ch, session);
@@ -124,17 +120,15 @@ namespace Nethermind.Network.Rlpx
 
         public async Task ConnectAsync(Node node)
         {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connecting to {node.Id}@{node.Port}:{node.Host}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
 
             Bootstrap clientBootstrap = new Bootstrap();
             clientBootstrap.Group(_workerGroup);
             clientBootstrap.Channel<TcpSocketChannel>();
-
             clientBootstrap.Option(ChannelOption.TcpNodelay, true);
             clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
             clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
             clientBootstrap.RemoteAddress(node.Host, node.Port);
-            
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
             {
                 Session session = new Session(LocalPort, _logManager, ch, node);
@@ -145,25 +139,25 @@ namespace Nethermind.Network.Rlpx
             var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10))));
             if (firstTask != connectTask)
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connection timed out: {node.Id}@{node.Port}:{node.Host}");
-                throw new NetworkingException($"Failed to connect to {node.Id}@{node.Port}:{node.Host} (timeout)", NetworkExceptionType.Timeout);
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");
+                throw new NetworkingException($"Failed to connect to {node:s} (timeout)", NetworkExceptionType.Timeout);
             }
 
             if (connectTask.IsFaulted)
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Error when connecting to {node.Id}@{node.Port}:{node.Host}, error: {connectTask.Exception}");
+                    _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {connectTask.Exception}");
                 }
 
-                throw new NetworkingException($"Failed to connect to {node.Id}@{node.Port}:{node.Host}", NetworkExceptionType.TargetUnreachable,connectTask.Exception);
+                throw new NetworkingException($"Failed to connect to {node:s}", NetworkExceptionType.TargetUnreachable, connectTask.Exception);
             }
 
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connected to {node.Id}@{node.Port}:{node.Host}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connected");
         }
 
         public event EventHandler<SessionEventArgs> SessionCreated;
-        
+
         private void InitializeChannel(IChannel channel, ISession session)
         {
             if (session.Direction == ConnectionDirection.In)
@@ -172,33 +166,26 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                Metrics.OutgoingConnections++;    
+                Metrics.OutgoingConnections++;
             }
-            
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Initializing {session.Direction.ToString().ToUpper()} channel{(session.Direction == ConnectionDirection.Out ? $": {session.RemoteNodeId}@{session.RemoteHost}:{session.RemotePort}" : string.Empty)}");
-            }
-            
+
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session} channel");
+
             _sessionMonitor.AddSession(session);
             session.Disconnected += SessionOnPeerDisconnected;
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, session.RemoteNodeId, _logManager);
-            
+            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, session.RemoteNodeId, _logManager, _group);
+
             IChannelPipeline pipeline = channel.Pipeline;
-//            pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
+            // pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
             channel.CloseCompletion.ContinueWith(x =>
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Channel disconnected: {session.RemoteNodeId}");
-                }
-                
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} channel disconnected");
                 session.Disconnect(DisconnectReason.ClientQuitting, DisconnectType.Remote);
             });
         }
@@ -212,8 +199,7 @@ namespace Nethermind.Network.Rlpx
 
         public async Task Shutdown()
         {
-            var key = _perfService.StartPerfCalc();
-//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
+            // InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
 
             await _bootstrapChannel.CloseAsync().ContinueWith(t =>
             {
@@ -223,20 +209,23 @@ namespace Nethermind.Network.Rlpx
                 }
             });
 
-            _logger.Debug("Closed _bootstrapChannel");
+            if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
 
-            var nettyCloseTimeout = TimeSpan.FromMilliseconds(100);
-            var closingTask = Task.WhenAll(_bossGroup.ShutdownGracefullyAsync(nettyCloseTimeout, nettyCloseTimeout),
+            // every [quietPeriod] we check if there were any event in the loop - if none then we can shutdown
+            var quietPeriod = TimeSpan.FromMilliseconds(100);
+            var nettyCloseTimeout = TimeSpan.FromMilliseconds(1000);
+            var closingTask = Task.WhenAll(
+                _bossGroup.ShutdownGracefullyAsync(quietPeriod, nettyCloseTimeout),
                 _workerGroup.ShutdownGracefullyAsync(nettyCloseTimeout, nettyCloseTimeout));
-                
-            //we need to add additional timeout on our side as netty is not executing internal timeout properly, often it just hangs forever on closing
+
+            // below comment may arise from not understanding the quiet period but the resolution is correct
+            // we need to add additional timeout on our side as netty is not executing internal timeout properly, often it just hangs forever on closing
             if (await Task.WhenAny(closingTask, Task.Delay(Timeouts.TcpClose)) != closingTask)
             {
-                _logger.Warn($"Could not close rlpx connection in {Timeouts.TcpClose.TotalSeconds} seconds");
+                if (_logger.IsDebug) _logger.Debug($"Could not close rlpx connection in {Timeouts.TcpClose.TotalSeconds} seconds");
             }
 
-            if(_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");
-            _perfService.EndPerfCalc(key, "Close: Rlpx");
+            if (_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");
         }
     }
 }

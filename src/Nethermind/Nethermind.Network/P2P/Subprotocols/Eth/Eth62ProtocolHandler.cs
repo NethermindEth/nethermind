@@ -19,9 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
@@ -30,7 +28,6 @@ using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -82,7 +79,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 100)
             {
                 if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node.Id} due to tx flooding");
-                Disconnect(DisconnectReason.UselessPeer);
+                InitiateDisconnect(DisconnectReason.UselessPeer);
             }
             
             if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 10)
@@ -102,7 +99,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public virtual bool IsFastSyncSupported => false;
         public Node Node => Session.Node;
         public string ClientId { get; set; }
-
         public UInt256 TotalDifficultyOnSessionStart { get; private set; }
 
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
@@ -161,7 +157,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             switch (message.PacketType)
             {
                 case Eth62MessageCode.Status:
-                    Handle(Deserialize<StatusMessage>(message.Data));
+                    StatusMessage statusMessage;
+                    try
+                    {
+                        statusMessage = Deserialize<StatusMessage>(message.Data);
+                    }
+                    catch (Exception e)
+                    {
+                        if(Logger.IsWarn) Logger.Warn($"Failed to deserialize status message from {Node:s} - {e}");
+                        throw;
+                    }
+                     
+                    Handle(statusMessage);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
                     Metrics.Eth62NewBlockHashesReceived++;
@@ -197,10 +204,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        public void Disconnect(DisconnectReason disconnectReason)
+        public void InitiateDisconnect(DisconnectReason disconnectReason)
         {
-            _headersRequests.CompleteAdding();
-            _bodiesRequests.CompleteAdding();
+            try
+            {
+                _headersRequests.CompleteAdding();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            
+            try
+            {
+                _bodiesRequests.CompleteAdding();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            
             Session.Disconnect(disconnectReason, DisconnectType.Local);
         }
 
@@ -446,7 +467,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return task.Result;
             }
 
-            throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(GetBlockHeadersMessage)}");
+            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)}");
         }
 
         [Todo(Improve.Refactor, "Generic approach to requests")]
@@ -482,7 +503,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return task.Result;
             }
 
-            throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(GetBlockBodiesMessage)}");
+            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)}");
         }
 
         async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)

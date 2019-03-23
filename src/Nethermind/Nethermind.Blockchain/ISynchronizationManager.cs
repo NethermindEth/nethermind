@@ -20,7 +20,6 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
@@ -34,8 +33,8 @@ namespace Nethermind.Blockchain
         Block Find(UInt256 number);
         Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         void AddNewBlock(Block block, PublicKey nodeWhoSentTheBlock);
-        void AddPeer(ISynchronizationPeer synchronizationPeer);
-        void RemovePeer(ISynchronizationPeer synchronizationPeer);
+        void AddPeer(ISynchronizationPeer syncPeer);
+        void RemovePeer(ISynchronizationPeer syncPeer);
         int GetPeerCount();
         void Start();
         Task StopAsync();

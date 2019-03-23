@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Stats.Model;
@@ -31,11 +32,18 @@ namespace Nethermind.Network.P2P
             ).Bytes;
         }
 
+        private byte[] strangeBytes = Bytes.FromHexString("0204c104"); 
+
         public DisconnectMessage Deserialize(byte[] bytes)
         {
             if (bytes.Length == 1)
             {
                 return new DisconnectMessage((DisconnectReason)bytes[0]);
+            }
+
+            if (bytes.SequenceEqual(strangeBytes))
+            {
+                return new DisconnectMessage(DisconnectReason.StrangeBytes);
             }
             
             Rlp.DecoderContext context = bytes.AsRlpContext();

@@ -18,10 +18,7 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
@@ -30,6 +27,7 @@ using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Ndm;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -45,6 +43,7 @@ namespace Nethermind.Network
         private readonly IRlpxPeer _localPeer;
         private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
+        private readonly INdmSubprotocolFactory _ndmFactory;
         private readonly IPerfService _perfService;
         private readonly INetworkStorage _peerStorage;
         private readonly ILogManager _logManager;
@@ -58,6 +57,7 @@ namespace Nethermind.Network
             IRlpxPeer localPeer,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
+            INdmSubprotocolFactory ndmFactory,
             INetworkStorage peerStorage,
             IPerfService perfService,
             ILogManager logManager)
@@ -69,6 +69,7 @@ namespace Nethermind.Network
             _localPeer = localPeer ?? throw new ArgumentNullException(nameof(localPeer));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
+            _ndmFactory = ndmFactory ?? throw new ArgumentNullException(nameof(ndmFactory));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -106,11 +107,11 @@ namespace Nethermind.Network
         [Todo(Improve.Refactor, "this can be all in SyncManager now")]
         private void OnSyncEvent(object sender, SyncEventArgs e)
         {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Sync Event: {e.SyncStatus.ToString()}, NodeId: {e.Peer.Node.Id}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| sync event {e.SyncStatus.ToString()} on {e.Peer.Node:s}");
 
             if (!_sessions.TryGetValue(e.Peer.SessionId, out ISession session))
             {
-                if (_logger.IsTrace) _logger.Trace($"Sync failed for an unknown session: {e.Peer.Node.Id} {e.Peer.SessionId}");
+                if (_logger.IsTrace) _logger.Trace($"Sync failed for an unknown session {e.Peer.Node:s} {e.Peer.SessionId}");
                 return;
             }
 
@@ -123,7 +124,7 @@ namespace Nethermind.Network
 
             if (new[] {SyncStatus.InitFailed, SyncStatus.InitCancelled, SyncStatus.Failed, SyncStatus.Cancelled}.Contains(e.SyncStatus))
             {
-                if (_logger.IsDebug) _logger.Debug($"Initializing disconnect on sync {e.SyncStatus.ToString()} with node: {e.Peer.Node.Id}");
+                if (_logger.IsDebug) _logger.Debug($"Initializing disconnect {session} on sync {e.SyncStatus.ToString()} with {e.Peer.Node:s}");
                 session.InitiateDisconnect(DisconnectReason.Other);
             }
         }
@@ -146,6 +147,7 @@ namespace Nethermind.Network
                 ISynchronizationPeer syncPeer = _syncPeers[session.SessionId];
                 _syncManager.RemovePeer(syncPeer);
                 _transactionPool.RemovePeer(syncPeer.Node.Id);
+                if(_logger.IsWarn) _logger.Warn($"Sync peer {session} disconnected {e.DisconnectType} {e.DisconnectReason}");
             }
             
             _sessions.TryRemove(session.SessionId, out session);
@@ -163,7 +165,7 @@ namespace Nethermind.Network
         {
             if (session.State < SessionState.Initialized)
             {
-                throw new InvalidOperationException($"{nameof(InitProtocol)} called on session that is in the {session.State} state");
+                throw new InvalidOperationException($"{nameof(InitProtocol)} called on {session}");
             }
 
             if (session.State != SessionState.Initialized)
@@ -193,6 +195,10 @@ namespace Nethermind.Network
                     InitEthProtocol(session, ethHandler);
                     protocolHandler = ethHandler;
                     break;
+                case Protocol.Ndm:
+                    protocolHandler = _ndmFactory.Create(session, session.RemoteNodeId);
+                    InitNdmProtocol(session, protocolHandler);
+                    break;
                 default:
                     throw new NotSupportedException($"Protocol {protocolCode} {version} is not supported");
             }
@@ -202,6 +208,22 @@ namespace Nethermind.Network
             protocolHandler.Init();
         }
 
+        private void InitNdmProtocol(ISession session, IProtocolHandler handler)
+        {
+            handler.ProtocolInitialized += (sender, args) =>
+            {
+                var ndmEventArgs = (NdmProtocolInitializedEventArgs) args;
+                _stats.ReportNdmInitializedEvent(session.Node, new NdmNodeDetails
+                {
+                    Protocol = handler.ProtocolCode,
+                    ProtocolVersion = handler.ProtocolVersion
+                });
+            
+                _protocolValidator.DisconnectOnInvalid(Protocol.Ndm, session, ndmEventArgs);
+                if (_logger.IsTrace) _logger.Trace($"NDM version {handler.ProtocolVersion}: {session.RemoteNodeId}");
+            };
+        }
+        
         private void InitP2PProtocol(ISession session, P2PProtocolHandler handler)
         {
             handler.ProtocolInitialized += (sender, args) =>
@@ -211,12 +233,12 @@ namespace Nethermind.Network
 
                 if (handler.ProtocolVersion >= 5)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"{session.RemoteNodeId} {handler.ProtocolCode} v{handler.ProtocolVersion} established - Enabling Snappy");
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - enabling snappy");
                     session.EnableSnappy();
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"{session.RemoteNodeId} {handler.ProtocolCode} v{handler.ProtocolVersion} established - Disabling Snappy");
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - disabling snappy");
                 }
 
                 _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
@@ -231,7 +253,7 @@ namespace Nethermind.Network
 
                 _protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, args);
 
-                if (_logger.IsTrace) _logger.Trace($"P2P Protocol Initialized: {session.RemoteNodeId}");
+                if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
             };
         }
 
@@ -257,21 +279,25 @@ namespace Nethermind.Network
                     {
                         _syncManager.AddPeer(handler);
                         _transactionPool.AddPeer(handler);
+                        if(_logger.IsWarn) _logger.Warn($"Sync peer {session} created.");
                     }
                     else
                     {
-                        session.InitiateDisconnect(DisconnectReason.ClientQuitting);
+                        if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
+                        session.InitiateDisconnect(DisconnectReason.AlreadyConnected);
                     }
 
                     handler.ClientId = session.Node.ClientId;
 
-                    if (_logger.IsTrace) _logger.Trace($"Eth version {handler.ProtocolVersion} initialized, adding sync peer: {session.Node.Id}");
+                    if (_logger.IsTrace) _logger.Trace($"Finalized ETH protocol initialization on {session} - adding sync peer {session.Node:s}");
 
                     //Add/Update peer to the storage and to sync manager
                     _peerStorage.UpdateNodes(new[] {new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation)});
                 }
-
-                if (_logger.IsTrace) _logger.Trace($"ETH Protocol Initialized: {session.RemoteNodeId}");
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
+                }
             };
         }
 
@@ -279,11 +305,11 @@ namespace Nethermind.Network
         {
             if (session.IsClosing)
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Protocol initialized on closing session {protocolCode} {protocolVersion}, Node: {session.RemoteNodeId}");
+                if (_logger.IsDebug) _logger.Debug($"|NetworkTrace| {protocolCode}.{protocolVersion} initialized in {session}");
                 return false;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Protocol initialized {protocolCode} {protocolVersion}, Node: {session.RemoteNodeId}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {protocolCode}.{protocolVersion} initialized in {session}");
             return true;
         }
 
@@ -294,17 +320,17 @@ namespace Nethermind.Network
         {
             if (eventArgs.ListenPort == 0)
             {
-                if (_logger.IsTrace) _logger.Trace($"Listen port is 0, node is not listening: {session.Node.Id}, ConnectionType: {session.Direction}, nodePort: {session.Node.Port}");
+                if (_logger.IsTrace) _logger.Trace($"Listen port is 0, node is not listening: {session}");
                 return;
             }
 
             if (session.Node.Port != eventArgs.ListenPort)
             {
-                if (_logger.IsDebug) _logger.Debug($"Updating listen port for node: {session.Node.Id}, ConnectionType: {session.Direction}, from: {session.Node.Port} to: {eventArgs.ListenPort}");
+                if (_logger.IsDebug) _logger.Debug($"Updating listen port for {session:s} to: {eventArgs.ListenPort}");
 
                 if (session.Node.AddedToDiscovery)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Discovery node already initialized with wrong port, nodeId: {session.Node.Id}, port: {session.Node.Port}, listen port: {eventArgs.ListenPort}");
+                    if (_logger.IsDebug) _logger.Debug($"Discovery node already initialized with wrong port {session} - listen port: {eventArgs.ListenPort}");
                 }
 
                 session.Node.Port = eventArgs.ListenPort;
