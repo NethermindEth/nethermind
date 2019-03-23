@@ -169,14 +169,13 @@ namespace Nethermind.Network.Rlpx
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameDecoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logger));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameEncoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(new NettyFrameEncoder(frameCipher, macProcessor, _logger));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameMerger)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(new NettyFrameMerger(_logger));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyPacketSplitter)} for {_remoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(
-                    new NettyFrameDecoder(frameCipher, macProcessor, _logger),
-                    new NettyFrameEncoder(frameCipher, macProcessor, _logger),
-                    new NettyFrameMerger(_logger),
-                    new NettyPacketSplitter());
+                context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
                 PacketSender packetSender = new PacketSender(_logManager);
                 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");

@@ -106,12 +106,12 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         }
 
         [Test]
-        public void Initator_adds_p2p_handlers_to_pipeline_on_receiving_ack()
+        public void Initiator_adds_p2p_handlers_to_pipeline_on_receiving_ack()
         {
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Initiator, _remotePublicKey, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<NettyP2PHandler>());
+            _pipeline.Received(1).AddLast(_group, Arg.Any<NettyP2PHandler>());
             _pipeline.Received(1).AddLast(Arg.Any<PacketSender>());
         }
 
@@ -169,7 +169,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Recipient, _remotePublicKey, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<NettyP2PHandler>());
+            _pipeline.Received(1).AddLast(_group, Arg.Any<NettyP2PHandler>());
             _pipeline.Received(1).AddLast(Arg.Any<PacketSender>());
         }
 
