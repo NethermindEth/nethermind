@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain
         private readonly PrivateKey _privateKey;
         private readonly byte[] _privateKeyBytes = new byte[32];
         private readonly Random _random = new Random();
-        private readonly IEthereumSigner _signer;
+        private readonly IEthereumEcdsa _ecdsa;
         private readonly TimeSpan _txDelay;
         private readonly ITransactionPool _transactionPool;
         private readonly Timer _timer = new Timer();
@@ -46,11 +46,11 @@ namespace Nethermind.Blockchain
             return _txDelay + TimeSpan.FromMilliseconds((_random.Next((int)_txDelay.TotalMilliseconds) - (int)_txDelay.TotalMilliseconds / 2));
         }
         
-        public TestTransactionsGenerator(ITransactionPool transactionPool, IEthereumSigner signer, TimeSpan txDelay, ILogManager logManager)
+        public TestTransactionsGenerator(ITransactionPool transactionPool, IEthereumEcdsa ecdsa, TimeSpan txDelay, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txDelay = txDelay;
 
             if (txDelay > TimeSpan.FromMilliseconds(0))
@@ -83,8 +83,8 @@ namespace Nethermind.Blockchain
             tx.Data = new byte[0];
             tx.Nonce = _count++;
             tx.SenderAddress = SenderAddress;
-            _signer.Sign(_privateKey, tx, 1);
-            Address address = _signer.RecoverAddress(tx, 1);
+            _ecdsa.Sign(_privateKey, tx, 1);
+            Address address = _ecdsa.RecoverAddress(tx, 1);
             if (address != tx.SenderAddress)
             {
                 throw new InvalidDataException($"{nameof(TestTransactionsGenerator)} producing invalid transactions");

@@ -42,13 +42,13 @@ namespace Nethermind.Network.Rlpx.Handshake
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly PrivateKey _privateKey;
         private readonly ILogger _logger;
-        private readonly ISigner _signer;
+        private readonly IEcdsa _ecdsa;
 
         public EncryptionHandshakeService(
             IMessageSerializationService messageSerializationService,
             IEciesCipher eciesCipher,
             ICryptoRandom cryptoRandom,
-            ISigner signer,
+            IEcdsa ecdsa,
             PrivateKey privateKey,
             ILogManager logManager)
         {
@@ -57,7 +57,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
             _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));;
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _ephemeralGenerator = new PrivateKeyGenerator(_cryptoRandom);
         }
 
@@ -73,7 +73,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             AuthEip8Message authMessage = new AuthEip8Message();
             authMessage.Nonce = handshake.InitiatorNonce;
             authMessage.PublicKey = _privateKey.PublicKey;
-            authMessage.Signature = _signer.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
+            authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
 
             byte[] authData = _messageSerializationService.Serialize(authMessage);
             int size = authData.Length + 32 + 16 + 65; // data + MAC + IV + pub
@@ -127,7 +127,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] staticSharedSecret = Proxy.EcdhSerialized(handshake.RemoteNodeId.Bytes, _privateKey.KeyBytes);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
-            handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
+            handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
 
             byte[] ackData;
             if (isOld) // what was the difference? shall I really include ephemeral public key in v4?

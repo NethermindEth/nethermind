@@ -16,7 +16,7 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class TransactionFilterTests
     {
-        private IEthereumSigner _ethereumSigner;
+        private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
         private ITransactionFilter _filter;
 
@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Test
         public void Setup()
         {
             _specProvider = RopstenSpecProvider.Instance;
-            _ethereumSigner = new EthereumSigner(_specProvider, NullLogManager.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider, NullLogManager.Instance);
         }
 
         [Test]
@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test
                 .WithData(data)
                 .To(to)
                 .DeliveredBy(privateKey.PublicKey)
-                .SignedAndResolved(_ethereumSigner, privateKey, 1)
+                .SignedAndResolved(_ethereumEcdsa, privateKey, 1)
                 .TestObject;
     }
 }

@@ -20,7 +20,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Crypto
 {
-    public interface IEthereumSigner : ISigner
+    public interface IEthereumEcdsa : IEcdsa
     {
         void Sign(PrivateKey privateKey, Transaction transaction, UInt256 blockNumber);
         Address RecoverAddress(Transaction transaction, UInt256 blockNumber);

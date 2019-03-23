@@ -79,7 +79,7 @@ namespace Nethermind.Clique.Test
             MineBlock(_blockTree, block3);
             MineBlock(_blockTree, block4);           
             MineBlock(_blockTree, block5);
-            IEthereumSigner signer = new EthereumSigner(RinkebySpecProvider.Instance, LimboLogs.Instance);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(RinkebySpecProvider.Instance, LimboLogs.Instance);
             // Init snapshot db
             IDb db = new MemDb();
             CliqueConfig config = new CliqueConfig();
@@ -87,7 +87,7 @@ namespace Nethermind.Clique.Test
             int currentBlock = 6;
             int currentSignerIndex = (currentBlock % _signers.Count);
             _currentSigner = _signers[currentSignerIndex];
-            _snapshotManager = new SnapshotManager(config, db, _blockTree, signer, LimboLogs.Instance);
+            _snapshotManager = new SnapshotManager(config, db, _blockTree, ecdsa, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
             _clique = new CliqueSealer(new BasicWallet(_currentSigner), config, _snapshotManager, _currentSigner.Address, LimboLogs.Instance);
         }

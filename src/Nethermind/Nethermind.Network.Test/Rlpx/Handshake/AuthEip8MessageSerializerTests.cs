@@ -38,11 +38,11 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
         private readonly AuthEip8MessageSerializer _serializer = new AuthEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom()));
 
-        private void TestEncodeDecode(IEthereumSigner signer)
+        private void TestEncodeDecode(IEthereumEcdsa ecdsa)
         {
             AuthEip8Message authMessage = new AuthEip8Message();
             authMessage.Nonce = new byte[AuthMessageSerializer.NonceLength]; // sic!
-            authMessage.Signature = signer.Sign(_privateKey, Keccak.Compute("anything"));
+            authMessage.Signature = ecdsa.Sign(_privateKey, Keccak.Compute("anything"));
             authMessage.PublicKey = _privateKey.PublicKey;
             _random.NextBytes(authMessage.Nonce);
             byte[] data = _serializer.Serialize(authMessage);
@@ -62,8 +62,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.EthereumClassicTestnet)]
         public void Encode_decode_before_eip155(int chainId)
         {
-            EthereumSigner signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
-            TestEncodeDecode(signer);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, NullLogManager.Instance);
+            TestEncodeDecode(ecdsa);
         }
 
         [TestCase(ChainId.MainNet)]
@@ -71,8 +71,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.Kovan)]
         public void Encode_decode_with_eip155(int chainId)
         {
-            EthereumSigner signer = new EthereumSigner(RopstenSpecProvider.Instance, NullLogManager.Instance);
-            TestEncodeDecode(signer);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(RopstenSpecProvider.Instance, NullLogManager.Instance);
+            TestEncodeDecode(ecdsa);
         }
     }
 }

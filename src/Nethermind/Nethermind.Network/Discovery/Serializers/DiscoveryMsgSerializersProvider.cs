@@ -33,15 +33,15 @@ namespace Nethermind.Network.Discovery.Serializers
 
         public DiscoveryMsgSerializersProvider(
             IMessageSerializationService messageSerializationService,
-            ISigner signer,
+            IEcdsa ecdsa,
             IPrivateKeyGenerator privateKeyGenerator,
             IDiscoveryMessageFactory messageFactory,
             INodeIdResolver nodeIdResolver)
         {
-            var pingSerializer = new PingMessageSerializer(signer, privateKeyGenerator, messageFactory, nodeIdResolver);
-            var pongSerializer = new PongMessageSerializer(signer, privateKeyGenerator, messageFactory, nodeIdResolver);
-            var findNodeSerializer = new FindNodeMessageSerializer(signer, privateKeyGenerator, messageFactory, nodeIdResolver);
-            var neighborsSerializer = new NeighborsMessageSerializer(signer, privateKeyGenerator, messageFactory, nodeIdResolver);
+            var pingSerializer = new PingMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
+            var pongSerializer = new PongMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
+            var findNodeSerializer = new FindNodeMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
+            var neighborsSerializer = new NeighborsMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
 
             _messageSerializationService = messageSerializationService;
             _pingMessageSerializer = pingSerializer;

@@ -27,7 +27,7 @@ namespace Nethermind.Network.Discovery.Serializers
 {
     public class PongMessageSerializer : DiscoveryMessageSerializerBase, IMessageSerializer<PongMessage>
     {
-        public PongMessageSerializer(ISigner signer, IPrivateKeyGenerator privateKeyGenerator, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver) : base(signer, privateKeyGenerator, messageFactory, nodeIdResolver)
+        public PongMessageSerializer(IEcdsa ecdsa, IPrivateKeyGenerator privateKeyGenerator, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver) : base(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver)
         {
         }
 

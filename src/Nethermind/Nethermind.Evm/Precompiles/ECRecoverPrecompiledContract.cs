@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Precompiles
             return 3000L;
         }
 
-        private readonly EthereumSigner _signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
+        private readonly EthereumEcdsa _ecdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, NullLogManager.Instance);
         
         public (byte[], bool) Run(byte[] inputData)
         {
@@ -72,7 +72,7 @@ namespace Nethermind.Evm.Precompiles
             }
 
             Signature signature = new Signature(r, s, v);
-            Address recovered = _signer.RecoverAddress(signature, hash);
+            Address recovered = _ecdsa.RecoverAddress(signature, hash);
             if (recovered == null)
             {
                 return (Bytes.Empty, true);

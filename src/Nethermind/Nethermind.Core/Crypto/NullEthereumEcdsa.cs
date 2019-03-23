@@ -21,47 +21,47 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Crypto
 {
-    public class NullEthereumSigner : IEthereumSigner
+    public class NullEthereumEcdsa : IEthereumEcdsa
     {
-        public static NullEthereumSigner Instance { get; } = new NullEthereumSigner();
+        public static NullEthereumEcdsa Instance { get; } = new NullEthereumEcdsa();
 
-        private NullEthereumSigner()
+        private NullEthereumEcdsa()
         {
         }
 
         public Signature Sign(PrivateKey privateKey, Keccak message)
         {
-            throw new InvalidOperationException($"{nameof(NullEthereumSigner)} does not expect any calls");
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
         public PublicKey RecoverPublicKey(Signature signature, Keccak message)
         {
-            throw new InvalidOperationException($"{nameof(NullEthereumSigner)} does not expect any calls");
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
         public void Sign(PrivateKey privateKey, Transaction transaction, UInt256 blockNumber)
         {
-            throw new InvalidOperationException($"{nameof(NullEthereumSigner)} does not expect any calls");
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
         public Address RecoverAddress(Transaction transaction, UInt256 blockNumber)
         {
-            throw new InvalidOperationException($"{nameof(NullEthereumSigner)} does not expect any calls");
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
         public Address RecoverAddress(Signature signature, Keccak message)
         {
-            throw new InvalidOperationException($"{nameof(NullEthereumSigner)} does not expect any calls");
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
         public void RecoverAddresses(Block block)
         {
-            throw new InvalidOperationException($"{nameof(NullEthereumSigner)} does not expect any calls");
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
         public bool Verify(Address sender, Transaction transaction, UInt256 blockNumber)
         {
-            throw new InvalidOperationException($"{nameof(NullEthereumSigner)} does not expect any calls");
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
     }
 }

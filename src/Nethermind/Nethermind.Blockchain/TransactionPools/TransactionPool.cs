@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.TransactionPools
         private readonly ConcurrentDictionary<PublicKey, ISynchronizationPeer> _peers =
             new ConcurrentDictionary<PublicKey, ISynchronizationPeer>();
 
-        private readonly IEthereumSigner _signer;
+        private readonly IEthereumEcdsa _ecdsa;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.TransactionPools
 
         public TransactionPool(ITransactionStorage transactionStorage,
             IPendingTransactionThresholdValidator pendingTransactionThresholdValidator,
-            ITimestamp timestamp, IEthereumSigner signer, ISpecProvider specProvider, ILogManager logManager,
+            ITimestamp timestamp, IEthereumEcdsa ecdsa, ISpecProvider specProvider, ILogManager logManager,
             int removePendingTransactionInterval = 600,
             int peerNotificationThreshold = 20)
         {
@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.TransactionPools
             _transactionStorage = transactionStorage ?? throw new ArgumentNullException(nameof(transactionStorage));
             _pendingTransactionThresholdValidator = pendingTransactionThresholdValidator;
             _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _peerNotificationThreshold = peerNotificationThreshold;
             if (removePendingTransactionInterval <= 0)
@@ -156,7 +156,7 @@ namespace Nethermind.Blockchain.TransactionPools
                 return AddTransactionResult.AlreadyKnown;
             }
 
-            transaction.SenderAddress = _signer.RecoverAddress(transaction, blockNumber);
+            transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, blockNumber);
 
             // check nonce
 

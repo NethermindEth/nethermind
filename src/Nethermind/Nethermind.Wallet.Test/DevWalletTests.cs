@@ -103,7 +103,7 @@ namespace Nethermind.Wallet.Test
         public void Can_sign_on_networks_with_chain_id(DevWalletType walletType)
         {
             const int networkId = 40000;
-            EthereumSigner signer = new EthereumSigner(new SingleReleaseSpecProvider(LatestRelease.Instance, networkId), NullLogManager.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(new SingleReleaseSpecProvider(LatestRelease.Instance, networkId), NullLogManager.Instance);
             IWallet wallet = SetupWallet(walletType);
 
             for (int i = 1; i <= (walletType == DevWalletType.Memory ? 10 : 3); i++)
@@ -113,7 +113,7 @@ namespace Nethermind.Wallet.Test
                 tx.SenderAddress = signerAddress;
                 
                 wallet.Sign(tx, networkId);
-                Address recovered = signer.RecoverAddress(tx, networkId);
+                Address recovered = ecdsa.RecoverAddress(tx, networkId);
                 Assert.AreEqual(signerAddress, recovered, $"{i}");
                 Assert.AreEqual(networkId, tx.Signature.GetChainId, "chainId");
             }

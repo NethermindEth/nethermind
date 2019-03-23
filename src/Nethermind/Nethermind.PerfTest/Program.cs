@@ -159,7 +159,7 @@ namespace Nethermind.PerfTest
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance,
                 new TransactionPool(NullTransactionStorage.Instance,
                     new PendingTransactionThresholdValidator(), new Timestamp(),
-                    NullEthereumSigner.Instance, RopstenSpecProvider.Instance, logManager), logManager);
+                    NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, logManager), logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
 
             Stopwatch stopwatch = new Stopwatch();
@@ -321,7 +321,7 @@ namespace Nethermind.PerfTest
             /* store & validation */
             var transactionPool = new TransactionPool(NullTransactionStorage.Instance,
                 new PendingTransactionThresholdValidator(), new Timestamp(),
-                NullEthereumSigner.Instance, RopstenSpecProvider.Instance, _logManager);
+                NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, _logManager);
             var receiptStorage = new InMemoryReceiptStorage();
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, transactionPool, _logManager));
             var headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, _logManager);
@@ -336,7 +336,7 @@ namespace Nethermind.PerfTest
             var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
 
             /* blockchain processing */
-            var ethereumSigner = new EthereumSigner(specProvider, _logManager);
+            var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
             var blockhashProvider = new BlockhashProvider(blockTree);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _logManager);
             //var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, new TransactionTracer("D:\\tx_traces\\perf_test", new UnforgivingJsonSerializer()), _logManager);

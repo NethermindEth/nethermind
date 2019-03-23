@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Test
     public class TransactionProcessorTests
     {
         private ISpecProvider _specProvider;
-        private IEthereumSigner _ethereumSigner;
+        private IEthereumEcdsa _ethereumEcdsa;
         private TransactionProcessor _transactionProcessor;
         private StateProvider _stateProvider;
         
@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
             StorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance);
             _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
-            _ethereumSigner = new EthereumSigner(_specProvider, LimboLogs.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider, LimboLogs.Instance);
         }
 
         [TestCase(true, true)]
@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Test
         public void Can_process_simple_transaction(bool withStateDiff, bool withTrace)
         {
             GiveEtherToA();
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Test
         public void Can_handle_quick_fail_on_intrinsic_gas(bool withStateDiff, bool withTrace)
         {
             GiveEtherToA();
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, 1).WithGasLimit(20000).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(20000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -91,7 +91,7 @@ namespace Nethermind.Evm.Test
         public void Can_handle_quick_fail_on_missing_sender(bool withStateDiff, bool withTrace)
         {
             GiveEtherToA();
-            Transaction tx = Build.A.Transaction.Signed(_ethereumSigner, TestItem.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -107,7 +107,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_not_enough_balance(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -123,7 +123,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_above_block_gas_limit(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
 

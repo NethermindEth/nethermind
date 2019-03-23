@@ -70,7 +70,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Creates_new_snapshot()
         {
-            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumSigner.Instance, LimboLogs.Instance);
+            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
             Block genesis = GetRinkebyGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
             Assert.AreEqual(genesis.Hash, snapshot.Hash);
@@ -79,7 +79,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Loads_snapshot()
         {
-            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumSigner.Instance, LimboLogs.Instance);
+            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
             Block genesis = GetRinkebyGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
             Assert.NotNull(snapshot);
@@ -94,7 +94,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Can_calculate_clique_header_hash()
         {
-            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumSigner.Instance, LimboLogs.Instance);
+            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
             BlockHeader header = BuildCliqueBlock();
 
             Keccak expectedHeaderHash = new Keccak("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
@@ -105,10 +105,10 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Recognises_signer_turn()
         {           
-            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumSigner.Instance, LimboLogs.Instance);
+            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
             Block genesis = GetRinkebyGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
-            SnapshotManager manager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumSigner(GoerliSpecProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
+            SnapshotManager manager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumEcdsa(GoerliSpecProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
             // Block 1
             Assert.IsTrue(manager.IsInTurn(snapshot, 1, _signer1));
             Assert.IsFalse(manager.IsInTurn(snapshot, 1, _signer2));

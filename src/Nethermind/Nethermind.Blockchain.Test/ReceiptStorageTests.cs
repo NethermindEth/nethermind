@@ -32,13 +32,13 @@ namespace Nethermind.Blockchain.Test
     public class ReceiptStorageTests
     {
         private ISpecProvider _specProvider;
-        private IEthereumSigner _ethereumSigner;
+        private IEthereumEcdsa _ethereumEcdsa;
 
         [SetUp]
         public void Setup()
         {
             _specProvider = RopstenSpecProvider.Instance;
-            _ethereumSigner = new EthereumSigner(_specProvider, NullLogManager.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider, NullLogManager.Instance);
         }
 
         [Test]
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         private Transaction GetSignedTransaction(Address to = null)
-            => Build.A.Transaction.SignedAndResolved(_ethereumSigner, TestItem.PrivateKeyA, 1).TestObject;
+            => Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
 
         private static TransactionReceipt GetReceipt(Transaction transaction)
             => Build.A.TransactionReceipt.WithState(TestItem.KeccakB)
