@@ -22,10 +22,10 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
+using DotNetty.Common.Concurrency;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 
@@ -36,6 +36,7 @@ namespace Nethermind.Network.Rlpx
         private readonly IByteBuffer _buffer = Unpooled.Buffer(256);
         private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
         private readonly ILogManager _logManager;
+        private readonly IEventExecutorGroup _group;
         private readonly ILogger _logger;
         private readonly HandshakeRole _role;
 
@@ -50,13 +51,15 @@ namespace Nethermind.Network.Rlpx
             ISession session,
             HandshakeRole role,
             PublicKey remoteId,
-            ILogManager logManager)
+            ILogManager logManager,
+            IEventExecutorGroup group)
         {
             _handshake.RemoteNodeId = remoteId;
             _role = role;
             _remoteId = remoteId;
-            _logManager = logManager?? throw new ArgumentNullException(nameof(NettyHandshakeHandler));
-            _logger = logManager.GetClassLogger<NettyHandshakeHandler>(); 
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(NettyHandshakeHandler));
+            _group = @group;
+            _logger = logManager.GetClassLogger<NettyHandshakeHandler>();
             _service = service;
             _session = session;
             _initCompletionSource = new TaskCompletionSource<object>();
@@ -64,7 +67,7 @@ namespace Nethermind.Network.Rlpx
 
         public override void ChannelActive(IChannelHandlerContext context)
         {
-            _channel = context.Channel;            
+            _channel = context.Channel;
 
             if (_role == HandshakeRole.Initiator)
             {
@@ -75,8 +78,8 @@ namespace Nethermind.Network.Rlpx
                 context.WriteAndFlushAsync(_buffer);
             }
 
-            _session.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
-            _session.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
+            _session.RemoteHost = ((IPEndPoint) context.Channel.RemoteAddress).Address.ToString();
+            _session.RemotePort = ((IPEndPoint) context.Channel.RemoteAddress).Port;
 
             CheckHandshakeInitTimeout().ContinueWith(x =>
             {
@@ -107,7 +110,7 @@ namespace Nethermind.Network.Rlpx
 
         public override void ChannelRegistered(IChannelHandlerContext context)
         {
-            if (_logger.IsTrace)  _logger.Trace("Channel Registered");
+            if (_logger.IsTrace) _logger.Trace("Channel Registered");
             base.ChannelRegistered(context);
         }
 
@@ -129,13 +132,13 @@ namespace Nethermind.Network.Rlpx
                     _logger.Debug($"Handshake failure in communication with {clientId}: {exception}");
                 }
             }
-            
+
             base.ExceptionCaught(context, exception);
         }
 
         protected override void ChannelRead0(IChannelHandlerContext context, IByteBuffer message)
         {
-            if(_logger.IsTrace) _logger.Trace($"Channel read {nameof(NettyHandshakeHandler)} from {context.Channel.RemoteAddress}");
+            if (_logger.IsTrace) _logger.Trace($"Channel read {nameof(NettyHandshakeHandler)} from {context.Channel.RemoteAddress}");
             if (message is IByteBuffer byteBuffer)
             {
                 if (_role == HandshakeRole.Recipient)
@@ -144,7 +147,7 @@ namespace Nethermind.Network.Rlpx
                     byte[] authData = new byte[byteBuffer.ReadableBytes];
                     byteBuffer.ReadBytes(authData);
                     Packet ack = _service.Ack(_handshake, new Packet(authData));
-                    
+
                     //_p2PSession.RemoteNodeId = _remoteId;
                     if (_logger.IsTrace) _logger.Trace($"Sending ACK to {_remoteId} @ {context.Channel.RemoteAddress}");
                     _buffer.WriteBytes(ack.Data);
@@ -166,21 +169,22 @@ namespace Nethermind.Network.Rlpx
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameDecoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logger));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameEncoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyFrameEncoder(frameCipher, macProcessor, _logger));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameMerger)} for {_remoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyFrameMerger(_logger));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyPacketSplitter)} for {_remoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
-
+                context.Channel.Pipeline.AddLast(
+                    new NettyFrameDecoder(frameCipher, macProcessor, _logger),
+                    new NettyFrameEncoder(frameCipher, macProcessor, _logger),
+                    new NettyFrameMerger(_logger),
+                    new NettyPacketSplitter());
                 PacketSender packetSender = new PacketSender(_logManager);
+                
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(packetSender);
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyP2PHandler)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 NettyP2PHandler handler = new NettyP2PHandler(_session, _logger);
-                context.Channel.Pipeline.AddLast(handler);
+                context.Channel.Pipeline.AddLast(_group, handler);
 
                 handler.Init(packetSender, context);
 

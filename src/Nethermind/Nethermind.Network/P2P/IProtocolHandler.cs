@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P
         
         void Init();
         void HandleMessage(Packet message);
-        void Disconnect(DisconnectReason disconnectReason);
+        void InitiateDisconnect(DisconnectReason disconnectReason);
 
         event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         event EventHandler<ProtocolEventArgs> SubprotocolRequested;
