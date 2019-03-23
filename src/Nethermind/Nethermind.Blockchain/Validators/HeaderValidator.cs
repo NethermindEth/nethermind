@@ -115,8 +115,9 @@ namespace Nethermind.Blockchain.Validators
 
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Validating block {header.Hash} ({header.Number}) - DAO block {_daoBlockNumber}, extraData {header.ExtraData.ToHexString(true)}");
+                _logger.Trace($"Validating block {header.Hash} ({header.Number}), extraData {header.ExtraData.ToHexString(true)}");
             }
+
 
             bool extraDataValid = isOmmer
                                   || _daoBlockNumber == null
