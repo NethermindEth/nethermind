@@ -29,7 +29,7 @@ namespace Nethermind.Store
 
         void DeleteAccount(Address address);
 
-        void CreateAccount(Address address, UInt256 balance);
+        void CreateAccount(Address address, in UInt256 balance);
 
         bool AccountExists(Address address);
 
@@ -53,9 +53,9 @@ namespace Nethermind.Store
 
         void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec);
 
-        void AddToBalance(Address address, UInt256 balanceChange, IReleaseSpec spec);
+        void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
         
-        void SubtractFromBalance(Address address, UInt256 balanceChange, IReleaseSpec spec);
+        void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
         void UpdateStorageRoot(Address address, Keccak storageRoot);
 

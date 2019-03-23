@@ -127,7 +127,7 @@ namespace Nethermind.Store
             }
         }
 
-        private void SetNewBalance(Address address, UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
+        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
             if (balanceChange.IsZero)
             {
@@ -160,12 +160,12 @@ namespace Nethermind.Store
             PushUpdate(address, changedAccount);
         }
 
-        public void SubtractFromBalance(Address address, UInt256 balanceChange, IReleaseSpec releaseSpec)
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
             SetNewBalance(address, balanceChange, releaseSpec, true);
         }
 
-        public void AddToBalance(Address address, UInt256 balanceChange, IReleaseSpec releaseSpec)
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
@@ -302,7 +302,7 @@ namespace Nethermind.Store
             _keptInCache.Clear();
         }
 
-        public void CreateAccount(Address address, UInt256 balance)
+        public void CreateAccount(Address address, in UInt256 balance)
         {
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance}");
             Account account = balance.IsZero ? Account.TotallyEmpty : new Account(balance);

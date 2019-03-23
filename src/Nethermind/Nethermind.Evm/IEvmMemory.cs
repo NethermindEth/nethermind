@@ -25,17 +25,17 @@ namespace Nethermind.Evm
     public interface IEvmMemory : IDisposable
     {
         ulong Size { get; }
-        void SaveWord(UInt256 location, Span<byte> word);
-        void SaveWord(UInt256 location, byte[] word);
-        void SaveByte(UInt256 location, byte value);
-        void SaveByte(UInt256 location, byte[] value);
-        void Save(UInt256 location, Span<byte> value);
-        void Save(UInt256 location, byte[] value);
-        Span<byte> LoadSpan(UInt256 location);
-        Span<byte> LoadSpan(UInt256 location, UInt256 length);
-        byte[] Load(UInt256 location);
-        byte[] Load(UInt256 location, UInt256 length);
-        long CalculateMemoryCost(UInt256 location, UInt256 length);
+        void SaveWord(ref UInt256 location, Span<byte> word);
+        void SaveWord(ref UInt256 location, byte[] word);
+        void SaveByte(ref UInt256 location, byte value);
+        void SaveByte(ref UInt256 location, byte[] value);
+        void Save(ref UInt256 location, Span<byte> value);
+        void Save(ref UInt256 location, byte[] value);
+        Span<byte> LoadSpan(ref UInt256 location);
+        Span<byte> LoadSpan(ref UInt256 location, in UInt256 length);
+        byte[] Load(ref UInt256 location);
+        byte[] Load(ref UInt256 location, in UInt256 length);
+        long CalculateMemoryCost(ref UInt256 location, in UInt256 length);
         List<string> GetTrace();
     }
 }

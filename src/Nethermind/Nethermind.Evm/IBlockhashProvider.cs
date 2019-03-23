@@ -24,6 +24,6 @@ namespace Nethermind.Evm
 {
     public interface IBlockhashProvider
     {
-        Keccak GetBlockhash(BlockHeader currentBlock, UInt256 number);
+        Keccak GetBlockhash(BlockHeader currentBlock, in UInt256 number);
     }
 }
