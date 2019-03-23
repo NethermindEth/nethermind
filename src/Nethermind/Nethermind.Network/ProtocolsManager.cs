@@ -251,6 +251,8 @@ namespace Nethermind.Network
                 bool isValid = _protocolValidator.DisconnectOnInvalid(Protocol.Eth, session, args);
                 if (isValid)
                 {
+                    handler.ClientId = session.Node.ClientId;
+                    
                     if (_syncPeers.TryAdd(session.SessionId, handler))
                     {
                         _syncManager.AddPeer(handler);
@@ -262,8 +264,6 @@ namespace Nethermind.Network
                         if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
                         session.InitiateDisconnect(DisconnectReason.AlreadyConnected);
                     }
-
-                    handler.ClientId = session.Node.ClientId;
 
                     if (_logger.IsTrace) _logger.Trace($"Finalized ETH protocol initialization on {session} - adding sync peer {session.Node:s}");
 
