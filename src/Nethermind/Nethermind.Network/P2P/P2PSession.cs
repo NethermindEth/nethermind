@@ -258,7 +258,7 @@ namespace Nethermind.Network.P2P
                 {
                     try
                     {
-                        protocolHandler.Disconnect(disconnectReason);
+                        protocolHandler.InitiateDisconnect(disconnectReason);
                     }
                     catch (Exception e)
                     {

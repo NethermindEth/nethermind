@@ -168,8 +168,7 @@ namespace Nethermind.Network.P2P
 
             _isInitialized = true;
 
-            if (!capabilities.Any(x => (x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63))
-                                       || x.ProtocolCode == Protocol.Ndm))
+            if (!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63)))
             {
                 InitiateDisconnect(DisconnectReason.UselessPeer);
             }
@@ -236,7 +235,6 @@ namespace Nethermind.Network.P2P
         {
             new Capability(Protocol.Eth, 62),
             new Capability(Protocol.Eth, 63),
-            new Capability(Protocol.Ndm, 1)
         };
 
         private void SendHello()

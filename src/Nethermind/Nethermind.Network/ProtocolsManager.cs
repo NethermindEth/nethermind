@@ -27,7 +27,6 @@ using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
-using Nethermind.Network.P2P.Subprotocols.Ndm;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -43,7 +42,6 @@ namespace Nethermind.Network
         private readonly IRlpxPeer _localPeer;
         private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
-        private readonly INdmSubprotocolFactory _ndmFactory;
         private readonly IPerfService _perfService;
         private readonly INetworkStorage _peerStorage;
         private readonly ILogManager _logManager;
@@ -57,7 +55,6 @@ namespace Nethermind.Network
             IRlpxPeer localPeer,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
-            INdmSubprotocolFactory ndmFactory,
             INetworkStorage peerStorage,
             IPerfService perfService,
             ILogManager logManager)
@@ -69,7 +66,6 @@ namespace Nethermind.Network
             _localPeer = localPeer ?? throw new ArgumentNullException(nameof(localPeer));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
-            _ndmFactory = ndmFactory ?? throw new ArgumentNullException(nameof(ndmFactory));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -195,10 +191,6 @@ namespace Nethermind.Network
                     InitEthProtocol(session, ethHandler);
                     protocolHandler = ethHandler;
                     break;
-                case Protocol.Ndm:
-                    protocolHandler = _ndmFactory.Create(session, session.RemoteNodeId);
-                    InitNdmProtocol(session, protocolHandler);
-                    break;
                 default:
                     throw new NotSupportedException($"Protocol {protocolCode} {version} is not supported");
             }
@@ -206,22 +198,6 @@ namespace Nethermind.Network
             protocolHandler.SubprotocolRequested += (sender, args) => InitProtocol(session, args.ProtocolCode, args.Version);
             session.AddProtocolHandler(protocolHandler);
             protocolHandler.Init();
-        }
-
-        private void InitNdmProtocol(ISession session, IProtocolHandler handler)
-        {
-            handler.ProtocolInitialized += (sender, args) =>
-            {
-                var ndmEventArgs = (NdmProtocolInitializedEventArgs) args;
-                _stats.ReportNdmInitializedEvent(session.Node, new NdmNodeDetails
-                {
-                    Protocol = handler.ProtocolCode,
-                    ProtocolVersion = handler.ProtocolVersion
-                });
-            
-                _protocolValidator.DisconnectOnInvalid(Protocol.Ndm, session, ndmEventArgs);
-                if (_logger.IsTrace) _logger.Trace($"NDM version {handler.ProtocolVersion}: {session.RemoteNodeId}");
-            };
         }
         
         private void InitP2PProtocol(ISession session, P2PProtocolHandler handler)
