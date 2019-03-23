@@ -157,17 +157,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             switch (message.PacketType)
             {
                 case Eth62MessageCode.Status:
-                    StatusMessage statusMessage;
-                    try
+                    StatusMessage statusMessage = Deserialize<StatusMessage>(message.Data);
+                    if (statusMessage.StrangePrefix != null)
                     {
-                        statusMessage = Deserialize<StatusMessage>(message.Data);
+                        Node.ClientId = $"STRANGE_PREFIX({statusMessage.StrangePrefix}) " + Node.ClientId;
                     }
-                    catch (Exception e)
-                    {
-                        if(Logger.IsWarn) Logger.Warn($"Failed to deserialize status message from {Node:s} - {e}");
-                        throw;
-                    }
-                     
                     Handle(statusMessage);
                     break;
                 case Eth62MessageCode.NewBlockHashes:

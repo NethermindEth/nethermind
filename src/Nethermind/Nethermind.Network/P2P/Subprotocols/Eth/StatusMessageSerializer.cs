@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
@@ -36,15 +37,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public StatusMessage Deserialize(byte[] bytes)
         {
-            StatusMessage statusMessage = new StatusMessage();
-            Rlp.DecoderContext context = bytes.AsRlpContext();
-            context.ReadSequenceLength();
-            statusMessage.ProtocolVersion = context.DecodeByte();
-            statusMessage.ChainId = context.DecodeUInt256();
-            statusMessage.TotalDifficulty = context.DecodeUInt256();
-            statusMessage.BestHash = context.DecodeKeccak();
-            statusMessage.GenesisHash = context.DecodeKeccak();
-            return statusMessage;
+            try
+            {
+                StatusMessage statusMessage = new StatusMessage();
+                Rlp.DecoderContext context = bytes.AsRlpContext();
+                context.ReadSequenceLength();
+                statusMessage.ProtocolVersion = context.DecodeByte();
+                statusMessage.ChainId = context.DecodeUInt256();
+                statusMessage.TotalDifficulty = context.DecodeUInt256();
+                statusMessage.BestHash = context.DecodeKeccak();
+                statusMessage.GenesisHash = context.DecodeKeccak();
+                return statusMessage;
+            }
+            catch (Exception)
+            {
+                // TODO: still to be explained...
+                StatusMessage statusMessage = new StatusMessage();
+                Rlp.DecoderContext context = bytes.AsSpan(3).ToArray().AsRlpContext();
+                context.ReadSequenceLength();
+                statusMessage.ProtocolVersion = context.DecodeByte();
+                statusMessage.ChainId = context.DecodeUInt256();
+                statusMessage.TotalDifficulty = context.DecodeUInt256();
+                statusMessage.BestHash = context.DecodeKeccak();
+                statusMessage.GenesisHash = context.DecodeKeccak();
+                statusMessage.StrangePrefix = bytes.AsSpan(0, 3).ToArray().ToHexString();
+                return statusMessage;
+            }
         }
     }
 }

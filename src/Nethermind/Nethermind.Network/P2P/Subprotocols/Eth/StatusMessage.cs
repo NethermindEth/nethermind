@@ -30,5 +30,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public UInt256 TotalDifficulty { get; set; }
         public Keccak BestHash { get; set; }
         public Keccak GenesisHash { get; set; }
+        public string StrangePrefix { get; set; }
     }
 }
