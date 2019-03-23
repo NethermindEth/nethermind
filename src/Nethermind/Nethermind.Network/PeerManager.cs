@@ -256,7 +256,9 @@ namespace Nethermind.Network
                         // think of specifying a maximum degree of parallelism.
                         new ExecutionDataflowBlockOptions
                         {
-                            MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded
+                            MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded,
+                            CancellationToken = _cancellationTokenSource.Token
+                                
                         });
 
                     foreach (var candidateToTry in candidatesToTry)
