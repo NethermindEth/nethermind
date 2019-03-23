@@ -30,6 +30,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -248,6 +249,28 @@ namespace Nethermind.Network
 
                     IEnumerable<Peer> candidatesToTry = remainingCandidates.Take(nodesToTry);
                     remainingCandidates = remainingCandidates.Skip(nodesToTry).ToList();
+                  
+                    var workerBlock = new ActionBlock<Peer>(
+                       
+                        async peer =>  await SetupPeerConnection(peer),
+                        // think of specifying a maximum degree of parallelism.
+                        new ExecutionDataflowBlockOptions
+                        {
+                            MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded
+                        });
+
+                    foreach (var candidateToTry in candidatesToTry)
+                    {
+                        
+                        workerBlock.Post(candidateToTry);                  
+                    }
+                    
+                    workerBlock.Complete();
+
+                    // Wait for all messages to propagate through the network.
+                    workerBlock.Completion.Wait();
+                    
+                  /*  
                     Parallel.ForEach(candidatesToTry, async (peer, loopState) =>
                     {
                         if (loopState.ShouldExitCurrentIteration || _cancellationTokenSource.IsCancellationRequested)
@@ -284,7 +307,7 @@ namespace Nethermind.Network
                         }
 
                         Interlocked.Increment(ref newActiveNodes);
-                    });
+                    });*/
 
                     connectionRounds++;
                 }
@@ -328,6 +351,30 @@ namespace Nethermind.Network
             await Task.CompletedTask;
         }
 
+        private async Task SetupPeerConnection(Peer peer){ 
+            if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
+                return;
+            }
+
+            bool result = await InitializePeerConnection(peer);
+            if(_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_activePeers.Count}, CAND: {_candidatePeers.Count}");
+                        
+            if (!result)
+            {
+                _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
+                // Interlocked.Increment(ref failedInitialConnect);
+                if (peer.OutSession != null)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
+                    peer.OutSession?.Disconnect(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local);
+                }
+
+                DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
+
+                return;
+            }}
         private bool AddActivePeer(PublicKey nodeId, Peer peer, string reason)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| ADDING {nodeId} {reason}");
