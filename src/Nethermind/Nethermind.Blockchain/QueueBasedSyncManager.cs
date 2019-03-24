@@ -346,7 +346,7 @@ namespace Nethermind.Blockchain
 
             if ((block.TotalDifficulty ?? 0) > peerInfo.TotalDifficulty)
             {
-                if(_logger.IsDebug) _logger.Debug($"ADD NEW BLOCK Updating header of {peerInfo} from {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
+                if(_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {peerInfo} from {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
                 peerInfo.HeadNumber = block.Number;
                 peerInfo.HeadHash = block.Hash;
                 peerInfo.TotalDifficulty = block.TotalDifficulty ?? peerInfo.TotalDifficulty;
@@ -375,6 +375,11 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.Hash} ({block.Number}) from {nodeWhoSentTheBlock.ToShortString()}");
 
+            if (!_sealValidator.ValidateSeal(block.Header))
+            {
+                throw new EthSynchronizationException("Peer sent a block with an invalid seal");
+            }
+            
             if (block.Number <= _blockTree.BestKnownNumber + 1)
             {
                 if (_logger.IsInfo) _logger.Info($"Suggesting a new block {block.ToString(Block.Format.HashNumberAndTx)} by {block.Author} from {nodeWhoSentTheBlock.ToShortString()}");
@@ -412,7 +417,7 @@ namespace Nethermind.Blockchain
 
             if (number > peerInfo.HeadNumber)
             {
-                if(_logger.IsDebug) _logger.Debug($"HINT Updating header of {peerInfo} from {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} to {number}");
+                if(_logger.IsTrace) _logger.Trace($"HINT Updating header of {peerInfo} from {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} to {number}");
                 peerInfo.HeadNumber = number;
                 peerInfo.HeadHash = hash;
 
@@ -1022,7 +1027,7 @@ namespace Nethermind.Blockchain
                                 });
                         }
 
-                        if(_logger.IsDebug) _logger.Debug($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} to {getHeadHeaderTask.Result.Number}");
+                        if(_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} to {getHeadHeaderTask.Result.Number}");
                         peerInfo.HeadNumber = getHeadHeaderTask.Result.Number;
                         peerInfo.HeadHash = getHeadHeaderTask.Result.Hash;
 
