@@ -18,12 +18,11 @@
 
 using System;
 using System.Net;
-using Microsoft.VisualBasic.CompilerServices;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Stats.Model
-{
-    public class Node
+{   
+    public class Node : IFormattable
     {
         private PublicKey _id;
 
@@ -114,6 +113,24 @@ namespace Nethermind.Stats.Model
         public override string ToString()
         {
             return $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}";
+        }
+
+        public string ToString(string format)
+        {
+            return ToString(format, null);
+        }  
+       
+        public string ToString(string format, IFormatProvider formatProvider)
+        {
+            switch (format)
+            {
+                default:
+                    return $"enode://{Id.ToString(false)}@{Host}:{Port}";
+                case "s":
+                    return $"{Host}:{Port}";
+                case "f":
+                    return $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}";    
+            }
         }
         
         public static bool operator ==(Node a, Node b)
