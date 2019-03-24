@@ -334,19 +334,6 @@ namespace Nethermind.Blockchain
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
         private object _dummyValue = new object();
         
-        private Dictionary<Address, string> _knownValidators = new Dictionary<Address, string>
-        {
-            {new Address("0xa6DD2974B96e959F2c8930024451a30aFEC24203"), "Ethereum Foundation"},
-            {new Address("0x000000568b9b5A365eaa767d42e74ED88915C204"), "POA"},
-            {new Address("0x631AE5c534fE7b35aaF5243b54e5ac0CFc44E04C"), "Yucong Sun"},
-            {new Address("0xD9A5179F091d85051d3C982785Efd1455CEc8699"), "Prysm Labs"},
-            {new Address("0xA8e8F14732658E4B51E8711931053a8A69BaF2B1"), "Dapowerplay"},
-            {new Address("0x8b24Eb4E6aAe906058242D83e51fB077370c4720"), "Infura"},
-            {new Address("0x4c2ae482593505f0163cdeFc073e81c63CdA4107"), "Nethermind"},
-            {new Address("0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd"), "Pantheon"},
-            {new Address("0xe0a2Bd4258D2768837BAa26A28fE71Dc079f84c7"), "Parity"},
-        };
-        
         public void AddNewBlock(Block block, PublicKey nodeWhoSentTheBlock)
         {
             _peers.TryGetValue(nodeWhoSentTheBlock, out PeerInfo peerInfo);
@@ -397,7 +384,7 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsInfo)
                 {
-                    string authorString = _knownValidators.ContainsKey(block.Author) ? _knownValidators[block.Author] : block.Author.ToString();
+                    string authorString = KnownAddresses.GoerliValidators.ContainsKey(block.Author) ? KnownAddresses.GoerliValidators[block.Author] : block.Author.ToString();
                     if (_logger.IsInfo) _logger.Info($"Discovered a new block {block.ToString(Block.Format.HashNumberAndTx)} by {authorString} from {nodeWhoSentTheBlock.ToShortString()}");
                 }
 
