@@ -794,8 +794,7 @@ namespace Nethermind.Blockchain
 
                 if (hashes.Count == 0)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"{peerInfo} does not have headers starting from {currentNumber}");
-                    break;
+                    throw new EthSynchronizationException("Peer sent an empty header list");
                 }
 
                 Task<Block[]> bodiesTask = peer.GetBlocks(hashes.ToArray(), _peerSyncCancellationTokenSource.Token);

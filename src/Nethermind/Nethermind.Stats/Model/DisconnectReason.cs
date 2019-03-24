@@ -33,6 +33,7 @@ namespace Nethermind.Stats.Model
         IdentitySameAsSelf = 0x0a,
         ReceiveMessageTimeout = 0x0b,
         Other = 0x10,
-        StrangeBytes = 0x11
+        Breach1 = 0x11,
+        Breach2 = 0x12,
     }
 }
