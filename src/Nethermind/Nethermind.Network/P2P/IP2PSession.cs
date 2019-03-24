@@ -53,12 +53,12 @@ namespace Nethermind.Network.P2P
         /// <summary>
         /// Starts local disconnect (triggers disconnect on each protocolHandler, down to tcp disconnect)
         /// </summary>
-        void InitiateDisconnect(DisconnectReason disconnectReason);
+        void InitiateDisconnect(DisconnectReason disconnectReason, string details);
 
         /// <summary>
         ///  Drop tcp connection after a delay
         /// </summary>     
-        void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType);
+        void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType, string details);
 
         void Handshake(PublicKey handshakeRemoteNodeId);
 

@@ -173,7 +173,7 @@ namespace Nethermind.Network.Test.P2P
             Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
-            session.Disconnect(DisconnectReason.Other, DisconnectType.Remote);
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Remote, "test");
             session.EnableSnappy();
         }
 
@@ -216,9 +216,9 @@ namespace Nethermind.Network.Test.P2P
             session.InitiateDisconnect(DisconnectReason.ClientQuitting);
             session.Dispose();
 
-            aaa.Received().InitiateDisconnect(DisconnectReason.ClientQuitting);
-            bbb.Received().InitiateDisconnect(DisconnectReason.ClientQuitting);
-            ccc.Received().InitiateDisconnect(DisconnectReason.ClientQuitting);
+            aaa.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
+            bbb.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
+            ccc.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
 
             aaa.Received().Dispose();
             bbb.Received().Dispose();
@@ -247,7 +247,7 @@ namespace Nethermind.Network.Test.P2P
 
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
-            session.Disconnect(DisconnectReason.Other, DisconnectType.Local);
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Local, "test");
             Assert.True(wasCalled);
         }
 
@@ -271,7 +271,7 @@ namespace Nethermind.Network.Test.P2P
             Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
             _channel.DisconnectAsync().Returns(Task.FromException<Exception>(new Exception()));
             session.Disconnected += (s, e) => wasCalled = true;
-            session.Disconnect(DisconnectReason.Other, DisconnectType.Local);
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Local, "test");
             Assert.True(wasCalled);
         }
         
@@ -284,7 +284,7 @@ namespace Nethermind.Network.Test.P2P
             session.Disconnected += (s, e) => wasCalled = true;
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
-            session.Disconnect(DisconnectReason.Other, DisconnectType.Local);
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Local, "test");
             Assert.True(wasCalled);
         }
 
@@ -299,8 +299,8 @@ namespace Nethermind.Network.Test.P2P
             session.Init(5, _channelHandlerContext, _packetSender);
             session.InitiateDisconnect(DisconnectReason.Other);
             session.InitiateDisconnect(DisconnectReason.Other);
-            session.Disconnect(DisconnectReason.Other, DisconnectType.Local);
-            session.Disconnect(DisconnectReason.Other, DisconnectType.Remote);
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Local, "test");
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Remote, "test");
             Assert.AreEqual(1, wasCalledTimes);
         }
 
@@ -311,7 +311,7 @@ namespace Nethermind.Network.Test.P2P
             Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
             session.Disconnecting += (s, e) => wasCalledTimes++;
             session.Handshake(TestItem.PublicKeyA);
-            session.Disconnect(DisconnectReason.Other, DisconnectType.Remote);
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Remote, "test");
             session.Init(5, _channelHandlerContext, _packetSender);
             Assert.AreEqual(1, wasCalledTimes);
         }
@@ -348,9 +348,9 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
             session.InitiateDisconnect(DisconnectReason.ClientQuitting);
-            aaa.Received().InitiateDisconnect(DisconnectReason.ClientQuitting);
-            bbb.Received().InitiateDisconnect(DisconnectReason.ClientQuitting);
-            ccc.Received().InitiateDisconnect(DisconnectReason.ClientQuitting);
+            aaa.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
+            bbb.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
+            ccc.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
         }
 
         [Test]

@@ -17,7 +17,6 @@
  */
 
 using System;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
@@ -27,11 +26,14 @@ namespace Nethermind.Network.P2P
         public DisconnectReason DisconnectReason { get; }
         
         public DisconnectType DisconnectType { get; }
+        
+        public string Details { get; }
 
-        public DisconnectEventArgs(DisconnectReason disconnectReason, DisconnectType disconnectType)
+        public DisconnectEventArgs(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
             DisconnectReason = disconnectReason;
             DisconnectType = disconnectType;
+            Details = details;
         }
     }
 }

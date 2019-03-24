@@ -121,7 +121,7 @@ namespace Nethermind.Network
             if (new[] {SyncStatus.InitFailed, SyncStatus.InitCancelled, SyncStatus.Failed, SyncStatus.Cancelled}.Contains(e.SyncStatus))
             {
                 if (_logger.IsDebug) _logger.Debug($"Initializing disconnect {session} on sync {e.SyncStatus.ToString()} with {e.Peer.Node:s}");
-                session.InitiateDisconnect(DisconnectReason.Other);
+                session.InitiateDisconnect(DisconnectReason.Other, $"sync failed {e.SyncStatus}");
             }
         }
 
@@ -262,7 +262,7 @@ namespace Nethermind.Network
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
-                        session.InitiateDisconnect(DisconnectReason.AlreadyConnected);
+                        session.InitiateDisconnect(DisconnectReason.AlreadyConnected, "sync peer");
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Finalized ETH protocol initialization on {session} - adding sync peer {session.Node:s}");

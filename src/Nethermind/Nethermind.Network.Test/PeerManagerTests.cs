@@ -446,7 +446,7 @@ namespace Nethermind.Network.Test
 
             foreach (Session session in clone)
             {
-                session.Disconnect(DisconnectReason.TooManyPeers, DisconnectType.Remote);
+                session.Disconnect(DisconnectReason.TooManyPeers, DisconnectType.Remote, "test");
             }
         }
 

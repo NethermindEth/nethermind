@@ -170,7 +170,7 @@ namespace Nethermind.Network.P2P
 
             if (!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63)))
             {
-                InitiateDisconnect(DisconnectReason.UselessPeer);
+                InitiateDisconnect(DisconnectReason.UselessPeer, $"capabilities: {string.Join(", ", capabilities.Select(c => string.Concat(c.ProtocolCode, c.Version)))}");
             }
 
             ReceivedProtocolInitMsg(hello);
@@ -222,9 +222,9 @@ namespace Nethermind.Network.P2P
             return true;
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason)
+        public void InitiateDisconnect(DisconnectReason disconnectReason, string details)
         {  
-            if(Logger.IsTrace) Logger.Trace($"Sending disconnect {disconnectReason} to {Session.Node:s}");
+            if(Logger.IsTrace) Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
             DisconnectMessage message = new DisconnectMessage(disconnectReason);
             Send(message);
         }
@@ -321,7 +321,7 @@ namespace Nethermind.Network.P2P
             }
             
             // Received disconnect message, triggering direct TCP disconnection
-            Session.Disconnect(disconnectReason, DisconnectType.Remote);
+            Session.Disconnect(disconnectReason, DisconnectType.Remote, "message");
         }
 
         private void HandlePong(Packet msg)

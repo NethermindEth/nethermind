@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
@@ -33,6 +32,11 @@ namespace Nethermind.Network.P2P
 {
     public class Session : ISession
     {
+        public override string ToString()
+        {
+            return Direction == ConnectionDirection.In ? $"{State} {Direction} session {RemoteHost}:{RemotePort}->localhost:{LocalPort}" : $"{State} {Direction} session localhost:{LocalPort}->{RemoteHost}:{RemotePort}";
+        }
+
         private readonly ILogger _logger;
         private readonly Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
         private readonly IChannel _channel;
@@ -107,7 +111,7 @@ namespace Nethermind.Network.P2P
             {
                 if (State < SessionState.Initialized)
                 {
-                    throw new InvalidOperationException($"{nameof(EnableSnappy)} called on session that is in the {State} state");
+                    throw new InvalidOperationException($"{nameof(EnableSnappy)} called on {this}");
                 }
 
                 if (IsClosing)
@@ -116,7 +120,8 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} Enabling Snappy compression and disabling framing");
+            if (_logger.IsTrace) _logger.Trace($"Enabling Snappy compression and disabling framing in {this}");
+            
             _context.Channel.Pipeline.Get<NettyPacketSplitter>().DisableFraming();
             _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new SnappyDecoder(_logger));
             _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new SnappyEncoder(_logger));
@@ -130,7 +135,7 @@ namespace Nethermind.Network.P2P
             {
                 if (State < SessionState.Initialized)
                 {
-                    throw new InvalidOperationException($"{nameof(DeliverMessage)} called on session that is in the {State} state");
+                    throw new InvalidOperationException($"{nameof(DeliverMessage)} called {this}");
                 }
 
                 if (IsClosing)
@@ -139,7 +144,7 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"P2P to deliver {packet.Protocol}.{packet.PacketType} with payload {packet.Data.ToHexString()}");
+            if (_logger.IsTrace) _logger.Trace($"P2P to deliver {packet.Protocol}.{packet.PacketType} with payload {packet.Data.ToHexString()} on {this}");
 
             packet.PacketType = _resolver.ResolveAdaptiveId(packet.Protocol, packet.PacketType);
             _packetSender.Enqueue(packet);
@@ -151,7 +156,7 @@ namespace Nethermind.Network.P2P
             {
                 if (State < SessionState.Initialized)
                 {
-                    throw new InvalidOperationException($"{nameof(ReceiveMessage)} called on session that is in the {State} state");
+                    throw new InvalidOperationException($"{nameof(ReceiveMessage)} called on {this}");
                 }
 
                 if (IsClosing)
@@ -164,11 +169,11 @@ namespace Nethermind.Network.P2P
             (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
             packet.Protocol = protocol;
 
-            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} {nameof(Session)} received a message of length {packet.Data.Length} ({dynamicMessageCode} => {protocol}.{messageId})");
+            if (_logger.IsTrace) _logger.Trace($"{this} received a message of length {packet.Data.Length} ({dynamicMessageCode} => {protocol}.{messageId})");
 
             if (protocol == null)
             {
-                if (_logger.IsTrace) _logger.Warn($"Received a message from node: {RemoteNodeId}, ({dynamicMessageCode} => {messageId}), known protocols ({_protocols.Count}): {string.Join(", ", _protocols.Select(x => $"{x.Key} {x.Value.ProtocolVersion} {x.Value.MessageIdSpaceSize}"))}");
+                if (_logger.IsTrace) _logger.Warn($"Received a message from node: {RemoteNodeId}, ({dynamicMessageCode} => {messageId}), known protocols ({_protocols.Count}): {string.Join(", ", _protocols.Select(x => $"{x.Key}.{x.Value.ProtocolVersion} {x.Value.MessageIdSpaceSize}"))}");
                 return;
             }
 
@@ -178,6 +183,8 @@ namespace Nethermind.Network.P2P
 
         public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
         {
+            if(_logger.IsTrace) _logger.Trace($"{nameof(Init)} called on {this}");
+            
             if (context == null) throw new ArgumentNullException(nameof(context));
             if (packetSender == null) throw new ArgumentNullException(nameof(packetSender));
 
@@ -191,7 +198,7 @@ namespace Nethermind.Network.P2P
                 
                 if (State != SessionState.HandshakeComplete)
                 {
-                    throw new InvalidOperationException($"{nameof(Init)} called on session that is not in the {nameof(HandshakeComplete)} state");
+                    throw new InvalidOperationException($"{nameof(Init)} called on {this}");
                 }
 
                 _context = context;
@@ -204,11 +211,12 @@ namespace Nethermind.Network.P2P
 
         public void Handshake(PublicKey handshakeRemoteNodeId)
         {
+            if(_logger.IsTrace) _logger.Trace($"{nameof(Handshake)} called on {this}");
             lock (_sessionStateLock)
             {
                 if (State == SessionState.Initialized || State == SessionState.HandshakeComplete)
                 {
-                    throw new InvalidOperationException($"{nameof(Handshake)} called on session that is in the {State} state");
+                    throw new InvalidOperationException($"{nameof(Handshake)} called on {this}");
                 }
                 
                 if (IsClosing)
@@ -219,7 +227,7 @@ namespace Nethermind.Network.P2P
                 State = SessionState.HandshakeComplete;
             }
 
-            //For IN connections we don't have NodeId until that moment, so we need to set it in Session
+            //For IN connections we don't have NodeId until this moment, so we need to set it in Session
             //For OUT connections it is possible remote id is different than what we had persisted or received from Discovery
             //If that is the case we need to set it in the session
             if (RemoteNodeId == null)
@@ -239,7 +247,7 @@ namespace Nethermind.Network.P2P
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason)
+        public void InitiateDisconnect(DisconnectReason disconnectReason, string details = null)
         {
             lock (_sessionStateLock)
             {
@@ -251,6 +259,7 @@ namespace Nethermind.Network.P2P
                 State = SessionState.DisconnectingProtocols;
             }
 
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} disconnecting protocols");
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (_protocols.Any())
             {
@@ -258,7 +267,8 @@ namespace Nethermind.Network.P2P
                 {
                     try
                     {
-                        protocolHandler.InitiateDisconnect(disconnectReason);
+                        if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} disconnecting {protocolHandler.ProtocolCode}.{protocolHandler.ProtocolVersion} {disconnectReason} ({details})");
+                        protocolHandler.InitiateDisconnect(disconnectReason, details);
                     }
                     catch (Exception e)
                     {
@@ -267,26 +277,30 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            Disconnect(disconnectReason, DisconnectType.Local);
+            Disconnect(disconnectReason, DisconnectType.Local, details);
         }
 
         private object _sessionStateLock = new object();
         public byte P2PVersion { get; private set; }
         public SessionState State { get; private set; }
 
-        public void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType)
+        public void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} disconnect call {disconnectReason} {disconnectType}");
+            
             lock (_sessionStateLock)
             {
                 if (State >= SessionState.Disconnecting)
                 {
+                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} already disconnected {disconnectReason} {disconnectType}");
                     return;
                 }
 
                 State = SessionState.Disconnecting;
             }
 
-            Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, DisconnectType.Local));
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} invoking 'Disconnecting' event {disconnectReason} {disconnectType}");
+            Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
 
             //Possible in case of disconnect before p2p initialization
             if (_context == null)
@@ -294,7 +308,7 @@ namespace Nethermind.Network.P2P
                 //in case pipeline did not get to p2p - no disconnect delay
                 _channel.DisconnectAsync().ContinueWith(x =>
                 {
-                    if (x.IsFaulted && _logger.IsTrace) _logger.Trace($"Error while disconnecting on channel: {x.Exception}");
+                    if (x.IsFaulted && _logger.IsTrace) _logger.Trace($"Error while disconnecting on channel on {this} : {x.Exception}");
                 });
             }
             else
@@ -302,11 +316,11 @@ namespace Nethermind.Network.P2P
                 var delayTask = disconnectType == DisconnectType.Local ? Task.Delay(Timeouts.Disconnection) : Task.CompletedTask;
                 delayTask.ContinueWith(t =>
                 {
+                    if (_logger.IsTrace) _logger.Trace($"{this} disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");
                     _context.DisconnectAsync().ContinueWith(x =>
                     {
-                        if (x.IsFaulted && _logger.IsTrace) _logger.Trace($"Error while disconnecting on context: {x.Exception}");
+                        if (x.IsFaulted && _logger.IsTrace) _logger.Trace($"Error while disconnecting on context on {this} : {x.Exception}");
                     });
-                    if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} Disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");
                 });
             }
 
@@ -317,9 +331,10 @@ namespace Nethermind.Network.P2P
 
             if (Disconnected != null)
             {
-                Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} disconnected event {disconnectReason} {disconnectType}");
+                Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
             }
-            else if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected for {RemoteNodeId}");
+            else if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected event on {this}");
         }
 
         public event EventHandler<DisconnectEventArgs> Disconnecting;
@@ -333,7 +348,7 @@ namespace Nethermind.Network.P2P
             {
                 if (State != SessionState.Disconnected)
                 {
-                    throw new InvalidOperationException("Disposing session that is not disconnected");
+                    throw new InvalidOperationException($"Disposing {this}");
                 }
             }
 
@@ -349,12 +364,12 @@ namespace Nethermind.Network.P2P
         {
             if (_protocols.ContainsKey(handler.ProtocolCode))
             {
-                throw new InvalidOperationException($"{RemoteNodeId} Session for protocol {handler.ProtocolCode} already started");
+                throw new InvalidOperationException($"{this} already has {handler.ProtocolCode} started");
             }
 
             if (handler.ProtocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
             {
-                throw new InvalidOperationException($"{Protocol.P2P} protocolHandler has to be started before starting {handler.ProtocolCode} protocolHandler");
+                throw new InvalidOperationException($"{Protocol.P2P} protocol handler has to be started before starting {handler.ProtocolCode} protocol handler on {this}");
             }
 
             _protocols.Add(handler.ProtocolCode, handler);

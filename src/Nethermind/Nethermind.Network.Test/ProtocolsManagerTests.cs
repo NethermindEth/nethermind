@@ -180,7 +180,7 @@ namespace Nethermind.Network.Test
 
             public Context Disconnect()
             {
-                _currentSession.Disconnect(DisconnectReason.TooManyPeers, DisconnectType.Local);
+                _currentSession.Disconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, "test");
                 return this;
             }
 

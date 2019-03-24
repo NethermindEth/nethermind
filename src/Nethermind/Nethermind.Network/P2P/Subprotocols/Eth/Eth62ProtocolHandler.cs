@@ -79,7 +79,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 100)
             {
                 if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node.Id} due to tx flooding");
-                InitiateDisconnect(DisconnectReason.UselessPeer);
+                InitiateDisconnect(DisconnectReason.UselessPeer, $"tx flooding {_notAcceptedTxsSinceLastCheck}/{_txFloodCheckTimer}");
             }
             
             if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 10)
@@ -198,7 +198,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason)
+        public void InitiateDisconnect(DisconnectReason disconnectReason, string details)
         {
             try
             {
@@ -216,7 +216,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
             }
             
-            Session.Disconnect(disconnectReason, DisconnectType.Local);
+            Session.Disconnect(disconnectReason, DisconnectType.Local, details);
         }
 
         public void SendNewBlock(Block block)

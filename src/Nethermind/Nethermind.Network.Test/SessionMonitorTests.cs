@@ -54,7 +54,7 @@ namespace Nethermind.Network.Test
 
             SessionMonitor sessionMonitor = new SessionMonitor(new NetworkConfig(), LimboLogs.Instance);
             sessionMonitor.AddSession(session);
-            session.Disconnect(DisconnectReason.Other, DisconnectType.Remote);
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Remote, "test");
         }
         
         [Test]

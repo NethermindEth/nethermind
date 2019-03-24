@@ -126,7 +126,7 @@ namespace Nethermind.Network
             }
 
             if (_logger.IsTrace) _logger.Trace($"Disconnecting due to missed ping messages: {session.RemoteNodeId}");
-            session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout);
+            session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "ping");
             return false;
         }
 
