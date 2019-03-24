@@ -160,7 +160,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     StatusMessage statusMessage = Deserialize<StatusMessage>(message.Data);
                     if (statusMessage.StrangePrefix != null)
                     {
-                        Node.ClientId = $"STRANGE_PREFIX({statusMessage.StrangePrefix}) " + Node.ClientId;
+//                        Node.ClientId = $"STRANGE_PREFIX({statusMessage.StrangePrefix}) " + Node.ClientId;
                     }
                     Handle(statusMessage);
                     break;
@@ -461,7 +461,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return task.Result;
             }
 
-            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)}");
+            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers");
         }
 
         [Todo(Improve.Refactor, "Generic approach to requests")]
@@ -497,7 +497,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return task.Result;
             }
 
-            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)}");
+            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Length} block hashes");
         }
 
         async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
@@ -532,10 +532,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return blocks;
         }
 
-        async Task<BlockHeader> ISynchronizationPeer.GetHeadBlockHeader(CancellationToken token)
+        async Task<BlockHeader> ISynchronizationPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
-            msg.StartingBlockHash = _remoteHeadBlockHash;
+            msg.StartingBlockHash = hash ?? _remoteHeadBlockHash;
             msg.MaxHeaders = 1;
             msg.Reverse = 0;
             msg.Skip = 0;

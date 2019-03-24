@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
@@ -258,10 +259,10 @@ namespace Nethermind.Blockchain.Test
             minerTree.UpdateMainChain(newBlock);
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
-            miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(CancellationToken.None));
+            miner2.GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
             miner2.Node.Id.Returns(TestItem.PublicKeyB);
 
-            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()), "number as expected");
+            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()), "number as expected");
 
             _manager.AddPeer(miner2);
             resetEvent.WaitOne(_standardTimeoutUnit);
@@ -293,10 +294,10 @@ namespace Nethermind.Blockchain.Test
             minerTree.UpdateMainChain(newBlock);
 
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
-            miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(CancellationToken.None));
+            miner2.GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
             miner2.Node.Id.Returns(TestItem.PublicKeyB);
 
-            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(Arg.Any<CancellationToken>()), "number as expected");
+            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()), "number as expected");
 
             _manager.AddPeer(miner2);
             resetEvent.WaitOne(_standardTimeoutUnit);

@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Test
             return Task.FromResult(result);
         }
 
-        public Task<BlockHeader> GetHeadBlockHeader(CancellationToken token)
+        public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
             return Task.FromResult(_blockTree.Head);
         }
