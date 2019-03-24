@@ -144,7 +144,7 @@ namespace Nethermind.Clique
 
                 if (_scheduledBlock.Timestamp * 1000 + extraDelayMilliseconds < _timestamp.EpochMilliseconds)
                 {
-                    if (_scheduledBlock.Number > _blockTree.Head.Number)
+                    if (_scheduledBlock.TotalDifficulty > _blockTree.Head.TotalDifficulty)
                     {
                         if (_logger.IsInfo) _logger.Info($"Suggesting own block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
                         _blockTree.SuggestBlock(_scheduledBlock);
