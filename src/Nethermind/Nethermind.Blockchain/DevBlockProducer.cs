@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Suggesting newly mined block {processedBlock.ToString(Block.Format.FullHashAndNumber)}");
+            if (_logger.IsInfo) _logger.Info($"Mined a DEV block {processedBlock.ToString(Block.Format.FullHashAndNumber)}");
             _blockTree.SuggestBlock(processedBlock);
         }
     }
