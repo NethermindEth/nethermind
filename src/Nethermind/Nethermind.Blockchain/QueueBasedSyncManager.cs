@@ -384,8 +384,8 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsInfo)
                 {
-                    string authorString = KnownAddresses.GoerliValidators.ContainsKey(block.Author) ? KnownAddresses.GoerliValidators[block.Author] : block.Author.ToString();
-                    if (_logger.IsInfo) _logger.Info($"Discovered a new block {block.ToString(Block.Format.HashNumberAndTx)} by {authorString} from {nodeWhoSentTheBlock.ToShortString()}");
+                    string authorString = block.Author == null ? string.Empty : "by " + (KnownAddresses.GoerliValidators.ContainsKey(block.Author) ? KnownAddresses.GoerliValidators[block.Author] : block.Author?.ToString());
+                    if (_logger.IsInfo) _logger.Info($"Discovered a new block {block.ToString(Block.Format.HashNumberAndTx)} {authorString} from {nodeWhoSentTheBlock.ToShortString()}");
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"{block}");
