@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Config;
+
 namespace Nethermind.Runner.Config
 {
     public class InitConfig : IInitConfig
@@ -23,6 +25,8 @@ namespace Nethermind.Runner.Config
         public bool EnableUnsecuredDevWallet { get; set; } = false;
         
         public bool KeepDevWalletInMemory { get; set; } = false;
+        
+        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'")]
         public bool JsonRpcEnabled { get; set; } = false;
         public bool DiscoveryEnabled { get; set; } = true;
         public bool SynchronizationEnabled { get; set; } = true;

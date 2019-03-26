@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>netcoreapp2.2</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+      <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
+      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
+      <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+      <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
+      <ProjectReference Include="..\Nethermind.Stats\Nethermind.Stats.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Microsoft.AspNetCore.Mvc.Formatters.Json" Version="2.2.0" />
+    </ItemGroup>
+
+</Project>
