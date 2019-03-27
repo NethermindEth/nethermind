@@ -171,7 +171,6 @@ namespace Nethermind.Runner.Runners
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
         private void InitRlp()
         {
-            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(BlockDecoder)));
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(ParityTraceDecoder)));
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
         }
