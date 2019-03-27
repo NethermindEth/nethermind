@@ -622,7 +622,6 @@ namespace Nethermind.Runner.Runners
                 {
                     case SealEngineType.Clique:
                     {
-                        // TODO: need to introduce snapshot provider for clique and pass it here instead of CliqueSealEngine
                         if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
                         _blockProducer = new CliqueBlockProducer(_transactionPool, producerChain.Processor,
                             _blockTree, _timestamp, _cryptoRandom, producerChain.StateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);

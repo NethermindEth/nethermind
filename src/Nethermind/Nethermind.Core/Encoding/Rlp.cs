@@ -40,6 +40,11 @@ namespace Nethermind.Core.Encoding
 
         public static readonly Rlp OfEmptySequence = new Rlp(192);
 
+        static Rlp()
+        {
+            RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
+        }
+        
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
         /// </summary>
