@@ -23,5 +23,7 @@ namespace Nethermind.Config
     public class ConfigItemAttribute : Attribute
     {
         public string Description { get; set; }
+        
+        public object DefaultValue { get; set; }
     }
 }

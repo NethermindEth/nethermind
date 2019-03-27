@@ -22,13 +22,25 @@ namespace Nethermind.Runner.Config
 {
     public interface IInitConfig : IConfig
     {
+        [ConfigItem(Description = "If 'true' then it enables thewallet / key store in the application.", DefaultValue = false)]
         bool EnableUnsecuredDevWallet { get; set; }
+        
+        [ConfigItem(Description = "If 'true' then any accounts created will be only valid during the session and deleted when application closes.", DefaultValue = false)]
         bool KeepDevWalletInMemory{ get; set; }
+        
+        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'", DefaultValue = false)]
         bool JsonRpcEnabled { get; set; }
+        
+        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'", DefaultValue = new[] {"Clique", "Eth", "Net", "Web3", "Db", "Debug", "TxPool"})]
         string[] JsonRpcEnabledModules { get; set; }
+        
+        [ConfigItem(Description = "If 'false' then the node does not try to find nodes beyond the bootnodes configured.", DefaultValue = true)]
         bool DiscoveryEnabled { get; set; }
+        
+        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = true)]
         bool SynchronizationEnabled { get; set; }
-        bool NetworkEnabled { get; set; }
+        
+        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = true)]
         bool ProcessingEnabled { get; set; }
         bool PeerManagerEnabled { get; set; }
         bool IsMining { get; set; }

@@ -34,6 +34,7 @@ using Nethermind.Clique;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
@@ -93,7 +94,6 @@ namespace Nethermind.Runner.Runners
         private IInitConfig _initConfig;
         private INetworkHelper _networkHelper;
 
-        private const string UnsecuredNodeKeyFilePath = "node.key.plain";
         private PrivateKey _nodeKey;
         private ChainSpec _chainSpec;
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
@@ -168,12 +168,12 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsDebug) _logger.Debug("Ethereum initialization completed");
         }
 
+        [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
         private void InitRlp()
         {
-            /* this is to invoke decoder registrations that happen in their static constructor
-               looks like this will be quite a long term temporary solution (2018.11.27)*/
-            ParityTraceDecoder.Init();
-            NetworkNodeDecoder.Init();
+            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(BlockDecoder)));
+            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(ParityTraceDecoder)));
+            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
         }
 
         private void SetupKeyStore()
@@ -204,7 +204,7 @@ namespace Nethermind.Runner.Runners
                     _wallet = new NullWallet();
                     break;
             }
-            
+
             INodeKeyManager nodeKeyManager = new NodeKeyManager(_cryptoRandom, _keyStore, _configProvider.GetConfig<IKeyStoreConfig>(), _logManager);
             _nodeKey = nodeKeyManager.LoadNodeKey();
 
@@ -287,11 +287,8 @@ namespace Nethermind.Runner.Runners
             TxPoolModule txPoolModule = new TxPoolModule(_configProvider, _logManager, _jsonSerializer, blockchainBridge);
             _rpcModuleProvider.Register<ITxPoolModule>(txPoolModule);
 
-            if (_initConfig.NetworkEnabled && _initConfig.SynchronizationEnabled)
-            {
-                NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_enode, _syncManager, _peerManager));
-                _rpcModuleProvider.Register<INetModule>(netModule);
-            }
+            NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_enode, _syncManager, _peerManager));
+            _rpcModuleProvider.Register<INetModule>(netModule);
 
             TraceModule traceModule = new TraceModule(_configProvider, _logManager, _jsonSerializer, tracer);
             _rpcModuleProvider.Register<ITraceModule>(traceModule);
@@ -328,7 +325,7 @@ namespace Nethermind.Runner.Runners
 
             if (_logger.IsInfo) _logger.Info("Stopping sesison monitor...");
             _sessionMonitor?.Stop();
-            
+
             if (_logger.IsInfo) _logger.Info("Stopping peer manager...");
             var peerManagerTask = _peerManager?.StopAsync() ?? Task.CompletedTask;
 
@@ -453,7 +450,7 @@ namespace Nethermind.Runner.Runners
             IDbConfig dbConfig = _configProvider.GetConfig<IDbConfig>();
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
-                if(_logger.IsDebug) _logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
+                if (_logger.IsDebug) _logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
             _dbProvider = HiveEnabled
@@ -494,7 +491,7 @@ namespace Nethermind.Runner.Runners
                     _rewardCalculator = NoBlockRewards.Instance;
                     break;
                 case SealEngineType.Clique:
-                    _rewardCalculator = NoBlockRewards.Instance;                    
+                    _rewardCalculator = NoBlockRewards.Instance;
                     cliqueConfig = new CliqueConfig();
                     cliqueConfig.BlockPeriod = _chainSpec.CliquePeriod;
                     cliqueConfig.Epoch = _chainSpec.CliqueEpoch;
@@ -509,6 +506,7 @@ namespace Nethermind.Runner.Runners
                     {
                         _sealer = NullSealEngine.Instance;
                     }
+
                     break;
                 case SealEngineType.NethDev:
                     _sealer = NullSealEngine.Instance;
@@ -526,7 +524,7 @@ namespace Nethermind.Runner.Runners
                     {
                         _sealer = NullSealEngine.Instance;
                     }
-                    
+
                     _sealValidator = new EthashSealValidator(_logManager, difficultyCalculator, new Ethash(_logManager));
                     break;
                 default:
@@ -696,12 +694,6 @@ namespace Nethermind.Runner.Runners
             ISealValidator sealValidator,
             TransactionValidator txValidator)
         {
-            if (!_initConfig.NetworkEnabled)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Skipping network init due to ({nameof(IInitConfig.NetworkEnabled)} set to false)");
-                return;
-            }
-
             _syncManager = new QueueBasedSyncManager(
                 _dbProvider.StateDb,
                 _blockTree,
@@ -828,30 +820,10 @@ namespace Nethermind.Runner.Runners
             var eip8Pad = new Eip8MessagePad(_cryptoRandom);
             _messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             _messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
+            _messageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
+            
             var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher,
                 _cryptoRandom, new Ecdsa(), _nodeKey, _logManager);
-
-            /* p2p */
-            _messageSerializationService.Register(new HelloMessageSerializer());
-            _messageSerializationService.Register(new DisconnectMessageSerializer());
-            _messageSerializationService.Register(new PingMessageSerializer());
-            _messageSerializationService.Register(new PongMessageSerializer());
-
-            /* eth62 */
-            _messageSerializationService.Register(new StatusMessageSerializer());
-            _messageSerializationService.Register(new TransactionsMessageSerializer());
-            _messageSerializationService.Register(new GetBlockHeadersMessageSerializer());
-            _messageSerializationService.Register(new NewBlockHashesMessageSerializer());
-            _messageSerializationService.Register(new GetBlockBodiesMessageSerializer());
-            _messageSerializationService.Register(new BlockHeadersMessageSerializer());
-            _messageSerializationService.Register(new BlockBodiesMessageSerializer());
-            _messageSerializationService.Register(new NewBlockMessageSerializer());
-
-            /* eth63 */
-            _messageSerializationService.Register(new GetNodeDataMessageSerializer());
-            _messageSerializationService.Register(new NodeDataMessageSerializer());
-            _messageSerializationService.Register(new GetReceiptsMessageSerializer());
-            _messageSerializationService.Register(new ReceiptsMessageSerializer());
 
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             _sessionMonitor = new SessionMonitor(networkConfig, _logManager);
@@ -863,7 +835,7 @@ namespace Nethermind.Runner.Runners
                 _sessionMonitor);
 
             await _rlpxPeer.Init();
-            
+
             var peerStorage = new NetworkStorage(PeersDbPath, networkConfig, _logManager, _perfService);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
@@ -893,7 +865,7 @@ namespace Nethermind.Runner.Runners
                 _discoveryApp = new NullDiscoveryApp();
                 return;
             }
-            
+
             INetworkConfig networkConfig = _configProvider.GetConfig<INetworkConfig>();
             networkConfig.MasterPort = _initConfig.DiscoveryPort;
 

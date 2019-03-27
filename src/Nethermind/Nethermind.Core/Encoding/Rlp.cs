@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using System.Reflection;
 using Microsoft.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -58,18 +59,39 @@ namespace Nethermind.Core.Encoding
 
         public int Length => Bytes.Length;
 
-        public static readonly Dictionary<Type, IRlpDecoder> Decoders =
-            new Dictionary<Type, IRlpDecoder>
+        public static readonly Dictionary<Type, IRlpDecoder> Decoders = new Dictionary<Type, IRlpDecoder>();
+
+        public static void RegisterDecoders(Assembly assembly)
+        {
+            foreach (var type in assembly.GetTypes())
             {
-                [typeof(Account)] = new AccountDecoder(),
-                [typeof(Block)] = new BlockDecoder(),
-                [typeof(BlockHeader)] = new HeaderDecoder(),
-                [typeof(BlockInfo)] = new BlockInfoDecoder(),
-                [typeof(ChainLevelInfo)] = new ChainLevelDecoder(),
-                [typeof(LogEntry)] = new LogEntryDecoder(),
-                [typeof(Transaction)] = new TransactionDecoder(),
-                [typeof(TransactionReceipt)] = new TransactionReceiptDecoder(),
-            };
+                if (!type.IsClass)
+                {
+                    continue;
+                }
+
+                var implementedInterfaces = type.GetInterfaces();
+                foreach (var implementedInterface in implementedInterfaces)
+                {
+                    if (!implementedInterface.IsGenericType)
+                    {
+                        continue;
+                    }
+
+                    var interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
+                    if (interfaceGenericDefinition == typeof(IRlpDecoder<>).GetGenericTypeDefinition())
+                    {
+                        var constructor = type.GetConstructor(Type.EmptyTypes);
+                        if (constructor == null)
+                        {
+                            continue;
+                        }
+
+                        Decoders[implementedInterface.GenericTypeArguments[0]] = (IRlpDecoder)Activator.CreateInstance(type);
+                    }
+                }
+            }
+        }
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -199,11 +221,15 @@ namespace Nethermind.Core.Encoding
                 // TODO: below obviously fails when Signature is null
                 sequence[6] = transaction.Signature == null ? OfEmptyByteArray : Encode(transaction.Signature.V);
                 sequence[7] =
-                    Encode(transaction.Signature == null ? null : transaction.Signature.R
-                        .WithoutLeadingZeros()); // TODO: consider storing R and S differently
+                    Encode(transaction.Signature == null
+                        ? null
+                        : transaction.Signature.R
+                            .WithoutLeadingZeros()); // TODO: consider storing R and S differently
                 sequence[8] =
-                    Encode(transaction.Signature == null ? null : transaction.Signature.S
-                        .WithoutLeadingZeros()); // TODO: consider storing R and S differently
+                    Encode(transaction.Signature == null
+                        ? null
+                        : transaction.Signature.S
+                            .WithoutLeadingZeros()); // TODO: consider storing R and S differently
             }
 
             return Encode(sequence);
@@ -234,7 +260,7 @@ namespace Nethermind.Core.Encoding
         {
             Encode(stream, (long) value);
         }
-        
+
         public static void Encode(MemoryStream stream, long value)
         {
             if (value == 0L)
@@ -245,16 +271,16 @@ namespace Nethermind.Core.Encoding
             {
                 if (value < 128L)
                 {
-                    stream.WriteByte((byte)value);
+                    stream.WriteByte((byte) value);
                 }
                 else if (value <= byte.MaxValue)
                 {
                     stream.WriteByte(129);
-                    stream.WriteByte((byte)value);
+                    stream.WriteByte((byte) value);
                 }
                 else
                 {
-                    Encode(stream, (UInt256)value);    
+                    Encode(stream, (UInt256) value);
                 }
             }
         }
@@ -334,7 +360,7 @@ namespace Nethermind.Core.Encoding
         {
             return Encode(value.ToBigEndianByteArray());
         }
-        
+
         /// <summary>
         /// Used for nonce only - different behaviour (treated as a byte array)
         /// </summary>
@@ -342,8 +368,8 @@ namespace Nethermind.Core.Encoding
         /// <param name="value"></param>
         public static void Encode(MemoryStream stream, ulong value)
         {
-            Encode(stream, (UInt256)value, 8);
-        }        
+            Encode(stream, (UInt256) value, 8);
+        }
 
         public static Rlp Encode(short value)
         {
@@ -406,7 +432,7 @@ namespace Nethermind.Core.Encoding
                 stream.Write(input);
             }
         }
-        
+
         public static void Encode(MemoryStream stream, byte[] data)
         {
             Encode(stream, data.AsSpan());
@@ -801,19 +827,6 @@ namespace Nethermind.Core.Encoding
             {
                 return Data[Position] >= 192;
             }
-
-//            public int ReadNumberOfItemsRemaining(int? beforePosition = null)
-//            {
-//                int positionStored = Position;
-//                int numberOfItems = 0;
-//                while (Position < (beforePosition ?? Data.Length))
-//                {
-//                   SkipItem();
-//                }
-//
-//                Position = positionStored;
-//                return numberOfItems;
-//            }
 
             public int ReadNumberOfItemsRemaining(int? beforePosition = null)
             {
@@ -1292,7 +1305,7 @@ namespace Nethermind.Core.Encoding
             {
                 return 1;
             }
-            
+
             Span<byte> bytes = stackalloc byte[32];
             item.ToBigEndian(bytes);
             int length = bytes.WithoutLeadingZeros().Length;
@@ -1313,7 +1326,7 @@ namespace Nethermind.Core.Encoding
         {
             return Encode(item).Length;
         }
-        
+
         public static int LengthOf(int item)
         {
             return Encode(item).Length;
@@ -1348,7 +1361,7 @@ namespace Nethermind.Core.Encoding
         {
             return LengthOf(array.AsSpan());
         }
-        
+
         public static int LengthOf(Span<byte> array)
         {
             if (array == null || array.Length == 0)
