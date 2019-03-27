@@ -16,12 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Reflection;
+
 namespace Nethermind.Network
 {
     public interface IMessageSerializationService
     {
         byte[] Serialize<T>(T messageBase) where T : MessageBase;
         T Deserialize<T>(byte[] bytes) where T : MessageBase;
+        void Register(Assembly assembly);
         void Register<T>(IMessageSerializer<T> messageSerializer) where T : MessageBase;
     }
 }

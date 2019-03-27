@@ -168,16 +168,6 @@ namespace Nethermind.Network.Config
         int ActivePeersMaxCount { get; }
 
         /// <summary>
-        /// Delay of connection retrying after disconnect
-        /// </summary>
-        int DisconnectDelay { get; set; }
-
-        /// <summary>
-        /// Delay of connection retrying after failed connection attempt
-        /// </summary>
-        int FailedConnectionDelay { get; }
-
-        /// <summary>
         /// Time between persisting peers in milliseconds
         /// </summary>
         int PeersPersistenceInterval { get; set; }
@@ -196,11 +186,6 @@ namespace Nethermind.Network.Config
         /// Number of ping missed for disconnection
         /// </summary>
         int P2PPingRetryCount { get; }
-
-        /// <summary>
-        /// Date format history
-        /// </summary>
-        string DetailedTimeDateFormat { get; }
 
         /// <summary>
         /// Max Persisted Peer count

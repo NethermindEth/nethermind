@@ -25,14 +25,13 @@ namespace Nethermind.Network.Config
         public int BucketSize { get; set; } = 16;
         public int BucketsCount { get; set; } = 256;
         public int Concurrency { get; set; } = 3;
-
         public int BitsPerHop { get; set; } = 8;
 
-        //public string MasterHost => "127.0.0.1";
         public string MasterHost { get; set; } = "127.0.0.1"; //=> "192.168.1.154";
         public string MasterExternalIp { get; set; } = "127.0.0.1";
         public int MasterPort { get; set; } = 30304;
         public int MaxDiscoveryRounds { get; set; } = 8;
+        
         public int EvictionCheckInterval { get; set; } = 75;
         public int SendNodeTimeout { get; set; } = 500;
         public int PongTimeout { get; set; } = 1000 * 15;
@@ -62,9 +61,9 @@ namespace Nethermind.Network.Config
         public int PeersPersistenceInterval { get; set; } = 1000 * 5;
         
         public int PeersUpdateInterval { get; set; } = 100;
+        
         public int P2PPingInterval { get; set; } = 1000 * 10;
         public int P2PPingRetryCount { get; set; } = 3;
-        public string DetailedTimeDateFormat { get; } = "yyyy-MM-dd HH:mm:ss.fff";
         public int MaxPersistedPeerCount { get; set; } = 2000;
         public int PersistedPeerCountCleanupThreshold { get; set; } = 2200;
         public int MaxCandidatePeerCount { get; set; } = 10000;

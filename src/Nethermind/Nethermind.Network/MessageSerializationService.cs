@@ -18,6 +18,9 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 
 namespace Nethermind.Network
 {
@@ -29,6 +32,38 @@ namespace Nethermind.Network
         {
             IMessageSerializer<T> serializer = GetSerializer<T>();
             return serializer.Deserialize(bytes);
+        }
+
+        public void Register(Assembly assembly)
+        {
+            foreach (var type in assembly.GetTypes())
+            {
+                if (!type.IsClass)
+                {
+                    continue;
+                }
+
+                var implementedInterfaces = type.GetInterfaces();
+                foreach (var implementedInterface in implementedInterfaces)
+                {
+                    if (!implementedInterface.IsGenericType)
+                    {
+                        continue;
+                    }
+
+                    var interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
+                    if (interfaceGenericDefinition == typeof(IMessageSerializer<>).GetGenericTypeDefinition())
+                    {
+                        var constructor = type.GetConstructor(Type.EmptyTypes);
+                        if (constructor == null)
+                        {
+                            continue;
+                        }
+
+                        _serializers[implementedInterface.GenericTypeArguments[0].TypeHandle] = Activator.CreateInstance(type);
+                    }
+                }
+            }
         }
 
         public void Register<T>(IMessageSerializer<T> messageSerializer) where T : MessageBase
@@ -55,7 +90,7 @@ namespace Nethermind.Network
             {
                 throw new InvalidOperationException($"Missing matching serializer for {nameof(T)} (registered: {serializerObject?.GetType()?.Name})");
             }
-            
+
             return serializer;
         }
     }

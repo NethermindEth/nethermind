@@ -23,14 +23,14 @@ namespace Nethermind.Runner.Config
     public class InitConfig : IInitConfig
     {
         public bool EnableUnsecuredDevWallet { get; set; } = false;
-        
+
         public bool KeepDevWalletInMemory { get; set; } = false;
+
         
-        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'")]
         public bool JsonRpcEnabled { get; set; } = false;
+
         public bool DiscoveryEnabled { get; set; } = true;
         public bool SynchronizationEnabled { get; set; } = true;
-        public bool NetworkEnabled { get; set; } = true;
         public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;
         public bool IsMining { get; set; } = false;
@@ -43,8 +43,11 @@ namespace Nethermind.Runner.Config
         public string BaseDbPath { get; set; } = "db";
         public string LogFileName { get; set; } = "log.txt";
         public string GenesisHash { get; set; }
-        public string[] JsonRpcEnabledModules { get; set; } = { "Clique", "Eth", "Net", "Web3", "Db", "Debug", "TxPool" };
+
+        public string[] JsonRpcEnabledModules { get; set; } = {"Clique", "Eth", "Net", "Web3", "Db", "Debug", "TxPool"};
+
         public bool RemovingLogFilesEnabled { get; set; }
+
         //in case of null, the path is set to ExecutingAssembly.Location\logs
         public string LogDirectory { get; set; } = null;
         public bool LogPerfStatsOnDebug { get; set; } = false;
