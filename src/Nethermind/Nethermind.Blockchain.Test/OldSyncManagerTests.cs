@@ -133,7 +133,7 @@ namespace Nethermind.Blockchain.Test
             _manager.AddPeer(peer);
 
             BlockTreeBuilder.ExtendTree(_remoteBlockTree, QueueBasedSyncManager.MaxBatchSize * 2);
-            _manager.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.Node.Id);
+            _manager.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.Node);
             
             semaphore.Wait(_standardTimeoutUnit);
             semaphore.Wait(_standardTimeoutUnit);
@@ -156,8 +156,8 @@ namespace Nethermind.Blockchain.Test
             _manager.Start();
             _manager.AddPeer(peer);
 
-            Block block = Build.A.Block.WithParent(_remoteBlockTree.Head).TestObject;
-            _manager.AddNewBlock(block, peer.Node.Id);
+            Block block = Build.A.Block.WithParent(_remoteBlockTree.Head).WithTotalDifficulty((_remoteBlockTree.Head.TotalDifficulty ?? 0) + 1).TestObject;
+            _manager.AddNewBlock(block, peer.Node);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -196,7 +196,7 @@ namespace Nethermind.Blockchain.Test
 
             resetEvent.Reset();
 
-            _manager.AddNewBlock(splitBlockChild, miner1.Node.Id);
+            _manager.AddNewBlock(splitBlockChild, miner1.Node);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -228,7 +228,7 @@ namespace Nethermind.Blockchain.Test
 
             resetEvent.Reset();
 
-            _manager.AddNewBlock(miner1Tree.RetrieveHeadBlock(), miner1.Node.Id);
+            _manager.AddNewBlock(miner1Tree.RetrieveHeadBlock(), miner1.Node);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 

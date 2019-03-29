@@ -337,13 +337,13 @@ namespace Nethermind.Blockchain.Test
             public SyncingContext AfterNewBlockMessage(Block block, ISynchronizationPeer peer)
             {
                 block.TotalDifficulty = (UInt256)(block.Difficulty * ((BigInteger)block.Number + 1));
-                SyncManager.AddNewBlock(block, peer.Node.Id);
+                SyncManager.AddNewBlock(block, peer.Node);
                 return this;
             }
             
             public SyncingContext AfterHintBlockMessage(Block block, ISynchronizationPeer peer)
             {
-                SyncManager.HintBlock(block.Hash, block.Number, peer.Node.Id);
+                SyncManager.HintBlock(block.Hash, block.Number, peer.Node);
                 return this;
             }
 
@@ -515,7 +515,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void Can_sync_when_best_peer_is_timing_out()
+        public void Will_ignore_new_block_that_is_far_ahead()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
             peerA.AddBlocksUpTo(1);
@@ -531,7 +531,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void Will_ignore_new_block_that_is_far_ahead()
+        public void Can_sync_when_best_peer_is_timing_out()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
             peerA.AddBlocksUpTo(1);

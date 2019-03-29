@@ -128,8 +128,10 @@ namespace Nethermind.Stats.Model
                     return $"enode://{Id.ToString(false)}@{Host}:{Port}";
                 case "s":
                     return $"{Host}:{Port}";
+                case "c":
+                    return $"{ClientId}|{Host}:{Port}";
                 case "f":
-                    return $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}";    
+                    return $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}";    
             }
         }
         

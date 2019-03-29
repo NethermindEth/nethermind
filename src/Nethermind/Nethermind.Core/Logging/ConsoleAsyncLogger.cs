@@ -26,11 +26,13 @@ namespace Nethermind.Core.Logging
     public class ConsoleAsyncLogger : ILogger
     {
         private readonly LogLevel _logLevel;
+        private readonly string _prefix;
         private readonly BlockingCollection<string> _queuedEntries = new BlockingCollection<string>(new ConcurrentQueue<string>());
 
-        public ConsoleAsyncLogger(LogLevel logLevel)
+        public ConsoleAsyncLogger(LogLevel logLevel, string prefix = null)
         {
             _logLevel = logLevel;
+            _prefix = prefix;
             Task.Factory.StartNew(() =>
                 {
                     foreach (string logEntry in _queuedEntries.GetConsumingEnumerable())
@@ -43,7 +45,7 @@ namespace Nethermind.Core.Logging
 
         private void Log(string text)
         {
-            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Thread.CurrentThread.ManagedThreadId}] {text}");
+            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} {_prefix}[{Thread.CurrentThread.ManagedThreadId}] {text}");
         }
         
         public void Info(string text)

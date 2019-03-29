@@ -21,18 +21,19 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain
 {
     public interface ISynchronizationManager
     {
-        void HintBlock(Keccak hash, UInt256 number, PublicKey receivedFrom);
+        void HintBlock(Keccak hash, UInt256 number, Node receivedFrom);
         byte[][] GetNodeData(Keccak[] keys);
         TransactionReceipt[][] GetReceipts(Keccak[] blockHashes);
         Block Find(Keccak hash);
         Block Find(UInt256 number);
         Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);
-        void AddNewBlock(Block block, PublicKey nodeWhoSentTheBlock);
+        void AddNewBlock(Block block, Node node);
         void AddPeer(ISynchronizationPeer syncPeer);
         void RemovePeer(ISynchronizationPeer syncPeer);
         int GetPeerCount();
@@ -42,8 +43,6 @@ namespace Nethermind.Blockchain
         int ChainId { get; }
         BlockHeader Genesis { get; }
         BlockHeader Head { get; }
-        UInt256 HeadNumber { get; }
-        UInt256 TotalDifficulty { get; }
 
         event EventHandler<SyncEventArgs> SyncEvent;
     }
