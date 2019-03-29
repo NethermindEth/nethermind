@@ -515,7 +515,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void Can_sync_when_best_peer_is_timing_out()
+        public void Will_ignore_new_block_that_is_far_ahead()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
             peerA.AddBlocksUpTo(1);
@@ -531,7 +531,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void Will_ignore_new_block_that_is_far_ahead()
+        public void Can_sync_when_best_peer_is_timing_out()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
             peerA.AddBlocksUpTo(1);

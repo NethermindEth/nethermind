@@ -468,8 +468,6 @@ namespace Nethermind.Blockchain
 
         public void RemovePeer(ISynchronizationPeer syncPeer)
         {
-            throw new Exception("asda");
-
             if (_logger.IsDebug) _logger.Debug($"Removing synchronization peer {syncPeer.Node:c}");
             if (!_isInitialized)
             {
@@ -751,7 +749,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (bestPeer.Info.SyncPeer.Node.Id == _currentSyncingPeerInfo?.SyncPeer?.Node.Id)
+            if (bestPeer.Info?.SyncPeer.Node.Id == _currentSyncingPeerInfo?.SyncPeer?.Node.Id)
             {
                 if (_logger.IsDebug) _logger.Debug($"Potential error, selecting same peer for sync as prev sync peer, id: {bestPeer.Info}");
             }
