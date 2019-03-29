@@ -335,6 +335,11 @@ namespace Nethermind.Blockchain
         
         public void AddNewBlock(Block block, PublicKey nodeWhoSentTheBlock)
         {
+            if (block.TotalDifficulty == null)
+            {
+                throw new InvalidOperationException("Cannot add a block with unknown total difficulty");
+            }
+            
             _peers.TryGetValue(nodeWhoSentTheBlock, out PeerInfo peerInfo);
             if (peerInfo == null)
             {
