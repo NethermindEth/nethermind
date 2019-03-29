@@ -25,7 +25,6 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Mining;
 using Nethermind.Stats;
@@ -33,7 +32,7 @@ using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test
+namespace Nethermind.Blockchain.Test.Synchronization
 {
     [TestFixture]
     public class SynchronizationManagerTests

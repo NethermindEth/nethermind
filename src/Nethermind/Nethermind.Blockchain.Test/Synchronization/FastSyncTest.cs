@@ -32,7 +32,7 @@ using Nethermind.Stats;
 using Nethermind.Store;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test
+namespace Nethermind.Blockchain.Test.Synchronization
 {
     public class FastSyncTest
     {

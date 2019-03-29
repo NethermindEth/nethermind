@@ -22,7 +22,6 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TransactionPools;
@@ -30,17 +29,15 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
-using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test
+namespace Nethermind.Blockchain.Test.Synchronization
 {
     [TestFixture]
     public class QueueBasedSyncManagerTests

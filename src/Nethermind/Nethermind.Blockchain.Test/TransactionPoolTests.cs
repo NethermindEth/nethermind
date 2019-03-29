@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Test.Synchronization;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.TransactionPools.Filters;
 using Nethermind.Blockchain.TransactionPools.Storages;

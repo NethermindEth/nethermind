@@ -25,10 +25,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Blockchain.Test
+namespace Nethermind.Blockchain.Test.Synchronization
 {
     public class SynchronizationPeerMock : ISynchronizationPeer
     {
