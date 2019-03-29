@@ -104,11 +104,6 @@ namespace Nethermind.Blockchain.Test
                 {
                     waitEvent.Set();
                 }
-                
-                if (e.Block.Number == chainLength - 1)
-                {
-                    Console.WriteLine($"{chainLength}!!!");
-                }
             };
                 
             waitEvent.Wait(10000);
@@ -116,6 +111,40 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(headBlock.Header, _remotePeer1.SyncManager.Head);
             Assert.AreEqual(headBlock.Header, _remotePeer2.SyncManager.Head);
             Assert.AreEqual(headBlock.Header, _remotePeer3.SyncManager.Head);
+        }
+        
+        [Test]
+        public void Can_sync_when_initially_disconnected()
+        {            
+            int chainLength = 10000;
+
+            var headBlock = _genesis;
+            for (int i = 0; i < chainLength; i++)
+            {
+                var block = Build.A.Block.WithParent(headBlock).WithTotalDifficulty((headBlock.TotalDifficulty ?? 0) + 1).TestObject;
+                _remotePeer1.Tree.SuggestBlock(block);
+                headBlock = block;
+            }
+            
+            ManualResetEventSlim waitEvent = new ManualResetEventSlim();
+            _localPeer.Tree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Number == chainLength)
+                {
+                    waitEvent.Set();
+                }
+            };
+            
+            Assert.AreEqual(_genesis.Hash, _localPeer.SyncManager.Head.Hash, "local before");
+            Assert.AreEqual(_genesis.Hash, _remotePeer2.SyncManager.Head.Hash, "peer 2 before");
+            Assert.AreEqual(_genesis.Hash, _remotePeer3.SyncManager.Head.Hash, "peer 3 before");
+            
+            ConnectAllPeers();
+            waitEvent.Wait(10000);
+            Assert.AreEqual(headBlock.Header.Hash, _localPeer.SyncManager.Head.Hash, "local");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer1.SyncManager.Head.Hash, "peer 1");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer2.SyncManager.Head.Hash, "peer 2");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer3.SyncManager.Head.Hash, "peer 3");
         }
 
         private static (ISynchronizationManager, BlockTree) CreateSyncManager(string prefix)
