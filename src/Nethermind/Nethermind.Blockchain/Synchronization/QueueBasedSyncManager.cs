@@ -20,12 +20,10 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
-using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml.Serialization;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -37,10 +35,11 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Synchronization
 {
     public class QueueBasedSyncManager : ISynchronizationManager
     {
+        private SyncingMode _mode = SyncingMode.Blocks;
         private int _currentBatchSize = 256;
         public const int MinBatchSize = 8;
         public const int MaxBatchSize = 512;
@@ -155,7 +154,7 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsError) _logger.Error($"Exiting the peer loop");
         }
-
+        
         private async Task RunSyncLoop()
         {
             while (true)
@@ -762,7 +761,13 @@ namespace Nethermind.Blockchain
 
         [Todo(Improve.Readability, "Let us review the cancellation approach here")]
         private async Task SynchronizeWithPeerAsync(PeerInfo peerInfo)
-        {           
+        {
+            if (_mode == SyncingMode.Blocks && _blockTree.BestKnownNumber == peerInfo.HeadNumber)
+            {
+                _mode = SyncingMode.NodeData;
+                return;
+            }
+            
             if (_logger.IsDebug) _logger.Debug($"Starting sync process with {peerInfo} - theirs {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} | ours {_blockTree.BestSuggested.Number} {_blockTree.BestSuggested.TotalDifficulty}");
             bool wasCanceled = false;
 

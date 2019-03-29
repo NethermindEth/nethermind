@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -18,13 +18,9 @@
 
 namespace Nethermind.Blockchain
 {
-    public enum AddTransactionResult
+    public enum BlockRewardType
     {
-        AlreadyKnown,
-        OldScheme,
-        InvalidChainId,
-        OldNonce,
-        PotentiallyUseless,
-        Added,
+        Block = 0,
+        Uncle = 1,
     }
 }

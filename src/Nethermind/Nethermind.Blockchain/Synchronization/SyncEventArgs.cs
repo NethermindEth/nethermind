@@ -17,14 +17,21 @@
  */
 
 using System;
+using System.Numerics;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Synchronization
 {
-    internal class EthSynchronizationException : Exception
+    public class SyncEventArgs : EventArgs
     {
-        public EthSynchronizationException(string message)
-            : base(message)
+        public ISynchronizationPeer Peer { get; }
+        public SyncStatus SyncStatus { get; }
+        public BigInteger? NodeBestBlockNumber { get; set; }
+        public BigInteger? OurBestBlockNumber { get; set; }
+
+        public SyncEventArgs(ISynchronizationPeer peer, SyncStatus status)
         {
+            Peer = peer;
+            SyncStatus = status;
         }
     }
 }

@@ -23,7 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Synchronization
 {
     public interface ISynchronizationManager
     {

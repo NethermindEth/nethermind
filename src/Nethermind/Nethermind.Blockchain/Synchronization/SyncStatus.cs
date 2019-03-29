@@ -16,22 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Numerics;
-
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Synchronization
 {
-    public class SyncEventArgs : EventArgs
+    public enum SyncStatus
     {
-        public ISynchronizationPeer Peer { get; }
-        public SyncStatus SyncStatus { get; }
-        public BigInteger? NodeBestBlockNumber { get; set; }
-        public BigInteger? OurBestBlockNumber { get; set; }
-
-        public SyncEventArgs(ISynchronizationPeer peer, SyncStatus status)
-        {
-            Peer = peer;
-            SyncStatus = status;
-        }
+        InitFailed,
+        InitCancelled,
+        InitCompleted,
+        Started,
+        Failed,
+        Cancelled,
+        Completed
     }
 }

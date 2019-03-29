@@ -18,7 +18,7 @@
 
 namespace Nethermind.Blockchain
 {
-    public class Metrics
+    public static class Metrics
     {
         public static decimal Mgas { get; set; }
         public static long Transactions { get; set; }

@@ -21,12 +21,6 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain
 {
-    public enum BlockRewardType
-    {
-        Block = 0,
-        Uncle = 1,
-    }
-    
     public class BlockReward
     {
         public BlockReward(Address address, BigInteger value, BlockRewardType rewardType = BlockRewardType.Block)

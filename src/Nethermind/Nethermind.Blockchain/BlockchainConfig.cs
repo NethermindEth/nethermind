@@ -16,8 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
+
 namespace Nethermind.Blockchain
 {
+    [Todo(Improve.Refactor, "Rename to SyncConfig")]
     public class BlockchainConfig : IBlockchainConfig
     {
         public int SyncTimerInterval { get; set; } = 1000;

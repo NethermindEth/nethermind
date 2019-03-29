@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,6 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+using System;
 
-[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
+namespace Nethermind.Blockchain.Synchronization
+{
+    internal class EthSynchronizationException : Exception
+    {
+        public EthSynchronizationException(string message)
+            : base(message)
+        {
+        }
+    }
+}

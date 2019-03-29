@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;

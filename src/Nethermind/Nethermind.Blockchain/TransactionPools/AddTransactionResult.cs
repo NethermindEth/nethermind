@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,18 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.TransactionPools
 {
-    public class KeccakEventArgs : EventArgs
+    public enum AddTransactionResult
     {
-        public Keccak Keccak { get; }
-
-        public KeccakEventArgs(Keccak keccak)
-        {
-            Keccak = keccak;
-        }
+        AlreadyKnown,
+        OldScheme,
+        InvalidChainId,
+        OldNonce,
+        PotentiallyUseless,
+        Added,
     }
 }

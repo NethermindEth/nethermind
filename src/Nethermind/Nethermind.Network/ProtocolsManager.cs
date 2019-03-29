@@ -20,6 +20,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Logging;

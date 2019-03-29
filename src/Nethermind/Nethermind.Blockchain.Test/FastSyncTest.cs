@@ -20,6 +20,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -141,6 +143,7 @@ namespace Nethermind.Blockchain.Test
             
             ConnectAllPeers();
             waitEvent.Wait(10000);
+            
             Assert.AreEqual(headBlock.Header.Hash, _localPeer.SyncManager.Head.Hash, "local");
             Assert.AreEqual(headBlock.Header.Hash, _remotePeer1.SyncManager.Head.Hash, "peer 1");
             Assert.AreEqual(headBlock.Header.Hash, _remotePeer2.SyncManager.Head.Hash, "peer 2");
