@@ -337,13 +337,13 @@ namespace Nethermind.Blockchain.Test
             public SyncingContext AfterNewBlockMessage(Block block, ISynchronizationPeer peer)
             {
                 block.TotalDifficulty = (UInt256)(block.Difficulty * ((BigInteger)block.Number + 1));
-                SyncManager.AddNewBlock(block, peer.Node.Id);
+                SyncManager.AddNewBlock(block, peer.Node);
                 return this;
             }
             
             public SyncingContext AfterHintBlockMessage(Block block, ISynchronizationPeer peer)
             {
-                SyncManager.HintBlock(block.Hash, block.Number, peer.Node.Id);
+                SyncManager.HintBlock(block.Hash, block.Number, peer.Node);
                 return this;
             }
 

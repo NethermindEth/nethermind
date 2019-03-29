@@ -403,14 +403,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             foreach ((Keccak Hash, UInt256 Number) hint in newBlockHashes.BlockHashes)
             {
-                SyncManager.HintBlock(hint.Hash, hint.Number, Node.Id);
+                SyncManager.HintBlock(hint.Hash, hint.Number, Node);
             }
         }
 
         private void Handle(NewBlockMessage newBlockMessage)
         {
             newBlockMessage.Block.TotalDifficulty = (UInt256) newBlockMessage.TotalDifficulty;
-            SyncManager.AddNewBlock(newBlockMessage.Block, Session.RemoteNodeId);
+            SyncManager.AddNewBlock(newBlockMessage.Block, Session.Node);
         }
 
         protected class Request<TMsg, TResult>

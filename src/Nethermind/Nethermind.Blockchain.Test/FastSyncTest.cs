@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -9,55 +27,94 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Stats;
-using Nethermind.Stats.Model;
 using Nethermind.Store;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
 {
     public class FastSyncTest
     {
-        private List<(ISynchronizationManager SyncManager, IBlockTree Tree)> _peers; 
+        private List<(ISynchronizationManager SyncManager, IBlockTree Tree)> _peers;
+        private (ISynchronizationManager SyncManager, IBlockTree Tree) _localPeer;
+        private (ISynchronizationManager SyncManager, IBlockTree Tree) _remotePeer1;
+        private (ISynchronizationManager SyncManager, IBlockTree Tree) _remotePeer2;
+        private (ISynchronizationManager SyncManager, IBlockTree Tree) _remotePeer3;
         private static Block _genesis = Build.A.Block.Genesis.TestObject;
-        
+
         [SetUp]
         public void Setup()
         {
             _peers = new List<(ISynchronizationManager, IBlockTree)>();
-            _peers.Add(CreateSyncManager());
-            _peers.Add(CreateSyncManager());
+            for (int i = 0; i < 4; i++)
+            {
+                _peers.Add(CreateSyncManager($"PEER_{i}."));    
+            }
+            
+            _localPeer = _peers[0];
+            _remotePeer1 = _peers[1];
+            _remotePeer2 = _peers[2];
+            _remotePeer3 = _peers[3];
         }
-        
+
         [Test]
         public void Setup_is_correct()
         {
-            Assert.AreEqual(_genesis.Header, _peers[0].SyncManager.Head);
-            Assert.AreEqual(_genesis.Header, _peers[1].SyncManager.Head);
-        }
-        
-        [Test]
-        public void Can_sync_one_empty_block()
-        {
-            var node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
-            var syncPeer = Substitute.For<ISynchronizationPeer>();
-            syncPeer.Node.Returns(node);
-            
-            var peer = _peers[0];
-            peer.SyncManager.AddPeer(syncPeer);
-            
-            var block1 = Build.A.Block.WithParent(_genesis).WithTotalDifficulty(_genesis.TotalDifficulty.Value + 1).TestObject;
-            peer.SyncManager.AddNewBlock(block1, TestItem.PublicKeyA);
-            ManualResetEventSlim waitEvent = new ManualResetEventSlim();
-            peer.Tree.NewHeadBlock += (s, e) => waitEvent.Set();
-            waitEvent.Wait(1000);
-            Assert.AreEqual(block1.Header, _peers[0].SyncManager.Head);
+            foreach ((ISynchronizationManager SyncManager, IBlockTree Tree) peer in _peers)
+            {
+                Assert.AreEqual(_genesis.Header, peer.SyncManager.Head);    
+            }
         }
 
-        private static (ISynchronizationManager, BlockTree) CreateSyncManager()
+        private void ConnectAllPeers()
         {
-            var logManager = NoErrorLimboLogs.Instance;
+            for (int localIndex = 0; localIndex < _peers.Count; localIndex++)
+            {
+                (ISynchronizationManager SyncManager, IBlockTree Tree) localPeer = _peers[localIndex];
+                for (int remoteIndex = 0; remoteIndex < _peers.Count; remoteIndex++)
+                {
+                    if (localIndex == remoteIndex)
+                    {
+                        continue;
+                    }
+                    
+                    (ISynchronizationManager SyncManager, IBlockTree Tree) remotePeer = _peers[remoteIndex];
+                    localPeer.SyncManager.AddPeer(new SynchronizationPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex], $"PEER{localIndex}", remotePeer.SyncManager, TestItem.PublicKeys[remoteIndex], $"PEER{remoteIndex}"));
+                }
+            }
+        }
+
+        [Test]
+        public void Can_sync_when_connected()
+        {            
+            ConnectAllPeers();
+            int chainLength = 5000;
+
+            var headBlock = _genesis;
+            for (int i = 0; i < chainLength; i++)
+            {
+                var block = Build.A.Block.WithParent(headBlock).WithTotalDifficulty((headBlock.TotalDifficulty ?? 0) + 1).TestObject;
+                _remotePeer1.Tree.SuggestBlock(block);
+                headBlock = block;
+            }
             
+            ManualResetEventSlim waitEvent = new ManualResetEventSlim();
+            _localPeer.Tree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Number == chainLength)
+                {
+                    waitEvent.Set();
+                }
+            };
+                
+            waitEvent.Wait(10000);
+            Assert.AreEqual(headBlock.Header, _localPeer.SyncManager.Head);
+        }
+
+        private static (ISynchronizationManager, BlockTree) CreateSyncManager(string prefix)
+        {
+//            var logManager = NoErrorLimboLogs.Instance;
+            var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace, prefix));
+
             var specProvider = GoerliSpecProvider.Instance;
 
             MemDb traceDb = new MemDb();
@@ -90,7 +147,7 @@ namespace Nethermind.Blockchain.Test
                 new BlockchainConfig(),
                 nodeStatsManager,
                 new PerfService(NullLogManager.Instance), receiptStorage);
-            
+
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();
             tree.NewHeadBlock += (s, e) => waitEvent.Set();
 
@@ -102,7 +159,7 @@ namespace Nethermind.Blockchain.Test
             {
                 throw new Exception("No genesis");
             }
-            
+
             return (syncManager, tree);
         }
     }

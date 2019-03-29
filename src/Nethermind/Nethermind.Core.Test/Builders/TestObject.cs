@@ -26,6 +26,19 @@ namespace Nethermind.Core.Test.Builders
         {
             NonZeroBloom = new Bloom();
             NonZeroBloom.Set(KeccakA.Bytes);
+
+            PrivateKeys = new PrivateKey[256];
+            PublicKeys = new PublicKey[256];
+            Addresses = new Address[256];
+
+            for (byte i = 1; i > 0; i++)
+            {
+                byte[] bytes = new byte[32];
+                bytes[31] = i;
+                PrivateKeys[i - 1] = new PrivateKey(bytes);
+                PublicKeys[i - 1] = PrivateKeys[i - 1].PublicKey;
+                Addresses[i - 1] = PublicKeys[i - 1].Address;
+            }
         }
         
         public static byte[] RandomDataA = {1, 2, 3};
@@ -50,6 +63,10 @@ namespace Nethermind.Core.Test.Builders
         public static PublicKey PublicKeyB = PrivateKeyB.PublicKey;
         public static PublicKey PublicKeyC = PrivateKeyC.PublicKey;
         public static PublicKey PublicKeyD = PrivateKeyD.PublicKey;
+
+        public static PrivateKey[] PrivateKeys;
+        public static PublicKey[] PublicKeys;
+        public static Address[] Addresses;
 
         public static Address AddressA = PublicKeyA.Address;
         public static Address AddressB = PublicKeyB.Address;

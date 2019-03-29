@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -30,27 +31,45 @@ namespace Nethermind.Blockchain.Test
 {
     public class SynchronizationPeerMock : ISynchronizationPeer
     {
-        private readonly IBlockTree _blockTree;
+        private readonly IBlockTree _remoteTree;
+        private readonly PublicKey _localPublicKey;
+        private readonly ISynchronizationManager _remoteManager;
 
-        public SynchronizationPeerMock(IBlockTree blockTree, PublicKey publicKey = null)
+        public SynchronizationPeerMock(IBlockTree remoteTree, PublicKey localPublicKey = null, string localClientId = "", ISynchronizationManager remoteManager = null, PublicKey remotePublicKey = null, string remoteClientId = "")
         {
-            _blockTree = blockTree;
-            Node = new Node(publicKey ?? TestItem.PublicKeyA, "127.0.0.1", 1234);
+            _remoteTree = remoteTree;
+            _localPublicKey = localPublicKey;
+            _remoteManager = remoteManager;
+            Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, "127.0.0.1", 1234);
+            LocalNode = new Node(localPublicKey ?? TestItem.PublicKeyB, "127.0.0.1", 1235);
+            Node.ClientId = remoteClientId;
+            LocalNode.ClientId = localClientId;
+
+            Task.Factory.StartNew(RunQueue, TaskCreationOptions.LongRunning);
+        }
+
+        private void RunQueue()
+        {
+            foreach (Action action in _sendQueue.GetConsumingEnumerable())
+            {
+                action();
+            }
         }
 
         public Guid SessionId { get; } = Guid.NewGuid();
         public bool IsFastSyncSupported => false;
-        public Node Node { get; set; }
-        public INodeStats NodeStats { get; set; }
-        public string ClientId { get; set; }
-        public UInt256 TotalDifficultyOnSessionStart => _blockTree.Head.TotalDifficulty ?? 0;
+        public Node Node { get; }
+        
+        public Node LocalNode { get; }
+        public string ClientId => Node.ClientId;
+        public UInt256 TotalDifficultyOnSessionStart => _remoteTree.Head.TotalDifficulty ?? 0;
 
         public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
             Block[] result = new Block[blockHashes.Length];
             for (int i = 0; i < blockHashes.Length; i++)
             {
-                result[i] = _blockTree.FindBlock(blockHashes[i], true);
+                result[i] = _remoteTree.FindBlock(blockHashes[i], true);
             }
             
             return Task.FromResult(result);
@@ -58,12 +77,12 @@ namespace Nethermind.Blockchain.Test
 
         public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
-            UInt256 firstNumber = _blockTree.FindBlock(blockHash, true).Number;
+            UInt256 firstNumber = _remoteTree.FindBlock(blockHash, true).Number;
             
             BlockHeader[] result = new BlockHeader[maxBlocks];
             for (int i = 0; i < maxBlocks; i++)
             {
-                result[i] = _blockTree.FindBlock((ulong)firstNumber + (ulong)i + (ulong)skip).Header;
+                result[i] = _remoteTree.FindBlock((ulong)firstNumber + (ulong)i + (ulong)skip).Header;
             }
             
             return Task.FromResult(result);
@@ -71,19 +90,19 @@ namespace Nethermind.Blockchain.Test
         
         public Task<BlockHeader[]> GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
         {
-            UInt256 firstNumber = _blockTree.FindBlock(number).Number;
+            UInt256 firstNumber = _remoteTree.FindBlock(number).Number;
             
             BlockHeader[] result = new BlockHeader[maxBlocks];
             for (int i = 0; i < maxBlocks; i++)
             {
                 ulong blockNumber = (ulong) firstNumber + (ulong) i + (ulong) skip;
-                if (blockNumber > (_blockTree.Head?.Number ?? 0))
+                if (blockNumber > (_remoteTree.Head?.Number ?? 0))
                 {
                     result[i] = null;
                 }
                 else
                 {
-                    result[i] = _blockTree.FindBlock(blockNumber).Header;
+                    result[i] = _remoteTree.FindBlock(blockNumber).Header;
                 }
             }
             
@@ -92,12 +111,14 @@ namespace Nethermind.Blockchain.Test
 
         public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
-            return Task.FromResult(_blockTree.Head);
+            return Task.FromResult(_remoteTree.Head);
         }
 
+        private BlockingCollection<Action> _sendQueue = new BlockingCollection<Action>();
+        
         public void SendNewBlock(Block block)
         {
-            throw new NotImplementedException();
+            _sendQueue.Add(() => _remoteManager?.AddNewBlock(block, LocalNode));
         }
 
         public void SendNewTransaction(Transaction transaction)
@@ -106,37 +127,12 @@ namespace Nethermind.Blockchain.Test
 
         public Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
         {
-            throw new NotImplementedException();
-        }
-
-        public Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void SendReceipts(TransactionReceipt[][] transactionReceipts)
-        {
-            throw new NotImplementedException();
+            return Task.FromResult(_remoteManager.GetReceipts(blockHash));
         }
 
         public Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
         {
-            throw new NotImplementedException();
-        }
-
-        public Task<byte[][]> GetNodeData(Keccak[] hashes)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void SendNodeData(byte[][] values)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task Disconnect()
-        {
-            throw new NotImplementedException();
+            return Task.FromResult(_remoteManager.GetNodeData(hashes));
         }
     }
 }
