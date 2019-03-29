@@ -156,7 +156,7 @@ namespace Nethermind.Blockchain.Test
             _manager.Start();
             _manager.AddPeer(peer);
 
-            Block block = Build.A.Block.WithParent(_remoteBlockTree.Head).TestObject;
+            Block block = Build.A.Block.WithParent(_remoteBlockTree.Head).WithTotalDifficulty((_remoteBlockTree.Head.TotalDifficulty ?? 0) + 1).TestObject;
             _manager.AddNewBlock(block, peer.Node);
 
             resetEvent.WaitOne(_standardTimeoutUnit);

@@ -20,10 +20,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Serialization;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -364,6 +366,7 @@ namespace Nethermind.Blockchain
             if (block.Number > _blockTree.BestKnownNumber + 8)
             {
                 // ignore blocks when syncing in a simple non-locking way
+                _syncRequested.Set();
                 return;
             }
 
@@ -759,7 +762,7 @@ namespace Nethermind.Blockchain
 
         [Todo(Improve.Readability, "Let us review the cancellation approach here")]
         private async Task SynchronizeWithPeerAsync(PeerInfo peerInfo)
-        {
+        {           
             if (_logger.IsDebug) _logger.Debug($"Starting sync process with {peerInfo} - theirs {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} | ours {_blockTree.BestSuggested.Number} {_blockTree.BestSuggested.TotalDifficulty}");
             bool wasCanceled = false;
 
@@ -772,6 +775,7 @@ namespace Nethermind.Blockchain
             UInt256 currentNumber = UInt256.Min(_blockTree.BestKnownNumber, peerInfo.HeadNumber - 1);
             while (peerInfo.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= peerInfo.HeadNumber)
             {
+                
                 if (_logger.IsTrace) _logger.Trace($"Continue syncing with {peerInfo} (our best {_blockTree.BestKnownNumber})");
 
                 if (ancestorLookupLevel > maxLookup)
@@ -833,9 +837,16 @@ namespace Nethermind.Blockchain
                     hashes.Add(headers[i].Hash);
                     headersByHash[headers[i].Hash] = headers[i];
                 }
-
+ 
                 if (hashes.Count == 0)
                 {
+                    if (headers.Length == 1)
+                    {
+                        // for some reasons we take current number as peerInfo.HeadNumber - 1 (I do not remember why)
+                        // and also there may be a race in total difficulty measurement
+                        return;
+                    }
+                    
                     throw new EthSynchronizationException("Peer sent an empty header list");
                 }
 
@@ -999,9 +1010,13 @@ namespace Nethermind.Blockchain
                             return;
                         case AddBlockResult.InvalidBlock:
                             throw new EthSynchronizationException("Peer sent an invalid block");
+                        case AddBlockResult.Added:
+                            if (_logger.IsTrace) _logger.Trace($"Block {blocks[i].Number} suggested for processing");
+                            continue;
+                        case AddBlockResult.AlreadyKnown:
+                            if (_logger.IsTrace) _logger.Trace($"Block {blocks[i].Number} skipped - already known");
+                            continue;
                     }
-
-                    if (_logger.IsTrace) _logger.Trace($"Block {blocks[i].Number} suggested for processing");
                 }
 
                 currentNumber = blocks[blocks.Length - 1].Number;

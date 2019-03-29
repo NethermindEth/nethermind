@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test
         public void Can_sync_when_connected()
         {            
             ConnectAllPeers();
-            int chainLength = 5000;
+            int chainLength = 10000;
 
             var headBlock = _genesis;
             for (int i = 0; i < chainLength; i++)
@@ -104,16 +104,24 @@ namespace Nethermind.Blockchain.Test
                 {
                     waitEvent.Set();
                 }
+                
+                if (e.Block.Number == chainLength - 1)
+                {
+                    Console.WriteLine($"{chainLength}!!!");
+                }
             };
                 
             waitEvent.Wait(10000);
             Assert.AreEqual(headBlock.Header, _localPeer.SyncManager.Head);
+            Assert.AreEqual(headBlock.Header, _remotePeer1.SyncManager.Head);
+            Assert.AreEqual(headBlock.Header, _remotePeer2.SyncManager.Head);
+            Assert.AreEqual(headBlock.Header, _remotePeer3.SyncManager.Head);
         }
 
         private static (ISynchronizationManager, BlockTree) CreateSyncManager(string prefix)
         {
 //            var logManager = NoErrorLimboLogs.Instance;
-            var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace, prefix));
+            var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, prefix));
 
             var specProvider = GoerliSpecProvider.Instance;
 
