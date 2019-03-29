@@ -42,8 +42,6 @@ namespace Nethermind.Blockchain
         int ChainId { get; }
         BlockHeader Genesis { get; }
         BlockHeader Head { get; }
-        UInt256 HeadNumber { get; }
-        UInt256 TotalDifficulty { get; }
 
         event EventHandler<SyncEventArgs> SyncEvent;
     }

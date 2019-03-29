@@ -278,8 +278,7 @@ namespace Nethermind.Blockchain
         public int ChainId => _blockTree.ChainId;
         public BlockHeader Genesis => _blockTree.Genesis;
         public BlockHeader Head => _blockTree.Head;
-        public UInt256 HeadNumber => _blockTree.Head.Number;
-        public UInt256 TotalDifficulty => _blockTree.Head.TotalDifficulty ?? 0;
+        
         public event EventHandler<SyncEventArgs> SyncEvent;
 
         public byte[][] GetNodeData(Keccak[] keys)
