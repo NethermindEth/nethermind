@@ -211,9 +211,6 @@ namespace Nethermind.Benchmarks.Store
             }),
         };
 
-        [Params(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19)]
-        public int ScenarioIndex { get; set; }
-
         [GlobalSetup]
         public void Setup()
         {
@@ -223,13 +220,19 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void Improved()
         {
-            throw new NotImplementedException();
+            for (int i = 0; i < 19; i++)
+            {
+                _scenarios[i].Action(_tree);    
+            }
         }
 
         [Benchmark]
         public void Current()
         {
-            _scenarios[ScenarioIndex].Action(_tree);
+            for (int i = 0; i < 19; i++)
+            {
+                _scenarios[i].Action(_tree);    
+            }
         }
     }
 }

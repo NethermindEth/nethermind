@@ -113,23 +113,5 @@ namespace Nethermind.Network.Crypto
             iesEngine.Init(isEncrypt, _optimizedKdf.Derive(secret), parametersWithIV);
             return iesEngine;
         }
-        
-//        private IIesEngine MakeOldIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
-//        {
-//            AesEngine aesFastEngine = new AesEngine();
-//            OldEthereumIesEngine iesEngine = new OldEthereumIesEngine(
-//                new ECDHBasicAgreement(),
-//                new HMac(new Sha256Digest()),
-//                new Sha256Digest(),
-//                new BufferedBlockCipher(new SicBlockCipher(aesFastEngine)));
-//
-//            IesParameters iseParameters = new IesWithCipherParameters(new byte[] { }, new byte[] { }, KeySize, KeySize);
-//            ParametersWithIV parametersWithIV = new ParametersWithIV(iseParameters, iv);
-//
-//            byte[] secret = new byte[32];
-//            Proxy.EcdhSerialized(secret, publicKey.Bytes, privateKey.KeyBytes);
-//            iesEngine.Init(isEncrypt, BouncyCrypto.WrapPrivateKey(privateKey), BouncyCrypto.WrapPublicKey(publicKey), parametersWithIV);
-//            return iesEngine;
-//        }
     }
 }

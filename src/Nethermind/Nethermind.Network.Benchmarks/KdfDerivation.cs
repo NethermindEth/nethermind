@@ -33,14 +33,12 @@ namespace Nethermind.Network.Benchmarks
     {
         private static byte[] z = Bytes.FromHexString("22ca1111ca383ef9d090ca567245eb72f80d8730fd4e1507e9a23bcdb3bb5a87");
 
-        private MeadowKdf _improved = new MeadowKdf();
-        private OptimizedKdf _improved2 = new OptimizedKdf();
+        private OptimizedKdf _current = new OptimizedKdf();
 
         [GlobalSetup]
         public void Setup()
         {
-            Check(Old(), Alternative());
-            Check(Old(), Current());
+            Check(Improved(), Current());
         }
 
         private void Check(byte[] a, byte[] b)
@@ -55,27 +53,15 @@ namespace Nethermind.Network.Benchmarks
         }
 
         [Benchmark]
-        public byte[] Alternative()
+        public byte[] Improved()
         {
-            var result = _improved.DeriveKeyKDF(z, 32);
-            return result;
+            throw new NotImplementedException();
         }
 
         [Benchmark]
         public byte[] Current()
         {
-            var result = _improved2.Derive(z);
-            return result;
-        }
-
-        [Benchmark]
-        public byte[] Old()
-        {
-            ConcatKdfBytesGenerator current = new ConcatKdfBytesGenerator(new Sha256Digest());
-            IDerivationParameters kdfParam = new KdfParameters(z, new byte[0]);
-            current.Init(kdfParam);
-            var result = new byte[32];
-            current.GenerateBytes(result, 0, 32);
+            var result = _current.Derive(z);
             return result;
         }
     }
