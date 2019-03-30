@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,13 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Store
+namespace Nethermind.Blockchain.Synchronization
 {
-    internal enum NodeType : byte
+    public enum NodeType
     {
-        Unknown,
-        Branch,
-        Extension,
-        Leaf
+        Code,
+        State
     }
 }

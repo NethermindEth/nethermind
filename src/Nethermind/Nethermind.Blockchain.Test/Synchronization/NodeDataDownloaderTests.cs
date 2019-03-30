@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,13 +16,32 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Store
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
+using Nethermind.Store;
+using NUnit.Framework;
+
+namespace Nethermind.Blockchain.Test.Synchronization
 {
-    internal enum NodeType : byte
+    public class NodeDataDownloaderTests
     {
-        Unknown,
-        Branch,
-        Extension,
-        Leaf
+        private MemDb _codeDb;
+        private StateDb _stateDb;
+        private StateTree _stateTree;
+
+        [SetUp]
+        public void Setup()
+        {
+            _stateDb = new StateDb();
+            _codeDb = new MemDb();
+
+            _stateTree = new StateTree(_stateDb);
+        }
+
+        public void Test()
+        {
+            NodeDataDownloader downloader = new NodeDataDownloader(_stateDb);
+            downloader.SyncNodeData(Keccak.Zero);
+        }
     }
 }

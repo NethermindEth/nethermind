@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
@@ -27,19 +28,13 @@ namespace Nethermind.Blockchain.Synchronization
     {
         private readonly ISnapshotableDb _db;
         private Keccak _root;
-
-        private enum NodeType
-        {
-            Code,
-            State
-        }
             
         public NodeDataDownloader(ISnapshotableDb db)
         {
             _db = db;
         }
             
-        private void SyncNodeData(Keccak root)
+        public void SyncNodeData(Keccak root)
         {
             _root = root;
             _nodes.Add((root, NodeType.State));
@@ -48,15 +43,20 @@ namespace Nethermind.Blockchain.Synchronization
         private ConcurrentBag<(Keccak, NodeType)> _nodes = new ConcurrentBag<(Keccak, NodeType)>();
 
         private const int maxRequestSize = 256;
-            
-        public List<Keccak> PrepareRequest()
+
+        public void HandleResponse(NodeDataRequest request)
         {
-            List<Keccak> request = new List<Keccak>();
+            throw new NotImplementedException();
+        }
+        
+        public NodeDataRequest PrepareRequest()
+        {
+            List<(Keccak, NodeType)> requestHashes = new List<(Keccak, NodeType)>();
             for (int i = 0; i < maxRequestSize; i++)
             {
-                if (_nodes.TryTake(out (Keccak hash, NodeType nodeType) result))
+                if (_nodes.TryTake(out (Keccak Hash, NodeType NodeType) result))
                 {
-                    request.Add(result.hash);
+                    requestHashes.Add((result.Hash, result.NodeType));
                 }
                 else
                 {
@@ -64,6 +64,8 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
+            var request = new NodeDataRequest();
+            request.Request = requestHashes.ToArray();
             return request;
         }
     }
