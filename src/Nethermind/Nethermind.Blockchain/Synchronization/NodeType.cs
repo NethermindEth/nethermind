@@ -18,7 +18,7 @@
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public enum NodeType
+    public enum NodeDataType
     {
         Code,
         State

@@ -338,11 +338,7 @@ namespace Nethermind.Blockchain
             if (block.IsGenesis || block.TotalDifficulty > (BestSuggested?.TotalDifficulty ?? 0))
             {
                 BestSuggested = block.Header;
-
-                if (block.IsGenesis) // this is to test fast sync
-                {
-                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
-                }
+                NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
             return AddBlockResult.Added;

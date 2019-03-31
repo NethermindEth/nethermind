@@ -32,6 +32,8 @@ namespace Nethermind.Core.Extensions
     public static class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
+        
+        public static readonly IComparer<byte[]> Comparer = new BytesComparer();
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
         {
@@ -46,10 +48,47 @@ namespace Nethermind.Core.Extensions
             }
         }
 
+        private class BytesComparer : Comparer<byte[]>
+        {
+            public override int Compare(byte[] x, byte[] y)
+            {
+                if (x == null)
+                {
+                    return y == null ? 0 : 1;
+                }
+
+                if (y == null)
+                {
+                    return -1;
+                }
+
+                if (x.Length == 0)
+                {
+                    return y.Length == 0 ? 0 : 1;
+                }
+
+                for (int i = 0; i < x.Length; i++)
+                {
+                    if (y.Length <= i)
+                    {
+                        return -1;
+                    }
+
+                    int result = x[i].CompareTo(y[i]);
+                    if (result != 0)
+                    {
+                        return result;
+                    }
+                }
+
+                return y.Length > x.Length ? 1 : 0;
+            }
+        }
+
         public static readonly byte[] Zero32 = new byte[32];
-        
+
         public static readonly byte[] Zero256 = new byte[256];
-        
+
         public static readonly byte[] Empty = new byte[0];
 
         public enum Endianness
@@ -79,14 +118,14 @@ namespace Nethermind.Core.Extensions
         {
             return a1.AsSpan().SequenceEqual(a2);
         }
-        
+
         public static bool IsZero(this byte[] bytes)
         {
             if (bytes.Length == 32)
             {
                 return bytes[0] == 0 && bytes.AsSpan().SequenceEqual(Bytes.Zero32);
             }
-            
+
             for (int i = 0; i < bytes.Length / 2; i++)
             {
                 if (bytes[i] != 0)
@@ -102,7 +141,7 @@ namespace Nethermind.Core.Extensions
 
             return bytes.Length % 2 == 0 || bytes[bytes.Length / 2] == 0;
         }
-        
+
         public static int LeadingZerosCount(this byte[] bytes, int startIndex = 0)
         {
             for (int i = startIndex; i < bytes.Length; i++)
@@ -431,7 +470,7 @@ namespace Nethermind.Core.Extensions
 
             return bytes;
         }
-        
+
         public static string ToBitString(this BitArray bits)
         {
             var sb = new StringBuilder();

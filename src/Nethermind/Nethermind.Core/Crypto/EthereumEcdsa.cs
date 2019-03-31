@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Globalization;
 using System.Numerics;
 using Nethermind.Core.Encoding;
@@ -40,14 +41,14 @@ namespace Nethermind.Core.Crypto
 
         public EthereumEcdsa(ISpecProvider specProvider, ILogManager logManager)
         {
-            _specProvider = specProvider;
-            _logger = logManager.GetClassLogger();
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _chainIdValue = specProvider.ChainId;
         }
-        
+
         public void Sign(PrivateKey privateKey, Transaction transaction, UInt256 blockNumber)
         {
-            _logger?.Debug($"Signing transaction: {transaction.Value} to {transaction.To} with data {transaction.Data}");
+            if(_logger.IsDebug) _logger.Debug($"Signing transaction: {transaction.Value} to {transaction.To} with data {transaction.Data}");
             bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
             Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, isEip155Enabled, _chainIdValue));
             transaction.Signature = Sign(privateKey, hash);
@@ -55,8 +56,8 @@ namespace Nethermind.Core.Crypto
             {
                 transaction.Signature.V = transaction.Signature.V + 8 + 2 * _chainIdValue;
             }
-            
-            _logger?.Debug("Transaction signed");
+
+            if(_logger.IsDebug) _logger.Debug("Transaction signed");
         }
 
         public bool Verify(Address sender, Transaction transaction, UInt256 blockNumber)
@@ -70,7 +71,7 @@ namespace Nethermind.Core.Crypto
         public Address RecoverAddress(Transaction transaction, UInt256 blockNumber)
         {
             bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
-            bool applyEip155 = isEip155Enabled && (transaction.Signature.V == _chainIdValue * 2 + 35 || transaction.Signature.V == _chainIdValue * 2 + 36);  
+            bool applyEip155 = isEip155Enabled && (transaction.Signature.V == _chainIdValue * 2 + 35 || transaction.Signature.V == _chainIdValue * 2 + 36);
             Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, applyEip155, _chainIdValue));
             return RecoverAddress(transaction.Signature, hash);
         }

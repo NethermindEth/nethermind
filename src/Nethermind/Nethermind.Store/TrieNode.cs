@@ -26,7 +26,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
-    internal class TrieNode
+    public class TrieNode
     {
         private static readonly object NullNode = new object();
 
@@ -384,6 +384,30 @@ namespace Nethermind.Store
                     _data[i] = child;
                 }
             }
+        }
+
+        public Keccak GetChildHash(int i)
+        {
+            Rlp.DecoderContext context = DecoderContext;
+            if (context == null)
+            {
+                return null;
+            } 
+            
+            if (NodeType == NodeType.Extension)
+            {
+                return context.DecodeKeccak();
+            }
+            
+            context.Position = _lookupTable[i * 2];
+            int prefix = context.ReadByte();
+            if (prefix == 160)
+            {
+                context.Position--;
+                return context.DecodeKeccak();
+            }
+
+            return null;
         }
 
         public bool IsChildNull(int i)
