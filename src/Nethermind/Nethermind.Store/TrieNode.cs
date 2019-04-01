@@ -113,7 +113,7 @@ namespace Nethermind.Store
 
         public static bool AllowBranchValues { get; set; } = false;
 
-        internal byte[] Value
+        public byte[] Value
         {
             get
             {

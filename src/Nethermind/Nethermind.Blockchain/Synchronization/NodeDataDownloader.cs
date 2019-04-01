@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
@@ -37,11 +38,13 @@ namespace Nethermind.Blockchain.Synchronization
     public class NodeDataDownloader
     {
         private readonly ILogger _logger;
+        private readonly IDb _codeDb;
         private readonly ISnapshotableDb _db;
         private readonly INodeDataRequestExecutor _executor;
 
-        public NodeDataDownloader(ISnapshotableDb db, INodeDataRequestExecutor executor, ILogManager logManager)
+        public NodeDataDownloader(IDb codeDb, ISnapshotableDb db, INodeDataRequestExecutor executor, ILogManager logManager)
         {
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _executor = executor ?? throw new ArgumentNullException(nameof(executor));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -77,6 +80,8 @@ namespace Nethermind.Blockchain.Synchronization
             } while (dataRequests.Length != 0);
         }
 
+        private AccountDecoder accountDecoder = new AccountDecoder();
+        
         private void HandleResponse(NodeDataRequest request)
         {
             for (int i = 0; i < request.Request.Length; i++)
@@ -88,6 +93,12 @@ namespace Nethermind.Blockchain.Synchronization
                 }
                 else
                 {
+                    if (request.Request[i].Item2 == NodeDataType.Code)
+                    {
+                        _codeDb[request.Request[i].Item1.Bytes] = bytes;
+                        continue;
+                    }
+                    
                     _db[request.Request[i].Item1.Bytes] = bytes;
                     TrieNode node = new TrieNode(NodeType.Unknown, new Rlp(bytes));
                     node.ResolveNode(null);
@@ -115,6 +126,11 @@ namespace Nethermind.Blockchain.Synchronization
 
                             break;
                         case NodeType.Leaf:
+                            Account account = accountDecoder.Decode(new Rlp.DecoderContext(node.Value));
+                            if (account.CodeHash != Keccak.OfAnEmptyString)
+                            {
+                                _nodes.Add((account.CodeHash, NodeDataType.Code));
+                            }
                             // storage tree
                             // code
                             break;
