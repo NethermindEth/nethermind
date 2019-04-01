@@ -16,17 +16,38 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface IFullArchiveSynchronizer
+    public class PeerInfo
     {
-        event EventHandler<SyncEventArgs> SyncEvent;
+        public PeerInfo(ISynchronizationPeer syncPeer)
+        {
+            SyncPeer = syncPeer;
+            TotalDifficulty = syncPeer.TotalDifficultyOnSessionStart;
+        }
+
+        public bool IsInitialized { get; set; }
+        public ISynchronizationPeer SyncPeer { get; }
+        public UInt256 TotalDifficulty { get; set; }
+        public UInt256 HeadNumber { get; set; }
+        public Keccak HeadHash { get; set; }
+
+        public override string ToString()
+        {
+            return ToString(true);
+        }
+
+        private string ToString(bool fullFormat)
+        {
+            if (fullFormat)
+            {
+                return $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}]";
+            }
+
+            return $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}]";
+        }
     }
 }

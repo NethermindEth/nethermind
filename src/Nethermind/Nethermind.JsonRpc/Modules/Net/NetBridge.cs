@@ -26,10 +26,10 @@ namespace Nethermind.JsonRpc.Modules.Net
     public class NetBridge : INetBridge
     {
         private readonly IEnode _localNode;
-        private readonly ISynchronizationManager _syncManager;
+        private readonly IFullArchiveSynchronizer _syncManager;
         private readonly IPeerManager _peerManager;
         
-        public NetBridge(IEnode localNode, ISynchronizationManager syncManager, IPeerManager peerManager)
+        public NetBridge(IEnode localNode, IFullArchiveSynchronizer syncManager, IPeerManager peerManager)
         {
             _localNode = localNode ?? throw new ArgumentNullException(nameof(localNode));
             _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));

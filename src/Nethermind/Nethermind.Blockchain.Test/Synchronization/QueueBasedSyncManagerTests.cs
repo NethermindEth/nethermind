@@ -215,20 +215,20 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             private BlockTree BlockTree { get; set; }
 
-            private ISynchronizationManager SyncManager { get; set; }
+            private IFullArchiveSynchronizer SyncManager { get; set; }
 
             public SyncingContext()
             {
                 MemDb stateDb = new MemDb();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTransactionPool.Instance, LimboLogs.Instance);
-                SyncManager = new QueueBasedSyncManager(
+                SyncManager = new FullArchiveSynchronizer(
                     stateDb,
                     BlockTree,
                     Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject,
                     Build.A.SealValidator.ThatAlwaysReturnsTrue.TestObject,
                     TestTransactionValidator.AlwaysValid,
                     LimboLogs.Instance,
-                    new BlockchainConfig(),
+                    new SyncConfig(),
                     new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), 
                     new PerfService(LimboLogs.Instance),
                     NullReceiptStorage.Instance);
@@ -621,10 +621,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_reorg_on_add_peer()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
-            peerA.AddBlocksUpTo(QueueBasedSyncManager.MaxBatchSize, 0, 0);
+            peerA.AddBlocksUpTo(FullArchiveSynchronizer.MaxBatchSize, 0, 0);
 
             SyncPeerMock peerB = new SyncPeerMock("B");
-            peerB.AddBlocksUpTo(QueueBasedSyncManager.MaxBatchSize * 2, 0, 1);
+            peerB.AddBlocksUpTo(FullArchiveSynchronizer.MaxBatchSize * 2, 0, 1);
 
             When.Syncing
                 .AfterProcessingGenesis()
@@ -719,10 +719,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Will_not_reorganize_more_than_max_reorg_length()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
-            peerA.AddBlocksUpTo(QueueBasedSyncManager.MaxReorganizationLength + 1, 0, 0);
+            peerA.AddBlocksUpTo(FullArchiveSynchronizer.MaxReorganizationLength + 1, 0, 0);
 
             SyncPeerMock peerB = new SyncPeerMock("B");
-            peerB.AddBlocksUpTo(QueueBasedSyncManager.MaxReorganizationLength + 2, 0, 1);
+            peerB.AddBlocksUpTo(FullArchiveSynchronizer.MaxReorganizationLength + 2, 0, 1);
 
             When.Syncing
                 .AfterProcessingGenesis()
@@ -738,7 +738,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_sync_more_than_a_batch()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
-            peerA.AddBlocksUpTo(QueueBasedSyncManager.MaxBatchSize * 3, 0, 0);
+            peerA.AddBlocksUpTo(FullArchiveSynchronizer.MaxBatchSize * 3, 0, 0);
 
             When.Syncing
                 .AfterProcessingGenesis()
@@ -751,7 +751,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_sync_exactly_one_batch()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
-            peerA.AddBlocksUpTo(QueueBasedSyncManager.MaxBatchSize, 0, 0);
+            peerA.AddBlocksUpTo(FullArchiveSynchronizer.MaxBatchSize, 0, 0);
 
             When.Syncing
                 .AfterProcessingGenesis()
@@ -765,7 +765,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_stop()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
-            peerA.AddBlocksUpTo(QueueBasedSyncManager.MaxBatchSize, 0, 0);
+            peerA.AddBlocksUpTo(FullArchiveSynchronizer.MaxBatchSize, 0, 0);
 
             When.Syncing
                 .Stop();

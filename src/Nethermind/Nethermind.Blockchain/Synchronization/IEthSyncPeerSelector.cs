@@ -16,12 +16,35 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Blockchain.Synchronization
 {
-    public enum SynchronizationMode
+    public interface IEthSyncPeerSelector
     {
-        Blocks,
-        NodeData,
-        Full
+        bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
+        
+        SyncPeerAllocation GetBest(bool exclusive = false);
+        
+        void Return(SyncPeerAllocation syncPeerAllocation);
+        
+        event EventHandler<SyncEventArgs> SyncEvent;
+        
+        IEnumerable<PeerInfo> AllPeers { get; }
+        
+        int PeerCount { get; }
+        
+        void Refresh(PeerInfo peerInfo);
+        
+        void RemovePeer(ISynchronizationPeer synchronizationPeer);
+        
+        void AddPeer(ISynchronizationPeer synchronizationPeer);
+        
+        void Start();
+        
+        Task StopAsync();
     }
 }

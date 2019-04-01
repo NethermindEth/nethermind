@@ -39,7 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler, ISynchronizationPeer
     {
         private System.Timers.Timer _txFloodCheckTimer;
-        protected ISynchronizationManager SyncManager { get; }
+        protected IFullArchiveSynchronizer SyncManager { get; }
 
         private readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests
             = new BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>>();
@@ -57,7 +57,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
-            ISynchronizationManager syncManager,
+            IFullArchiveSynchronizer syncManager,
             ILogManager logManager,
             IPerfService perfService,
             ITransactionPool transactionPool)

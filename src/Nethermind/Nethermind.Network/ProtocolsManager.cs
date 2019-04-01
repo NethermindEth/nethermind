@@ -36,7 +36,7 @@ namespace Nethermind.Network
 {
     public class ProtocolsManager : IProtocolsManager
     {
-        private readonly ISynchronizationManager _syncManager;
+        private readonly IFullArchiveSynchronizer _syncManager;
         private readonly ITransactionPool _transactionPool;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IMessageSerializationService _serializer;
@@ -49,7 +49,7 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
 
         public ProtocolsManager(
-            ISynchronizationManager synchronizationManager,
+            IFullArchiveSynchronizer fullArchiveSynchronizer,
             ITransactionPool transactionPool,
             IDiscoveryApp discoveryApp,
             IMessageSerializationService serializationService,
@@ -60,7 +60,7 @@ namespace Nethermind.Network
             IPerfService perfService,
             ILogManager logManager)
         {
-            _syncManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
+            _syncManager = fullArchiveSynchronizer ?? throw new ArgumentNullException(nameof(fullArchiveSynchronizer));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _serializer = serializationService ?? throw new ArgumentNullException(nameof(serializationService));

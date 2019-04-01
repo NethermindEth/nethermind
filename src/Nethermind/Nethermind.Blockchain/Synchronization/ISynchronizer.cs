@@ -16,15 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
-
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Synchronization
 {
-    public interface ISyncConfig : IConfig
+    public interface ISynchronizer
     {
-        int SyncTimerInterval { get; }
-        int SyncPeersMaxCount { get; }
-        long MinAvailableBlockDiffForSyncSwitch { get; }
-        long MinLatencyDiffForSyncSwitch { get; }
+        void RequestSynchronization();
     }
 }

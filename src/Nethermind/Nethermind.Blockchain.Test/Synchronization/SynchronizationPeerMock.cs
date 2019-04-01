@@ -33,9 +33,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
     {
         private readonly IBlockTree _remoteTree;
         private readonly PublicKey _localPublicKey;
-        private readonly ISynchronizationManager _remoteManager;
+        private readonly IFullArchiveSynchronizer _remoteManager;
 
-        public SynchronizationPeerMock(IBlockTree remoteTree, PublicKey localPublicKey = null, string localClientId = "", ISynchronizationManager remoteManager = null, PublicKey remotePublicKey = null, string remoteClientId = "")
+        public SynchronizationPeerMock(IBlockTree remoteTree, PublicKey localPublicKey = null, string localClientId = "", IFullArchiveSynchronizer remoteManager = null, PublicKey remotePublicKey = null, string remoteClientId = "")
         {
             _remoteTree = remoteTree;
             _localPublicKey = localPublicKey;

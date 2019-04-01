@@ -36,17 +36,17 @@ namespace Nethermind.Blockchain.Test.Synchronization
 {
     public class FastSyncTest
     {
-        private List<(ISynchronizationManager SyncManager, IBlockTree Tree)> _peers;
-        private (ISynchronizationManager SyncManager, IBlockTree Tree) _localPeer;
-        private (ISynchronizationManager SyncManager, IBlockTree Tree) _remotePeer1;
-        private (ISynchronizationManager SyncManager, IBlockTree Tree) _remotePeer2;
-        private (ISynchronizationManager SyncManager, IBlockTree Tree) _remotePeer3;
+        private List<(IFullArchiveSynchronizer SyncManager, IBlockTree Tree)> _peers;
+        private (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) _localPeer;
+        private (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) _remotePeer1;
+        private (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) _remotePeer2;
+        private (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) _remotePeer3;
         private static Block _genesis = Build.A.Block.Genesis.TestObject;
 
         [SetUp]
         public void Setup()
         {
-            _peers = new List<(ISynchronizationManager, IBlockTree)>();
+            _peers = new List<(IFullArchiveSynchronizer, IBlockTree)>();
             for (int i = 0; i < 4; i++)
             {
                 _peers.Add(CreateSyncManager($"PEER_{i}."));    
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public void Setup_is_correct()
         {
-            foreach ((ISynchronizationManager SyncManager, IBlockTree Tree) peer in _peers)
+            foreach ((IFullArchiveSynchronizer SyncManager, IBlockTree Tree) peer in _peers)
             {
                 Assert.AreEqual(_genesis.Header, peer.SyncManager.Head);    
             }
@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             for (int localIndex = 0; localIndex < _peers.Count; localIndex++)
             {
-                (ISynchronizationManager SyncManager, IBlockTree Tree) localPeer = _peers[localIndex];
+                (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) localPeer = _peers[localIndex];
                 for (int remoteIndex = 0; remoteIndex < _peers.Count; remoteIndex++)
                 {
                     if (localIndex == remoteIndex)
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                         continue;
                     }
                     
-                    (ISynchronizationManager SyncManager, IBlockTree Tree) remotePeer = _peers[remoteIndex];
+                    (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) remotePeer = _peers[remoteIndex];
                     localPeer.SyncManager.AddPeer(new SynchronizationPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex], $"PEER{localIndex}", remotePeer.SyncManager, TestItem.PublicKeys[remoteIndex], $"PEER{remoteIndex}"));
                 }
             }
@@ -150,7 +150,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.AreEqual(headBlock.Header.Hash, _remotePeer3.SyncManager.Head.Hash, "peer 3");
         }
 
-        private static (ISynchronizationManager, BlockTree) CreateSyncManager(string prefix)
+        private static (IFullArchiveSynchronizer, BlockTree) CreateSyncManager(string prefix)
         {
 //            var logManager = NoErrorLimboLogs.Instance;
             var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, prefix));
@@ -177,14 +177,14 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true, true);
 
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager, true);
-            var syncManager = new QueueBasedSyncManager(
+            var syncManager = new FullArchiveSynchronizer(
                 stateDb,
                 tree,
                 TestBlockValidator.AlwaysValid,
                 TestSealValidator.AlwaysValid,
                 TestTransactionValidator.AlwaysValid,
                 logManager,
-                new BlockchainConfig(),
+                new SyncConfig(),
                 nodeStatsManager,
                 new PerfService(NullLogManager.Instance), receiptStorage);
 

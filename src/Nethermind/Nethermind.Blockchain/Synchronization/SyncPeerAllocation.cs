@@ -16,12 +16,36 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using Nethermind.Dirichlet.Numerics;
+
 namespace Nethermind.Blockchain.Synchronization
 {
-    public enum SynchronizationMode
+    public class SyncPeerAllocation
     {
-        Blocks,
-        NodeData,
-        Full
+        public UInt256 TotalDifficulty { get; set; }
+        
+        public ISynchronizationPeer Current { get; set; }
+
+        public void DisconnectCurrent()
+        {
+            Disconnected?.Invoke(this, EventArgs.Empty);
+        }
+        
+        public void ReplaceCurrent(ISynchronizationPeer betterPeer)
+        {
+            Replaced?.Invoke(this, new SyncPeerEventArgs(betterPeer));
+        }
+        
+        public void Cancel()
+        {
+            Cancelled?.Invoke(this, EventArgs.Empty);
+        }
+
+        public event EventHandler<SyncPeerEventArgs> Replaced;
+
+        public event EventHandler Disconnected;
+        
+        public event EventHandler Cancelled;
     }
 }

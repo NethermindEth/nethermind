@@ -77,6 +77,7 @@ using Nethermind.Stats;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
+using ISyncConfig = Nethermind.Blockchain.ISyncConfig;
 using PingMessageSerializer = Nethermind.Network.P2P.PingMessageSerializer;
 using PongMessageSerializer = Nethermind.Network.P2P.PongMessageSerializer;
 
@@ -112,7 +113,7 @@ namespace Nethermind.Runner.Runners
         private ITransactionPoolInfoProvider _transactionPoolInfoProvider;
         private IReceiptStorage _receiptStorage;
         private IEthereumEcdsa _ethereumEcdsa;
-        private ISynchronizationManager _syncManager;
+        private IFullArchiveSynchronizer _syncManager;
         private IKeyStore _keyStore;
         private IPeerManager _peerManager;
         private IProtocolsManager _protocolsManager;
@@ -693,14 +694,14 @@ namespace Nethermind.Runner.Runners
             ISealValidator sealValidator,
             TransactionValidator txValidator)
         {
-            _syncManager = new QueueBasedSyncManager(
+            _syncManager = new FullArchiveSynchronizer(
                 _dbProvider.StateDb,
                 _blockTree,
                 _blockValidator,
                 sealValidator,
                 txValidator,
                 _logManager,
-                _configProvider.GetConfig<IBlockchainConfig>(),
+                _configProvider.GetConfig<ISyncConfig>(),
                 _nodeStatsManager,
                 _perfService,
                 receiptStorage);

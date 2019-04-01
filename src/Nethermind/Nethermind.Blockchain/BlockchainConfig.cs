@@ -21,7 +21,7 @@ using Nethermind.Core;
 namespace Nethermind.Blockchain
 {
     [Todo(Improve.Refactor, "Rename to SyncConfig")]
-    public class BlockchainConfig : IBlockchainConfig
+    public class SyncConfig : ISyncConfig
     {
         public int SyncTimerInterval { get; set; } = 1000;
         public int SyncPeersMaxCount { get; set; } = 25;

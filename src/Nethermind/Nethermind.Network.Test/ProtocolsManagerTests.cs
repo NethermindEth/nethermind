@@ -63,7 +63,7 @@ namespace Nethermind.Network.Test
             private IPerfService _perfService;
             private IProtocolValidator _protocolValidator;
             private IMessageSerializationService _serializer;
-            private ISynchronizationManager _synchronizationManager;
+            private IFullArchiveSynchronizer _fullArchiveSynchronizer;
             private ITransactionPool _transactionPool;
             private IChannelHandlerContext _channelHandlerContext;
             private IChannel _channel;
@@ -80,9 +80,9 @@ namespace Nethermind.Network.Test
                 _channel.Pipeline.Returns(_pipeline);
                 _pipeline.Get<NettyPacketSplitter>().Returns(new NettyPacketSplitter());
                 _packetSender = Substitute.For<IPacketSender>();
-                _synchronizationManager = Substitute.For<ISynchronizationManager>();
-                _synchronizationManager.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-                _synchronizationManager.Head.Returns(Build.A.BlockHeader.TestObject);
+                _fullArchiveSynchronizer = Substitute.For<IFullArchiveSynchronizer>();
+                _fullArchiveSynchronizer.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
+                _fullArchiveSynchronizer.Head.Returns(Build.A.BlockHeader.TestObject);
                 _transactionPool = Substitute.For<ITransactionPool>();
                 _discoveryApp = Substitute.For<IDiscoveryApp>();
                 _serializer = new MessageSerializationService();
@@ -97,7 +97,7 @@ namespace Nethermind.Network.Test
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _perfService = new PerfService(LimboLogs.Instance);
                 _manager = new ProtocolsManager(
-                    _synchronizationManager,
+                    _fullArchiveSynchronizer,
                     _transactionPool,
                     _discoveryApp,
                     _serializer,
@@ -210,13 +210,13 @@ namespace Nethermind.Network.Test
             public Context VerifySyncPeersRemoved()
             {
                 _transactionPool.Received().RemovePeer(Arg.Any<PublicKey>());
-                _synchronizationManager.Received().RemovePeer(Arg.Any<ISynchronizationPeer>());
+                _fullArchiveSynchronizer.Received().RemovePeer(Arg.Any<ISynchronizationPeer>());
                 return this;
             }
 
             public Context RaiseSyncFailed()
             {
-                _synchronizationManager.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _synchronizationManager, LimboLogs.Instance, _perfService, _transactionPool), SyncStatus.Failed));
+                _fullArchiveSynchronizer.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _fullArchiveSynchronizer, LimboLogs.Instance, _perfService, _transactionPool), SyncStatus.Failed));
                 return this;
             }
 

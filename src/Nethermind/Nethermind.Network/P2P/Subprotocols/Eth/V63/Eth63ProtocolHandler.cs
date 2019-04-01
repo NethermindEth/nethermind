@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
-            ISynchronizationManager syncManager,
+            IFullArchiveSynchronizer syncManager,
             ILogManager logManager, IPerfService perfService,
             ITransactionPool transactionPool) : base(session, serializer, nodeStatsManager, syncManager, logManager, perfService, transactionPool)
         {

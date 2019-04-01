@@ -47,14 +47,14 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _stateDb = new MemDb();
             _receiptsDb = new MemDb();
             _receiptStorage = Substitute.For<IReceiptStorage>();
-            BlockchainConfig quickConfig = new BlockchainConfig();
+            SyncConfig quickConfig = new SyncConfig();
             quickConfig.SyncTimerInterval = 100;
 
             ISealValidator sealValidator = Build.A.SealValidator.ThatAlwaysReturnsTrue.TestObject;
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
             ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 
-            _manager = new QueueBasedSyncManager(_stateDb, _blockTree, blockValidator, sealValidator, transactionValidator, NullLogManager.Instance, quickConfig, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),  new PerfService(NullLogManager.Instance), _receiptStorage);
+            _manager = new FullArchiveSynchronizer(_stateDb, _blockTree, blockValidator, sealValidator, transactionValidator, NullLogManager.Instance, quickConfig, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),  new PerfService(NullLogManager.Instance), _receiptStorage);
         }
 
         [TearDown]
@@ -69,12 +69,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
         private IBlockTree _remoteBlockTree;
         private IReceiptStorage _receiptStorage;
         private Block _genesisBlock;
-        private ISynchronizationManager _manager;
+        private IFullArchiveSynchronizer _manager;
 
         [Test]
         public void Retrieves_missing_blocks_in_batches()
         {
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(QueueBasedSyncManager.MaxBatchSize * 2).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(FullArchiveSynchronizer.MaxBatchSize * 2).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _manager.AddPeer(peer);
             
             resetEvent.WaitOne(_standardTimeoutUnit);
-            Assert.AreEqual(QueueBasedSyncManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(FullArchiveSynchronizer.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
 
         [Test]
@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public void Syncs_when_knows_more_blocks()
         {
-            _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(QueueBasedSyncManager.MaxBatchSize * 2).TestObject;
+            _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(FullArchiveSynchronizer.MaxBatchSize * 2).TestObject;
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
@@ -114,14 +114,14 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _manager.AddPeer(peer);
             
             resetEvent.WaitOne(_standardTimeoutUnit);
-            Assert.AreEqual(QueueBasedSyncManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(FullArchiveSynchronizer.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
 
         [Test]
         [Ignore("TODO: review this test - failing only with other tests")]
         public void Can_resync_if_missed_a_block()
         {
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(QueueBasedSyncManager.MaxBatchSize).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(FullArchiveSynchronizer.MaxBatchSize).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
             SemaphoreSlim semaphore = new SemaphoreSlim(0);
@@ -132,19 +132,19 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _manager.Start();
             _manager.AddPeer(peer);
 
-            BlockTreeBuilder.ExtendTree(_remoteBlockTree, QueueBasedSyncManager.MaxBatchSize * 2);
+            BlockTreeBuilder.ExtendTree(_remoteBlockTree, FullArchiveSynchronizer.MaxBatchSize * 2);
             _manager.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.Node);
             
             semaphore.Wait(_standardTimeoutUnit);
             semaphore.Wait(_standardTimeoutUnit);
 
-            Assert.AreEqual(QueueBasedSyncManager.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(FullArchiveSynchronizer.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
         }
 
         [Test]
         public void Can_add_new_block()
         {
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(QueueBasedSyncManager.MaxBatchSize).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(FullArchiveSynchronizer.MaxBatchSize).TestObject;
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
@@ -161,7 +161,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.AreEqual(QueueBasedSyncManager.MaxBatchSize - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(FullArchiveSynchronizer.MaxBatchSize - 1, (int) _blockTree.BestSuggested.Number);
         }
 
         [Test]
