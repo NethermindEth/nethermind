@@ -16,12 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
+
 namespace Nethermind.Blockchain.Synchronization
 {
-    public enum NodeDataType
+    public interface INodeDataRequestExecutor
     {
-        Code,
-        State,
-        Storage,
+        Task<NodeDataRequest> ExecuteRequest(NodeDataRequest request);
     }
 }

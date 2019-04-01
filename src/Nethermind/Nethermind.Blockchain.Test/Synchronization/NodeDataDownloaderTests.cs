@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 using NUnit.Framework;
 
@@ -37,216 +38,241 @@ namespace Nethermind.Blockchain.Test.Synchronization
         private static readonly byte[] Code2 = {0, 2};
         private static readonly byte[] Code3 = {0, 3};
 
-        private static readonly Account Empty = Build.An.Account.WithBalance(0).TestObject;
-        private static readonly Account Account0 = Build.An.Account.WithBalance(1).WithCode(Code0).TestObject;
-        private static readonly Account Account1 = Build.An.Account.WithBalance(2).WithCode(Code1).TestObject;
-        private static readonly Account Account2 = Build.An.Account.WithBalance(3).WithCode(Code2).TestObject;
-        private static readonly Account Account3 = Build.An.Account.WithBalance(4).WithCode(Code3).TestObject;
+        private static Account Empty;
+        private static Account Account0;
+        private static Account Account1;
+        private static Account Account2;
+        private static Account Account3;
 
-        public static (string Name, Action<StateTree, MemDb> Action)[] Scenarios = new (string, Action<StateTree, MemDb>)[]
+        public static (string Name, Action<StateTree, StateDb, MemDb> Action)[] Scenarios = InitScenarios();
+
+        private static (string Name, Action<StateTree, StateDb, MemDb> Action)[] InitScenarios()
         {
-            ("set_3_via_address", (tree, codeDb) =>
+            return new (string, Action<StateTree, StateDb, MemDb>)[]
             {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                tree.Set(TestItem.AddressA, Account0);
-                tree.Set(TestItem.AddressB, Account0);
-                tree.Set(TestItem.AddressC, Account0);
-                tree.Commit();
-            }),
-            ("set_3_via_hash", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
-                tree.Commit();
-            }),
-            ("set_3_delete_1", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
-                tree.Commit();
-            }),
-            ("set_3_delete_2", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
-                tree.Commit();
-            }),
-            ("set_3_delete_all", (tree, codeDb) =>
-            {
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
-                tree.Commit();
-            }),
-            ("extension_read_full_match", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
-                Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("extension_read_missing", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
-                Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("extension_new_branch", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                codeDb[Keccak.Compute(Code2).Bytes] = Code2;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"), Account2);
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("extension_delete_missing", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddd"), null);
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("extenson_create_new_extension", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                codeDb[Keccak.Compute(Code2).Bytes] = Code2;
-                codeDb[Keccak.Compute(Code3).Bytes] = Code3;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab00000000"), Account2);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab11111111"), Account3);
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("leaf_new_value", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
-                tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account1);
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("leaf_no_change", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
-                tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("leaf_delete", (tree, codeDb) =>
-            {
-                tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
-                tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), null);
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("leaf_delete_missing", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
-                tree.Set(new Keccak("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd"), null);
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("leaf_update_extension", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000"), Account1);
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("leaf_read", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
-                Account account = tree.Get(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"));
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("leaf_update_missing", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
-                Account account = tree.Get(new Keccak("111111111111111111111111111111111111111111111111111111111ddddddd"));
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("branch_update_missing", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                codeDb[Keccak.Compute(Code2).Bytes] = Code2;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), Account2);
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("branch_read_missing", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
-                Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-            ("branch_delete_missing", (tree, codeDb) =>
-            {
-                codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
-                tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), null);
-                tree.UpdateRootHash();
-                Keccak rootHash = tree.RootHash;
-                tree.Commit();
-            }),
-        };
+                ("set_3_via_address", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Set(TestItem.AddressA, Account0);
+                    tree.Set(TestItem.AddressB, Account0);
+                    tree.Set(TestItem.AddressC, Account0);
+                    tree.Commit();
+                }),
+                ("set_3_via_hash", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
+                    tree.Commit();
+                }),
+                ("set_3_delete_1", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
+                    tree.Commit();
+                }),
+                ("set_3_delete_2", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
+                    tree.Commit();
+                }),
+                ("set_3_delete_all", (tree, stateDb, codeDb) =>
+                {
+//                    SetStorage(stateDb);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
+                    tree.Commit();
+                }),
+                ("extension_read_full_match", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
+                    Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("extension_read_missing", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
+                    Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("extension_new_branch", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    codeDb[Keccak.Compute(Code2).Bytes] = Code2;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"), Account2);
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("extension_delete_missing", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddd"), null);
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("extenson_create_new_extension", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    codeDb[Keccak.Compute(Code2).Bytes] = Code2;
+                    codeDb[Keccak.Compute(Code3).Bytes] = Code3;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab00000000"), Account2);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab11111111"), Account3);
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("leaf_new_value", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account1);
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("leaf_no_change", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("leaf_delete", (tree, stateDb, codeDb) =>
+                {
+//                    SetStorage(stateDb);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), null);
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("leaf_delete_missing", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd"), null);
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("leaf_update_extension", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000"), Account1);
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("leaf_read", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    Account account = tree.Get(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"));
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("leaf_update_missing", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    Account account = tree.Get(new Keccak("111111111111111111111111111111111111111111111111111111111ddddddd"));
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("branch_update_missing", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    codeDb[Keccak.Compute(Code2).Bytes] = Code2;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), Account2);
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("branch_read_missing", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
+                    Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+                ("branch_delete_missing", (tree, stateDb, codeDb) =>
+                {
+                    SetStorage(stateDb);
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), null);
+                    tree.UpdateRootHash();
+                    Keccak rootHash = tree.RootHash;
+                    tree.Commit();
+                }),
+            };
+        }
 
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
         private MemDb _remoteCodeDb;
@@ -256,6 +282,35 @@ namespace Nethermind.Blockchain.Test.Synchronization
         private StateDb _remoteStateDb;
         private StateDb _localStateDb;
         private StateTree _remoteStateTree;
+
+        static NodeDataDownloaderTests()
+        {
+            StorageTree remoteStorageTree = SetStorage(new MemDb());
+            Keccak storageRoot = remoteStorageTree.RootHash;
+
+            Empty = Build.An.Account.WithBalance(0).TestObject;
+            Account0 = Build.An.Account.WithBalance(1).WithCode(Code0).WithStorageRoot(storageRoot).TestObject;
+            Account1 = Build.An.Account.WithBalance(2).WithCode(Code1).WithStorageRoot(storageRoot).TestObject;
+            Account2 = Build.An.Account.WithBalance(3).WithCode(Code2).WithStorageRoot(storageRoot).TestObject;
+            Account3 = Build.An.Account.WithBalance(4).WithCode(Code3).WithStorageRoot(storageRoot).TestObject;
+        }
+
+        private static StorageTree SetStorage(IDb db)
+        {
+            StorageTree remoteStorageTree = new StorageTree(db);
+
+            remoteStorageTree.Set((UInt256) 1, new byte[] {1});
+            remoteStorageTree.Set((UInt256) 2, new byte[] {2});
+            remoteStorageTree.Set((UInt256) 3, new byte[] {3});
+            remoteStorageTree.Set((UInt256) 4, new byte[] {4});
+            remoteStorageTree.Set((UInt256) 1005, new byte[] {5});
+            remoteStorageTree.Set((UInt256) 1006, new byte[] {6});
+            remoteStorageTree.Set((UInt256) 1007, new byte[] {7});
+            remoteStorageTree.Set((UInt256) 1008, new byte[] {8});
+
+            remoteStorageTree.Commit();
+            return remoteStorageTree;
+        }
 
         [SetUp]
         public void Setup()
@@ -328,9 +383,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test, TestCaseSource("Scenarios")]
-        public async Task TestMethod((string Name, Action<StateTree, MemDb> SetupTree) testCase)
+        public async Task TestMethod((string Name, Action<StateTree, StateDb, MemDb> SetupTree) testCase)
         {
-            testCase.SetupTree(_remoteStateTree, _remoteCodeDb);
+            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
             _remoteStateDb.Commit();
 
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);

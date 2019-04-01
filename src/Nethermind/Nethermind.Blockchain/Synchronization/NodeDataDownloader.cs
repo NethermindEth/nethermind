@@ -30,11 +30,6 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface INodeDataRequestExecutor
-    {
-        Task<NodeDataRequest> ExecuteRequest(NodeDataRequest request);
-    }
-
     public class NodeDataDownloader
     {
         private readonly ILogger _logger;
@@ -93,7 +88,8 @@ namespace Nethermind.Blockchain.Synchronization
                 }
                 else
                 {
-                    if (request.Request[i].Item2 == NodeDataType.Code)
+                    NodeDataType nodeDataType = request.Request[i].Item2;
+                    if (nodeDataType == NodeDataType.Code)
                     {
                         _codeDb[request.Request[i].Item1.Bytes] = bytes;
                         continue;
@@ -113,7 +109,7 @@ namespace Nethermind.Blockchain.Synchronization
                                 Keccak child = node.GetChildHash(j);
                                 if (child != null)
                                 {
-                                    _nodes.Add((child, NodeDataType.State));
+                                    _nodes.Add((child, nodeDataType));
                                 }
                             }
                             break;
@@ -121,18 +117,24 @@ namespace Nethermind.Blockchain.Synchronization
                             Keccak next = node[0].Keccak;
                             if (next != null)
                             {
-                                _nodes.Add((next, NodeDataType.State));
+                                _nodes.Add((next, nodeDataType));
                             }
 
                             break;
                         case NodeType.Leaf:
-                            Account account = accountDecoder.Decode(new Rlp.DecoderContext(node.Value));
-                            if (account.CodeHash != Keccak.OfAnEmptyString)
+                            if (nodeDataType == NodeDataType.State)
                             {
-                                _nodes.Add((account.CodeHash, NodeDataType.Code));
+                                Account account = accountDecoder.Decode(new Rlp.DecoderContext(node.Value));
+                                if (account.CodeHash != Keccak.OfAnEmptyString)
+                                {
+                                    _nodes.Add((account.CodeHash, NodeDataType.Code));
+                                }
+                                
+                                if (account.StorageRoot != Keccak.EmptyTreeHash)
+                                {
+                                    _nodes.Add((account.StorageRoot, NodeDataType.Storage));
+                                }
                             }
-                            // storage tree
-                            // code
                             break;
                         default:
                             throw new ArgumentOutOfRangeException();

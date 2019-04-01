@@ -45,5 +45,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = TestObjectInternal.WithChangedCodeHash(Keccak.Compute(code));
             return this;
         }
+        
+        public AccountBuilder WithStorageRoot(Keccak storageRoot)
+        {
+            TestObjectInternal = TestObjectInternal.WithChangedStorageRoot(storageRoot);
+            return this;
+        }
     }
 }
