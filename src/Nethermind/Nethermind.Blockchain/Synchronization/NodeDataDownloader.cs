@@ -167,6 +167,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
 
+                if(_logger.IsTrace) _logger.Trace($"Preparing request with {requestHashes.Count} hashes");
                 request.Request = requestHashes.ToArray();
             }
 

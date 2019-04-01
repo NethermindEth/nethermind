@@ -28,6 +28,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 using NUnit.Framework;
+using LogLevel = Nethermind.Core.Logging.LogLevel;
 
 namespace Nethermind.Blockchain.Test.Synchronization
 {
@@ -372,11 +373,14 @@ namespace Nethermind.Blockchain.Test.Synchronization
             return new Account(2, 100, Keccak.EmptyTreeHash, codeHash);
         }
 
+
+        private static ILogManager _logManager = new OneLoggerLogManager(new SimpleConsoleLogger(false));
+
         [Test]
         public async Task Can_download_an_empty_tree()
         {
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
-            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, LimboLogs.Instance);
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
             await downloader.SyncNodeData(_remoteStateTree.RootHash);
 
             CompareDbs();
@@ -389,7 +393,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _remoteStateDb.Commit();
 
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
-            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, LimboLogs.Instance);
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
             await downloader.SyncNodeData(_remoteStateTree.RootHash);
             _localStateDb.Commit();
 
