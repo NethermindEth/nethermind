@@ -25,8 +25,6 @@ namespace Nethermind.Blockchain.Synchronization
     {
         public ISyncPeer Peer { get; }
         public SyncStatus SyncStatus { get; }
-        public BigInteger? NodeBestBlockNumber { get; set; }
-        public BigInteger? OurBestBlockNumber { get; set; }
 
         public SyncEventArgs(ISyncPeer peer, SyncStatus status)
         {

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -43,9 +44,9 @@ namespace Nethermind.Network.Benchmarks
         }
         
         [Benchmark]
-        public void Heavy()
+        public void Improved()
         {
-            NodeStats stats = new NodeStats(_node, _statsConfig);
+            throw new NotImplementedException();
         }
         
         [Benchmark]
@@ -55,10 +56,9 @@ namespace Nethermind.Network.Benchmarks
         }
         
         [Benchmark]
-        public long HeavyRep()
+        public void ImprovedRep()
         {
-            NodeStats stats = new NodeStats(_node, _statsConfig);
-            return stats.CurrentNodeReputation;
+            throw new NotImplementedException();
         }
         
         [Benchmark]

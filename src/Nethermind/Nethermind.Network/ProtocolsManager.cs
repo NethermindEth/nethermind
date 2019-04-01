@@ -116,11 +116,7 @@ namespace Nethermind.Network
             }
 
             var nodeStatsEvent = GetSyncEventType(e.SyncStatus);
-            _stats.ReportSyncEvent(session.Node, nodeStatsEvent, new SyncNodeDetails
-            {
-                NodeBestBlockNumber = e.NodeBestBlockNumber,
-                OurBestBlockNumber = e.OurBestBlockNumber
-            });
+            _stats.ReportSyncEvent(session.Node, nodeStatsEvent);
 
             if (new[] {SyncStatus.InitFailed, SyncStatus.InitCancelled, SyncStatus.Failed, SyncStatus.Cancelled}.Contains(e.SyncStatus))
             {

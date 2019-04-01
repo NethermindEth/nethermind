@@ -56,20 +56,18 @@ namespace Nethermind.Stats
         private readonly IStatsDumper _statsDumper;
         private readonly IStatsConfig _statsConfig;
         private readonly ILogManager _logManager;
-        private readonly bool _useLightStats;
         private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new ConcurrentDictionary<Node, INodeStats>(new NodeComparer());
 
-        public NodeStatsManager(IStatsConfig statsConfig, ILogManager logManager, bool useLightStats = true)
+        public NodeStatsManager(IStatsConfig statsConfig, ILogManager logManager)
         {
             _statsDumper = new StatsDumper(logManager, statsConfig);
             _statsConfig = statsConfig ?? throw new ArgumentNullException(nameof(statsConfig));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _useLightStats = useLightStats;
         }
 
         private INodeStats AddStats(Node node)
         {
-            return _useLightStats ? new NodeStatsLight(node, _statsConfig) : (INodeStats) new NodeStats(node, _statsConfig);
+            return new NodeStatsLight(node, _statsConfig);
         }
         
         public INodeStats GetOrAdd(Node node)
@@ -165,10 +163,10 @@ namespace Nethermind.Stats
             return stats.CurrentPersistedNodeReputation;
         }
 
-        public void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent, SyncNodeDetails syncNodeDetails)
+        public void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent)
         {
             INodeStats stats = GetOrAdd(node);
-            stats.AddNodeStatsSyncEvent(nodeStatsEvent, syncNodeDetails);
+            stats.AddNodeStatsSyncEvent(nodeStatsEvent);
         }
 
         public bool HasFailedValidation(Node node)

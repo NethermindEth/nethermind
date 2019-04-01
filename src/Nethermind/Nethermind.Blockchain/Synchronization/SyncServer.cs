@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Synchronization
             _pool.TryFind(nodeWhoSentTheBlock.Id, out PeerInfo peerInfo);
             if (peerInfo == null)
             {
-                string errorMessage = $"Received a new block from an unknown peer {nodeWhoSentTheBlock:c} {nodeWhoSentTheBlock.Id} {_peers.Count}";
+                string errorMessage = $"Received a new block from an unknown peer {nodeWhoSentTheBlock:c} {nodeWhoSentTheBlock.Id} {_pool.PeerCount}";
                 if (_logger.IsDebug) _logger.Debug(errorMessage);
                 return;
             }
@@ -202,7 +202,7 @@ namespace Nethermind.Blockchain.Synchronization
                     /* do not add as this is a hint only */
                 }
 
-                _pool.Refresh(peerInfo);
+                _pool.Refresh(node.Id);
             }
         }
         

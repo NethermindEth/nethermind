@@ -29,7 +29,7 @@ namespace Nethermind.Stats
         void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason);
         void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails);
         void AddNodeStatsEth62InitializedEvent(EthNodeDetails nodeDetails);
-        void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType, SyncNodeDetails syncDetails);
+        void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType);
 
         bool DidEventHappen(NodeStatsEventType nodeStatsEventType);
 

@@ -23,6 +23,8 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class SyncPeerAllocation
     {
+        public string Description { get; set; }
+        
         public UInt256 TotalDifficulty { get; set; }
         
         public ISyncPeer Current { get; set; }
@@ -47,5 +49,10 @@ namespace Nethermind.Blockchain.Synchronization
         public event EventHandler Disconnected;
         
         public event EventHandler Cancelled;
+
+        public override string ToString()
+        {
+            return string.Concat("[Allocation|", Description, "]");
+        }
     }
 }

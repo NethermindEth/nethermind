@@ -27,9 +27,9 @@ namespace Nethermind.Blockchain.Synchronization
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
         
-        SyncPeerAllocation GetBest(bool exclusive = false);
+        SyncPeerAllocation Allocate(bool exclusive = false);
         
-        void Return(SyncPeerAllocation syncPeerAllocation);
+        void Free(SyncPeerAllocation syncPeerAllocation);
         
         event EventHandler<SyncEventArgs> SyncEvent;
         
@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Synchronization
         
         int PeerCount { get; }
         
-        void Refresh(PeerInfo peerInfo);
+        void Refresh(PublicKey nodeId);
         
         void RemovePeer(ISyncPeer syncPeer);
         
