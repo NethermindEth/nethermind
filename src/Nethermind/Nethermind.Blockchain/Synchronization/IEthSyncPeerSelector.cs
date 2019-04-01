@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization
 {
@@ -27,9 +28,9 @@ namespace Nethermind.Blockchain.Synchronization
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
         
-        SyncPeerAllocation Allocate(bool exclusive = false);
+        SyncPeerAllocation BorrowPeer(UInt256 difficultyThreshold);
         
-        void Free(SyncPeerAllocation syncPeerAllocation);
+        void ReturnPeer(SyncPeerAllocation syncPeerAllocation);
         
         event EventHandler<SyncEventArgs> SyncEvent;
         

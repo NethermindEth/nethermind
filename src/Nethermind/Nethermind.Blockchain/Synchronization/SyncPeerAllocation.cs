@@ -27,8 +27,13 @@ namespace Nethermind.Blockchain.Synchronization
         
         public UInt256 TotalDifficulty { get; set; }
         
-        public ISyncPeer Current { get; set; }
+        public ISyncPeer Current { get; private set; }
 
+        public SyncPeerAllocation(ISyncPeer initialPeer)
+        {
+            Current = initialPeer;
+        }
+        
         public void DisconnectCurrent()
         {
             Disconnected?.Invoke(this, EventArgs.Empty);
@@ -36,19 +41,24 @@ namespace Nethermind.Blockchain.Synchronization
         
         public void ReplaceCurrent(ISyncPeer betterPeer)
         {
-            Replaced?.Invoke(this, new SyncPeerEventArgs(betterPeer));
+            SyncPeerEventArgs args = new SyncPeerEventArgs(Current, betterPeer);
+            Current = betterPeer;
+            Replaced?.Invoke(this, args);
+         
         }
         
         public void Cancel()
         {
-            Cancelled?.Invoke(this, EventArgs.Empty);
+            SyncPeerEventArgs args = new SyncPeerEventArgs(Current, null);
+            Current = null;
+            Cancelled?.Invoke(this, args);
         }
 
         public event EventHandler<SyncPeerEventArgs> Replaced;
 
         public event EventHandler Disconnected;
         
-        public event EventHandler Cancelled;
+        public event EventHandler<SyncPeerEventArgs> Cancelled;
 
         public override string ToString()
         {

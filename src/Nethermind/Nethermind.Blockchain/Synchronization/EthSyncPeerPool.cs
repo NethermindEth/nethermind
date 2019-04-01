@@ -41,12 +41,14 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ILogger _logger;
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
-        private readonly BlockingCollection<PeerInfo> _peerRefreshQueue = new BlockingCollection<PeerInfo>();
-        private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
-
-        private Task refreshLoopTask;
 
         private ConcurrentDictionary<SyncPeerAllocation, object> _allocations = new ConcurrentDictionary<SyncPeerAllocation, object>();
+        private const int AllocationsUpgradeInterval = 1000;
+        private System.Timers.Timer _upgradeTimer;
+
+        private readonly BlockingCollection<PeerInfo> _peerRefreshQueue = new BlockingCollection<PeerInfo>();
+        private Task _refreshLoopTask;
+        private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
 
         public EthSyncPeerPool(IBlockTree blockTree, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ILogManager logManager)
@@ -59,9 +61,9 @@ namespace Nethermind.Blockchain.Synchronization
 
         private async Task RunRefreshPeerLoop()
         {
-            try
+            foreach (PeerInfo peerInfo in _peerRefreshQueue.GetConsumingEnumerable(_refreshLoopCancellation.Token))
             {
-                foreach (PeerInfo peerInfo in _peerRefreshQueue.GetConsumingEnumerable(_refreshLoopCancellation.Token))
+                try
                 {
                     if (_logger.IsTrace) _logger.Trace($"Running refresh peer info for {peerInfo}.");
                     var initCancelSource = _refreshCancelTokens[peerInfo.SyncPeer.Node.Id] = new CancellationTokenSource();
@@ -85,7 +87,7 @@ namespace Nethermind.Blockchain.Synchronization
                         {
                             UpgradeAllocations();
                             // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
-                            if (peerInfo.TotalDifficulty == _blockTree.BestSuggested.TotalDifficulty && peerInfo.HeadHash != _blockTree.BestSuggested.Hash)
+                            if (peerInfo.TotalDifficulty == _blockTree.BestSuggested?.TotalDifficulty && peerInfo.HeadHash != _blockTree.BestSuggested?.Hash)
                             {
                                 Block block = _blockTree.FindBlock(_blockTree.BestSuggested.Hash, false);
                                 peerInfo.SyncPeer.SendNewBlock(block);
@@ -97,24 +99,24 @@ namespace Nethermind.Blockchain.Synchronization
                         linkedSource.Dispose();
                     });
                 }
-            }
-            catch (Exception e) when (!(e is OperationCanceledException))
-            {
-                if (_logger.IsError) _logger.Error($"Init peer loop encountered an exception {e}");
+                catch (Exception e)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Failed to refresh {peerInfo} {e}");
+                }
             }
 
-            if (_logger.IsError) _logger.Error($"Exiting the peer loop");
+            if (_logger.IsInfo) _logger.Info($"Exiting sync peer refresh loop");
         }
 
         private bool _isStarted;
 
         public void Start()
         {
-            refreshLoopTask = Task.Factory.StartNew(
+            _refreshLoopTask = Task.Factory.StartNew(
                 RunRefreshPeerLoop,
                 _refreshLoopCancellation.Token,
                 TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).ContinueWith(t =>
+                TaskScheduler.Default).Unwrap().ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -126,7 +128,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
                 else if (t.IsCompleted)
                 {
-                    if (_logger.IsDebug) _logger.Debug("Init peer loop complete.");
+                    if (_logger.IsError) _logger.Error("Peer loop completed unexpectedly.");
                 }
             });
 
@@ -134,12 +136,10 @@ namespace Nethermind.Blockchain.Synchronization
             StartUpgradeTimer();
         }
 
-        private System.Timers.Timer _upgradeTimer;
-
         private void StartUpgradeTimer()
         {
             if (_logger.IsDebug) _logger.Debug("Starting eth sync peer upgrade timer");
-            _upgradeTimer = new System.Timers.Timer(_syncConfig.SyncTimerInterval);
+            _upgradeTimer = new System.Timers.Timer(AllocationsUpgradeInterval);
             _upgradeTimer.Elapsed += (s, e) =>
             {
                 try
@@ -164,7 +164,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             _isStarted = false;
             _refreshLoopCancellation.Cancel();
-            await (refreshLoopTask ?? Task.CompletedTask);
+            await (_refreshLoopTask ?? Task.CompletedTask);
         }
 
         private static int InitTimeout = 10000;
@@ -215,6 +215,8 @@ namespace Nethermind.Blockchain.Synchronization
                         peerInfo.IsInitialized = true;
                     }
                 }, token);
+
+            var a = 2;
         }
 
         public IEnumerable<PeerInfo> AllPeers
@@ -323,25 +325,17 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void ReplaceIfWorthReplacing(SyncPeerAllocation allocation, PeerInfo peerInfo, ComparedPeerType comparedPeerType)
         {
-            if (peerInfo.SyncPeer.Node.Id == allocation.Current.Node.Id)
+            if (peerInfo.SyncPeer.Node.Id == allocation.Current?.Node.Id)
             {
                 if (_logger.IsTrace) _logger.Trace($"{allocation} is already syncing with best peer {peerInfo}");
                 return;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Testing {peerInfo} for {allocation}");
-            UInt256 improvementOverAlreadySynced = peerInfo.TotalDifficulty > allocation.TotalDifficulty
-                ? peerInfo.TotalDifficulty - allocation.TotalDifficulty
-                : UInt256.Zero;
-
-            if (improvementOverAlreadySynced == UInt256.Zero)
-            {
-                return;
-            }
-
             var currentLatency = _stats.GetOrAdd(allocation.Current?.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000;
             var newLatency = _stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100001;
-            if (currentLatency - newLatency >= _syncConfig.MinLatencyDiffForSyncSwitch)
+
+            if (newLatency / (decimal) Math.Max(1L, currentLatency) < 1m - _syncConfig.MinDiffPercentageForLatencySwitch / 100m
+                && newLatency  < currentLatency - _syncConfig.MinDiffForLatencySwitch)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync allocation - replacing {allocation.Current?.Node} with {peerInfo} - latency {currentLatency} vs {newLatency}");
                 allocation.ReplaceCurrent(peerInfo.SyncPeer);
@@ -373,14 +367,14 @@ namespace Nethermind.Blockchain.Synchronization
             return _peers.TryGetValue(nodeId, out peerInfo);
         }
 
-        public SyncPeerAllocation Allocate(bool exclusive = false)
+        public SyncPeerAllocation BorrowPeer(UInt256 difficultyThreshold)
         {
-            SyncPeerAllocation allocation = new SyncPeerAllocation();
+            SyncPeerAllocation allocation = new SyncPeerAllocation(SelectBestPeerForSync(difficultyThreshold)?.SyncPeer);
             _allocations.TryAdd(allocation, null);
             return allocation;
         }
 
-        public void Free(SyncPeerAllocation syncPeerAllocation)
+        public void ReturnPeer(SyncPeerAllocation syncPeerAllocation)
         {
             _allocations.TryRemove(syncPeerAllocation, out _);
         }

@@ -25,6 +25,8 @@ namespace Nethermind.Blockchain
         int SyncTimerInterval { get; }
         int SyncPeersMaxCount { get; }
         long MinAvailableBlockDiffForSyncSwitch { get; }
-        long MinLatencyDiffForSyncSwitch { get; }
+        long MinDiffPercentageForLatencySwitch { get; }
+        
+        long MinDiffForLatencySwitch { get; }
     }
 }

@@ -20,11 +20,14 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class SyncPeerEventArgs
     {
-        public SyncPeerEventArgs(ISyncPeer syncPeer)
+        public SyncPeerEventArgs(ISyncPeer previous, ISyncPeer current)
         {
-            SyncPeer = syncPeer;
+            Previous = previous;
+            Current = current;
         }
 
-        public ISyncPeer SyncPeer { get; set; }
+        public ISyncPeer Previous { get; set; }
+        
+        public ISyncPeer Current { get; set; }
     }
 }
