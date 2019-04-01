@@ -16,25 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Blockchain.Synchronization;
+using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
-using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Blockchain.Synchronization
 {
-    public interface ITransactionPool
+    public interface IBlockDownloader
     {
-        Transaction[] GetPendingTransactions();
-        void AddFilter<T>(T filter) where T : ITransactionFilter;
-        void AddPeer(ISyncPeer peer);
-        void RemovePeer(PublicKey nodeId);
-        AddTransactionResult AddTransaction(Transaction transaction, UInt256 blockNumber);
-        void RemoveTransaction(Keccak hash);
-        bool TryGetSender(Keccak hash, out Address sender);
-        event EventHandler<TransactionEventArgs> NewPending;
-        event EventHandler<TransactionEventArgs> RemovedPending;
+        Task<Block[]> DownloadBlocks();
     }
 }

@@ -25,14 +25,14 @@ namespace Nethermind.Blockchain.Synchronization
     {
         public UInt256 TotalDifficulty { get; set; }
         
-        public ISynchronizationPeer Current { get; set; }
+        public ISyncPeer Current { get; set; }
 
         public void DisconnectCurrent()
         {
             Disconnected?.Invoke(this, EventArgs.Empty);
         }
         
-        public void ReplaceCurrent(ISynchronizationPeer betterPeer)
+        public void ReplaceCurrent(ISyncPeer betterPeer)
         {
             Replaced?.Invoke(this, new SyncPeerEventArgs(betterPeer));
         }

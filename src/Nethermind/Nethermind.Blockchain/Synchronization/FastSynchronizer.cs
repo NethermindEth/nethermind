@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         [Todo(Improve.MissingFunctionality, "Eth63 / fast sync can download receipts using this method. Fast sync is not implemented although its methods and serializers are already written.")]
-        private async Task<bool> DownloadReceipts(Block[] blocks, ISynchronizationPeer peer)
+        private async Task<bool> DownloadReceipts(Block[] blocks, ISyncPeer peer)
         {
             var blocksWithTransactions = blocks.Where(b => b.Transactions.Length != 0).ToArray();
             if (blocksWithTransactions.Length != 0)

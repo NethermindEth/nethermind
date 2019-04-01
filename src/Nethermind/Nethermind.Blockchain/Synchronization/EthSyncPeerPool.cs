@@ -33,7 +33,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class EthSyncPeerSelector : IEthSyncPeerSelector
+    public class EthSyncPeerPool : IEthSyncPeerPool
     {
         private readonly INodeStatsManager _stats;
         private readonly ISyncConfig _syncConfig;
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Synchronization
         private ConcurrentBag<SyncPeerAllocation> _allocations = new ConcurrentBag<SyncPeerAllocation>();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _initCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
         
-        public EthSyncPeerSelector(INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ILogManager logManager)
+        public EthSyncPeerPool(INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ILogManager logManager)
         {
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -142,7 +142,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {peerInfo.SyncPeer.Node:s}");
 
-            ISynchronizationPeer syncPeer = peerInfo.SyncPeer;
+            ISyncPeer syncPeer = peerInfo.SyncPeer;
             Task<BlockHeader> getHeadHeaderTask = peerInfo.SyncPeer.GetHeadBlockHeader(peerInfo.HeadHash, token);
             Task delayTask = Task.Delay(InitTimeout, token);
             Task firstToComplete = await Task.WhenAny(getHeadHeaderTask, delayTask);
@@ -208,7 +208,7 @@ namespace Nethermind.Blockchain.Synchronization
             _peerRefreshQueue.Add(peerInfo);
         }
 
-        public void AddPeer(ISynchronizationPeer syncPeer)
+        public void AddPeer(ISyncPeer syncPeer)
         {
             if (_logger.IsDebug) _logger.Debug($"|NetworkTrace| Adding synchronization peer {syncPeer.Node:f}");
 
@@ -226,7 +226,7 @@ namespace Nethermind.Blockchain.Synchronization
             _peerRefreshQueue.Add(peerInfo);
         }
 
-        public void RemovePeer(ISynchronizationPeer syncPeer)
+        public void RemovePeer(ISyncPeer syncPeer)
         {
             if (_logger.IsDebug) _logger.Debug($"Removing synchronization peer {syncPeer.Node:c}");
             if (!_isInitialized)

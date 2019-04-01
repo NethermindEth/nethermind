@@ -36,7 +36,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler, ISynchronizationPeer
+    public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler, ISyncPeer
     {
         private System.Timers.Timer _txFloodCheckTimer;
         protected IFullArchiveSynchronizer SyncManager { get; }
@@ -501,7 +501,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Length} block hashes");
         }
 
-        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
+        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
@@ -513,7 +513,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return headers;
         }
 
-        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
+        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
@@ -525,7 +525,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return headers;
         }
 
-        async Task<Block[]> ISynchronizationPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
+        async Task<Block[]> ISyncPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
             var bodiesMsg = new GetBlockBodiesMessage(blockHashes.ToArray());
 
@@ -533,7 +533,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return blocks;
         }
 
-        async Task<BlockHeader> ISynchronizationPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
+        async Task<BlockHeader> ISyncPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.StartingBlockHash = hash ?? _remoteHeadBlockHash;

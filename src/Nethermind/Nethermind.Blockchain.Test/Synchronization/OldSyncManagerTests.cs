@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Retrieves_missing_blocks_in_batches()
         {
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(FullArchiveSynchronizer.MaxBatchSize * 2).TestObject;
-            ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
+            ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _manager.SyncEvent += (sender, args) =>
@@ -93,7 +93,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Syncs_with_empty_peer()
         {
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
-            ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
+            ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
             
             _manager.Start();
             _manager.AddPeer(peer);
@@ -106,7 +106,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(FullArchiveSynchronizer.MaxBatchSize * 2).TestObject;
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
-            ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
+            ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_resync_if_missed_a_block()
         {
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(FullArchiveSynchronizer.MaxBatchSize).TestObject;
-            ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
+            ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             SemaphoreSlim semaphore = new SemaphoreSlim(0);
             _manager.SyncEvent += (sender, args) =>
@@ -145,7 +145,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_add_new_block()
         {
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(FullArchiveSynchronizer.MaxBatchSize).TestObject;
-            ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
+            ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _manager.SyncEvent += (sender, args) =>
@@ -168,7 +168,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_sync_on_split_of_length_1()
         {
             BlockTree miner1Tree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
-            ISynchronizationPeer miner1 = new SynchronizationPeerMock(miner1Tree);
+            ISyncPeer miner1 = new SyncPeerMock(miner1Tree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _manager.SyncEvent += (sender, args) =>
@@ -207,7 +207,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void  Can_sync_on_split_of_length_6()
         {
             BlockTree miner1Tree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
-            ISynchronizationPeer miner1 = new SynchronizationPeerMock(miner1Tree);
+            ISyncPeer miner1 = new SyncPeerMock(miner1Tree);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _manager.SyncEvent += (sender, args) =>
@@ -240,7 +240,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public async Task Does_not_do_full_sync_when_not_needed()
         {
             BlockTree minerTree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
-            ISynchronizationPeer miner1 = new SynchronizationPeerMock(minerTree);
+            ISyncPeer miner1 = new SyncPeerMock(minerTree);
 
             AutoResetEvent resetEvent = new AutoResetEvent(false);
             _manager.SyncEvent += (sender, args) =>
@@ -258,7 +258,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             minerTree.SuggestBlock(newBlock);
             minerTree.UpdateMainChain(newBlock);
 
-            ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
+            ISyncPeer miner2 = Substitute.For<ISyncPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
             miner2.Node.Id.Returns(TestItem.PublicKeyB);
 
@@ -275,7 +275,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public async Task Does_not_do_full_sync_when_not_needed_with_split()
         {
             BlockTree minerTree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
-            ISynchronizationPeer miner1 = new SynchronizationPeerMock(minerTree);
+            ISyncPeer miner1 = new SyncPeerMock(minerTree);
 
             AutoResetEvent resetEvent = new AutoResetEvent(false);
             _manager.SyncEvent += (sender, args) =>
@@ -293,7 +293,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             minerTree.SuggestBlock(newBlock);
             minerTree.UpdateMainChain(newBlock);
 
-            ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
+            ISyncPeer miner2 = Substitute.For<ISyncPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
             miner2.Node.Id.Returns(TestItem.PublicKeyB);
 

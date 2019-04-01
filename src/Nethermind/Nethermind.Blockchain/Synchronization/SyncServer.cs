@@ -32,10 +32,10 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class SynchronizationServer : ISynchronizationServer
+    public class SyncServer : ISyncServer
     {
         private readonly ISynchronizer _synchronizer;
-        private readonly IEthSyncPeerSelector _selector;
+        private readonly IEthSyncPeerPool _pool;
         private readonly ISealValidator _sealValidator;
         private readonly ISnapshotableDb _stateDb;
         private readonly IBlockTree _blockTree;
@@ -50,13 +50,13 @@ namespace Nethermind.Blockchain.Synchronization
 
         public int GetPeerCount()
         {
-            return _selector.PeerCount;
+            return _pool.PeerCount;
         }
         
-        public SynchronizationServer(ISynchronizer synchronizer, IEthSyncPeerSelector selector, ISealValidator sealValidator, ISnapshotableDb stateDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ILogManager logManager)
+        public SyncServer(ISynchronizer synchronizer, IEthSyncPeerPool pool, ISealValidator sealValidator, ISnapshotableDb stateDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ILogManager logManager)
         {
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
-            _selector = selector ?? throw new ArgumentNullException(nameof(selector));
+            _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             int counter = 0;
-            foreach (PeerInfo peerInfo in _selector.AllPeers)
+            foreach (PeerInfo peerInfo in _pool.AllPeers)
             {
                 if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
                 {
@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain.Synchronization
                 throw new InvalidOperationException("Cannot add a block with unknown total difficulty");
             }
 
-            _selector.TryFind(nodeWhoSentTheBlock.Id, out PeerInfo peerInfo);
+            _pool.TryFind(nodeWhoSentTheBlock.Id, out PeerInfo peerInfo);
             if (peerInfo == null)
             {
                 string errorMessage = $"Received a new block from an unknown peer {nodeWhoSentTheBlock:c} {nodeWhoSentTheBlock.Id} {_peers.Count}";
@@ -174,7 +174,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void HintBlock(Keccak hash, UInt256 number, Node node)
         {
-            if (!_selector.TryFind(node.Id, out PeerInfo peerInfo))
+            if (!_pool.TryFind(node.Id, out PeerInfo peerInfo))
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a block hint from an unknown {node:c}, ignoring");
                 return;
@@ -202,7 +202,7 @@ namespace Nethermind.Blockchain.Synchronization
                     /* do not add as this is a hint only */
                 }
 
-                _selector.Refresh(peerInfo);
+                _pool.Refresh(peerInfo);
             }
         }
         

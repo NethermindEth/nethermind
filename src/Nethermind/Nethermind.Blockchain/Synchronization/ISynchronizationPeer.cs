@@ -26,7 +26,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface ISynchronizationPeer
+    public interface ISyncPeer
     {
         Guid SessionId { get;}
         bool IsFastSyncSupported { get; }

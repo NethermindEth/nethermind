@@ -29,17 +29,17 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Test.Synchronization
 {
-    public class SynchronizationPeerMock : ISynchronizationPeer
+    public class SyncPeerMock : ISyncPeer
     {
         private readonly IBlockTree _remoteTree;
         private readonly PublicKey _localPublicKey;
-        private readonly IFullArchiveSynchronizer _remoteManager;
+        private readonly ISyncServer _remoteSyncServer;
 
-        public SynchronizationPeerMock(IBlockTree remoteTree, PublicKey localPublicKey = null, string localClientId = "", IFullArchiveSynchronizer remoteManager = null, PublicKey remotePublicKey = null, string remoteClientId = "")
+        public SyncPeerMock(IBlockTree remoteTree, PublicKey localPublicKey = null, string localClientId = "", ISyncServer remoteSyncServer = null, PublicKey remotePublicKey = null, string remoteClientId = "")
         {
             _remoteTree = remoteTree;
             _localPublicKey = localPublicKey;
-            _remoteManager = remoteManager;
+            _remoteSyncServer = remoteSyncServer;
             Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, "127.0.0.1", 1234);
             LocalNode = new Node(localPublicKey ?? TestItem.PublicKeyB, "127.0.0.1", 1235);
             Node.ClientId = remoteClientId;
@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         
         public void SendNewBlock(Block block)
         {
-            _sendQueue.Add(() => _remoteManager?.AddNewBlock(block, LocalNode));
+            _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, LocalNode));
         }
 
         public void SendNewTransaction(Transaction transaction)
@@ -127,12 +127,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         public Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
         {
-            return Task.FromResult(_remoteManager.GetReceipts(blockHash));
+            return Task.FromResult(_remoteSyncServer.GetReceipts(blockHash));
         }
 
         public Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
         {
-            return Task.FromResult(_remoteManager.GetNodeData(hashes));
+            return Task.FromResult(_remoteSyncServer.GetNodeData(hashes));
         }
     }
 }

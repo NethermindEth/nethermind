@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     }
                     
                     (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) remotePeer = _peers[remoteIndex];
-                    localPeer.SyncManager.AddPeer(new SynchronizationPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex], $"PEER{localIndex}", remotePeer.SyncManager, TestItem.PublicKeys[remoteIndex], $"PEER{remoteIndex}"));
+                    localPeer.SyncManager.AddPeer(new SyncPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex], $"PEER{localIndex}", remotePeer.SyncManager, TestItem.PublicKeys[remoteIndex], $"PEER{remoteIndex}"));
                 }
             }
         }

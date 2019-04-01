@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain.Test
             _transactionPool = CreatePool(_noTransactionStorage);
             var peers = GetPeers();
 
-            foreach ((ISynchronizationPeer peer, _) in peers)
+            foreach ((ISyncPeer peer, _) in peers)
             {
                 _transactionPool.AddPeer(peer);
             }
@@ -79,12 +79,12 @@ namespace Nethermind.Blockchain.Test
             _transactionPool = CreatePool(_noTransactionStorage);
             var peers = GetPeers();
 
-            foreach ((ISynchronizationPeer peer, _) in peers)
+            foreach ((ISyncPeer peer, _) in peers)
             {
                 _transactionPool.AddPeer(peer);
             }
 
-            foreach ((ISynchronizationPeer peer, _) in peers)
+            foreach ((ISyncPeer peer, _) in peers)
             {
                 _transactionPool.RemovePeer(peer.Node.Id);
             }
@@ -214,9 +214,9 @@ namespace Nethermind.Blockchain.Test
             return new Transactions(pendingTransactions, filteredTransactions);
         }
 
-        private IDictionary<ISynchronizationPeer, PrivateKey> GetPeers(int limit = 100)
+        private IDictionary<ISyncPeer, PrivateKey> GetPeers(int limit = 100)
         {
-            var peers = new Dictionary<ISynchronizationPeer, PrivateKey>();
+            var peers = new Dictionary<ISyncPeer, PrivateKey>();
             for (var i = 0; i < limit; i++)
             {
                 var privateKey = Build.A.PrivateKey.TestObject;
@@ -230,8 +230,8 @@ namespace Nethermind.Blockchain.Test
             => new TransactionPool(transactionStorage, new PendingTransactionThresholdValidator(),
                 new Timestamp(), _ethereumEcdsa, _specProvider, _logManager);
 
-        private ISynchronizationPeer GetPeer(PublicKey publicKey)
-            => new SynchronizationPeerMock(_remoteBlockTree, publicKey);
+        private ISyncPeer GetPeer(PublicKey publicKey)
+            => new SyncPeerMock(_remoteBlockTree, publicKey);
 
         private Transaction[] AddTransactionsToPool(int transactionsPerPeer = 10)
         {
@@ -256,7 +256,7 @@ namespace Nethermind.Blockchain.Test
             IEnumerable<Transaction> transactions)
             => transactions.Select(t => storage.Get(t.Hash)).Where(t => !(t is null)).ToArray();
 
-        private Transaction[] GetTransactions(IDictionary<ISynchronizationPeer, PrivateKey> peers,
+        private Transaction[] GetTransactions(IDictionary<ISyncPeer, PrivateKey> peers,
             int transactionsPerPeer = 10)
         {
             var transactions = new List<Transaction>();

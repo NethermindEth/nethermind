@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (_logger.IsDebug) _logger.Debug($"Starting sync process with {peerInfo} - theirs {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} | ours {_blockTree.BestSuggested.Number} {_blockTree.BestSuggested.TotalDifficulty}");
             bool wasCanceled = false;
 
-            ISynchronizationPeer peer = peerInfo.SyncPeer;
+            ISyncPeer peer = peerInfo.SyncPeer;
 
             const int maxLookup = MaxReorganizationLength;
             int ancestorLookupLevel = 0;

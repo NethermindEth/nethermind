@@ -210,7 +210,7 @@ namespace Nethermind.Network.Test
             public Context VerifySyncPeersRemoved()
             {
                 _transactionPool.Received().RemovePeer(Arg.Any<PublicKey>());
-                _fullArchiveSynchronizer.Received().RemovePeer(Arg.Any<ISynchronizationPeer>());
+                _fullArchiveSynchronizer.Received().RemovePeer(Arg.Any<ISyncPeer>());
                 return this;
             }
 

@@ -23,7 +23,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface IEthSyncPeerSelector
+    public interface IEthSyncPeerPool
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
         
@@ -39,9 +39,9 @@ namespace Nethermind.Blockchain.Synchronization
         
         void Refresh(PeerInfo peerInfo);
         
-        void RemovePeer(ISynchronizationPeer synchronizationPeer);
+        void RemovePeer(ISyncPeer syncPeer);
         
-        void AddPeer(ISynchronizationPeer synchronizationPeer);
+        void AddPeer(ISyncPeer syncPeer);
         
         void Start();
         

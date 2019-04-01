@@ -36,7 +36,7 @@ namespace Nethermind.Network
 {
     public class ProtocolsManager : IProtocolsManager
     {
-        private readonly IFullArchiveSynchronizer _syncManager;
+        private readonly IEthSyncPeerPool _syncPool;
         private readonly ITransactionPool _transactionPool;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IMessageSerializationService _serializer;
@@ -49,7 +49,7 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
 
         public ProtocolsManager(
-            IFullArchiveSynchronizer fullArchiveSynchronizer,
+            IEthSyncPeerPool ethSyncPeerPool,
             ITransactionPool transactionPool,
             IDiscoveryApp discoveryApp,
             IMessageSerializationService serializationService,
@@ -60,7 +60,7 @@ namespace Nethermind.Network
             IPerfService perfService,
             ILogManager logManager)
         {
-            _syncManager = fullArchiveSynchronizer ?? throw new ArgumentNullException(nameof(fullArchiveSynchronizer));
+            _syncPool = ethSyncPeerPool ?? throw new ArgumentNullException(nameof(ethSyncPeerPool));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _serializer = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
@@ -72,7 +72,7 @@ namespace Nethermind.Network
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager.GetClassLogger();
 
-            _syncManager.SyncEvent += OnSyncEvent;
+            _syncPool.SyncEvent += OnSyncEvent;
             localPeer.SessionCreated += SessionCreated;
         }
 
@@ -141,8 +141,8 @@ namespace Nethermind.Network
             
             if (_syncPeers.ContainsKey(session.SessionId))
             {
-                ISynchronizationPeer syncPeer = _syncPeers[session.SessionId];
-                _syncManager.RemovePeer(syncPeer);
+                ISyncPeer syncPeer = _syncPeers[session.SessionId];
+                _syncPool.RemovePeer(syncPeer);
                 _transactionPool.RemovePeer(syncPeer.Node.Id);
                 if(_logger.IsDebug) _logger.Debug($"{session.Node.ClientId} sync peer {session} disconnected {e.DisconnectType} {e.DisconnectReason}");
             }
@@ -187,8 +187,8 @@ namespace Nethermind.Network
                     }
 
                     Eth62ProtocolHandler ethHandler = version == 62
-                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncManager, _logManager, _perfService, _transactionPool)
-                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncManager, _logManager, _perfService, _transactionPool);
+                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncPool, _logManager, _perfService, _transactionPool)
+                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncPool, _logManager, _perfService, _transactionPool);
                     InitEthProtocol(session, ethHandler);
                     protocolHandler = ethHandler;
                     break;
@@ -256,7 +256,7 @@ namespace Nethermind.Network
                     
                     if (_syncPeers.TryAdd(session.SessionId, handler))
                     {
-                        _syncManager.AddPeer(handler);
+                        _syncPool.AddPeer(handler);
                         _transactionPool.AddPeer(handler);
                         if(_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
                     }

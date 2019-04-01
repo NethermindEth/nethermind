@@ -23,14 +23,14 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class PeerInfo
     {
-        public PeerInfo(ISynchronizationPeer syncPeer)
+        public PeerInfo(ISyncPeer syncPeer)
         {
             SyncPeer = syncPeer;
             TotalDifficulty = syncPeer.TotalDifficultyOnSessionStart;
         }
 
         public bool IsInitialized { get; set; }
-        public ISynchronizationPeer SyncPeer { get; }
+        public ISyncPeer SyncPeer { get; }
         public UInt256 TotalDifficulty { get; set; }
         public UInt256 HeadNumber { get; set; }
         public Keccak HeadHash { get; set; }

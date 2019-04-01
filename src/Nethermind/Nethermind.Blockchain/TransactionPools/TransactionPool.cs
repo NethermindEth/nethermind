@@ -51,8 +51,8 @@ namespace Nethermind.Blockchain.TransactionPools
         private readonly IPendingTransactionThresholdValidator _pendingTransactionThresholdValidator;
         private readonly ITimestamp _timestamp;
 
-        private readonly ConcurrentDictionary<PublicKey, ISynchronizationPeer> _peers =
-            new ConcurrentDictionary<PublicKey, ISynchronizationPeer>();
+        private readonly ConcurrentDictionary<PublicKey, ISyncPeer> _peers =
+            new ConcurrentDictionary<PublicKey, ISyncPeer>();
 
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ISpecProvider _specProvider;
@@ -108,7 +108,7 @@ namespace Nethermind.Blockchain.TransactionPools
         public void AddFilter<T>(T filter) where T : ITransactionFilter
             => _filters.TryAdd(filter.GetType(), filter);
 
-        public void AddPeer(ISynchronizationPeer peer)
+        public void AddPeer(ISyncPeer peer)
         {
             if (!_peers.TryAdd(peer.Node.Id, peer))
             {
@@ -244,7 +244,7 @@ namespace Nethermind.Blockchain.TransactionPools
         public event EventHandler<TransactionEventArgs> NewPending;
         public event EventHandler<TransactionEventArgs> RemovedPending;
 
-        private void Notify(ISynchronizationPeer peer, Transaction transaction)
+        private void Notify(ISyncPeer peer, Transaction transaction)
         {
             var timestamp = new UInt256(_timestamp.EpochSeconds);
             if (_pendingTransactionThresholdValidator.IsObsolete(timestamp, transaction.Timestamp))
@@ -262,7 +262,7 @@ namespace Nethermind.Blockchain.TransactionPools
 
         private void NotifyAllPeers(Transaction transaction)
         {
-            foreach ((_, ISynchronizationPeer peer) in _peers)
+            foreach ((_, ISyncPeer peer) in _peers)
             {
                 Notify(peer, transaction);
             }
@@ -270,7 +270,7 @@ namespace Nethermind.Blockchain.TransactionPools
         
         private void NotifySelectedPeers(Transaction transaction)
         {
-            foreach ((_, ISynchronizationPeer peer) in _peers)
+            foreach ((_, ISyncPeer peer) in _peers)
             {
                 if (transaction.DeliveredBy == null)
                 {

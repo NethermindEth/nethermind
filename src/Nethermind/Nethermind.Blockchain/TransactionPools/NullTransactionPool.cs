@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.TransactionPools
         {
         }
 
-        public void AddPeer(ISynchronizationPeer peer)
+        public void AddPeer(ISyncPeer peer)
         {
         }
 

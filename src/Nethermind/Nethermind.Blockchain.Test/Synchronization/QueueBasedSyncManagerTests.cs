@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
     {
         private static Block _genesisBlock = Build.A.Block.Genesis.TestObject;
 
-        private class SyncPeerMock : ISynchronizationPeer
+        private class SyncPeerMock : ISyncPeer
         {
             private readonly bool _causeTimeoutOnInit;
             private readonly bool _causeTimeoutOnBlocks;
@@ -211,7 +211,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         public class SyncingContext
         {
-            private Dictionary<string, ISynchronizationPeer> _peers = new Dictionary<string, ISynchronizationPeer>();
+            private Dictionary<string, ISyncPeer> _peers = new Dictionary<string, ISyncPeer>();
 
             private BlockTree BlockTree { get; set; }
 
@@ -319,28 +319,28 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return this;
             }
 
-            public SyncingContext AfterPeerIsAdded(ISynchronizationPeer syncPeer)
+            public SyncingContext AfterPeerIsAdded(ISyncPeer syncPeer)
             {
                 _peers.TryAdd(syncPeer.ClientId, syncPeer);
                 SyncManager.AddPeer(syncPeer);
                 return this;
             }
 
-            public SyncingContext AfterPeerIsRemoved(ISynchronizationPeer syncPeer)
+            public SyncingContext AfterPeerIsRemoved(ISyncPeer syncPeer)
             {
                 _peers.Remove(syncPeer.ClientId);
                 SyncManager.RemovePeer(syncPeer);
                 return this;
             }
 
-            public SyncingContext AfterNewBlockMessage(Block block, ISynchronizationPeer peer)
+            public SyncingContext AfterNewBlockMessage(Block block, ISyncPeer peer)
             {
                 block.TotalDifficulty = (UInt256)(block.Difficulty * ((BigInteger)block.Number + 1));
                 SyncManager.AddNewBlock(block, peer.Node);
                 return this;
             }
             
-            public SyncingContext AfterHintBlockMessage(Block block, ISynchronizationPeer peer)
+            public SyncingContext AfterHintBlockMessage(Block block, ISyncPeer peer)
             {
                 SyncManager.HintBlock(block.Hash, block.Number, peer.Node);
                 return this;
