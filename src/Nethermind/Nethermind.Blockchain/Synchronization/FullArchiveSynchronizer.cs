@@ -56,13 +56,9 @@ namespace Nethermind.Blockchain.Synchronization
 
         private PeerInfo _currentSyncingPeerInfo;
         
-
-        
         private bool _requestedSyncCancelDueToBetterPeer;
         
         private int _lastSyncPeersCount;
-
-        
 
         public FullArchiveSynchronizer(
             IBlockTree blockTree,

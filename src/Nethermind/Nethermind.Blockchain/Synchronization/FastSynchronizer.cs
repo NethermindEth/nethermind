@@ -27,17 +27,15 @@ using Nethermind.Core.Logging;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface IFastSynchronizer
-    {
-    }
-    
     public class FastSynchronizer : IFastSynchronizer
     {
         private readonly ILogger _logger;
+        private readonly INodeDataDownloader _nodeDataDownloader;
         private readonly IReceiptStorage _receiptStorage;
 
-        public FastSynchronizer(IReceiptStorage receiptStorage, ILogManager logManager)
+        public FastSynchronizer(INodeDataDownloader nodeDataDownloader, IReceiptStorage receiptStorage, ILogManager logManager)
         {
+            _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }

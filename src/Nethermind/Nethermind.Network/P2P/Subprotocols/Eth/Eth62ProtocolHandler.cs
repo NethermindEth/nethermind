@@ -39,7 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler, ISyncPeer
     {
         private System.Timers.Timer _txFloodCheckTimer;
-        protected IFullArchiveSynchronizer SyncManager { get; }
+        protected ISyncServer SyncServer { get; }
 
         private readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests
             = new BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>>();
@@ -57,13 +57,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
-            IFullArchiveSynchronizer syncManager,
+            ISyncServer syncServer,
             ILogManager logManager,
             IPerfService perfService,
             ITransactionPool transactionPool)
             : base(session, statsManager, serializer, logManager)
         {
-            SyncManager = syncManager;
+            SyncServer = syncServer;
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _transactionPool = transactionPool;
             _timestamp = new Timestamp();
@@ -113,18 +113,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public void Init()
         {
             if(Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
-            if (SyncManager.Head == null)
+            if (SyncServer.Head == null)
             {
                 throw new InvalidOperationException($"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
             }
 
-            BlockHeader head = SyncManager.Head;
+            BlockHeader head = SyncServer.Head;
             StatusMessage statusMessage = new StatusMessage();
-            statusMessage.ChainId = (UInt256) SyncManager.ChainId;
+            statusMessage.ChainId = (UInt256) SyncServer.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
             statusMessage.BestHash = head.Hash;
-            statusMessage.GenesisHash = SyncManager.Genesis.Hash;
+            statusMessage.GenesisHash = SyncServer.Genesis.Hash;
 
             Send(statusMessage);
             Metrics.StatusesSent++;
@@ -304,7 +304,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 var transaction = msg.Transactions[i];
                 transaction.DeliveredBy = Node.Id;
                 transaction.Timestamp = _timestamp.EpochSeconds;
-                AddTransactionResult result = _transactionPool.AddTransaction(transaction, SyncManager.Head.Number);
+                AddTransactionResult result = _transactionPool.AddTransaction(transaction, SyncServer.Head.Number);
                 if (result == AddTransactionResult.AlreadyKnown)
                 {
                     _notAcceptedTxsSinceLastCheck++;
@@ -321,7 +321,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             for (int i = 0; i < hashes.Length; i++)
             {
-                blocks[i] = SyncManager.Find(hashes[i]);
+                blocks[i] = SyncServer.Find(hashes[i]);
             }
 
             Send(new BlockBodiesMessage(blocks));
@@ -341,13 +341,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
             if (startingHash == null)
             {
-                startingHash = SyncManager.Find(getBlockHeadersMessage.StartingBlockNumber)?.Hash;
+                startingHash = SyncServer.Find(getBlockHeadersMessage.StartingBlockNumber)?.Hash;
             }
 
             Block[] blocks =
                 startingHash == null
                     ? new Block[0]
-                    : SyncManager.Find(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
+                    : SyncServer.Find(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
 
             BlockHeader[] headers = new BlockHeader[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
@@ -404,14 +404,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             foreach ((Keccak Hash, UInt256 Number) hint in newBlockHashes.BlockHashes)
             {
-                SyncManager.HintBlock(hint.Hash, hint.Number, Node);
+                SyncServer.HintBlock(hint.Hash, hint.Number, Node);
             }
         }
 
         private void Handle(NewBlockMessage newBlockMessage)
         {
             newBlockMessage.Block.TotalDifficulty = (UInt256) newBlockMessage.TotalDifficulty;
-            SyncManager.AddNewBlock(newBlockMessage.Block, Session.Node);
+            SyncServer.AddNewBlock(newBlockMessage.Block, Session.Node);
         }
 
         protected class Request<TMsg, TResult>

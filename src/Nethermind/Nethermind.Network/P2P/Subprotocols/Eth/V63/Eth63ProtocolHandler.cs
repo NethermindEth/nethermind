@@ -43,9 +43,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
-            IFullArchiveSynchronizer syncManager,
+            ISyncServer syncServer,
             ILogManager logManager, IPerfService perfService,
-            ITransactionPool transactionPool) : base(session, serializer, nodeStatsManager, syncManager, logManager, perfService, transactionPool)
+            ITransactionPool transactionPool) : base(session, serializer, nodeStatsManager, syncServer, logManager, perfService, transactionPool)
         {
         }
 
@@ -82,7 +82,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         
         private void Handle(GetReceiptsMessage msg)
         {
-            TransactionReceipt[][] transactionReceipts = SyncManager.GetReceipts(msg.BlockHashes);
+            TransactionReceipt[][] transactionReceipts = SyncServer.GetReceipts(msg.BlockHashes);
             Send(new ReceiptsMessage(transactionReceipts));
         }
 
@@ -97,7 +97,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private void Handle(GetNodeDataMessage msg)
         {
-            byte[][] nodeData = SyncManager.GetNodeData(msg.Keys);
+            byte[][] nodeData = SyncServer.GetNodeData(msg.Keys);
             Send(new NodeDataMessage(nodeData));
         }
 

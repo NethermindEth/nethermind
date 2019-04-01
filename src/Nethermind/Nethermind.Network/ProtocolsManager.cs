@@ -37,6 +37,7 @@ namespace Nethermind.Network
     public class ProtocolsManager : IProtocolsManager
     {
         private readonly IEthSyncPeerPool _syncPool;
+        private readonly ISyncServer _syncServer;
         private readonly ITransactionPool _transactionPool;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IMessageSerializationService _serializer;
@@ -50,6 +51,7 @@ namespace Nethermind.Network
 
         public ProtocolsManager(
             IEthSyncPeerPool ethSyncPeerPool,
+            ISyncServer syncServer,
             ITransactionPool transactionPool,
             IDiscoveryApp discoveryApp,
             IMessageSerializationService serializationService,
@@ -61,6 +63,7 @@ namespace Nethermind.Network
             ILogManager logManager)
         {
             _syncPool = ethSyncPeerPool ?? throw new ArgumentNullException(nameof(ethSyncPeerPool));
+            _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _serializer = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
@@ -187,8 +190,8 @@ namespace Nethermind.Network
                     }
 
                     Eth62ProtocolHandler ethHandler = version == 62
-                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncPool, _logManager, _perfService, _transactionPool)
-                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncPool, _logManager, _perfService, _transactionPool);
+                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _perfService, _transactionPool)
+                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _perfService, _transactionPool);
                     InitEthProtocol(session, ethHandler);
                     protocolHandler = ethHandler;
                     break;
