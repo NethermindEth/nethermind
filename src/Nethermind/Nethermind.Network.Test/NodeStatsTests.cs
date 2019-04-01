@@ -39,11 +39,10 @@ namespace Nethermind.Network.Test
             _config.CaptureNodeLatencyStatsEventHistory = true;
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void LatencyCaptureTest(bool useLight)
+        [Test]
+        public void LatencyCaptureTest()
         {
-            _nodeStats = useLight ?  new NodeStatsLight(_node, _config) : (INodeStats)new NodeStats(_node, _config);
+            _nodeStats = new NodeStatsLight(_node, _config);
             
             _nodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, 30);
             _nodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, 51);
@@ -63,11 +62,10 @@ namespace Nethermind.Network.Test
             Assert.AreEqual(102, av);
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void DisconnectDelayTest(bool useLight)
+        [Test]
+        public void DisconnectDelayTest()
         {
-            _nodeStats = useLight ?  new NodeStatsLight(_node, _config) : (INodeStats)new NodeStats(_node, _config);
+            _nodeStats = new NodeStatsLight(_node, _config);
             
             var isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result, "before disconnect");
@@ -82,11 +80,10 @@ namespace Nethermind.Network.Test
             Assert.IsFalse(isConnDelayed.Result, "125ms after disconnect");
         }
         
-        [TestCase(true)]
-        [TestCase(false)]
-        public void FailedConnectionDelayTest(bool useLight)
+        [Test]
+        public void FailedConnectionDelayTest()
         {
-            _nodeStats = useLight ? new NodeStatsLight(_node, _config) : (INodeStats)new NodeStats(_node, _config);
+            _nodeStats = new NodeStatsLight(_node, _config);
             
             var isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result, "before failure");

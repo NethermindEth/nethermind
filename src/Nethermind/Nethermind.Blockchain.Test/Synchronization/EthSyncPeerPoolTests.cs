@@ -355,7 +355,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             var allocation = _pool.BorrowPeer(UInt256.Zero);
             
-            Assert.AreSame(peer, allocation.Current);
+            Assert.AreSame(peer, allocation.Current?.SyncPeer);
         }
         
         [Test]

@@ -25,23 +25,16 @@ namespace Nethermind.Blockchain.Synchronization
     {
         public string Description { get; set; }
         
-        public UInt256 TotalDifficulty { get; set; }
-        
-        public ISyncPeer Current { get; private set; }
+        public PeerInfo Current { get; private set; }
 
-        public SyncPeerAllocation(ISyncPeer initialPeer)
+        public SyncPeerAllocation(PeerInfo initialPeer)
         {
             Current = initialPeer;
         }
-        
-        public void DisconnectCurrent()
+
+        public void ReplaceCurrent(PeerInfo betterPeer)
         {
-            Disconnected?.Invoke(this, EventArgs.Empty);
-        }
-        
-        public void ReplaceCurrent(ISyncPeer betterPeer)
-        {
-            SyncPeerEventArgs args = new SyncPeerEventArgs(Current, betterPeer);
+            AllocationChangeEventArgs args = new AllocationChangeEventArgs(Current, betterPeer);
             Current = betterPeer;
             Replaced?.Invoke(this, args);
          
@@ -49,20 +42,23 @@ namespace Nethermind.Blockchain.Synchronization
         
         public void Cancel()
         {
-            SyncPeerEventArgs args = new SyncPeerEventArgs(Current, null);
+            AllocationChangeEventArgs args = new AllocationChangeEventArgs(Current, null);
             Current = null;
             Cancelled?.Invoke(this, args);
         }
 
-        public event EventHandler<SyncPeerEventArgs> Replaced;
+        public event EventHandler<AllocationChangeEventArgs> Replaced;
 
-        public event EventHandler Disconnected;
-        
-        public event EventHandler<SyncPeerEventArgs> Cancelled;
+        public event EventHandler<AllocationChangeEventArgs> Cancelled;
 
         public override string ToString()
         {
             return string.Concat("[Allocation|", Description, "]");
+        }
+
+        public void FinishSync()
+        {
+            Current = null;
         }
     }
 }

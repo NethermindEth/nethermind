@@ -18,16 +18,16 @@
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class SyncPeerEventArgs
+    public class AllocationChangeEventArgs
     {
-        public SyncPeerEventArgs(ISyncPeer previous, ISyncPeer current)
+        public AllocationChangeEventArgs(PeerInfo previous, PeerInfo current)
         {
             Previous = previous;
             Current = current;
         }
 
-        public ISyncPeer Previous { get; set; }
+        public PeerInfo Previous { get; set; }
         
-        public ISyncPeer Current { get; set; }
+        public PeerInfo Current { get; set; }
     }
 }

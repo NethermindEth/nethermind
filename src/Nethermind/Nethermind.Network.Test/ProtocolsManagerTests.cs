@@ -63,7 +63,8 @@ namespace Nethermind.Network.Test
             private IPerfService _perfService;
             private IProtocolValidator _protocolValidator;
             private IMessageSerializationService _serializer;
-            private IFullArchiveSynchronizer _fullArchiveSynchronizer;
+            private ISyncServer _syncServer;
+            private IEthSyncPeerPool _syncPeerPool;
             private ITransactionPool _transactionPool;
             private IChannelHandlerContext _channelHandlerContext;
             private IChannel _channel;
@@ -80,9 +81,10 @@ namespace Nethermind.Network.Test
                 _channel.Pipeline.Returns(_pipeline);
                 _pipeline.Get<NettyPacketSplitter>().Returns(new NettyPacketSplitter());
                 _packetSender = Substitute.For<IPacketSender>();
-                _fullArchiveSynchronizer = Substitute.For<IFullArchiveSynchronizer>();
-                _fullArchiveSynchronizer.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-                _fullArchiveSynchronizer.Head.Returns(Build.A.BlockHeader.TestObject);
+                _syncServer = Substitute.For<ISyncServer>();
+                _syncServer = Substitute.For<ISyncServer>();
+                _syncServer.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
+                _syncServer.Head.Returns(Build.A.BlockHeader.TestObject);
                 _transactionPool = Substitute.For<ITransactionPool>();
                 _discoveryApp = Substitute.For<IDiscoveryApp>();
                 _serializer = new MessageSerializationService();
@@ -97,7 +99,8 @@ namespace Nethermind.Network.Test
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _perfService = new PerfService(LimboLogs.Instance);
                 _manager = new ProtocolsManager(
-                    _fullArchiveSynchronizer,
+                    _syncPeerPool,
+                    _syncServer,
                     _transactionPool,
                     _discoveryApp,
                     _serializer,
@@ -210,13 +213,19 @@ namespace Nethermind.Network.Test
             public Context VerifySyncPeersRemoved()
             {
                 _transactionPool.Received().RemovePeer(Arg.Any<PublicKey>());
-                _fullArchiveSynchronizer.Received().RemovePeer(Arg.Any<ISyncPeer>());
+                _syncPeerPool.Received().RemovePeer(Arg.Any<ISyncPeer>());
                 return this;
             }
 
+            public Context RaiseSyncPoolFailed()
+            {
+                _syncPeerPool.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _syncServer, LimboLogs.Instance, _perfService, _transactionPool), SyncStatus.InitFailed));
+                return this;
+            }
+            
             public Context RaiseSyncFailed()
             {
-                _fullArchiveSynchronizer.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _fullArchiveSynchronizer, LimboLogs.Instance, _perfService, _transactionPool), SyncStatus.Failed));
+                _syncServer.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _syncServer, LimboLogs.Instance, _perfService, _transactionPool), SyncStatus.Failed));
                 return this;
             }
 
@@ -422,6 +431,22 @@ namespace Nethermind.Network.Test
                 .ReceiveStatus()
                 .VerifyEthInitialized()
                 .RaiseSyncFailed()
+                .VerifyDisconnected();
+        }
+        
+        [Test]
+        public void Disconnects_on_pool_sync_failed()
+        {
+            When
+                .CreateIncomingSession()
+                .ActivateChannel()
+                .Handshake()
+                .Init()
+                .VerifyInitialized()
+                .ReceiveHello()
+                .ReceiveStatus()
+                .VerifyEthInitialized()
+                .RaiseSyncPoolFailed()
                 .VerifyDisconnected();
         }
 

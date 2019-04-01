@@ -1,206 +1,258 @@
-///*
-// * Copyright (c) 2018 Demerzel Solutions Limited
-// * This file is part of the Nethermind library.
-// *
-// * The Nethermind library is free software: you can redistribute it and/or modify
-// * it under the terms of the GNU Lesser General Public License as published by
-// * the Free Software Foundation, either version 3 of the License, or
-// * (at your option) any later version.
-// *
-// * The Nethermind library is distributed in the hope that it will be useful,
-// * but WITHOUT ANY WARRANTY; without even the implied warranty of
-// * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// * GNU Lesser General Public License for more details.
-// *
-// * You should have received a copy of the GNU Lesser General Public License
-// * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// */
-//
-//using System;
-//using System.Collections.Generic;
-//using System.Threading;
-//using Nethermind.Blockchain.Receipts;
-//using Nethermind.Blockchain.Synchronization;
-//using Nethermind.Blockchain.TransactionPools;
-//using Nethermind.Core;
-//using Nethermind.Core.Crypto;
-//using Nethermind.Core.Logging;
-//using Nethermind.Core.Specs;
-//using Nethermind.Core.Test.Builders;
-//using Nethermind.Evm;
-//using Nethermind.Stats;
-//using Nethermind.Store;
-//using NUnit.Framework;
-//
-//namespace Nethermind.Blockchain.Test.Synchronization
-//{
-//    public class FastSyncTest
-//    {
-//        private List<(IFullArchiveSynchronizer SyncManager, IBlockTree Tree)> _peers;
-//        private (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) _localPeer;
-//        private (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) _remotePeer1;
-//        private (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) _remotePeer2;
-//        private (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) _remotePeer3;
-//        private static Block _genesis = Build.A.Block.Genesis.TestObject;
-//
-//        [SetUp]
-//        public void Setup()
-//        {
-//            _peers = new List<(IFullArchiveSynchronizer, IBlockTree)>();
-//            for (int i = 0; i < 4; i++)
-//            {
-//                _peers.Add(CreateSyncManager($"PEER_{i}."));    
-//            }
-//            
-//            _localPeer = _peers[0];
-//            _remotePeer1 = _peers[1];
-//            _remotePeer2 = _peers[2];
-//            _remotePeer3 = _peers[3];
-//        }
-//
-//        [Test]
-//        public void Setup_is_correct()
-//        {
-//            foreach ((IFullArchiveSynchronizer SyncManager, IBlockTree Tree) peer in _peers)
-//            {
-//                Assert.AreEqual(_genesis.Header, peer.SyncManager.Head);    
-//            }
-//        }
-//
-//        private void ConnectAllPeers()
-//        {
-//            for (int localIndex = 0; localIndex < _peers.Count; localIndex++)
-//            {
-//                (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) localPeer = _peers[localIndex];
-//                for (int remoteIndex = 0; remoteIndex < _peers.Count; remoteIndex++)
-//                {
-//                    if (localIndex == remoteIndex)
-//                    {
-//                        continue;
-//                    }
-//                    
-//                    (IFullArchiveSynchronizer SyncManager, IBlockTree Tree) remotePeer = _peers[remoteIndex];
-//                    localPeer.SyncManager.AddPeer(new SyncPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex], $"PEER{localIndex}", remotePeer.SyncManager, TestItem.PublicKeys[remoteIndex], $"PEER{remoteIndex}"));
-//                }
-//            }
-//        }
-//
-//        [Test]
-//        public void Can_sync_when_connected()
-//        {            
-//            ConnectAllPeers();
-//            int chainLength = 10000;
-//
-//            var headBlock = _genesis;
-//            for (int i = 0; i < chainLength; i++)
-//            {
-//                var block = Build.A.Block.WithParent(headBlock).WithTotalDifficulty((headBlock.TotalDifficulty ?? 0) + 1).TestObject;
-//                _remotePeer1.Tree.SuggestBlock(block);
-//                headBlock = block;
-//            }
-//            
-//            ManualResetEventSlim waitEvent = new ManualResetEventSlim();
-//            _localPeer.Tree.NewHeadBlock += (s, e) =>
-//            {
-//                if (e.Block.Number == chainLength)
-//                {
-//                    waitEvent.Set();
-//                }
-//            };
-//                
-//            waitEvent.Wait(10000);
-//            Assert.AreEqual(headBlock.Header, _localPeer.SyncManager.Head);
-//            Assert.AreEqual(headBlock.Header, _remotePeer1.SyncManager.Head);
-//            Assert.AreEqual(headBlock.Header, _remotePeer2.SyncManager.Head);
-//            Assert.AreEqual(headBlock.Header, _remotePeer3.SyncManager.Head);
-//        }
-//        
-//        [Test]
-//        public void Can_sync_when_initially_disconnected()
-//        {            
-//            int chainLength = 10000;
-//
-//            var headBlock = _genesis;
-//            for (int i = 0; i < chainLength; i++)
-//            {
-//                var block = Build.A.Block.WithParent(headBlock).WithTotalDifficulty((headBlock.TotalDifficulty ?? 0) + 1).TestObject;
-//                _remotePeer1.Tree.SuggestBlock(block);
-//                headBlock = block;
-//            }
-//            
-//            ManualResetEventSlim waitEvent = new ManualResetEventSlim();
-//            _localPeer.Tree.NewHeadBlock += (s, e) =>
-//            {
-//                if (e.Block.Number == chainLength)
-//                {
-//                    waitEvent.Set();
-//                }
-//            };
-//            
-//            Assert.AreEqual(_genesis.Hash, _localPeer.SyncManager.Head.Hash, "local before");
-//            Assert.AreEqual(_genesis.Hash, _remotePeer2.SyncManager.Head.Hash, "peer 2 before");
-//            Assert.AreEqual(_genesis.Hash, _remotePeer3.SyncManager.Head.Hash, "peer 3 before");
-//            
-//            ConnectAllPeers();
-//            waitEvent.Wait(10000);
-//            
-//            Assert.AreEqual(headBlock.Header.Hash, _localPeer.SyncManager.Head.Hash, "local");
-//            Assert.AreEqual(headBlock.Header.Hash, _remotePeer1.SyncManager.Head.Hash, "peer 1");
-//            Assert.AreEqual(headBlock.Header.Hash, _remotePeer2.SyncManager.Head.Hash, "peer 2");
-//            Assert.AreEqual(headBlock.Header.Hash, _remotePeer3.SyncManager.Head.Hash, "peer 3");
-//        }
-//
-//        private static (IFullArchiveSynchronizer, BlockTree) CreateSyncManager(string prefix)
-//        {
-////            var logManager = NoErrorLimboLogs.Instance;
-//            var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, prefix));
-//
-//            var specProvider = GoerliSpecProvider.Instance;
-//
-//            MemDb traceDb = new MemDb();
-//            MemDb blockDb = new MemDb();
-//            MemDb blockInfoDb = new MemDb();
-//            StateDb codeDb = new StateDb();
-//            StateDb stateDb = new StateDb();
-//
-//            var stateProvider = new StateProvider(new StateTree(stateDb), codeDb, logManager);
-//            var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
-//            var receiptStorage = new InMemoryReceiptStorage();
-//
-//            var ecdsa = new EthereumEcdsa(specProvider, logManager);
-//            var tree = new BlockTree(blockDb, blockInfoDb, specProvider, NullTransactionPool.Instance, logManager);
-//            var blockhashProvider = new BlockhashProvider(tree);
-//            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
-//            var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
-//            var blockProcessor = new BlockProcessor(specProvider, TestBlockValidator.AlwaysValid, NoBlockRewards.Instance, txProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, NullTransactionPool.Instance, receiptStorage, logManager);
-//            var step = new TxSignaturesRecoveryStep(ecdsa, NullTransactionPool.Instance);
-//            var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true, true);
-//
-//            var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager, true);
-//            var syncManager = new FullArchiveSynchronizer(
-//                stateDb,
-//                tree,
-//                TestBlockValidator.AlwaysValid,
-//                TestSealValidator.AlwaysValid,
-//                TestTransactionValidator.AlwaysValid,
-//                logManager,
-//                new SyncConfig(),
-//                nodeStatsManager,
-//                new PerfService(NullLogManager.Instance), receiptStorage);
-//
-//            ManualResetEventSlim waitEvent = new ManualResetEventSlim();
-//            tree.NewHeadBlock += (s, e) => waitEvent.Set();
-//
-//            syncManager.Start();
-//            processor.Start();
-//            tree.SuggestBlock(_genesis);
-//
-//            if (!waitEvent.Wait(1000))
-//            {
-//                throw new Exception("No genesis");
-//            }
-//
-//            return (syncManager, tree);
-//        }
-//    }
-//}
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
+using Nethermind.Stats;
+using Nethermind.Store;
+using NUnit.Framework;
+
+namespace Nethermind.Blockchain.Test.Synchronization
+{
+    public class FastSyncTest
+    {
+        private List<(ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree)> _peers;
+        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) _localPeer;
+        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) _remotePeer1;
+        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) _remotePeer2;
+        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) _remotePeer3;
+        private static Block _genesis = Build.A.Block.Genesis.TestObject;
+
+        [SetUp]
+        public void Setup()
+        {
+            _peers = new List<(ISyncServer, IEthSyncPeerPool, IBlockTree)>();
+            for (int i = 0; i < 4; i++)
+            {
+                _peers.Add(CreateSyncManager($"PEER_{i}."));    
+            }
+            
+            _localPeer = _peers[0];
+            _remotePeer1 = _peers[1];
+            _remotePeer2 = _peers[2];
+            _remotePeer3 = _peers[3];
+        }
+
+        [Test]
+        public void Setup_is_correct()
+        {
+            foreach ((ISyncServer SyncManager, IEthSyncPeerPool EthSyncPeerPool, IBlockTree Tree) peer in _peers)
+            {
+                Assert.AreEqual(_genesis.Header, peer.SyncManager.Head);    
+            }
+        }
+
+        private void ConnectAllPeers()
+        {
+            for (int localIndex = 0; localIndex < _peers.Count; localIndex++)
+            {
+                (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) localPeer = _peers[localIndex];
+                for (int remoteIndex = 0; remoteIndex < _peers.Count; remoteIndex++)
+                {
+                    if (localIndex == remoteIndex)
+                    {
+                        continue;
+                    }
+                    
+                    (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) remotePeer = _peers[remoteIndex];
+                    localPeer.PeerPool.AddPeer(new SyncPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex], $"PEER{localIndex}", remotePeer.SyncManager, TestItem.PublicKeys[remoteIndex], $"PEER{remoteIndex}"));
+                }
+            }
+        }
+
+        [Test]
+        public void Can_sync_when_connected()
+        {   
+            ConnectAllPeers();
+            int chainLength = 10000;
+
+            var headBlock = _genesis;
+            for (int i = 0; i < chainLength; i++)
+            {
+                var block = Build.A.Block.WithParent(headBlock).WithTotalDifficulty((headBlock.TotalDifficulty ?? 0) + 1).TestObject;
+                headBlock = block;
+                _remotePeer1.Tree.SuggestBlock(block);
+            }
+            
+            SemaphoreSlim waitEvent = new SemaphoreSlim(0);
+            _localPeer.Tree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Number == chainLength) waitEvent.Release();
+            };
+            
+            _remotePeer1.Tree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Number == chainLength) waitEvent.Release();
+            };
+            
+            _remotePeer2.Tree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Number == chainLength) waitEvent.Release();
+            };
+            
+            _remotePeer3.Tree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Number == chainLength) waitEvent.Release();
+            };
+            
+            waitEvent.Wait(10000);
+            waitEvent.Wait(10000);
+            waitEvent.Wait(10000);
+            waitEvent.Wait(10000);
+                
+            Assert.AreEqual(headBlock.Header.Hash, _localPeer.SyncManager.Head.Hash, "local");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer1.SyncManager.Head.Hash, "remote1");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer2.SyncManager.Head.Hash, "remote2");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer3.SyncManager.Head.Hash, "remote3");
+        }
+        
+        [Test]
+        public void Can_sync_when_initially_disconnected()
+        {            
+            int chainLength = 10000;
+
+            var headBlock = _genesis;
+            for (int i = 0; i < chainLength; i++)
+            {
+                var block = Build.A.Block.WithParent(headBlock).WithTotalDifficulty((headBlock.TotalDifficulty ?? 0) + 1).TestObject;
+                headBlock = block;
+                _remotePeer1.Tree.SuggestBlock(block);
+            }
+            
+            SemaphoreSlim waitEvent = new SemaphoreSlim(0);
+            _localPeer.Tree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Number == chainLength)
+                {
+                    Console.WriteLine($"LOCAL {e.Block.Number} {e.Block.Hash}");
+                    waitEvent.Release();
+                }
+            };
+            
+            _remotePeer1.Tree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Number == chainLength)
+                {
+                    Console.WriteLine($"1 {e.Block.Number} {e.Block.Hash}");
+                    waitEvent.Release();
+                }
+            };
+            
+            _remotePeer2.Tree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Number == chainLength)
+                {
+                    Console.WriteLine($"2 {e.Block.Number} {e.Block.Hash}");
+                    waitEvent.Release();
+                }
+            };
+            
+            _remotePeer3.Tree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Number == chainLength)
+                {
+                    Console.WriteLine($"3 {e.Block.Number} {e.Block.Hash}");
+                    waitEvent.Release();
+                }
+            };
+            
+            Assert.AreEqual(_genesis.Hash, _localPeer.SyncManager.Head.Hash, "local before");
+            Assert.AreEqual(_genesis.Hash, _remotePeer2.SyncManager.Head.Hash, "peer 2 before");
+            Assert.AreEqual(_genesis.Hash, _remotePeer3.SyncManager.Head.Hash, "peer 3 before");
+            
+            ConnectAllPeers();
+            waitEvent.Wait(10000);
+            waitEvent.Wait(10000);
+            waitEvent.Wait(10000);
+            waitEvent.Wait(10000);
+            
+            Assert.AreEqual(headBlock.Header.Hash, _localPeer.SyncManager.Head.Hash, "local");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer1.SyncManager.Head.Hash, "peer 1");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer2.SyncManager.Head.Hash, "peer 2");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer3.SyncManager.Head.Hash, "peer 3");
+        }
+
+        private static (ISyncServer, IEthSyncPeerPool, BlockTree) CreateSyncManager(string prefix)
+        {
+//            var logManager = NoErrorLimboLogs.Instance;
+            var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, prefix));
+
+            var specProvider = GoerliSpecProvider.Instance;
+
+            MemDb traceDb = new MemDb();
+            MemDb blockDb = new MemDb();
+            MemDb blockInfoDb = new MemDb();
+            StateDb codeDb = new StateDb();
+            StateDb stateDb = new StateDb();
+
+            var stateProvider = new StateProvider(new StateTree(stateDb), codeDb, logManager);
+            var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
+            var receiptStorage = new InMemoryReceiptStorage();
+
+            var ecdsa = new EthereumEcdsa(specProvider, logManager);
+            var tree = new BlockTree(blockDb, blockInfoDb, specProvider, NullTransactionPool.Instance, logManager);
+            var blockhashProvider = new BlockhashProvider(tree);
+            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
+            var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
+            var blockProcessor = new BlockProcessor(specProvider, TestBlockValidator.AlwaysValid, NoBlockRewards.Instance, txProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, NullTransactionPool.Instance, receiptStorage, logManager);
+            var step = new TxSignaturesRecoveryStep(ecdsa, NullTransactionPool.Instance);
+            var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true, true);
+
+            var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
+            
+            var syncPeerPool = new EthSyncPeerPool(tree, nodeStatsManager, new SyncConfig(), logManager);
+            
+            var synchronizer = new FullArchiveSynchronizer(
+                tree,
+                TestBlockValidator.AlwaysValid,
+                TestSealValidator.AlwaysValid,
+                TestTransactionValidator.AlwaysValid,
+                logManager,
+                new SyncConfig(),
+                syncPeerPool);
+            
+            var syncServer = new SyncServer(stateDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, logManager);
+
+            ManualResetEventSlim waitEvent = new ManualResetEventSlim();
+            tree.NewHeadBlock += (s, e) => waitEvent.Set();
+
+            syncPeerPool.Start();
+            syncServer.Start();
+            synchronizer.Start();
+            processor.Start();
+            tree.SuggestBlock(_genesis);
+
+            if (!waitEvent.Wait(1000))
+            {
+                throw new Exception("No genesis");
+            }
+
+            return (syncServer, syncPeerPool, tree);
+        }
+    }
+}

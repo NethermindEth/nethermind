@@ -28,5 +28,7 @@ namespace Nethermind.Blockchain.Synchronization
     public interface IFullArchiveSynchronizer
     {
         event EventHandler<SyncEventArgs> SyncEvent;
+        
+        void RequestSynchronization();
     }
 }

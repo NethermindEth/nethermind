@@ -17,9 +17,6 @@
  */
 
 using System;
-using System.Globalization;
-using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -34,26 +31,19 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class SyncServer : ISyncServer
     {
-        private readonly ISynchronizer _synchronizer;
+        private readonly IBlockTree _blockTree;
+        private readonly ILogger _logger;
         private readonly IEthSyncPeerPool _pool;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly ISealValidator _sealValidator;
         private readonly ISnapshotableDb _stateDb;
-        private readonly IBlockTree _blockTree;
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly ILogger _logger;
-        private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
+        private readonly IFullArchiveSynchronizer _synchronizer;
         private object _dummyValue = new object();
+        private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
 
-        public int ChainId => _blockTree.ChainId;
-        public BlockHeader Genesis => _blockTree.Genesis;
-        public BlockHeader Head => _blockTree.Head;
-
-        public int GetPeerCount()
-        {
-            return _pool.PeerCount;
-        }
+        public event EventHandler<SyncEventArgs> SyncEvent;
         
-        public SyncServer(ISynchronizer synchronizer, IEthSyncPeerPool pool, ISealValidator sealValidator, ISnapshotableDb stateDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ILogManager logManager)
+        public SyncServer(ISnapshotableDb stateDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, IFullArchiveSynchronizer synchronizer, ILogManager logManager)
         {
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -63,43 +53,19 @@ namespace Nethermind.Blockchain.Synchronization
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
-        public Task StopAsync()
-        {
-            return Task.CompletedTask;
-        }
-        
-        [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
-        private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
-        {
-            Block block = blockEventArgs.Block;
-            if (_blockTree.BestKnownNumber > block.Number)
-            {
-                return;
-            }
 
-            int counter = 0;
-            foreach (PeerInfo peerInfo in _pool.AllPeers)
-            {
-                if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
-                {
-                    peerInfo.SyncPeer.SendNewBlock(block);
-                    counter++;
-                }
-            }
+        public int ChainId => _blockTree.ChainId;
+        public BlockHeader Genesis => _blockTree.Genesis;
+        public BlockHeader Head => _blockTree.Head;
 
-            if (counter > 0)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
-            }
+        public int GetPeerCount()
+        {
+            return _pool.PeerCount;
         }
-        
+
         public void AddNewBlock(Block block, Node nodeWhoSentTheBlock)
         {
-            if (block.TotalDifficulty == null)
-            {
-                throw new InvalidOperationException("Cannot add a block with unknown total difficulty");
-            }
+            if (block.TotalDifficulty == null) throw new InvalidOperationException("Cannot add a block with unknown total difficulty");
 
             _pool.TryFind(nodeWhoSentTheBlock.Id, out PeerInfo peerInfo);
             if (peerInfo == null)
@@ -117,10 +83,7 @@ namespace Nethermind.Blockchain.Synchronization
                 peerInfo.TotalDifficulty = block.TotalDifficulty ?? peerInfo.TotalDifficulty;
             }
 
-            if ((block.TotalDifficulty ?? 0) < _blockTree.BestSuggested.TotalDifficulty)
-            {
-                return;
-            }
+            if ((block.TotalDifficulty ?? 0) < _blockTree.BestSuggested.TotalDifficulty) return;
 
             if (block.Number > _blockTree.BestKnownNumber + 8)
             {
@@ -131,20 +94,14 @@ namespace Nethermind.Blockchain.Synchronization
 
             lock (_recentlySuggested)
             {
-                if (_recentlySuggested.Get(block.Hash) != null)
-                {
-                    return;
-                }
+                if (_recentlySuggested.Get(block.Hash) != null) return;
 
                 _recentlySuggested.Set(block.Hash, _dummyValue);
             }
 
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.Hash} ({block.Number}) from {nodeWhoSentTheBlock:c}");
 
-            if (!_sealValidator.ValidateSeal(block.Header))
-            {
-                throw new EthSynchronizationException("Peer sent a block with an invalid seal");
-            }
+            if (!_sealValidator.ValidateSeal(block.Header)) throw new EthSynchronizationException("Peer sent a block with an invalid seal");
 
             if (block.Number <= _blockTree.BestKnownNumber + 1)
             {
@@ -158,12 +115,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);
                 if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
-                if (result == AddBlockResult.UnknownParent)
-                {
-                    /* here we want to cover scenario when our peer is reorganizing and sends us a head block
-                     * from a new branch and we need to sync previous blocks as we do not know this block's parent */
-                    _synchronizer.RequestSynchronization();
-                }
+                if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization();
             }
             else
             {
@@ -180,11 +132,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            if (number > _blockTree.BestKnownNumber + 8)
-            {
-                // ignore blocks when syncing in a simple non-locking way
-                return;
-            }
+            if (number > _blockTree.BestKnownNumber + 8) return;
 
             if (number > peerInfo.HeadNumber)
             {
@@ -194,10 +142,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 lock (_recentlySuggested)
                 {
-                    if (_recentlySuggested.Get(hash) != null)
-                    {
-                        return;
-                    }
+                    if (_recentlySuggested.Get(hash) != null) return;
 
                     /* do not add as this is a hint only */
                 }
@@ -205,20 +150,17 @@ namespace Nethermind.Blockchain.Synchronization
                 _pool.Refresh(node.Id);
             }
         }
-        
+
         public TransactionReceipt[][] GetReceipts(Keccak[] blockHashes)
         {
-            TransactionReceipt[][] transactionReceipts = new TransactionReceipt[blockHashes.Length][];
+            var transactionReceipts = new TransactionReceipt[blockHashes.Length][];
             for (int blockIndex = 0; blockIndex < blockHashes.Length; blockIndex++)
             {
                 Block block = Find(blockHashes[blockIndex]);
-                TransactionReceipt[] blockTransactionReceipts = new TransactionReceipt[block?.Transactions.Length ?? 0];
+                var blockTransactionReceipts = new TransactionReceipt[block?.Transactions.Length ?? 0];
                 for (int receiptIndex = 0; receiptIndex < (block?.Transactions.Length ?? 0); receiptIndex++)
                 {
-                    if (block == null)
-                    {
-                        continue;
-                    }
+                    if (block == null) continue;
 
                     blockTransactionReceipts[receiptIndex] = _receiptStorage.Get(block.Transactions[receiptIndex].Hash);
                 }
@@ -228,18 +170,15 @@ namespace Nethermind.Blockchain.Synchronization
 
             return transactionReceipts;
         }
-        
+
         public byte[][] GetNodeData(Keccak[] keys)
         {
-            byte[][] values = new byte[keys.Length][];
-            for (int i = 0; i < keys.Length; i++)
-            {
-                values[i] = _stateDb.Get(keys[i]);
-            }
+            var values = new byte[keys.Length][];
+            for (int i = 0; i < keys.Length; i++) values[i] = _stateDb.Get(keys[i]);
 
             return values;
         }
-        
+
         public Block Find(Keccak hash)
         {
             return _blockTree.FindBlock(hash, false);
@@ -249,10 +188,42 @@ namespace Nethermind.Blockchain.Synchronization
         {
             return _blockTree.Head.Number >= number ? _blockTree.FindBlock(number) : null;
         }
-        
+
         public Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse)
         {
             return _blockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
+        }
+
+        public void Start()
+        {
+            _blockTree.NewHeadBlock += OnNewHeadBlock;
+        }
+
+        public Task StopAsync()
+        {
+            return Task.CompletedTask;
+        }
+
+        [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
+        private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
+        {
+            Block block = blockEventArgs.Block;
+            if (_blockTree.BestKnownNumber > block.Number) return;
+
+            int counter = 0;
+            foreach (PeerInfo peerInfo in _pool.AllPeers)
+            {
+                if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
+                {
+                    peerInfo.SyncPeer.SendNewBlock(block);
+                    counter++;
+                }
+            }
+
+            if (counter > 0)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
+            }
         }
     }
 }

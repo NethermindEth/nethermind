@@ -26,6 +26,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Store;
 
@@ -66,7 +67,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         private AccountDecoder accountDecoder = new AccountDecoder();
-        
+
         private void HandleResponse(NodeDataRequest request)
         {
             for (int i = 0; i < request.Request.Length; i++)
@@ -76,7 +77,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     throw new InvalidDataException("Peer sent invalid data");
                 }
-                
+
                 if (bytes == null)
                 {
                     _nodes.Add(request.Request[i]);
@@ -89,7 +90,7 @@ namespace Nethermind.Blockchain.Synchronization
                         _codeDb[request.Request[i].Hash.Bytes] = bytes;
                         continue;
                     }
-                    
+
                     _db[request.Request[i].Hash.Bytes] = bytes;
                     TrieNode node = new TrieNode(NodeType.Unknown, new Rlp(bytes));
                     node.ResolveNode(null);
@@ -107,6 +108,7 @@ namespace Nethermind.Blockchain.Synchronization
                                     _nodes.Add((child, nodeDataType));
                                 }
                             }
+
                             break;
                         case NodeType.Extension:
                             Keccak next = node[0].Keccak;
@@ -124,12 +126,13 @@ namespace Nethermind.Blockchain.Synchronization
                                 {
                                     _nodes.Add((account.CodeHash, NodeDataType.Code));
                                 }
-                                
+
                                 if (account.StorageRoot != Keccak.EmptyTreeHash)
                                 {
                                     _nodes.Add((account.StorageRoot, NodeDataType.Storage));
                                 }
                             }
+
                             break;
                         default:
                             throw new ArgumentOutOfRangeException();
@@ -145,11 +148,11 @@ namespace Nethermind.Blockchain.Synchronization
         private NodeDataRequest[] PrepareRequests()
         {
             List<NodeDataRequest> requests = new List<NodeDataRequest>();
-            List<(Keccak, NodeDataType)> requestHashes = new List<(Keccak, NodeDataType)>();
+            List<(Keccak Hash, NodeDataType NodeDataType)> requestHashes = new List<(Keccak, NodeDataType)>();
             while (_nodes.Count != 0)
             {
                 NodeDataRequest request = new NodeDataRequest();
-                requests.Add(request);
+
                 for (int i = 0; i < maxRequestSize; i++)
                 {
                     if (_nodes.TryTake(out (Keccak Hash, NodeDataType NodeType) result))
@@ -162,7 +165,9 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
 
-                if(_logger.IsTrace) _logger.Trace($"Preparing request with {requestHashes.Count} hashes");
+                requests.Add(request);
+
+                if (_logger.IsTrace) _logger.Trace($"Preparing request with {requestHashes.Count} hashes");
                 request.Request = requestHashes.ToArray();
             }
 
@@ -171,16 +176,16 @@ namespace Nethermind.Blockchain.Synchronization
 
         public async Task SyncNodeData((Keccak Hash, NodeDataType NodeDataType)[] initialNodes)
         {
-            if (initialNodes.Length == 0  || (initialNodes.Length == 0 && initialNodes[0].Hash == Keccak.EmptyTreeHash))
+            if (initialNodes.Length == 0 || (initialNodes.Length == 1 && initialNodes[0].Hash == Keccak.EmptyTreeHash))
             {
                 return;
             }
 
             for (int i = 0; i < initialNodes.Length; i++)
             {
-                _nodes.Add((initialNodes[i].Hash, initialNodes[i].NodeDataType));    
+                _nodes.Add((initialNodes[i].Hash, initialNodes[i].NodeDataType));
             }
-            
+
             await KeepSyncing();
         }
     }

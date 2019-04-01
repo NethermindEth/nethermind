@@ -68,7 +68,7 @@ namespace Nethermind.Network.Test
         {
             INodeLifecycleManager manager = Substitute.For<INodeLifecycleManager>();
             manager.ManagedNode.Returns(node);
-            manager.NodeStats.Returns(new NodeStats(node, _statsConfig)
+            manager.NodeStats.Returns(new NodeStatsLight(node, _statsConfig)
             {
                 CurrentPersistedNodeReputation = node.Port
             });
