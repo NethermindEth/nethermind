@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,7 +31,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class NodeDataDownloader
+    public class NodeDataDownloader : INodeDataDownloader
     {
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
@@ -43,17 +44,6 @@ namespace Nethermind.Blockchain.Synchronization
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _executor = executor ?? throw new ArgumentNullException(nameof(executor));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-
-        public async Task SyncNodeData(Keccak root)
-        {
-            if (root == Keccak.EmptyTreeHash)
-            {
-                return;
-            }
-
-            _nodes.Add((root, NodeDataType.State));
-            await KeepSyncing();
         }
 
         private async Task KeepSyncing()
@@ -82,20 +72,25 @@ namespace Nethermind.Blockchain.Synchronization
             for (int i = 0; i < request.Request.Length; i++)
             {
                 byte[] bytes = request.Response[i];
+                if (Keccak.Compute(bytes) != request.Request[i].Hash)
+                {
+                    throw new InvalidDataException("Peer sent invalid data");
+                }
+                
                 if (bytes == null)
                 {
                     _nodes.Add(request.Request[i]);
                 }
                 else
                 {
-                    NodeDataType nodeDataType = request.Request[i].Item2;
+                    NodeDataType nodeDataType = request.Request[i].NodeDataType;
                     if (nodeDataType == NodeDataType.Code)
                     {
-                        _codeDb[request.Request[i].Item1.Bytes] = bytes;
+                        _codeDb[request.Request[i].Hash.Bytes] = bytes;
                         continue;
                     }
                     
-                    _db[request.Request[i].Item1.Bytes] = bytes;
+                    _db[request.Request[i].Hash.Bytes] = bytes;
                     TrieNode node = new TrieNode(NodeType.Unknown, new Rlp(bytes));
                     node.ResolveNode(null);
                     switch (node.NodeType)
@@ -172,6 +167,21 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             return requests.ToArray();
+        }
+
+        public async Task SyncNodeData((Keccak Hash, NodeDataType NodeDataType)[] initialNodes)
+        {
+            if (initialNodes.Length == 0  || (initialNodes.Length == 0 && initialNodes[0].Hash == Keccak.EmptyTreeHash))
+            {
+                return;
+            }
+
+            for (int i = 0; i < initialNodes.Length; i++)
+            {
+                _nodes.Add((initialNodes[i].Hash, initialNodes[i].NodeDataType));    
+            }
+            
+            await KeepSyncing();
         }
     }
 }

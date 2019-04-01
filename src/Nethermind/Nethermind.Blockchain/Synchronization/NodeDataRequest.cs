@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class NodeDataRequest
     {
-        public (Keccak, NodeDataType)[] Request { get; set; }
+        public (Keccak Hash, NodeDataType NodeDataType)[] Request { get; set; }
         public byte[][] Response { get; set; }
     }
 }

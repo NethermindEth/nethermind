@@ -16,14 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    internal class EthSynchronizationException : Exception
+    public interface INodeDataDownloader
     {
-        public EthSynchronizationException(string message) : base(message)
+        Task SyncNodeData(params (Keccak Hash, NodeDataType NodeDataType)[] initialNodes);
+    }
+    
+    public static class NodeDataDownloaderExtensions
+    {
+        public static Task SyncNodeData(this INodeDataDownloader @this, Keccak rootHash)
         {
+            return @this.SyncNodeData((rootHash, NodeDataType.State));
         }
     }
 }

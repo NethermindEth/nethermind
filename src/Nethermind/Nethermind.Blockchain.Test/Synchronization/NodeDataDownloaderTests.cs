@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -28,7 +29,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 using NUnit.Framework;
-using LogLevel = Nethermind.Core.Logging.LogLevel;
 
 namespace Nethermind.Blockchain.Test.Synchronization
 {
@@ -351,6 +351,22 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
+        private class MaliciousExecutorMock : INodeDataRequestExecutor
+        {
+            public Task<NodeDataRequest> ExecuteRequest(NodeDataRequest request)
+            {
+                request.Response = new byte[request.Request.Length][];
+
+                int i = 0;
+                foreach ((_, _) in request.Request)
+                {
+                    request.Response[i++] = new byte[] {1, 2, 3};
+                }
+
+                return Task.FromResult(request);
+            }
+        }
+
         private Address _currentAddress = Address.Zero;
 
         private Address NextAddress()
@@ -387,7 +403,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test, TestCaseSource("Scenarios")]
-        public async Task TestMethod((string Name, Action<StateTree, StateDb, MemDb> SetupTree) testCase)
+        public async Task Can_download_a_full_state((string Name, Action<StateTree, StateDb, MemDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
             _remoteStateDb.Commit();
@@ -398,6 +414,19 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _localStateDb.Commit();
 
             CompareDbs();
+        }
+
+        [Test]
+        public async Task Can_detect_a_malicious_peer()
+        {
+            MaliciousExecutorMock mock = new MaliciousExecutorMock();
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
+            await downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")).ContinueWith(t =>
+            {
+                Assert.True(t.IsFaulted);
+                Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
+                Assert.AreEqual(typeof(InvalidDataException), t.Exception?.InnerExceptions[0].GetType());
+            });
         }
 
         private void CompareDbs()
