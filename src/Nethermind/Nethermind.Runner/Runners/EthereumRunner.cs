@@ -113,7 +113,7 @@ namespace Nethermind.Runner.Runners
         private ITransactionPoolInfoProvider _transactionPoolInfoProvider;
         private IReceiptStorage _receiptStorage;
         private IEthereumEcdsa _ethereumEcdsa;
-        private IFullArchiveSynchronizer _syncManager;
+        private IFullSynchronizer _syncManager;
         private IKeyStore _keyStore;
         private IPeerManager _peerManager;
         private IProtocolsManager _protocolsManager;
@@ -694,7 +694,7 @@ namespace Nethermind.Runner.Runners
             ISealValidator sealValidator,
             TransactionValidator txValidator)
         {
-            _syncManager = new FullArchiveSynchronizer(
+            _syncManager = new FullSynchronizer(
                 _dbProvider.StateDb,
                 _blockTree,
                 _blockValidator,

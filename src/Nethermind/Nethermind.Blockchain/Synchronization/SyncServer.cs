@@ -37,13 +37,13 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISealValidator _sealValidator;
         private readonly ISnapshotableDb _stateDb;
-        private readonly IFullArchiveSynchronizer _synchronizer;
+        private readonly IFullSynchronizer _synchronizer;
         private object _dummyValue = new object();
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
 
         public event EventHandler<SyncEventArgs> SyncEvent;
         
-        public SyncServer(ISnapshotableDb stateDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, IFullArchiveSynchronizer synchronizer, ILogManager logManager)
+        public SyncServer(ISnapshotableDb stateDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, IFullSynchronizer synchronizer, ILogManager logManager)
         {
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (block.Number > _blockTree.BestKnownNumber + 8)
             {
                 // ignore blocks when syncing in a simple non-locking way
-                _synchronizer.RequestSynchronization();
+                _synchronizer.RequestSynchronization("NEW FAR BLOCK");
                 return;
             }
 
@@ -117,12 +117,12 @@ namespace Nethermind.Blockchain.Synchronization
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);
                 if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
-                if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization();
+                if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization("NEW BLOCK / BRANCH");
             }
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"Received a block {block.Hash} ({block.Number}) from {nodeWhoSentTheBlock} - need to resync");
-                _synchronizer.RequestSynchronization();
+                _synchronizer.RequestSynchronization("NEW NEAR BLOCK");
             }
         }
 

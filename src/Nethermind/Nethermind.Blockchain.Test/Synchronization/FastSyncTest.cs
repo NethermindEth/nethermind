@@ -227,7 +227,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             var syncPeerPool = new EthSyncPeerPool(tree, nodeStatsManager, new SyncConfig(), logManager);
             
-            var synchronizer = new FullArchiveSynchronizer(
+            var synchronizer = new FullSynchronizer(
                 tree,
                 TestBlockValidator.AlwaysValid,
                 TestSealValidator.AlwaysValid,

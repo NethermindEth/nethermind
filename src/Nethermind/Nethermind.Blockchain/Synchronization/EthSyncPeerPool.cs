@@ -112,11 +112,13 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void Start()
         {
+//            _refreshLoopTask = Task.Run(RunRefreshPeerLoop, _refreshLoopCancellation.Token)
             _refreshLoopTask = Task.Factory.StartNew(
                 RunRefreshPeerLoop,
                 _refreshLoopCancellation.Token,
                 TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).Unwrap().ContinueWith(t =>
+                TaskScheduler.Default).Unwrap()
+                .ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -185,6 +187,11 @@ namespace Nethermind.Blockchain.Synchronization
             await (_refreshLoopTask ?? Task.CompletedTask);
         }
 
+        public void EnsureBest(SyncPeerAllocation allocation)
+        {
+            UpdateAllocations("ENSURE BEST");
+        }
+
         private static int InitTimeout = 10000;
 
         private async Task RefreshPeerInfo(PeerInfo peerInfo, CancellationToken token)
@@ -206,6 +213,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                     else if (firstToComplete.IsCanceled)
                     {
+                        if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:s}{Environment.NewLine}{t.Exception}");
                         RemovePeer(syncPeer);
                         SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? SyncStatus.Cancelled : SyncStatus.InitCancelled));
                         token.ThrowIfCancellationRequested();
@@ -276,6 +284,7 @@ namespace Nethermind.Blockchain.Synchronization
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             Metrics.SyncPeers = _peers.Count;
 
+            if (_logger.IsDebug) _logger.Debug($"Adding to refresh queue");
             _peerRefreshQueue.Add(peerInfo);
         }
 
@@ -313,8 +322,9 @@ namespace Nethermind.Blockchain.Synchronization
 
         private PeerInfo SelectBestPeerForSync(UInt256 totalDifficultyThreshold, string reason)
         {
+            if (_logger.IsTrace) _logger.Trace($"[{reason}] Selecting best peer");
             (PeerInfo Info, long Latency) bestPeer = (null, 100000);
-            foreach ((_, PeerInfo info)in _peers)
+            foreach ((_, PeerInfo info) in _peers)
             {
                 if (!info.IsInitialized || info.TotalDifficulty <= totalDifficultyThreshold)
                 {
@@ -378,17 +388,17 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void UpdateAllocations(string reason)
         {
-            foreach ((SyncPeerAllocation allocation, _) in _allocations)
+            var bestPeer = SelectBestPeerForSync(_blockTree.BestSuggested?.TotalDifficulty ?? 0, reason);
+            if (bestPeer != null)
             {
-                var bestPeer = SelectBestPeerForSync(_blockTree.BestSuggested?.TotalDifficulty ?? 0, reason);
-                if (bestPeer != null)
+                foreach ((SyncPeerAllocation allocation, _) in _allocations)
                 {
                     ReplaceIfWorthReplacing(allocation, bestPeer, ComparedPeerType.Existing);
                 }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"No better peer to sync with for {allocation}");
-                }
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"No better peer to sync with when updating allocations");
             }
         }
 

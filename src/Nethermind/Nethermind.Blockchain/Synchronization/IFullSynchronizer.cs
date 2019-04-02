@@ -25,11 +25,11 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface IFullArchiveSynchronizer
+    public interface IFullSynchronizer
     {
         event EventHandler<SyncEventArgs> SyncEvent;
         
-        void RequestSynchronization();
+        void RequestSynchronization(string reason);
 
         void Start();
 
