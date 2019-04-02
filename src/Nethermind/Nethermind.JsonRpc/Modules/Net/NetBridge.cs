@@ -26,19 +26,19 @@ namespace Nethermind.JsonRpc.Modules.Net
     public class NetBridge : INetBridge
     {
         private readonly IEnode _localNode;
-        private readonly ISyncServer _syncManager;
+        private readonly ISyncServer _syncServer;
         private readonly IPeerManager _peerManager;
         
-        public NetBridge(IEnode localNode, ISyncServer syncManager, IPeerManager peerManager)
+        public NetBridge(IEnode localNode, ISyncServer syncServer, IPeerManager peerManager)
         {
             _localNode = localNode ?? throw new ArgumentNullException(nameof(localNode));
-            _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
-            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(syncManager));
+            _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
+            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(syncServer));
         }
 
         public string LocalEnode => _localNode.Info;
-        public int NetworkId => _syncManager.ChainId;
-        public int PeerCount => _syncManager.GetPeerCount();
+        public int NetworkId => _syncServer.ChainId;
+        public int PeerCount => _syncServer.GetPeerCount();
         
         public bool LogPeerConnectionDetails()
         {

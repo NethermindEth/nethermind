@@ -113,7 +113,9 @@ namespace Nethermind.Runner.Runners
         private ITransactionPoolInfoProvider _transactionPoolInfoProvider;
         private IReceiptStorage _receiptStorage;
         private IEthereumEcdsa _ethereumEcdsa;
-        private IFullSynchronizer _syncManager;
+        private IEthSyncPeerPool _syncPeerPool;
+        private IFullSynchronizer _synchronizer;
+        private ISyncServer _syncServer;
         private IKeyStore _keyStore;
         private IPeerManager _peerManager;
         private IProtocolsManager _protocolsManager;
@@ -288,7 +290,7 @@ namespace Nethermind.Runner.Runners
             TxPoolModule txPoolModule = new TxPoolModule(_configProvider, _logManager, _jsonSerializer, blockchainBridge);
             _rpcModuleProvider.Register<ITxPoolModule>(txPoolModule);
 
-            NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_enode, _syncManager, _peerManager));
+            NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_enode, _syncServer, _peerManager));
             _rpcModuleProvider.Register<INetModule>(netModule);
 
             TraceModule traceModule = new TraceModule(_configProvider, _logManager, _jsonSerializer, tracer);
@@ -330,8 +332,11 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsInfo) _logger.Info("Stopping peer manager...");
             var peerManagerTask = _peerManager?.StopAsync() ?? Task.CompletedTask;
 
-            if (_logger.IsInfo) _logger.Info("Stopping sync manager...");
-            var syncManagerTask = _syncManager?.StopAsync() ?? Task.CompletedTask;
+            if (_logger.IsInfo) _logger.Info("Stopping synchronizer...");
+            var synchronizerTask = _synchronizer?.StopAsync() ?? Task.CompletedTask;
+            
+            if (_logger.IsInfo) _logger.Info("Stopping sync peer pool...");
+            var peerPoolTask = _syncPeerPool?.StopAsync() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping block producer...");
             var blockProducerTask = _blockProducer?.StopAsync() ?? Task.CompletedTask;
@@ -342,7 +347,7 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsInfo) _logger.Info("Stopping discovery app...");
             var discoveryStopTask = _discoveryApp?.StopAsync() ?? Task.CompletedTask;
 
-            await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, syncManagerTask, blockchainProcessorTask, blockProducerTask);
+            await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
 
             if (_logger.IsInfo) _logger.Info("Closing DBs...");
             _dbProvider.Dispose();
@@ -694,17 +699,17 @@ namespace Nethermind.Runner.Runners
             ISealValidator sealValidator,
             TransactionValidator txValidator)
         {
-            _syncManager = new FullSynchronizer(
+            ISyncConfig syncConfig = _configProvider.GetConfig<ISyncConfig>();
+            _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
+            _synchronizer = new FullSynchronizer(_blockTree, _blockValidator, _sealValidator, txValidator, _syncPeerPool, syncConfig, _logManager);
+            _syncServer = new SyncServer(
                 _dbProvider.StateDb,
                 _blockTree,
-                _blockValidator,
+                _receiptStorage,
                 sealValidator,
-                txValidator,
-                _logManager,
-                _configProvider.GetConfig<ISyncConfig>(),
-                _nodeStatsManager,
-                _perfService,
-                receiptStorage);
+                _syncPeerPool,
+                _synchronizer,
+                _logManager);
 
             InitDiscovery();
             await InitPeer().ContinueWith(initPeerTask =>
@@ -809,7 +814,8 @@ namespace Nethermind.Runner.Runners
 
             if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_blockTree.Head.ToString(BlockHeader.Format.Short)}.");
 
-            _syncManager.Start();
+            _syncPeerPool.Start();
+            _synchronizer.Start();
             return Task.CompletedTask;
         }
 
@@ -839,7 +845,7 @@ namespace Nethermind.Runner.Runners
             var peerStorage = new NetworkStorage(PeersDbPath, networkConfig, _logManager, _perfService);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
-            _protocolsManager = new ProtocolsManager(_syncManager, _transactionPool, _discoveryApp, _messageSerializationService, _rlpxPeer, _nodeStatsManager, protocolValidator, peerStorage, _perfService, _logManager);
+            _protocolsManager = new ProtocolsManager(_syncPeerPool, _syncServer, _transactionPool, _discoveryApp, _messageSerializationService, _rlpxPeer, _nodeStatsManager, protocolValidator, peerStorage, _perfService, _logManager);
             PeerLoader peerLoader = new PeerLoader(networkConfig, _nodeStatsManager, peerStorage, _logManager);
             _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, networkConfig, _logManager);
             _peerManager.Init();
