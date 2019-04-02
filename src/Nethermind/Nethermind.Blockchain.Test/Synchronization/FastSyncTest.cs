@@ -242,7 +242,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
             tree.NewHeadBlock += (s, e) => waitEvent.Set();
 
             syncPeerPool.Start();
-            syncServer.Start();
             synchronizer.Start();
             processor.Start();
             tree.SuggestBlock(_genesis);

@@ -204,7 +204,7 @@ namespace Nethermind.Blockchain.Synchronization
         
         private async Task RunSyncLoop()
         {
-            _allocation = _peerPool.BorrowPeer(_blockTree.BestSuggested?.TotalDifficulty ?? 0);
+            _allocation = _peerPool.BorrowPeer(_blockTree.BestSuggested?.TotalDifficulty ?? 0, "full sync");
             _allocation.Replaced += AllocationOnReplaced;
             _allocation.Cancelled += AllocationOnCancelled;
             
@@ -302,15 +302,31 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void AllocationOnCancelled(object sender, AllocationChangeEventArgs e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Cancelling {e.Previous} sync.");
+            if (_logger.IsDebug) _logger.Debug($"Cancelling {e.Previous} on {_allocation}.");
             _peerSyncCancellationTokenSource?.Cancel();
         }
 
         private void  AllocationOnReplaced(object sender, AllocationChangeEventArgs e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Replacing {e.Previous} sync with {e.Current}.");
-            _requestedSyncCancelDueToBetterPeer = true;
-            _peerSyncCancellationTokenSource?.Cancel();
+            if (e.Previous == null)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Allocating {e.Current} to {_allocation}.");    
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Replacing {e.Previous} with {e.Current} on {_allocation}.");
+            }
+
+            if (e.Previous != null)
+            {
+                _requestedSyncCancelDueToBetterPeer = true;
+                _peerSyncCancellationTokenSource?.Cancel();
+            }
+
+            if (e.Current.TotalDifficulty > _blockTree.BestSuggested.TotalDifficulty)
+            {
+                _syncRequested.Set();
+            }
         }
 
         [Todo(Improve.Readability, "Review cancellation")]

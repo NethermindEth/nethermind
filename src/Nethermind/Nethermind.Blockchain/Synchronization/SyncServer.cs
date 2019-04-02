@@ -52,6 +52,8 @@ namespace Nethermind.Blockchain.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            
+            _blockTree.NewHeadBlock += OnNewHeadBlock;
         }
 
         public int ChainId => _blockTree.ChainId;
@@ -192,16 +194,6 @@ namespace Nethermind.Blockchain.Synchronization
         public Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse)
         {
             return _blockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
-        }
-
-        public void Start()
-        {
-            _blockTree.NewHeadBlock += OnNewHeadBlock;
-        }
-
-        public Task StopAsync()
-        {
-            return Task.CompletedTask;
         }
 
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]

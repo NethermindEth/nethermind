@@ -30,5 +30,9 @@ namespace Nethermind.Blockchain.Synchronization
         event EventHandler<SyncEventArgs> SyncEvent;
         
         void RequestSynchronization();
+
+        void Start();
+
+        Task StopAsync();
     }
 }

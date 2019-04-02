@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Synchronization
                         }
                         else
                         {
-                            UpdateAllocations();
+                            UpdateAllocations("REFRESH");
                             // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
                             if (peerInfo.TotalDifficulty == _blockTree.BestSuggested?.TotalDifficulty && peerInfo.HeadHash != _blockTree.BestSuggested?.Hash)
                             {
@@ -163,7 +163,7 @@ namespace Nethermind.Blockchain.Synchronization
                 try
                 {
                     _upgradeTimer.Enabled = false;
-                    UpdateAllocations();
+                    UpdateAllocations("TIMER");
                 }
                 catch (Exception exception)
                 {
@@ -311,7 +311,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private PeerInfo SelectBestPeerForSync(UInt256 totalDifficultyThreshold)
+        private PeerInfo SelectBestPeerForSync(UInt256 totalDifficultyThreshold, string reason)
         {
             (PeerInfo Info, long Latency) bestPeer = (null, 100000);
             foreach ((_, PeerInfo info)in _peers)
@@ -322,7 +322,6 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 long latency = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000;
-                if (_logger.IsDebug) _logger.Debug($"Candidate for sync: {info} | BlockHeaderAvLatency: {latency.ToString() ?? "none"}");
 
                 if (latency <= bestPeer.Latency)
                 {
@@ -330,6 +329,16 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
+            if (bestPeer.Info == null)
+            {
+                if (_logger.IsDebug) _logger.Debug($"[{reason}] No peer found for ETH sync");    
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"[{reason}] Best ETH sync peer: {bestPeer.Info} | BlockHeaderAvLatency: {bestPeer.Latency}");
+            }
+            
+            
             return bestPeer.Info;
         }
 
@@ -367,11 +376,11 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private void UpdateAllocations()
+        private void UpdateAllocations(string reason)
         {
             foreach ((SyncPeerAllocation allocation, _) in _allocations)
             {
-                var bestPeer = SelectBestPeerForSync(_blockTree.BestSuggested?.TotalDifficulty ?? 0);
+                var bestPeer = SelectBestPeerForSync(_blockTree.BestSuggested?.TotalDifficulty ?? 0, reason);
                 if (bestPeer != null)
                 {
                     ReplaceIfWorthReplacing(allocation, bestPeer, ComparedPeerType.Existing);
@@ -388,9 +397,9 @@ namespace Nethermind.Blockchain.Synchronization
             return _peers.TryGetValue(nodeId, out peerInfo);
         }
 
-        public SyncPeerAllocation BorrowPeer(UInt256 difficultyThreshold)
+        public SyncPeerAllocation BorrowPeer(UInt256 difficultyThreshold, string description)
         {
-            SyncPeerAllocation allocation = new SyncPeerAllocation(SelectBestPeerForSync(difficultyThreshold));
+            SyncPeerAllocation allocation = new SyncPeerAllocation(SelectBestPeerForSync(difficultyThreshold, "BORROW"), description);
             _allocations.TryAdd(allocation, null);
             return allocation;
         }

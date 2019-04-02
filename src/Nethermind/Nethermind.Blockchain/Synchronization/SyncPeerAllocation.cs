@@ -27,9 +27,10 @@ namespace Nethermind.Blockchain.Synchronization
         
         public PeerInfo Current { get; private set; }
 
-        public SyncPeerAllocation(PeerInfo initialPeer)
+        public SyncPeerAllocation(PeerInfo initialPeer, string description)
         {
             Current = initialPeer;
+            Description = description;
         }
 
         public void ReplaceCurrent(PeerInfo betterPeer)

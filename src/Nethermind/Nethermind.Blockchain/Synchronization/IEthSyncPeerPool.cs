@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
         
-        SyncPeerAllocation BorrowPeer(UInt256 difficultyThreshold);
+        SyncPeerAllocation BorrowPeer(UInt256 difficultyThreshold, string description = "");
         
         void ReturnPeer(SyncPeerAllocation syncPeerAllocation);
         
