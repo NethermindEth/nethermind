@@ -232,9 +232,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 TestBlockValidator.AlwaysValid,
                 TestSealValidator.AlwaysValid,
                 TestTransactionValidator.AlwaysValid,
-                logManager,
-                new SyncConfig(),
-                syncPeerPool);
+                syncPeerPool, new SyncConfig(), logManager);
             
             var syncServer = new SyncServer(stateDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, logManager);
 

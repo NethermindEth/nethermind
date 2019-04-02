@@ -248,9 +248,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject,
                     Build.A.SealValidator.ThatAlwaysReturnsTrue.TestObject,
                     TestTransactionValidator.AlwaysValid,
-                    _logManager,
-                    new SyncConfig(),
-                    SyncPeerPool);
+                    SyncPeerPool, new SyncConfig(), _logManager);
 
                 SyncServer = new SyncServer(stateDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, FullSynchronizer, _logManager);
                 SyncPeerPool.Start();
@@ -385,7 +383,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext Stop()
             {
-                var task = new Task(async () => { await FullSynchronizer.StopAsync();});
+                var task = new Task(async () =>
+                {
+                    await FullSynchronizer.StopAsync();
+                    await SyncPeerPool.StopAsync();
+                });
                 task.RunSynchronously();
                 return this;
             }
@@ -798,6 +800,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         private const int Moment = 50;
-        private const int WaitTime = 1000;
+        private const int WaitTime = 500;
     }
 }

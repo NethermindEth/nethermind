@@ -611,7 +611,7 @@ namespace Nethermind.Runner.Runners
 
             // create shared objects between discovery and peer manager
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
-            _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager, !statsConfig.CaptureNodeStatsEventHistory);
+            _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager);
 
             if (_initConfig.IsMining)
             {

@@ -58,14 +58,13 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void DecreaseBatchSize() => _currentBatchSize = Math.Max(MinBatchSize, _currentBatchSize / 2);
 
-        public FullSynchronizer(
-            IBlockTree blockTree,
+        public FullSynchronizer(IBlockTree blockTree,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
             ITransactionValidator transactionValidator,
-            ILogManager logManager,
-            Blockchain.ISyncConfig syncConfig,
-            IEthSyncPeerPool peerPool)
+            IEthSyncPeerPool peerPool,
+            ISyncConfig syncConfig,
+            ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));

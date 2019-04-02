@@ -44,7 +44,7 @@
 //        {
 //            _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
 //            _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
-//            _stateDb = new MemDb();
+//            _stateDb = new StateDb();
 //            _receiptsDb = new MemDb();
 //            _receiptStorage = Substitute.For<IReceiptStorage>();
 //            SyncConfig quickConfig = new SyncConfig();
@@ -52,24 +52,29 @@
 //
 //            ISealValidator sealValidator = Build.A.SealValidator.ThatAlwaysReturnsTrue.TestObject;
 //            IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
-//            ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
+//            ITransactionValidator txValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 //
-//            _manager = new FullArchiveSynchronizer(_stateDb, _blockTree, blockValidator, sealValidator, transactionValidator, NullLogManager.Instance, quickConfig, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),  new PerfService(NullLogManager.Instance), _receiptStorage);
+//            var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+//            _pool = new EthSyncPeerPool(_blockTree, stats, quickConfig, LimboLogs.Instance);
+//            _synchronizer = new FullSynchronizer(_blockTree, blockValidator, sealValidator, txValidator, _pool, quickConfig, LimboLogs.Instance);
+//            _syncServer = new SyncServer(_stateDb, _blockTree, _receiptStorage, sealValidator, _pool, _synchronizer, LimboLogs.Instance);
 //        }
 //
 //        [TearDown]
 //        public async Task TearDown()
 //        {
-//            await _manager.StopAsync();
+//            await _pool.StopAsync();
 //        }
 //
-//        private IDb _stateDb;
+//        private ISnapshotableDb _stateDb;
 //        private IDb _receiptsDb;
 //        private IBlockTree _blockTree;
 //        private IBlockTree _remoteBlockTree;
 //        private IReceiptStorage _receiptStorage;
 //        private Block _genesisBlock;
-//        private IFullArchiveSynchronizer _manager;
+//        private IEthSyncPeerPool _pool;
+//        private ISyncServer _syncServer;
+//        private IFullSynchronizer _synchronizer;
 //
 //        [Test]
 //        public void Retrieves_missing_blocks_in_batches()
@@ -78,12 +83,12 @@
 //            ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 //
 //            ManualResetEvent resetEvent = new ManualResetEvent(false);
-//            _manager.SyncEvent += (sender, args) =>
+//            _syncServer.SyncEvent += (sender, args) =>
 //            {
 //                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
 //            };
-//            _manager.Start();
-//            _manager.AddPeer(peer);
+//            _syncServer.Start();
+//            _syncServer.AddPeer(peer);
 //            
 //            resetEvent.WaitOne(_standardTimeoutUnit);
 //            Assert.AreEqual(FullArchiveSynchronizer.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
@@ -95,8 +100,8 @@
 //            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
 //            ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 //            
-//            _manager.Start();
-//            _manager.AddPeer(peer);
+//            _syncServer.Start();
+//            _syncServer.AddPeer(peer);
 //            
 //            Assert.AreEqual(0, (int) _blockTree.BestSuggested.Number);
 //        }
@@ -109,9 +114,9 @@
 //            ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 //
 //            ManualResetEvent resetEvent = new ManualResetEvent(false);
-//            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
-//            _manager.Start();
-//            _manager.AddPeer(peer);
+//            _syncServer.SyncEvent += (sender, args) => { resetEvent.Set(); };
+//            _syncServer.Start();
+//            _syncServer.AddPeer(peer);
 //            
 //            resetEvent.WaitOne(_standardTimeoutUnit);
 //            Assert.AreEqual(FullArchiveSynchronizer.MaxBatchSize * 2 - 1, (int) _blockTree.BestSuggested.Number);
@@ -125,15 +130,15 @@
 //            ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 //
 //            SemaphoreSlim semaphore = new SemaphoreSlim(0);
-//            _manager.SyncEvent += (sender, args) =>
+//            _syncServer.SyncEvent += (sender, args) =>
 //            {
 //                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) semaphore.Release(1);
 //            };
-//            _manager.Start();
-//            _manager.AddPeer(peer);
+//            _syncServer.Start();
+//            _syncServer.AddPeer(peer);
 //
 //            BlockTreeBuilder.ExtendTree(_remoteBlockTree, FullArchiveSynchronizer.MaxBatchSize * 2);
-//            _manager.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.Node);
+//            _syncServer.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.Node);
 //            
 //            semaphore.Wait(_standardTimeoutUnit);
 //            semaphore.Wait(_standardTimeoutUnit);
@@ -148,16 +153,16 @@
 //            ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 //
 //            ManualResetEvent resetEvent = new ManualResetEvent(false);
-//            _manager.SyncEvent += (sender, args) =>
+//            _syncServer.SyncEvent += (sender, args) =>
 //            {
 //                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
 //            };
 //            
-//            _manager.Start();
-//            _manager.AddPeer(peer);
+//            _syncServer.Start();
+//            _syncServer.AddPeer(peer);
 //
 //            Block block = Build.A.Block.WithParent(_remoteBlockTree.Head).WithTotalDifficulty((_remoteBlockTree.Head.TotalDifficulty ?? 0) + 1).TestObject;
-//            _manager.AddNewBlock(block, peer.Node);
+//            _syncServer.AddNewBlock(block, peer.Node);
 //
 //            resetEvent.WaitOne(_standardTimeoutUnit);
 //
@@ -171,14 +176,14 @@
 //            ISyncPeer miner1 = new SyncPeerMock(miner1Tree);
 //
 //            ManualResetEvent resetEvent = new ManualResetEvent(false);
-//            _manager.SyncEvent += (sender, args) =>
+//            _syncServer.SyncEvent += (sender, args) =>
 //            {
 //                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
 //            };
 //            
-//            _manager.Start();
+//            _syncServer.Start();
 //
-//            _manager.AddPeer(miner1);
+//            _syncServer.AddPeer(miner1);
 //
 //            resetEvent.WaitOne(_standardTimeoutUnit);
 //
@@ -196,7 +201,7 @@
 //
 //            resetEvent.Reset();
 //
-//            _manager.AddNewBlock(splitBlockChild, miner1.Node);
+//            _syncServer.AddNewBlock(splitBlockChild, miner1.Node);
 //
 //            resetEvent.WaitOne(_standardTimeoutUnit);
 //
@@ -210,13 +215,13 @@
 //            ISyncPeer miner1 = new SyncPeerMock(miner1Tree);
 //
 //            ManualResetEvent resetEvent = new ManualResetEvent(false);
-//            _manager.SyncEvent += (sender, args) =>
+//            _syncServer.SyncEvent += (sender, args) =>
 //            {
 //                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
 //            };
 //            
-//            _manager.Start();
-//            _manager.AddPeer(miner1);
+//            _syncServer.Start();
+//            _syncServer.AddPeer(miner1);
 //
 //            resetEvent.WaitOne(_standardTimeoutUnit);
 //
@@ -228,7 +233,7 @@
 //
 //            resetEvent.Reset();
 //
-//            _manager.AddNewBlock(miner1Tree.RetrieveHeadBlock(), miner1.Node);
+//            _syncServer.AddNewBlock(miner1Tree.RetrieveHeadBlock(), miner1.Node);
 //
 //            resetEvent.WaitOne(_standardTimeoutUnit);
 //
@@ -243,13 +248,13 @@
 //            ISyncPeer miner1 = new SyncPeerMock(minerTree);
 //
 //            AutoResetEvent resetEvent = new AutoResetEvent(false);
-//            _manager.SyncEvent += (sender, args) =>
+//            _syncServer.SyncEvent += (sender, args) =>
 //            {
 //                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
 //            };
 //            
-//            _manager.Start();
-//            _manager.AddPeer(miner1);
+//            _syncServer.Start();
+//            _syncServer.AddPeer(miner1);
 //            resetEvent.WaitOne(_standardTimeoutUnit);
 //
 //            Assert.AreEqual(minerTree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
@@ -264,7 +269,7 @@
 //
 //            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()), "number as expected");
 //
-//            _manager.AddPeer(miner2);
+//            _syncServer.AddPeer(miner2);
 //            resetEvent.WaitOne(_standardTimeoutUnit);
 //
 //            await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
@@ -278,13 +283,13 @@
 //            ISyncPeer miner1 = new SyncPeerMock(minerTree);
 //
 //            AutoResetEvent resetEvent = new AutoResetEvent(false);
-//            _manager.SyncEvent += (sender, args) =>
+//            _syncServer.SyncEvent += (sender, args) =>
 //            {
 //                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
 //            };
 //            
-//            _manager.Start();
-//            _manager.AddPeer(miner1);
+//            _syncServer.Start();
+//            _syncServer.AddPeer(miner1);
 //            resetEvent.WaitOne(_standardTimeoutUnit);
 //
 //            Assert.AreEqual(minerTree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
@@ -299,7 +304,7 @@
 //
 //            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()), "number as expected");
 //
-//            _manager.AddPeer(miner2);
+//            _syncServer.AddPeer(miner2);
 //            resetEvent.WaitOne(_standardTimeoutUnit);
 //
 //            await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
@@ -309,7 +314,7 @@
 //        public void Can_retrieve_node_values()
 //        {
 //            _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-//            byte[][] values = _manager.GetNodeData(new[] {TestItem.KeccakA, TestItem.KeccakB});
+//            byte[][] values = _syncServer.GetNodeData(new[] {TestItem.KeccakA, TestItem.KeccakB});
 //            Assert.AreEqual(2, values.Length, "data.Length");
 //            Assert.AreEqual(TestItem.RandomDataA, values[0], "data[0]");
 //            Assert.AreEqual(null, values[1], "data[1]");
@@ -322,7 +327,7 @@
 //            Block block0 = _blockTree.FindBlock(0);
 //            Block block1 = _blockTree.FindBlock(1);
 //
-//            TransactionReceipt[][] transactionReceipts = _manager.GetReceipts(new[] {block0.Hash, block1.Hash, TestItem.KeccakA});
+//            TransactionReceipt[][] transactionReceipts = _syncServer.GetReceipts(new[] {block0.Hash, block1.Hash, TestItem.KeccakA});
 //
 //            Assert.AreEqual(3, transactionReceipts.Length, "data.Length");
 //            Assert.AreEqual(0, transactionReceipts[0].Length, "data[0]");
