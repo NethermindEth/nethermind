@@ -398,7 +398,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
         }
         
-        [SetUp]
+        [TearDown]
         public void TearDown()
         {
         }

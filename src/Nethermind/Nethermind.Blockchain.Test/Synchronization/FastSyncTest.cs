@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TransactionPools;
@@ -36,17 +37,17 @@ namespace Nethermind.Blockchain.Test.Synchronization
 {
     public class FastSyncTest
     {
-        private List<(ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree)> _peers;
-        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) _localPeer;
-        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) _remotePeer1;
-        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) _remotePeer2;
-        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) _remotePeer3;
+        private List<(ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree)> _peers;
+        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) _localPeer;
+        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) _remotePeer1;
+        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) _remotePeer2;
+        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) _remotePeer3;
         private static Block _genesis = Build.A.Block.Genesis.TestObject;
 
         [SetUp]
         public void Setup()
         {
-            _peers = new List<(ISyncServer, IEthSyncPeerPool, IBlockTree)>();
+            _peers = new List<(ISyncServer, IEthSyncPeerPool, IBlockchainProcessor, IFullSynchronizer, IBlockTree)>();
             for (int i = 0; i < 4; i++)
             {
                 _peers.Add(CreateSyncManager($"PEER_{i}."));    
@@ -57,11 +58,22 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _remotePeer2 = _peers[2];
             _remotePeer3 = _peers[3];
         }
+        
+        [TearDown]
+        public async Task TearDown()
+        {
+            foreach ((ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) peer in _peers)
+            {
+                await peer.PeerPool.StopAsync();
+                await peer.BlockchainProcessor.StopAsync();
+                await peer.Synchronizer.StopAsync();
+            }
+        }
 
         [Test]
         public void Setup_is_correct()
         {
-            foreach ((ISyncServer SyncManager, IEthSyncPeerPool EthSyncPeerPool, IBlockTree Tree) peer in _peers)
+            foreach ((ISyncServer SyncManager, IEthSyncPeerPool EthSyncPeerPool, IBlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) peer in _peers)
             {
                 Assert.AreEqual(_genesis.Header, peer.SyncManager.Head);    
             }
@@ -71,7 +83,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             for (int localIndex = 0; localIndex < _peers.Count; localIndex++)
             {
-                (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) localPeer = _peers[localIndex];
+                (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) localPeer = _peers[localIndex];
                 for (int remoteIndex = 0; remoteIndex < _peers.Count; remoteIndex++)
                 {
                     if (localIndex == remoteIndex)
@@ -79,7 +91,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                         continue;
                     }
                     
-                    (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockTree Tree) remotePeer = _peers[remoteIndex];
+                    (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) remotePeer = _peers[remoteIndex];
                     localPeer.PeerPool.AddPeer(new SyncPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex], $"PEER{localIndex}", remotePeer.SyncManager, TestItem.PublicKeys[remoteIndex], $"PEER{remoteIndex}"));
                 }
             }
@@ -197,7 +209,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.AreEqual(headBlock.Header.Hash, _remotePeer3.SyncManager.Head.Hash, "peer 3");
         }
 
-        private static (ISyncServer, IEthSyncPeerPool, BlockTree) CreateSyncManager(string prefix)
+        private static (ISyncServer, IEthSyncPeerPool, IBlockchainProcessor, IFullSynchronizer, IBlockTree) CreateSyncManager(string prefix)
         {
 //            var logManager = NoErrorLimboLogs.Instance;
             var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, prefix));
@@ -249,7 +261,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 throw new Exception("No genesis");
             }
 
-            return (syncServer, syncPeerPool, tree);
+            return (syncServer, syncPeerPool, processor, synchronizer, tree);
         }
     }
 }

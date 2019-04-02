@@ -30,6 +30,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _stats = Substitute.For<INodeStatsManager>();
             _pool = new EthSyncPeerPool(_blockTree, _stats, new SyncConfig(), LimboLogs.Instance);
         }
+        
+        [TearDown]
+        public async Task TearDown()
+        {
+            await _pool.StopAsync();
+        }
 
         private class SimpleSyncPeerMock : ISyncPeer
         {
@@ -381,7 +387,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             _pool.Start();
             _pool.AddPeer(peer);
-            await Task.Delay(15000);
+            await Task.Delay(12000);
             
             
             var allocation = _pool.BorrowPeer(UInt256.Zero);
