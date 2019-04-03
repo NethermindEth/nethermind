@@ -213,7 +213,7 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
 
-            session.InitiateDisconnect(DisconnectReason.ClientQuitting);
+            session.InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
             session.Dispose();
 
             aaa.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
@@ -347,7 +347,7 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(aaa);
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
-            session.InitiateDisconnect(DisconnectReason.ClientQuitting);
+            session.InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
             aaa.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
             bbb.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
             ccc.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
