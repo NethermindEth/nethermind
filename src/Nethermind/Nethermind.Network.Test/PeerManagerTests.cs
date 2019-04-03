@@ -280,7 +280,6 @@ namespace Nethermind.Network.Test
         }
         
         [Test]
-        [Ignore("Behaviour changed that allows peers to go over max if awaiting response")]
         public void Will_fill_up_over_and_over_again_on_disconnects()
         {
             SetupPersistedPeers(50);
@@ -315,6 +314,7 @@ namespace Nethermind.Network.Test
         private int _travisDelay = 1000;
         
         [Test]
+        [Ignore("Behaviour changed that allows peers to go over max if awaiting response")]
         public void Will_fill_up_with_incoming_over_and_over_again_on_disconnects()
         {
             SetupPersistedPeers(0);
