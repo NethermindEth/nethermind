@@ -360,7 +360,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void ReplaceIfWorthReplacing(SyncPeerAllocation allocation, PeerInfo peerInfo, ComparedPeerType comparedPeerType)
         {
-            if (allocation.Current == null)
+            if (allocation.Current == null && peerInfo.TotalDifficulty > _blockTree.BestSuggested.TotalDifficulty)
             {
                 allocation.ReplaceCurrent(peerInfo);
             }

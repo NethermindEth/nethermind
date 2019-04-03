@@ -44,7 +44,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public BlockBodiesMessage(Block[] blocks)
         {
-            Bodies = blocks.Select(b => b == null ? null : new BlockBody(b.Transactions.ToArray(), b.Ommers)).ToArray();
+            Bodies = new BlockBody[blocks.Length];
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                Bodies[i] = blocks[i] == null ? null : new BlockBody(blocks[i].Transactions, blocks[i].Ommers);
+            }
         }
         
         public BlockBody[] Bodies { get; set; }

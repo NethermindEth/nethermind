@@ -358,43 +358,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Send(new BlockHeadersMessage(headers));
         }
 
-        [Todo(Improve.MissingFunctionality, "Need to compare response")]
-        private bool IsRequestMatched(
-            Request<GetBlockHeadersMessage, BlockHeader[]> request,
-            BlockHeadersMessage response)
-        {
-            return response.PacketType == Eth62MessageCode.BlockHeaders; // TODO: more detailed
-        }
-
-        [Todo(Improve.MissingFunctionality, "Need to compare response")]
-        private bool IsRequestMatched(
-            Request<GetBlockBodiesMessage, Block[]> request,
-            BlockBodiesMessage response)
-        {
-            return response.PacketType == Eth62MessageCode.BlockBodies; // TODO: more detailed
-        }
-
         private void Handle(BlockBodiesMessage message)
         {
-            List<Block> blocks = new List<Block>();
-            foreach (BlockBody body in message.Bodies)
+            Block[] blocks = new Block[message.Bodies.Length];
+            for (int i = 0; i < message.Bodies.Length; i++)
             {
-                // TODO: match with headers
-                Block block = new Block(null, body.Transactions, body.Ommers);
-                blocks.Add(block);
+                Block block = new Block(null, message.Bodies[i].Transactions, message.Bodies[i].Ommers);
+                blocks[i] = block;
             }
 
             var request = _bodiesRequests.Take();
-            if (IsRequestMatched(request, message))
+            if (message.PacketType == Eth62MessageCode.BlockBodies)
             {
-                request.CompletionSource.SetResult(blocks.ToArray());
+                request.CompletionSource.SetResult(blocks);
             }
         }
 
         private void Handle(BlockHeadersMessage message)
         {
             var request = _headersRequests.Take();
-            if (IsRequestMatched(request, message))
+            if (message.PacketType == Eth62MessageCode.BlockHeaders)
             {
                 request.CompletionSource.SetResult(message.BlockHeaders);
             }
@@ -527,7 +510,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         async Task<Block[]> ISyncPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
-            var bodiesMsg = new GetBlockBodiesMessage(blockHashes.ToArray());
+            var bodiesMsg = new GetBlockBodiesMessage(blockHashes);
 
             Block[] blocks = await SendRequest(bodiesMsg, token);
             return blocks;

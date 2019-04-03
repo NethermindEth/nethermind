@@ -121,6 +121,7 @@ namespace Nethermind.Runner.Runners
         private IProtocolsManager _protocolsManager;
         private IBlockTree _blockTree;
         private IBlockValidator _blockValidator;
+        private IHeaderValidator _headerValidator;
         private IBlockDataRecoveryStep _recoveryStep;
         private IBlockProcessor _blockProcessor;
         private IRewardCalculator _rewardCalculator;
@@ -391,7 +392,7 @@ namespace Nethermind.Runner.Runners
                 ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, StateProvider, storageProvider, virtualMachine, logManager);
                 ITransactionPool transactionPool = customTransactionPool;
                 IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, storageProvider, transactionPool, receiptStorage, logManager);
-                Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false);
+                Processor = new FastSyncBlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false);
             }
         }
 
@@ -538,7 +539,7 @@ namespace Nethermind.Runner.Runners
             }
 
             /* validation */
-            var headerValidator = new HeaderValidator(
+            _headerValidator = new HeaderValidator(
                 _blockTree,
                 _sealValidator,
                 _specProvider,
@@ -546,7 +547,7 @@ namespace Nethermind.Runner.Runners
 
             var ommersValidator = new OmmersValidator(
                 _blockTree,
-                headerValidator,
+                _headerValidator,
                 _logManager);
 
             var txValidator = new TransactionValidator(
@@ -554,7 +555,7 @@ namespace Nethermind.Runner.Runners
 
             _blockValidator = new BlockValidator(
                 txValidator,
-                headerValidator,
+                _headerValidator,
                 ommersValidator,
                 _specProvider,
                 _logManager);
@@ -606,7 +607,7 @@ namespace Nethermind.Runner.Runners
                 _receiptStorage,
                 _logManager);
 
-            _blockchainProcessor = new BlockchainProcessor(
+            _blockchainProcessor = new FastSyncBlockchainProcessor(
                 _blockTree,
                 _blockProcessor,
                 _recoveryStep,
@@ -701,7 +702,7 @@ namespace Nethermind.Runner.Runners
         {
             ISyncConfig syncConfig = _configProvider.GetConfig<ISyncConfig>();
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
-            _synchronizer = new FullSynchronizer(_blockTree, _blockValidator, _sealValidator, txValidator, _syncPeerPool, syncConfig, _logManager);
+            _synchronizer = new FastSynchronizer(_blockTree, _headerValidator, _sealValidator, txValidator, _syncPeerPool, syncConfig, _logManager);
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,
                 _blockTree,
