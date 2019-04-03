@@ -21,13 +21,7 @@ namespace Nethermind.Mining
         
         public bool ValidateSeal(BlockHeader header)
         {
-            // TODO: all until we properly optimize ethash, still with sensible security measures (although there are many attack vectors for this particular node during sync)
-            if (header.Number < 750000)
-            {
-                return true;
-            }
-
-            if (header.Number < 6500000 && header.Number % 30000 != 0) // TODO: this numbers are here to secure mainnet only (current block and epoch length) 
+            if (header.Number < 6500000 && header.Number % 30000 != 0) 
             {
                 return true;
             }
@@ -40,7 +34,7 @@ namespace Nethermind.Mining
             bool extraDataNotTooLong = header.ExtraData.Length <= 32;
             if (!extraDataNotTooLong)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - extra data too long {header.ExtraData.Length}");
+                _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - extra data too long {header.ExtraData.Length}");
                 return false;
             }
             
@@ -48,7 +42,7 @@ namespace Nethermind.Mining
             bool isDifficultyCorrect = difficulty == header.Difficulty;
             if (!isDifficultyCorrect)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - incorrect diffuclty {header.Difficulty} instead of {difficulty}");
+                _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - incorrect difficulty {header.Difficulty} instead of {difficulty}");
                 return false;
             }
 

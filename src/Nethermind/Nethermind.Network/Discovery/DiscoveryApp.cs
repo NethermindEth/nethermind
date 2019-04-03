@@ -293,13 +293,15 @@ namespace Nethermind.Network.Discovery
         private void InitializeDiscoveryTimer()
         {
             if(_logger.IsDebug) _logger.Debug("Starting discovery timer");
-            _discoveryTimer = new Timer(_networkConfig.DiscoveryInterval) {AutoReset = false};
+            _discoveryTimer = new Timer(1000) {AutoReset = false};
             _discoveryTimer.Elapsed += (sender, e) =>
             {
                 try
                 {
                     _discoveryTimer.Enabled = false;
                     RunDiscoveryProcess();
+                    var nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
+                    _discoveryTimer.Interval = nodesCountAfterDiscovery < 100 ? 100 : nodesCountAfterDiscovery < 1000 ? 1000 : _networkConfig.DiscoveryInterval;
                 }
                 catch (Exception exception)
                 {

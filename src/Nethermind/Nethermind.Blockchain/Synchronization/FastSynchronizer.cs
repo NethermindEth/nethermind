@@ -318,6 +318,22 @@ namespace Nethermind.Blockchain.Synchronization
                 }
                 
                 _allocation.FinishSync();
+                _logger.Warn($"[FAST SYNC] Current sync at {_blockTree.BestSuggested?.Number}!");
+                if ((_blockTree.BestSuggested?.Number ?? 0) > 131072)
+                {
+                    _syncPeerPool.EnsureBest(_allocation);
+                    if ((_allocation.Current?.HeadNumber ?? 0) <= (_blockTree.BestSuggested?.Number ?? 0) + 1024)
+                    {
+                        _logger.Warn($"[FAST SYNC] Switching to node data download at block {_blockTree.BestSuggested?.Number}!");
+                        foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
+                        {
+                            _logger.Warn($"[FAST SYNC] Peers:");
+                            _logger.Warn($"[FAST SYNC] {peerInfo}!");    
+                        }
+                        
+                        _mode = SynchronizationMode.NodeData;
+                    }
+                }
             }
         }
         
