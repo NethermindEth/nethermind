@@ -98,6 +98,7 @@ namespace Nethermind.Network.Test
                 _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _perfService = new PerfService(LimboLogs.Instance);
+                _syncPeerPool = Substitute.For<IEthSyncPeerPool>();
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
