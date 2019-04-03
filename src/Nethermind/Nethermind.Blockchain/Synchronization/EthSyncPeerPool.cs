@@ -377,7 +377,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (newLatency / (decimal) Math.Max(1L, currentLatency) < 1m - _syncConfig.MinDiffPercentageForLatencySwitch / 100m
                 && newLatency < currentLatency - _syncConfig.MinDiffForLatencySwitch)
             {
-                if (_logger.IsDebug) _logger.Debug($"Sync allocation - replacing {allocation.Current} with {peerInfo} - latency {currentLatency} vs {newLatency}");
+                if (_logger.IsInfo) _logger.Info($"Sync allocation - replacing {allocation.Current} with {peerInfo} - previous latency {currentLatency} vs new latency {newLatency}");
                 allocation.ReplaceCurrent(peerInfo);
             }
             else
