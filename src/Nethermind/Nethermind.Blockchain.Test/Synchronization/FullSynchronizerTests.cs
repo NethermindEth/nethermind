@@ -165,7 +165,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 {
                      header = Blocks.Last().Header;
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     Console.WriteLine("RESPONDING TO GET HEAD BLOCK HEADER EXCEPTION");
                     throw;
@@ -233,7 +233,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             private IEthSyncPeerPool SyncPeerPool { get; set; }
 
-            ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace));
+            ILogManager _logManager = LimboLogs.Instance;
 
             private ILogger _logger;
             

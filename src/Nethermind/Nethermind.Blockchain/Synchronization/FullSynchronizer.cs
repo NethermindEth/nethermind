@@ -81,11 +81,8 @@ namespace Nethermind.Blockchain.Synchronization
         
         private Task _syncLoopTask;
 
-        private bool _isInitialized;
-        
         public async Task StopAsync()
         {
-            _isInitialized = false;
             StopSyncTimer();
             
             _peerSyncCancellationTokenSource?.Cancel();
@@ -113,8 +110,6 @@ namespace Nethermind.Blockchain.Synchronization
         
         public void Start()
         {
-            _isInitialized = true;
-
 //            _syncLoopTask = Task.Run(RunSyncLoop, _syncLoopCancelTokenSource.Token) 
             _syncLoopTask = Task.Factory.StartNew(
                 RunSyncLoop,

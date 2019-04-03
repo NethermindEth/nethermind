@@ -40,8 +40,6 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly IFullSynchronizer _synchronizer;
         private object _dummyValue = new object();
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
-
-        public event EventHandler<SyncEventArgs> SyncEvent;
         
         public SyncServer(ISnapshotableDb stateDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, IFullSynchronizer synchronizer, ILogManager logManager)
         {
