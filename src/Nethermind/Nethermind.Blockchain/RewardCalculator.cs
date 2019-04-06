@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain
         public BlockReward[] CalculateRewards(Block block)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
-            UInt256 blockReward = spec.IsEip649Enabled ? (spec.IsEip1234Enabled ? 2.Ether() : 3.Ether()) : 5.Ether();
+            UInt256 blockReward = spec.IsEip649Enabled ? spec.IsEip1234Enabled ? 2.Ether() : 3.Ether() : 5.Ether();
             BlockReward[] rewards = new BlockReward[1 + block.Ommers.Length];
 
             BlockHeader blockHeader = block.Header;

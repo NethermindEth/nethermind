@@ -31,6 +31,7 @@ using Nethermind.Blockchain.TransactionPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
@@ -290,7 +291,7 @@ namespace Nethermind.PerfTest
 
         private static async Task RunRopstenBlocks()
         {
-            ParityTraceDecoder.Init();
+            Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
             
             /* logging & instrumentation */
             _logManager = new NLogManager("perTest.logs.txt", null);

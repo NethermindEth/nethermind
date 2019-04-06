@@ -125,7 +125,17 @@ namespace Nethermind.Blockchain
             return block;
         }
 
+        public void ProduceEmptyBlock()
+        {
+            ProduceNewBlock();
+        }
+        
         private void OnNewPendingTx(object sender, TransactionEventArgs e)
+        {
+            ProduceNewBlock();
+        }
+
+        private void ProduceNewBlock()
         {
             Block block = PrepareBlock();
             if (block == null)

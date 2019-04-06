@@ -645,6 +645,7 @@ namespace Nethermind.Store
 
         public void CommitTree()
         {
+            if (_logger.IsWarn) _logger.Warn("COMMITTING TREE");
             _state.Commit();
         }
     }

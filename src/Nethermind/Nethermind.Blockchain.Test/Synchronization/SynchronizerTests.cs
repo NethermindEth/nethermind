@@ -844,6 +844,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         private const int Moment = 50;
-        private const int WaitTime = 11231500;
+        private const int WaitTime = 500;
     }
 }

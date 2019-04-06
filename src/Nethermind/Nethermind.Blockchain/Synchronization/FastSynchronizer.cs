@@ -323,23 +323,23 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 _allocation.FinishSync();
-                _logger.Warn($"[FAST SYNC] Current sync at {_blockTree.BestSuggested?.Number}!");
-                if ((_blockTree.BestSuggested?.Number ?? 0) > 10)
-                {
-                    _syncPeerPool.EnsureBest(_allocation, (_blockTree.BestSuggested?.TotalDifficulty - 1) ?? 0);
-                    if ((_allocation.Current?.HeadNumber ?? 0) <= (_blockTree.BestSuggested?.Number ?? 0) + 1024)
-                    {
-                        _logger.Warn($"[FAST SYNC] Switching to node data download at block {_blockTree.BestSuggested?.Number}!");
-                        foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
-                        {
-                            _logger.Warn($"[FAST SYNC] Peers:");
-                            _logger.Warn($"[FAST SYNC] {peerInfo}!");
-                        }
-
-                        await _nodeDataDownloader.SyncNodeData((_blockTree.BestSuggested?.Hash, NodeDataType.State));
-                        _mode = SynchronizationMode.NodeData;
-                    }
-                }
+//                _logger.Warn($"[FAST SYNC] Current sync at {_blockTree.BestSuggested?.Number}!");
+//                if ((_blockTree.BestSuggested?.Number ?? 0) > 10)
+//                {
+//                    _syncPeerPool.EnsureBest(_allocation, (_blockTree.BestSuggested?.TotalDifficulty - 1) ?? 0);
+//                    if ((_allocation.Current?.HeadNumber ?? 0) <= (_blockTree.BestSuggested?.Number ?? 0) + 1024)
+//                    {
+//                        _logger.Warn($"[FAST SYNC] Switching to node data download at block {_blockTree.BestSuggested?.Number}!");
+//                        foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
+//                        {
+//                            _logger.Warn($"[FAST SYNC] Peers:");
+//                            _logger.Warn($"[FAST SYNC] {peerInfo}!");
+//                        }
+//
+//                        await _nodeDataDownloader.SyncNodeData((_blockTree.BestSuggested?.Hash, NodeDataType.State));
+//                        _mode = SynchronizationMode.NodeData;
+//                    }
+//                }
             }
         }
 

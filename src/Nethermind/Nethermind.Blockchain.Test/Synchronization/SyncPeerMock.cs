@@ -37,11 +37,23 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         public SyncPeerMock(IBlockTree remoteTree, PublicKey localPublicKey = null, string localClientId = "", ISyncServer remoteSyncServer = null, PublicKey remotePublicKey = null, string remoteClientId = "")
         {
+            string localHost = "127.0.0.1";
+            if (int.TryParse(localClientId.Replace("PEER", string.Empty), out int localIndex))
+            {
+                localHost = $"127.0.0.{localIndex}";    
+            }
+            
+            string remoteHost = "127.0.0.1";
+            if (int.TryParse(remoteClientId.Replace("PEER", string.Empty), out int remoteIndex))
+            {
+                remoteHost = $"127.0.0.{remoteIndex}";    
+            }
+            
             _remoteTree = remoteTree;
             _localPublicKey = localPublicKey;
             _remoteSyncServer = remoteSyncServer;
-            Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, "127.0.0.1", 1234);
-            LocalNode = new Node(localPublicKey ?? TestItem.PublicKeyB, "127.0.0.1", 1235);
+            Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, remoteHost, 1234);
+            LocalNode = new Node(localPublicKey ?? TestItem.PublicKeyB, localHost, 1235);
             Node.ClientId = remoteClientId;
             LocalNode.ClientId = localClientId;
 

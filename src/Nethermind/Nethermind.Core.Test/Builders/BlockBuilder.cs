@@ -121,6 +121,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.ParentHash = parent;
             return this;
         }
+        
+        public BlockBuilder WithStateRoot(Keccak stateRoot)
+        {
+            TestObjectInternal.Header.StateRoot = stateRoot;
+            return this;
+        }
 
         public BlockBuilder Genesis => WithNumber(0).WithParentHash(Keccak.Zero).WithMixHash(Keccak.Zero);
 

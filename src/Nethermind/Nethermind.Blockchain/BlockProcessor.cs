@@ -83,6 +83,8 @@ namespace Nethermind.Blockchain
 
         public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
+            _logger.Warn($"PROCESSING BLOCKS {suggestedBlocks[0].Number}");
+            
             if (suggestedBlocks.Length == 0) return Array.Empty<Block>();
 
             int stateSnapshot = _stateDb.TakeSnapshot();
@@ -104,7 +106,7 @@ namespace Nethermind.Blockchain
                 for (int i = 0; i < suggestedBlocks.Length; i++)
                 {
                     processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, blockTracer);
-                    if (_logger.IsTrace) _logger.Trace($"Committing trees - state root {_stateProvider.StateRoot}");
+                    if (_logger.IsInfo) _logger.Info($"Committing trees - state root {_stateProvider.StateRoot}");
                     _stateProvider.CommitTree();
                     _storageProvider.CommitTrees();
                 }

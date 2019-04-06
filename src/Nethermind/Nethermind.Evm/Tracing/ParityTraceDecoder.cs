@@ -28,20 +28,6 @@ namespace Nethermind.Evm.Tracing
 {
     public class ParityTraceDecoder : IRlpDecoder<ParityLikeTxTrace>
     {
-        public static void Init()
-        {
-            // here to register with RLP in static constructor
-        }
-        
-        private ParityTraceDecoder()
-        {
-        }
-
-        static ParityTraceDecoder()
-        {
-            Rlp.Decoders[typeof(ParityLikeTxTrace)] = new ParityTraceDecoder();
-        }
-
         public ParityLikeTxTrace Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ParityLikeTxTrace trace = new ParityLikeTxTrace();

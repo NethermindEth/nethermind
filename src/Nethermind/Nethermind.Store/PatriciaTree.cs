@@ -20,6 +20,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -44,10 +45,10 @@ namespace Nethermind.Store
         /// </summary>
         private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
-        private static readonly ConcurrentQueue<Exception> CommitExceptions = new ConcurrentQueue<Exception>();
+        private readonly ConcurrentQueue<Exception> CommitExceptions = new ConcurrentQueue<Exception>();
 
         private readonly IDb _db;
-        private readonly bool _parallelizeBranches;
+        private readonly bool _parallelBranches;
 
         private Keccak _rootHash;
 
@@ -58,10 +59,10 @@ namespace Nethermind.Store
         {
         }
 
-        public PatriciaTree(IDb db, Keccak rootHash, bool parallelizeBranches)
+        public PatriciaTree(IDb db, Keccak rootHash, bool parallelBranches)
         {
             _db = db;
-            _parallelizeBranches = parallelizeBranches;
+            _parallelBranches = parallelBranches;
             RootHash = rootHash;
         }
 
@@ -92,7 +93,11 @@ namespace Nethermind.Store
                 Commit(RootRef, true);
                 while(!CurrentCommit.IsEmpty)
                 {
-                    CurrentCommit.TryDequeue(out TrieNode node);
+                    if (!CurrentCommit.TryDequeue(out TrieNode node))
+                    {
+                        throw new ArgumentNullException($"Threading issue at {nameof(CurrentCommit)} - should not happen unless we use static objects somewhere here.");
+                    }
+                    
                     _db.Set(node.Keccak, node.FullRlp.Bytes);
                 }
 
@@ -102,14 +107,14 @@ namespace Nethermind.Store
             }
         }
 
-        private static readonly ConcurrentQueue<TrieNode> CurrentCommit = new ConcurrentQueue<TrieNode>();
+        private readonly ConcurrentQueue<TrieNode> CurrentCommit = new ConcurrentQueue<TrieNode>();
 
         private void Commit(TrieNode node, bool isRoot)
-        {
+        {            
             if (node.IsBranch)
             {
                 // idea from EthereumJ - testing parallel branches
-                if (!_parallelizeBranches || !isRoot)
+                if (!_parallelBranches || !isRoot)
                 {
                     for (int i = 0; i < 16; i++)
                     {
