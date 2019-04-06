@@ -63,7 +63,6 @@ namespace Nethermind.Blockchain
         private readonly ISpecProvider _specProvider;
         private readonly ITransactionPool _transactionPool;
 
-        // TODO: validators should be here
         public BlockTree(
             IDb blockDb,
             IDb blockInfoDb,
@@ -354,7 +353,6 @@ namespace Nethermind.Blockchain
 
             if (mainChainOnly)
             {
-                // TODO: double hash comparison
                 bool isMain = level.HasBlockOnMainChain && level.BlockInfos[0].BlockHash.Equals(blockHash);
                 return isMain ? block : null;
             }
@@ -362,7 +360,6 @@ namespace Nethermind.Blockchain
             return block;
         }
 
-        // TODO: since finding by hash will be faster it will be worth to refactor this part
         public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
         {
             if (blockHash == null) throw new ArgumentNullException(nameof(blockHash));

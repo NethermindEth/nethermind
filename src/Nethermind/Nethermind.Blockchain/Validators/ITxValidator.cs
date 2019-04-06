@@ -23,6 +23,6 @@ namespace Nethermind.Blockchain.Validators
 {
     public interface ITxValidator
     {
-        bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, bool ignoreSignature = false);
+        bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec);
     }
 }

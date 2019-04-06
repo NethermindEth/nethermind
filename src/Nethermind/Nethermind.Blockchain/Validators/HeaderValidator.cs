@@ -48,8 +48,8 @@ namespace Nethermind.Blockchain.Validators
         /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
         /// </summary>
         /// <param name="header">Block header to validate</param>
-        /// <param name="isOmmer"><value>True</value> if ommer, otherwise <value>False</value></param>
-        /// <returns></returns>
+        /// <param name="isOmmer"><value>True</value> if the <paramref name="header"/> is an ommer, otherwise <value>False</value></param>
+        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
         public bool Validate(BlockHeader header, bool isOmmer = false)
         {
             // the rule here is to validate the seal first (avoid any cheap attacks on validation logic)

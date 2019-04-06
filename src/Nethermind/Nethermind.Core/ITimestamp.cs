@@ -16,11 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+
 namespace Nethermind.Core
 {
     public interface ITimestamp
     {
         ulong EpochSeconds { get; }
         ulong EpochMilliseconds { get; }
+        
+        DateTime UtcNow { get; }
     }
 }

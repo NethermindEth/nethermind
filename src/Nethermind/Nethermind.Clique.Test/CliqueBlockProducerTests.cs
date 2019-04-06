@@ -46,7 +46,7 @@ namespace Nethermind.Clique.Test
     {
         private class On
         {
-            private static Timestamp _timestamp = new Timestamp(new DateTimeProvider());
+            private static Timestamp _timestamp = new Timestamp(DateTime.UtcNow);
             private CliqueConfig _cliqueConfig;
             private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(GoerliSpecProvider.Instance, NullLogManager.Instance);
             private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new Dictionary<PrivateKey, ISnapshotManager>();

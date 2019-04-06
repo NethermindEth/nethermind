@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain
             block.Header.Bloom = transactionReceipts.Length > 0 ? BuildBloom(transactionReceipts) : Bloom.Empty;
         }
 
-        public Bloom BuildBloom(TransactionReceipt[] transactionReceipts)
+        private Bloom BuildBloom(TransactionReceipt[] transactionReceipts)
         {
             Bloom bloom = new Bloom();
             for (int i = 0; i < transactionReceipts.Length; i++)

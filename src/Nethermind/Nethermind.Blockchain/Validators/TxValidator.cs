@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Validators
            from the same account with the same nonce got included on the chain.
            As such we can decide whether tx is well formed but we also have to validate nonce
            just before the execution of the block / tx. */
-        public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, bool ignoreSignature = false)
+        public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
         {
             return 
                    /* This is unnecessarily calculated twice - at validation and execution times. */
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Validators
                    (transaction.To != null || transaction.Init != null) &&
                    /* can be a simple transfer, a call, or an init but not both an init and a call */
                    !(transaction.Data != null && transaction.Init != null) &&
-                   (ignoreSignature || ValidateSignature(transaction.Signature, releaseSpec));
+                   ValidateSignature(transaction.Signature, releaseSpec);
         }
         
         private bool ValidateSignature(Signature signature, IReleaseSpec spec)

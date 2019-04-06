@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Test
             _alwaysSameResult = validationResult;
         }
 
-        public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, bool ignoreSignature = false)
+        public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
         {
             return _alwaysSameResult ?? _validationResults.Dequeue();
         }
