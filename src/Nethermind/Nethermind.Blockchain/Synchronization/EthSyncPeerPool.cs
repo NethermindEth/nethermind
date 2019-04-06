@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
 
         private ConcurrentDictionary<SyncPeerAllocation, object> _allocations = new ConcurrentDictionary<SyncPeerAllocation, object>();
-        private const int AllocationsUpgradeInterval = 1000;
+        private const int AllocationsUpgradeInterval = 1000000000;
         private System.Timers.Timer _upgradeTimer;
 
         private readonly BlockingCollection<PeerInfo> _peerRefreshQueue = new BlockingCollection<PeerInfo>();
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Synchronization
                         }
                         else
                         {
-                            UpdateAllocations("REFRESH");
+                            UpdateAllocations("REFRESH", _blockTree.BestSuggested?.TotalDifficulty ?? 0);
                             // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
                             if (peerInfo.TotalDifficulty == _blockTree.BestSuggested?.TotalDifficulty && peerInfo.HeadHash != _blockTree.BestSuggested?.Hash)
                             {
@@ -165,7 +165,7 @@ namespace Nethermind.Blockchain.Synchronization
                 try
                 {
                     _upgradeTimer.Enabled = false;
-                    UpdateAllocations("TIMER");
+                    UpdateAllocations("TIMER", _blockTree.BestSuggested?.TotalDifficulty ?? 0);
                 }
                 catch (Exception exception)
                 {
@@ -187,9 +187,9 @@ namespace Nethermind.Blockchain.Synchronization
             await (_refreshLoopTask ?? Task.CompletedTask);
         }
 
-        public void EnsureBest(SyncPeerAllocation allocation)
+        public void EnsureBest(SyncPeerAllocation allocation, UInt256 difficultyThreshold)
         {
-            UpdateAllocations("ENSURE BEST");
+            UpdateAllocations("ENSURE BEST", difficultyThreshold);
         }
 
         private static int InitTimeout = 10000;
@@ -352,15 +352,9 @@ namespace Nethermind.Blockchain.Synchronization
             return bestPeer.Info;
         }
 
-        private enum ComparedPeerType
+        private void ReplaceIfWorthReplacing(SyncPeerAllocation allocation, PeerInfo peerInfo)
         {
-            New,
-            Existing
-        }
-
-        private void ReplaceIfWorthReplacing(SyncPeerAllocation allocation, PeerInfo peerInfo, ComparedPeerType comparedPeerType)
-        {
-            if (allocation.Current == null && peerInfo.TotalDifficulty > _blockTree.BestSuggested.TotalDifficulty)
+            if (allocation.Current == null)
             {
                 allocation.ReplaceCurrent(peerInfo);
             }
@@ -386,14 +380,14 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private void UpdateAllocations(string reason)
+        private void UpdateAllocations(string reason, UInt256 difficultyThreshold)
         {
-            var bestPeer = SelectBestPeerForSync(_blockTree.BestSuggested?.TotalDifficulty ?? 0, reason);
+            var bestPeer = SelectBestPeerForSync(difficultyThreshold, reason);
             if (bestPeer != null)
             {
                 foreach ((SyncPeerAllocation allocation, _) in _allocations)
                 {
-                    ReplaceIfWorthReplacing(allocation, bestPeer, ComparedPeerType.Existing);
+                    ReplaceIfWorthReplacing(allocation, bestPeer);
                 }
             }
             else
@@ -407,9 +401,9 @@ namespace Nethermind.Blockchain.Synchronization
             return _peers.TryGetValue(nodeId, out peerInfo);
         }
 
-        public SyncPeerAllocation BorrowPeer(UInt256 difficultyThreshold, string description)
+        public SyncPeerAllocation BorrowPeer(string description)
         {
-            SyncPeerAllocation allocation = new SyncPeerAllocation(SelectBestPeerForSync(difficultyThreshold, "BORROW"), description);
+            SyncPeerAllocation allocation = new SyncPeerAllocation(SelectBestPeerForSync(_blockTree.BestSuggested?.TotalDifficulty ?? 0, "BORROW"), description);
             _allocations.TryAdd(allocation, null);
             return allocation;
         }

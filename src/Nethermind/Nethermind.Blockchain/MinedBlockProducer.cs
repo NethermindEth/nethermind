@@ -174,7 +174,7 @@ namespace Nethermind.Blockchain
             
             if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {total} pending transactions.");
             Block block = new Block(header, selected, new BlockHeader[0]);
-            header.TransactionsRoot = block.CalculateTransactionsRoot();
+            header.TransactionsRoot = block.CalculateTxRoot();
             return block;
         }
 

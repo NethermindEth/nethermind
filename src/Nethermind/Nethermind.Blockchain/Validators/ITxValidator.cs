@@ -16,13 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Validators
 {
-    public interface ISignatureValidator
+    public interface ITxValidator
     {
-        bool Validate(Signature signature, IReleaseSpec releaseSpec);
+        bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, bool ignoreSignature = false);
     }
 }

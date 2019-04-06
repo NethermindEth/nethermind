@@ -33,7 +33,7 @@ using PublicKey = System.Security.Cryptography.X509Certificates.PublicKey;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class FastSynchronizer : IFullSynchronizer
+    public class FastSynchronizer : ISynchronizer, INodeDataRequestExecutor
     {
         private int _sinceLastTimeout;
         private UInt256 _lastSyncNumber = UInt256.Zero;
@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISealValidator _sealValidator;
         private readonly IEthSyncPeerPool _syncPeerPool;
 
-        private readonly ITransactionValidator _transactionValidator;
+        private readonly ITxValidator _txValidator;
         private readonly Blockchain.ISyncConfig _syncConfig;
         private readonly INodeDataDownloader _nodeDataDownloader;
         private readonly IBlockTree _blockTree;
@@ -71,32 +71,34 @@ namespace Nethermind.Blockchain.Synchronization
         public FastSynchronizer(IBlockTree blockTree,
             IHeaderValidator headerValidator,
             ISealValidator sealValidator,
-            ITransactionValidator transactionValidator,
+            ITxValidator txValidator,
             IEthSyncPeerPool peerPool,
             ISyncConfig syncConfig,
-//            INodeDataDownloader nodeDataDownloader,
+            INodeDataDownloader nodeDataDownloader,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-//            _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
+            _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
 
-            _transactionValidator = transactionValidator ?? throw new ArgumentNullException(nameof(transactionValidator));
+            _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
 
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
+            
+            _nodeDataDownloader.SetExecutor(this);
         }
-        
+
         private CancellationTokenSource _syncLoopCancelTokenSource = new CancellationTokenSource();
-        
+
         private Task _syncLoopTask;
 
         public async Task StopAsync()
         {
             StopSyncTimer();
-            
+
             _peerSyncCancellationTokenSource?.Cancel();
             _syncLoopCancelTokenSource?.Cancel();
 
@@ -104,9 +106,9 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_logger.IsInfo) _logger.Info("Sync shutdown complete.. please wait for all components to close");
         }
-        
+
         private System.Timers.Timer _syncTimer;
-        
+
         private void StopSyncTimer()
         {
             try
@@ -119,37 +121,37 @@ namespace Nethermind.Blockchain.Synchronization
                 _logger.Error("Error during sync timer stop", e);
             }
         }
-        
+
         public void Start()
         {
 //            _syncLoopTask = Task.Run(RunSyncLoop, _syncLoopCancelTokenSource.Token) 
             _syncLoopTask = Task.Factory.StartNew(
-                RunSyncLoop,
-                _syncLoopCancelTokenSource.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).Unwrap()
+                    RunSyncLoop,
+                    _syncLoopCancelTokenSource.Token,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default).Unwrap()
                 .ContinueWith(t =>
-            {
-                if (t.IsFaulted)
                 {
-                    if (_logger.IsError) _logger.Error("Sync loop encountered an exception.", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Sync loop stopped.");
-                }
-                else if (t.IsCompleted)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Sync loop complete.");
-                }
-            });
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error("Sync loop encountered an exception.", t.Exception);
+                    }
+                    else if (t.IsCanceled)
+                    {
+                        if (_logger.IsDebug) _logger.Debug("Sync loop stopped.");
+                    }
+                    else if (t.IsCompleted)
+                    {
+                        if (_logger.IsDebug) _logger.Debug("Sync loop complete.");
+                    }
+                });
 
             StartSyncTimer();
         }
-        
+
         private DateTime _lastFullInfo = DateTime.UtcNow;
         private int _lastSyncPeersCount;
-        
+
         private void StartSyncTimer()
         {
             if (_logger.IsDebug) _logger.Debug("Starting sync timer");
@@ -180,8 +182,8 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         if (_logger.IsInfo) _logger.Info($"Sync peers 0, searching for peers to sync with...");
                     }
-                    
-                    if(_logger.IsTrace) _logger.Trace("Requesting synchronization");
+
+                    if (_logger.IsTrace) _logger.Trace("Requesting synchronization");
                     _syncRequested.Set();
                 }
                 catch (Exception exception)
@@ -198,30 +200,33 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         private bool _requestedSyncCancelDueToBetterPeer;
-        
+
         private CancellationTokenSource _peerSyncCancellationTokenSource;
 
         public event EventHandler<SyncEventArgs> SyncEvent;
+
         public void RequestSynchronization(string reason)
         {
-            if(_logger.IsTrace) _logger.Trace($"Requesting synchronization {reason}");
+            if (_logger.IsTrace) _logger.Trace($"Requesting synchronization {reason}");
             _syncRequested.Set();
         }
+
+        private BlockingCollection<NodeDataRequest> _nodeDataRequests = new BlockingCollection<NodeDataRequest>(new ConcurrentQueue<NodeDataRequest>());
 
         private readonly ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
 
         private SyncPeerAllocation _allocation;
 
         private SynchronizationMode _mode = SynchronizationMode.Blocks;
-        
+
         private async Task RunSyncLoop()
         {
             if (_logger.IsDebug) _logger.Debug("Initializing sync loop.");
-            _allocation = _syncPeerPool.BorrowPeer(_blockTree.BestSuggested?.TotalDifficulty ?? 0, "full sync");
+            _allocation = _syncPeerPool.BorrowPeer("full sync");
             if (_logger.IsDebug) _logger.Debug("Sync loop allocated.");
             _allocation.Replaced += AllocationOnReplaced;
             _allocation.Cancelled += AllocationOnCancelled;
-            
+
             while (true)
             {
                 if (_logger.IsTrace) _logger.Trace("Sync loop - next iteration WAIT.");
@@ -234,8 +239,8 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (!_blockTree.CanAcceptNewBlocks) continue;
 
-                _syncPeerPool.EnsureBest(_allocation);
-                if (_allocation.Current == null || _allocation.Current.HeadNumber <= (_blockTree.BestSuggested?.Number ?? 0) + 1)
+                _syncPeerPool.EnsureBest(_allocation, _blockTree.BestSuggested?.TotalDifficulty ?? 0);
+                if (_allocation.Current == null || _allocation.Current.TotalDifficulty <= (_blockTree.BestSuggested?.TotalDifficulty ?? 0))
                 {
                     if (_logger.IsDebug) _logger.Debug("Skipping - no better peer to sync with.");
                     continue;
@@ -310,33 +315,34 @@ namespace Nethermind.Blockchain.Synchronization
                                 $"best peer block #: {peerInfo.HeadNumber} ({peerInfo.HeadNumber})");
 
                         _allocation.FinishSync();
-                        
+
                         var source = _peerSyncCancellationTokenSource;
                         _peerSyncCancellationTokenSource = null;
                         source?.Dispose();
                     }, _syncLoopCancelTokenSource.Token);
                 }
-                
+
                 _allocation.FinishSync();
                 _logger.Warn($"[FAST SYNC] Current sync at {_blockTree.BestSuggested?.Number}!");
-                if ((_blockTree.BestSuggested?.Number ?? 0) > 131072)
+                if ((_blockTree.BestSuggested?.Number ?? 0) > 10)
                 {
-                    _syncPeerPool.EnsureBest(_allocation);
+                    _syncPeerPool.EnsureBest(_allocation, (_blockTree.BestSuggested?.TotalDifficulty - 1) ?? 0);
                     if ((_allocation.Current?.HeadNumber ?? 0) <= (_blockTree.BestSuggested?.Number ?? 0) + 1024)
                     {
                         _logger.Warn($"[FAST SYNC] Switching to node data download at block {_blockTree.BestSuggested?.Number}!");
                         foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
                         {
                             _logger.Warn($"[FAST SYNC] Peers:");
-                            _logger.Warn($"[FAST SYNC] {peerInfo}!");    
+                            _logger.Warn($"[FAST SYNC] {peerInfo}!");
                         }
-                        
+
+                        await _nodeDataDownloader.SyncNodeData((_blockTree.BestSuggested?.Hash, NodeDataType.State));
                         _mode = SynchronizationMode.NodeData;
                     }
                 }
             }
         }
-        
+
         private ConcurrentDictionary<PublicKey, Keccak> _doNotAskForThis = new ConcurrentDictionary<PublicKey, Keccak>();
 
         private void AllocationOnCancelled(object sender, AllocationChangeEventArgs e)
@@ -345,11 +351,11 @@ namespace Nethermind.Blockchain.Synchronization
             _peerSyncCancellationTokenSource?.Cancel();
         }
 
-        private void  AllocationOnReplaced(object sender, AllocationChangeEventArgs e)
+        private void AllocationOnReplaced(object sender, AllocationChangeEventArgs e)
         {
             if (e.Previous == null)
             {
-                if (_logger.IsDebug) _logger.Debug($"Allocating {e.Current} to {_allocation}.");    
+                if (_logger.IsDebug) _logger.Debug($"Allocating {e.Current} to {_allocation}.");
             }
             else
             {
@@ -364,7 +370,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (e.Current.TotalDifficulty > _blockTree.BestSuggested.TotalDifficulty)
             {
-                if(_logger.IsTrace) _logger.Trace("Requesting synchronization - REPLACE");
+                if (_logger.IsTrace) _logger.Trace("Requesting synchronization - REPLACE");
                 _syncRequested.Set();
             }
         }
@@ -460,9 +466,9 @@ namespace Nethermind.Blockchain.Synchronization
 
                 var hashesArray = hashes.ToArray();
                 if (_logger.IsTrace) _logger.Trace($"Actual batch size was {hashesArray.Length}/{_currentBatchSize}");
-                
+
                 Block[] blocks = new Block[hashesArray.Length];
-               
+
                 if (blocks.Length == 0 && blocksLeft == 1)
                 {
                     if (_logger.IsDebug) _logger.Debug($"{peerInfo} does not have block body for {hashes[0]}");
@@ -512,7 +518,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                     else
                     {
-                        blocks[i].Header = headersByHash[hashes[i]];    
+                        blocks[i].Header = headersByHash[hashes[i]];
                     }
                 }
 
@@ -566,7 +572,7 @@ namespace Nethermind.Blockchain.Synchronization
                 });
 
                 if (_logger.IsTrace) _logger.Trace($"Seal validation complete");
-                
+
                 if (exceptions.Count > 0)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Seal validation failure");
@@ -631,6 +637,20 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             if (_logger.IsTrace) _logger.Trace($"Stopping sync processes with {peerInfo}, wasCancelled: {wasCanceled}");
+        }
+
+        public async Task<NodeDataRequest> ExecuteRequest(NodeDataRequest request)
+        {
+            ISyncPeer peer = _allocation.Current?.SyncPeer;
+            if (peer == null)
+            {
+                return request;
+            }
+
+            var hashes = request.Request.Select(r => r.Hash).ToArray();
+            request.Response =
+                await peer.GetNodeData(hashes, _syncLoopCancelTokenSource.Token);
+            return request;
         }
     }
 }

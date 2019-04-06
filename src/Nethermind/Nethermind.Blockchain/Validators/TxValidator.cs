@@ -18,18 +18,22 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Validators
 {
-    public class SignatureValidator : ISignatureValidator
+    public class TxValidator : ITxValidator
     {
-        private readonly int _chainIdValue;
+        private readonly IntrinsicGasCalculator _intrinsicGasCalculator;
 
-        public SignatureValidator(int chainId)
+        public TxValidator(int chainId)
         {
+            _intrinsicGasCalculator = new IntrinsicGasCalculator();
+            
             if (chainId < 0)
             {
                 throw new ArgumentException("Unexpected negative value", nameof(chainId));
@@ -37,8 +41,30 @@ namespace Nethermind.Blockchain.Validators
 
             _chainIdValue = chainId;
         }
+        
+        private readonly int _chainIdValue;
 
-        public bool Validate(Signature signature, IReleaseSpec spec)
+        /* Full and correct validation is only possible in the context of a specific block
+           as we cannot generalize correctness of the transaction without knowing the EIPs implemented
+           and the world state (account nonce in particular ).
+           Even without protocol change the tx can become invalid if another tx
+           from the same account with the same nonce got included on the chain.
+           As such we can decide whether tx is well formed but we also have to validate nonce
+           just before the execution of the block / tx. */
+        public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, bool ignoreSignature = false)
+        {
+            return 
+                   /* This is unnecessarily calculated twice - at validation and execution times. */
+                   transaction.GasLimit >= _intrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
+                   /* if it is a call or a transfer then we require the 'To' field to have a value
+                      while for an init it will be empty */
+                   (transaction.To != null || transaction.Init != null) &&
+                   /* can be a simple transfer, a call, or an init but not both an init and a call */
+                   !(transaction.Data != null && transaction.Init != null) &&
+                   (ignoreSignature || ValidateSignature(transaction.Signature, releaseSpec));
+        }
+        
+        private bool ValidateSignature(Signature signature, IReleaseSpec spec)
         {
             BigInteger sValue = signature.S.ToUnsignedBigInteger();
             BigInteger rValue = signature.R.ToUnsignedBigInteger();

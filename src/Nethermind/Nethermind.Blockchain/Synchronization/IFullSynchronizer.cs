@@ -25,7 +25,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface IFullSynchronizer
+    public interface ISynchronizer
     {
         event EventHandler<SyncEventArgs> SyncEvent;
         

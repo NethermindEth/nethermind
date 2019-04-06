@@ -17,11 +17,11 @@
  */
 
 using System;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Validators
@@ -31,30 +31,50 @@ namespace Nethermind.Blockchain.Validators
         private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
 
         private readonly ISealValidator _sealValidator;
-        private readonly BigInteger? _daoBlockNumber;
+        private readonly UInt256? _daoBlockNumber;
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 
         public HeaderValidator(IBlockTree blockTree, ISealValidator sealValidator, ISpecProvider specProvider, ILogManager logManager)
         {
+            if (specProvider == null) throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
-            _daoBlockNumber = specProvider?.DaoBlockNumber;
+            _daoBlockNumber = specProvider.DaoBlockNumber;
         }
         
+        /// <summary>
+        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
+        /// </summary>
+        /// <param name="header">Block header to validate</param>
+        /// <param name="isOmmer"><value>True</value> if ommer, otherwise <value>False</value></param>
+        /// <returns></returns>
         public bool Validate(BlockHeader header, bool isOmmer = false)
         {
+            // the rule here is to validate the seal first (avoid any cheap attacks on validation logic)
+            // then validate whatever does not need to load parent from disk (the most expensive operation)
+            
             bool areNonceValidAndMixHashValid = header.Number == 0 || header.SealEngineType == SealEngineType.None || _sealValidator.ValidateSeal(header);
             if (!areNonceValidAndMixHashValid)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
             }
             
             bool hashAsExpected = header.Hash == BlockHeader.CalculateHash(header);
             if (!hashAsExpected)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
+                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
+            }
+            
+            bool extraDataValid = isOmmer
+                                  || _daoBlockNumber == null
+                                  || header.Number < _daoBlockNumber
+                                  || header.Number >= _daoBlockNumber + 10
+                                  || Bytes.AreEqual(header.ExtraData, DaoExtraData);
+            if (!extraDataValid)
+            {
+                _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
             }
             
             Block parent = _blockTree.FindBlock(header.ParentHash, false);
@@ -62,45 +82,46 @@ namespace Nethermind.Blockchain.Validators
             {
                 if (header.Number == 0)
                 {
-                    var isGenesisValid = IsGenesisHeaderValid(header);;
+                    var isGenesisValid = ValidateGenesis(header);;
                     if (!isGenesisValid)
                     {
-                        _logger.Warn($"Invalid genesis block header ({header.Hash})");
+                        if(_logger.IsWarn) _logger.Warn($"Invalid genesis block header ({header.Hash})");
                     }
                     
                     return isGenesisValid;
                 }
                 
-                _logger.Warn($"Orphan block, could not find parent ({header.Hash})");
+                if(_logger.IsWarn) _logger.Warn($"Orphan block, could not find parent ({header.Hash})");
                 return false;
             }
 
+            // seal is validated when synchronizing so we can remove it from here - review and test
             bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
             if (!sealParamsCorrect)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
-            // difficulty check
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             if (!gasUsedBelowLimit)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
             }
 
-            bool gasLimitNotTooHigh = header.GasLimit < parent.Header.GasLimit + BigInteger.Divide(parent.Header.GasLimit, 1024);
+            long maxGasLimitDifference = parent.Header.GasLimit / 1024;
+            bool gasLimitNotTooHigh = header.GasLimit < parent.Header.GasLimit + maxGasLimitDifference;
             if (!gasLimitNotTooHigh)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
             }
 
-            bool gasLimitNotTooLow = header.GasLimit > parent.Header.GasLimit - BigInteger.Divide(parent.Header.GasLimit, 1024);
+            bool gasLimitNotTooLow = header.GasLimit > parent.Header.GasLimit - maxGasLimitDifference;
             if (!gasLimitNotTooLow)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
             }
 
-//            bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // TODO: tests are consistently not following this rule
+            // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
             bool timestampMoreThanAtParent = header.Timestamp > parent.Header.Timestamp;
             if (!timestampMoreThanAtParent)
             {
@@ -115,18 +136,7 @@ namespace Nethermind.Blockchain.Validators
 
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Validating block {header.Hash} ({header.Number}), extraData {header.ExtraData.ToHexString(true)}");
-            }
-
-
-            bool extraDataValid = isOmmer
-                                  || _daoBlockNumber == null
-                                  || header.Number < _daoBlockNumber
-                                  || header.Number >= _daoBlockNumber + 10
-                                  || Bytes.AreEqual(header.ExtraData, DaoExtraData);
-            if (!extraDataValid)
-            {
-                _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
+                _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
             }
 
             return
@@ -135,23 +145,19 @@ namespace Nethermind.Blockchain.Validators
                 gasLimitNotTooLow &&
                 gasLimitNotTooHigh &&
                 sealParamsCorrect &&
-//                   gasLimitAboveAbsoluteMinimum && // TODO: tests are consistently not following this rule
+                // gasLimitAboveAbsoluteMinimum && // described in the YellowPaper but not followed
                 timestampMoreThanAtParent &&
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid;
         }
 
-        private static bool IsGenesisHeaderValid(BlockHeader header)
+        private static bool ValidateGenesis(BlockHeader header)
         {
             return
-                //block.Header.Nonce < BigInteger.Divide(BigInteger.Pow(2, 256), block.Header.DifficultyCalculator) &&
-                // mix hash check
-                // proof of work check
-                // difficulty check
                 header.GasUsed < header.GasLimit &&
-                // header.GasLimit > 125000 && // TODO: tests are consistently not following this rule
-                //header.Timestamp > 0 && // what here?
+                // header.GasLimit > 125000 && 
+                header.Timestamp > 0 &&
                 header.Number == 0 &&
                 header.ExtraData.Length <= 32;
         }

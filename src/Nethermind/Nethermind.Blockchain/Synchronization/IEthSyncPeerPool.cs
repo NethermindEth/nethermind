@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
         
-        SyncPeerAllocation BorrowPeer(UInt256 difficultyThreshold, string description = "");
+        SyncPeerAllocation BorrowPeer(string description = "");
         
         void ReturnPeer(SyncPeerAllocation syncPeerAllocation);
         
@@ -48,6 +48,6 @@ namespace Nethermind.Blockchain.Synchronization
         
         Task StopAsync();
         
-        void EnsureBest(SyncPeerAllocation allocation);
+        void EnsureBest(SyncPeerAllocation allocation, UInt256 difficultyThreshold);
     }
 }

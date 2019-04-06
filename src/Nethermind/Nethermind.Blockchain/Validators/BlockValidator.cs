@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -29,61 +28,76 @@ namespace Nethermind.Blockchain.Validators
     public class BlockValidator : IBlockValidator
     {
         private readonly IHeaderValidator _headerValidator;
-        private readonly ITransactionValidator _transactionValidator;
+        private readonly ITxValidator _txValidator;
         private readonly IOmmersValidator _ommersValidator;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public BlockValidator(ITransactionValidator transactionValidator, IHeaderValidator headerValidator, IOmmersValidator ommersValidator, ISpecProvider specProvider, ILogManager logManager)
+        public BlockValidator(ITxValidator txValidator, IHeaderValidator headerValidator, IOmmersValidator ommersValidator, ISpecProvider specProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _transactionValidator = transactionValidator ?? throw new ArgumentNullException(nameof(headerValidator));
+            _txValidator = txValidator ?? throw new ArgumentNullException(nameof(headerValidator));
             _ommersValidator = ommersValidator ?? throw new ArgumentNullException(nameof(ommersValidator));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         }
 
+        /// <summary>
+        /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing. 
+        /// </summary>
+        /// <param name="block">A block to validate</param>
+        /// <returns><value>True</value> if the <paramref name="block"/> is valid, otherwise <value>False</value></returns>
         public bool ValidateSuggestedBlock(Block block)
         {
-            if (!_ommersValidator.Validate(block.Header, block.Ommers))
-            {
-                _logger?.Debug($"Invalid block ({block.Hash}) - invalid ommers");
-                return false;
-            }
-
             Transaction[] txs = block.Transactions;
             for (int i = 0; i < txs.Length; i++)
             {
-                if (!_transactionValidator.IsWellFormed(txs[i], _specProvider.GetSpec(block.Number)))
+                if (!_txValidator.IsWellFormed(txs[i], _specProvider.GetSpec(block.Number)))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid transaction ({txs[i].Hash})");
                     return false;
                 }
             }
 
-            Keccak txsRoot = block.CalculateTransactionsRoot();
-            if (txsRoot != block.Header.TransactionsRoot)
+            Keccak txRoot = block.CalculateTxRoot();
+            if (txRoot != block.Header.TransactionsRoot)
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) tx root {txsRoot} != stated tx root {block.Header.TransactionsRoot}");
+                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) tx root {txRoot} != stated tx root {block.Header.TransactionsRoot}");
                 return false;
             }
 
-            if (block.Header.OmmersHash != Keccak.Compute(Rlp.Encode(block.Ommers)))
+            // we are keeping the more expensive operations for later
+            
+            if (!_ommersValidator.Validate(block.Header, block.Ommers))
             {
-                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid ommers hash");
+                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid ommers");
                 return false;
             }
-
+            
             bool blockHeaderValid = _headerValidator.Validate(block.Header);
             if (!blockHeaderValid)
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid header");
                 return false;
             }
+            
+            if (block.Header.OmmersHash != Keccak.Compute(Rlp.Encode(block.Ommers)))
+            {
+                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid ommers hash");
+                return false;
+            }
 
             return true;
         }
 
+        /// <summary>
+        /// Processed block validation is comparing the block hashes (which include all other results).
+        /// We only make exact checks on what is invalid if the hash is different.
+        /// </summary>
+        /// <param name="processedBlock">This should be the block processing result (after going through the EVM processing)</param>
+        /// <param name="receipts">List of tx receipts from the processed block (required only for better diagnostics when the receipt root is invalid).</param>
+        /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
+        /// <returns><value>True</value> if the <paramref name="processedBlock"/> is valid, otherwise <value>False</value></returns>
         public bool ValidateProcessedBlock(Block processedBlock, TransactionReceipt[] receipts, Block suggestedBlock)
         {
             bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;

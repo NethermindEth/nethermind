@@ -23,20 +23,20 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Test
 {
-    public class TestTransactionValidator : ITransactionValidator
+    public class TestTxValidator : ITxValidator
     {
-        public static TestTransactionValidator AlwaysValid = new TestTransactionValidator(true);
-        public static TestTransactionValidator NeverValid = new TestTransactionValidator(false);
+        public static TestTxValidator AlwaysValid = new TestTxValidator(true);
+        public static TestTxValidator NeverValid = new TestTxValidator(false);
 
         private readonly Queue<bool> _validationResults = new Queue<bool>();
         private bool? _alwaysSameResult;
 
-        public TestTransactionValidator(Queue<bool> validationResults)
+        public TestTxValidator(Queue<bool> validationResults)
         {
             _validationResults = validationResults;
         }
 
-        public TestTransactionValidator(bool validationResult)
+        public TestTxValidator(bool validationResult)
         {
             _alwaysSameResult = validationResult;
         }

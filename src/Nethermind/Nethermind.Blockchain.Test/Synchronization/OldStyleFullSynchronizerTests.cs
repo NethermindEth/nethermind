@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             ISealValidator sealValidator = Build.A.SealValidator.ThatAlwaysReturnsTrue.TestObject;
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
-            ITransactionValidator txValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
+            ITxValidator txValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 
             var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
             _pool = new EthSyncPeerPool(_blockTree, stats, quickConfig, LimboLogs.Instance);
@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         private Block _genesisBlock;
         private IEthSyncPeerPool _pool;
         private ISyncServer _syncServer;
-        private IFullSynchronizer _synchronizer;
+        private ISynchronizer _synchronizer;
 
         [Test]
         public void Retrieves_missing_blocks_in_batches()

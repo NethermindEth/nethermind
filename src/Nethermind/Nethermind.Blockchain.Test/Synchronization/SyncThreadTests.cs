@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -32,22 +33,31 @@ using Nethermind.Evm;
 using Nethermind.Stats;
 using Nethermind.Store;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Blockchain.Test.Synchronization
 {
-    public class FastSyncTest
+    [TestFixture(SynchronizerType.Fast)]
+    [TestFixture(SynchronizerType.Full)]
+    public class SyncThreadsTests
     {
-        private List<(ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree)> _peers;
-        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) _localPeer;
-        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) _remotePeer1;
-        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) _remotePeer2;
-        private (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) _remotePeer3;
+        private readonly SynchronizerType _synchronizerType;
+        private List<(ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, ISynchronizer Synchronizer, IBlockTree Tree)> _peers;
+        private (ISyncServer SyncServer, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, ISynchronizer Synchronizer, IBlockTree Tree) _localPeer;
+        private (ISyncServer SyncServer, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, ISynchronizer Synchronizer, IBlockTree Tree) _remotePeer1;
+        private (ISyncServer SyncServer, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, ISynchronizer Synchronizer, IBlockTree Tree) _remotePeer2;
+        private (ISyncServer SyncServer, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, ISynchronizer Synchronizer, IBlockTree Tree) _remotePeer3;
         private static Block _genesis = Build.A.Block.Genesis.TestObject;
 
+        public SyncThreadsTests(SynchronizerType synchronizerType)
+        {
+            _synchronizerType = synchronizerType;
+        }
+        
         [SetUp]
         public void Setup()
         {
-            _peers = new List<(ISyncServer, IEthSyncPeerPool, IBlockchainProcessor, IFullSynchronizer, IBlockTree)>();
+            _peers = new List<(ISyncServer, IEthSyncPeerPool, IBlockchainProcessor, ISynchronizer, IBlockTree)>();
             for (int i = 0; i < 4; i++)
             {
                 _peers.Add(CreateSyncManager($"PEER_{i}."));    
@@ -62,7 +72,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [TearDown]
         public async Task TearDown()
         {
-            foreach ((ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) peer in _peers)
+            foreach ((ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor BlockchainProcessor, ISynchronizer Synchronizer, IBlockTree Tree) peer in _peers)
             {
                 await peer.PeerPool.StopAsync();
                 await peer.BlockchainProcessor.StopAsync();
@@ -73,7 +83,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public void Setup_is_correct()
         {
-            foreach ((ISyncServer SyncManager, IEthSyncPeerPool EthSyncPeerPool, IBlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) peer in _peers)
+            foreach ((ISyncServer SyncManager, IEthSyncPeerPool EthSyncPeerPool, IBlockchainProcessor, ISynchronizer Synchronizer, IBlockTree Tree) peer in _peers)
             {
                 Assert.AreEqual(_genesis.Header, peer.SyncManager.Head);    
             }
@@ -83,7 +93,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             for (int localIndex = 0; localIndex < _peers.Count; localIndex++)
             {
-                (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) localPeer = _peers[localIndex];
+                (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor, ISynchronizer Synchronizer, IBlockTree Tree) localPeer = _peers[localIndex];
                 for (int remoteIndex = 0; remoteIndex < _peers.Count; remoteIndex++)
                 {
                     if (localIndex == remoteIndex)
@@ -91,7 +101,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                         continue;
                     }
                     
-                    (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor, IFullSynchronizer Synchronizer, IBlockTree Tree) remotePeer = _peers[remoteIndex];
+                    (ISyncServer SyncManager, IEthSyncPeerPool PeerPool, IBlockchainProcessor, ISynchronizer Synchronizer, IBlockTree Tree) remotePeer = _peers[remoteIndex];
                     localPeer.PeerPool.AddPeer(new SyncPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex], $"PEER{localIndex}", remotePeer.SyncManager, TestItem.PublicKeys[remoteIndex], $"PEER{remoteIndex}"));
                 }
             }
@@ -137,10 +147,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
             waitEvent.Wait(10000);
             waitEvent.Wait(10000);
                 
-            Assert.AreEqual(headBlock.Header.Hash, _localPeer.SyncManager.Head.Hash, "local");
-            Assert.AreEqual(headBlock.Header.Hash, _remotePeer1.SyncManager.Head.Hash, "remote1");
-            Assert.AreEqual(headBlock.Header.Hash, _remotePeer2.SyncManager.Head.Hash, "remote2");
-            Assert.AreEqual(headBlock.Header.Hash, _remotePeer3.SyncManager.Head.Hash, "remote3");
+            Assert.AreEqual(headBlock.Header.Hash, _localPeer.SyncServer.Head.Hash, "local");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer1.SyncServer.Head.Hash, "remote1");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer2.SyncServer.Head.Hash, "remote2");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer3.SyncServer.Head.Hash, "remote3");
         }
         
         [Test]
@@ -193,9 +203,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 }
             };
             
-            Assert.AreEqual(_genesis.Hash, _localPeer.SyncManager.Head.Hash, "local before");
-            Assert.AreEqual(_genesis.Hash, _remotePeer2.SyncManager.Head.Hash, "peer 2 before");
-            Assert.AreEqual(_genesis.Hash, _remotePeer3.SyncManager.Head.Hash, "peer 3 before");
+            Assert.AreEqual(_genesis.Hash, _localPeer.SyncServer.Head.Hash, "local before");
+            Assert.AreEqual(_genesis.Hash, _remotePeer2.SyncServer.Head.Hash, "peer 2 before");
+            Assert.AreEqual(_genesis.Hash, _remotePeer3.SyncServer.Head.Hash, "peer 3 before");
             
             ConnectAllPeers();
             waitEvent.Wait(10000);
@@ -203,13 +213,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
             waitEvent.Wait(10000);
             waitEvent.Wait(10000);
             
-            Assert.AreEqual(headBlock.Header.Hash, _localPeer.SyncManager.Head.Hash, "local");
-            Assert.AreEqual(headBlock.Header.Hash, _remotePeer1.SyncManager.Head.Hash, "peer 1");
-            Assert.AreEqual(headBlock.Header.Hash, _remotePeer2.SyncManager.Head.Hash, "peer 2");
-            Assert.AreEqual(headBlock.Header.Hash, _remotePeer3.SyncManager.Head.Hash, "peer 3");
+            Assert.AreEqual(headBlock.Header.Hash, _localPeer.SyncServer.Head.Hash, "local");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer1.SyncServer.Head.Hash, "peer 1");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer2.SyncServer.Head.Hash, "peer 2");
+            Assert.AreEqual(headBlock.Header.Hash, _remotePeer3.SyncServer.Head.Hash, "peer 3");
         }
 
-        private static (ISyncServer, IEthSyncPeerPool, IBlockchainProcessor, IFullSynchronizer, IBlockTree) CreateSyncManager(string prefix)
+        private (ISyncServer, IEthSyncPeerPool, IBlockchainProcessor, ISynchronizer, IBlockTree) CreateSyncManager(string prefix)
         {
 //            var logManager = NoErrorLimboLogs.Instance;
             var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, prefix));
@@ -230,21 +240,44 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var tree = new BlockTree(blockDb, blockInfoDb, specProvider, NullTransactionPool.Instance, logManager);
             var blockhashProvider = new BlockhashProvider(tree);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
+
+            var sealValidator = TestSealValidator.AlwaysValid;
+            var headerValidator = new HeaderValidator(tree, sealValidator, specProvider, logManager);
+            var txValidator = TestTxValidator.AlwaysValid;
+            var ommersValidator = new OmmersValidator(tree, headerValidator, logManager);
+            var blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, logManager);
+            
             var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
-            var blockProcessor = new BlockProcessor(specProvider, TestBlockValidator.AlwaysValid, NoBlockRewards.Instance, txProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, NullTransactionPool.Instance, receiptStorage, logManager);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, NoBlockRewards.Instance, txProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, NullTransactionPool.Instance, receiptStorage, logManager);
             var step = new TxSignaturesRecoveryStep(ecdsa, NullTransactionPool.Instance);
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true, true);
 
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
-            
             var syncPeerPool = new EthSyncPeerPool(tree, nodeStatsManager, new SyncConfig(), logManager);
-            
-            var synchronizer = new FullSynchronizer(
-                tree,
-                TestBlockValidator.AlwaysValid,
-                TestSealValidator.AlwaysValid,
-                TestTransactionValidator.AlwaysValid,
-                syncPeerPool, new SyncConfig(), logManager);
+
+            ISynchronizer synchronizer;
+            switch (_synchronizerType)
+            {
+                case SynchronizerType.Full:
+                    synchronizer = new FullSynchronizer(
+                        tree,
+                        blockValidator,
+                        sealValidator,
+                        txValidator,
+                        syncPeerPool, new SyncConfig(), logManager);
+                    break;
+                case SynchronizerType.Fast:
+                    NodeDataDownloader downloader = new NodeDataDownloader(codeDb, stateDb, logManager);
+                    synchronizer = new FastSynchronizer(
+                        tree,
+                        headerValidator,
+                        sealValidator,
+                        txValidator,
+                        syncPeerPool, new SyncConfig(), downloader, logManager);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
             
             var syncServer = new SyncServer(stateDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, logManager);
 

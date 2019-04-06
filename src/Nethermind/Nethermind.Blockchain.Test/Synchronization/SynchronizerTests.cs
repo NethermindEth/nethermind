@@ -39,25 +39,35 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization
 {
-    [TestFixture]
-    public class FullSynchronizerTests
+    [TestFixture(SynchronizerType.Fast)]
+    [TestFixture(SynchronizerType.Full)]
+    public class SynchronizerTests
     {
+        private readonly SynchronizerType _synchronizerType;
+
+        public SynchronizerTests(SynchronizerType synchronizerType)
+        {
+            _synchronizerType = synchronizerType;
+        }
+        
         private static Block _genesisBlock = Build.A.Block.Genesis.TestObject;
 
         private class SyncPeerMock : ISyncPeer
         {
             private readonly bool _causeTimeoutOnInit;
             private readonly bool _causeTimeoutOnBlocks;
-            public List<Block> Blocks { get; set; } = new List<Block>();
+            private readonly bool _causeTimeoutOnHeaders;
+            private List<Block> Blocks { get; set; } = new List<Block>();
 
             public Block HeadBlock => Blocks.Last();
 
             public BlockHeader HeadHeader => HeadBlock.Header;
             
-            public SyncPeerMock(string peerName, bool causeTimeoutOnInit = false, bool causeTimeoutOnBlocks = false)
+            public SyncPeerMock(string peerName, bool causeTimeoutOnInit = false, bool causeTimeoutOnBlocks = false, bool causeTimeoutOnHeaders = false)
             {
                 _causeTimeoutOnInit = causeTimeoutOnInit;
                 _causeTimeoutOnBlocks = causeTimeoutOnBlocks;
+                _causeTimeoutOnHeaders = causeTimeoutOnHeaders;
                 Blocks.Add(_genesisBlock);
                 ClientId = peerName;
             }
@@ -97,6 +107,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
             {
+                if (_causeTimeoutOnHeaders)
+                {
+                    return Task.FromException<BlockHeader[]>(new TimeoutException());
+                }
+                
                 if (skip != 0)
                 {
                     return Task.FromException<BlockHeader[]>(new TimeoutException());
@@ -128,6 +143,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public Task<BlockHeader[]> GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
             {
+                if (_causeTimeoutOnHeaders)
+                {
+                    return Task.FromException<BlockHeader[]>(new TimeoutException());
+                }
+                
                 int filled = 0;
                 bool started = false;
                 BlockHeader[] result = new BlockHeader[maxBlocks];
@@ -217,9 +237,18 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
-        public class When
+        private WhenImplementation When => new WhenImplementation(_synchronizerType);
+
+        private class WhenImplementation
         {
-            public static SyncingContext Syncing => new SyncingContext();
+            private readonly SynchronizerType _synchronizerType;
+
+            public WhenImplementation(SynchronizerType synchronizerType)
+            {
+                _synchronizerType = synchronizerType;
+            }
+            
+            public SyncingContext Syncing => new SyncingContext(_synchronizerType);
         }
 
         public class SyncingContext
@@ -229,31 +258,46 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             private ISyncServer SyncServer { get; }
             
-            private IFullSynchronizer FullSynchronizer { get; set; }
+            private ISynchronizer Synchronizer { get; set; }
             
             private IEthSyncPeerPool SyncPeerPool { get; set; }
 
-            ILogManager _logManager = LimboLogs.Instance;
+            ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
 
             private ILogger _logger;
             
-            public SyncingContext()
+            public SyncingContext(SynchronizerType synchronizerType)
             {
                 _logger = _logManager.GetClassLogger();
                 ISnapshotableDb stateDb = new StateDb();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTransactionPool.Instance, _logManager);
                 var stats = new NodeStatsManager(new StatsConfig(), _logManager);
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, new SyncConfig(), _logManager);
-                FullSynchronizer = new FullSynchronizer(BlockTree,
-                    Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject,
-                    Build.A.SealValidator.ThatAlwaysReturnsTrue.TestObject,
-                    TestTransactionValidator.AlwaysValid,
-                    SyncPeerPool, new SyncConfig(), _logManager);
 
-                SyncServer = new SyncServer(stateDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, FullSynchronizer, _logManager);
+                MemDb codeDb = new MemDb();
+                NodeDataDownloader downloader = new NodeDataDownloader(codeDb, stateDb, _logManager);
+                if (synchronizerType == SynchronizerType.Fast)
+                {
+                    Synchronizer = new FastSynchronizer(BlockTree,
+                        TestHeaderValidator.AlwaysValid,
+                        TestSealValidator.AlwaysValid,
+                        TestTxValidator.AlwaysValid,
+                        SyncPeerPool, new SyncConfig(), downloader, _logManager);
+                }
+                else
+                {
+                    Synchronizer = new FullSynchronizer(BlockTree,
+                        TestBlockValidator.AlwaysValid,
+                        TestSealValidator.AlwaysValid,
+                        TestTxValidator.AlwaysValid,
+                        SyncPeerPool, new SyncConfig(), _logManager);
+                }
+                
+                SyncServer = new SyncServer(stateDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, _logManager);
                 SyncPeerPool.Start();
-                FullSynchronizer.Start();
-                FullSynchronizer.SyncEvent += (sender, args) => TestContext.WriteLine(args.SyncStatus);
+
+                Synchronizer.Start();
+                Synchronizer.SyncEvent += (sender, args) => TestContext.WriteLine(args.SyncStatus);
             }
 
             public SyncingContext BestKnownNumberIs(UInt256 number)
@@ -385,7 +429,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 var task = new Task(async () =>
                 {
-                    await FullSynchronizer.StopAsync();
+                    await Synchronizer.StopAsync();
                     await SyncPeerPool.StopAsync();
                 });
                 task.RunSynchronously();
@@ -563,7 +607,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             SyncPeerMock peerA = new SyncPeerMock("A");
             peerA.AddBlocksUpTo(1);
 
-            SyncPeerMock badPeer = new SyncPeerMock("B", false, true);
+            SyncPeerMock badPeer = new SyncPeerMock("B", false, false, true);
             badPeer.AddBlocksUpTo(20);
 
             When.Syncing
@@ -800,6 +844,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         private const int Moment = 50;
-        private const int WaitTime = 500;
+        private const int WaitTime = 11231500;
     }
 }

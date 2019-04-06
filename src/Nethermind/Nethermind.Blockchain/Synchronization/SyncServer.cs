@@ -37,11 +37,11 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISealValidator _sealValidator;
         private readonly ISnapshotableDb _stateDb;
-        private readonly IFullSynchronizer _synchronizer;
+        private readonly ISynchronizer _synchronizer;
         private object _dummyValue = new object();
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
         
-        public SyncServer(ISnapshotableDb stateDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, IFullSynchronizer synchronizer, ILogManager logManager)
+        public SyncServer(ISnapshotableDb stateDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ILogManager logManager)
         {
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));

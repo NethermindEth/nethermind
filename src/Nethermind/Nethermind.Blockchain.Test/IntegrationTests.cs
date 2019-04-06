@@ -73,8 +73,8 @@ namespace Nethermind.Blockchain.Test
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, logManager);
             OmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, logManager);
-            TransactionValidator transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
-            BlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logManager);
+            TxValidator txValidator = new TxValidator(ChainId.Ropsten);
+            BlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, logManager);
 
             /* state & storage */
             StateDb codeDb = new StateDb();

@@ -114,7 +114,7 @@ namespace Nethermind.Runner.Runners
         private IReceiptStorage _receiptStorage;
         private IEthereumEcdsa _ethereumEcdsa;
         private IEthSyncPeerPool _syncPeerPool;
-        private IFullSynchronizer _synchronizer;
+        private ISynchronizer _synchronizer;
         private ISyncServer _syncServer;
         private IKeyStore _keyStore;
         private IPeerManager _peerManager;
@@ -550,8 +550,7 @@ namespace Nethermind.Runner.Runners
                 _headerValidator,
                 _logManager);
 
-            var txValidator = new TransactionValidator(
-                new SignatureValidator(_specProvider.ChainId));
+            var txValidator = new TxValidator(_specProvider.ChainId);
 
             _blockValidator = new BlockValidator(
                 txValidator,
@@ -698,11 +697,12 @@ namespace Nethermind.Runner.Runners
         private async Task InitializeNetwork(
             IReceiptStorage receiptStorage,
             ISealValidator sealValidator,
-            TransactionValidator txValidator)
+            TxValidator txValidator)
         {
+            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             ISyncConfig syncConfig = _configProvider.GetConfig<ISyncConfig>();
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
-            _synchronizer = new FastSynchronizer(_blockTree, _headerValidator, _sealValidator, txValidator, _syncPeerPool, syncConfig, _logManager);
+            _synchronizer = new FastSynchronizer(_blockTree, _headerValidator, _sealValidator, txValidator, _syncPeerPool, syncConfig, nodeDataDownloader, _logManager);
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,
                 _blockTree,

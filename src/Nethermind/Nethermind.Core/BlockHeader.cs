@@ -131,7 +131,8 @@ namespace Nethermind.Core
             }
         }
 
-        public enum Format // TODO: use formatting strings / standard approach?
+        [Todo(Improve.Refactor, "Use IFormattable here")]
+        public enum Format
         {
             Full,
             Short

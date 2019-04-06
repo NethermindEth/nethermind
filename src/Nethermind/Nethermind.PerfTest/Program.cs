@@ -326,7 +326,7 @@ namespace Nethermind.PerfTest
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, transactionPool, _logManager));
             var headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, _logManager);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
-            var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
+            var transactionValidator = new TxValidator(ChainId.Ropsten);
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
 
             /* state & storage */

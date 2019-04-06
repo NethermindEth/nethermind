@@ -32,7 +32,7 @@ using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class FullSynchronizer : IFullSynchronizer
+    public class FullSynchronizer : ISynchronizer
     {
         private int _sinceLastTimeout;
         private UInt256 _lastSyncNumber = UInt256.Zero;
@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISealValidator _sealValidator;
         private readonly IEthSyncPeerPool _syncPeerPool;
 
-        private readonly ITransactionValidator _transactionValidator;
+        private readonly ITxValidator _txValidator;
         private readonly Blockchain.ISyncConfig _syncConfig;
         private readonly IBlockTree _blockTree;
 
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Synchronization
         public FullSynchronizer(IBlockTree blockTree,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
-            ITransactionValidator transactionValidator,
+            ITxValidator txValidator,
             IEthSyncPeerPool peerPool,
             ISyncConfig syncConfig,
             ILogManager logManager)
@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Synchronization
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
 
-            _transactionValidator = transactionValidator ?? throw new ArgumentNullException(nameof(transactionValidator));
+            _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
 
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -203,7 +203,7 @@ namespace Nethermind.Blockchain.Synchronization
         private async Task RunSyncLoop()
         {
             if (_logger.IsDebug) _logger.Debug("Initializing sync loop.");
-            _allocation = _syncPeerPool.BorrowPeer(_blockTree.BestSuggested?.TotalDifficulty ?? 0, "full sync");
+            _allocation = _syncPeerPool.BorrowPeer("full sync");
             if (_logger.IsDebug) _logger.Debug("Sync loop allocated.");
             _allocation.Replaced += AllocationOnReplaced;
             _allocation.Cancelled += AllocationOnCancelled;
@@ -220,9 +220,10 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (!_blockTree.CanAcceptNewBlocks) continue;
 
-                _syncPeerPool.EnsureBest(_allocation);
-                if (_allocation.Current == null)
+                _syncPeerPool.EnsureBest(_allocation, _blockTree.BestSuggested?.TotalDifficulty ?? 0);
+                if (_allocation.Current == null || _allocation.Current.TotalDifficulty <= (_blockTree.BestSuggested?.TotalDifficulty ?? 0))
                 {
+                    if (_logger.IsDebug) _logger.Debug("Skipping - no better peer to sync with.");
                     continue;
                 }
 

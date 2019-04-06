@@ -37,14 +37,22 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
         private readonly ISnapshotableDb _db;
-        private readonly INodeDataRequestExecutor _executor;
+        private INodeDataRequestExecutor _executor;
 
+        public NodeDataDownloader(IDb codeDb, ISnapshotableDb db, ILogManager logManager)
+        {
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _db = db ?? throw new ArgumentNullException(nameof(db));
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+        
         public NodeDataDownloader(IDb codeDb, ISnapshotableDb db, INodeDataRequestExecutor executor, ILogManager logManager)
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _db = db ?? throw new ArgumentNullException(nameof(db));
-            _executor = executor ?? throw new ArgumentNullException(nameof(executor));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            
+            SetExecutor(executor);
         }
 
         private async Task KeepSyncing()
@@ -187,6 +195,11 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             await KeepSyncing();
+        }
+
+        public void SetExecutor(INodeDataRequestExecutor executor)
+        {
+            _executor = executor ?? throw new ArgumentNullException(nameof(executor));
         }
     }
 }

@@ -22,13 +22,13 @@ using NSubstitute;
 
 namespace Nethermind.Core.Test.Builders
 {
-    public class TransactionValidatorBuilder : BuilderBase<ITransactionValidator>
+    public class TransactionValidatorBuilder : BuilderBase<ITxValidator>
     {
         private bool _alwaysTrue;
  
         public TransactionValidatorBuilder()
         {
-            TestObject = Substitute.For<ITransactionValidator>();
+            TestObject = Substitute.For<ITxValidator>();
         }
  
         public TransactionValidatorBuilder ThatAlwaysReturnsFalse
