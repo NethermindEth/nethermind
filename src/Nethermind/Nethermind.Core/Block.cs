@@ -53,7 +53,7 @@ namespace Nethermind.Core
         {
         }
 
-        public bool IsGenesis => Number == 0;
+        public bool IsGenesis => Header.IsGenesis;
 
         public BlockHeader Header { get; set; }
         public Transaction[] Transactions { get; set; }

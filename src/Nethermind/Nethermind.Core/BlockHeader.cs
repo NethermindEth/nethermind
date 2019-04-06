@@ -47,12 +47,12 @@ namespace Nethermind.Core
             ExtraData = extraData;
         }
 
+        public bool IsGenesis => Number == 0;
         public Keccak ParentHash { get; internal set; }
         public Keccak OmmersHash { get; set; }
         public Address Author { get; set; }
         public Address Beneficiary { get; set; }
         public Address GasBeneficiary => Author ?? Beneficiary;
-
         public Keccak StateRoot { get; set; }
         public Keccak TransactionsRoot { get; set; }
         public Keccak ReceiptsRoot { get; set; }

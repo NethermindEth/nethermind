@@ -215,6 +215,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.SuggestBlock(block);
             }
 
+            public AddBlockResult SuggestHeader(BlockHeader header)
+            {
+                return _blockTree.SuggestHeader(header);
+            }
+
             public Block FindBlock(Keccak blockHash, bool mainChainOnly)
             {
                 return _blockTree.FindBlock(blockHash, mainChainOnly);

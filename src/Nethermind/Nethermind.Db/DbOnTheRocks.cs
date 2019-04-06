@@ -34,6 +34,7 @@ namespace Nethermind.Db
         public const string StateDbPath = "state";
         public const string CodeDbPath = "code";
         public const string BlocksDbPath = "blocks";
+        public const string HeadersPath = "headers";
         public const string ReceiptsDbPath = "receipts";
         public const string BlockInfosDbPath = "blockInfos";
         public const string PendingTxsDbPath = "pendingtxs";
@@ -67,6 +68,10 @@ namespace Nethermind.Db
             else if (dbPath.EndsWith(BlockInfosDbPath))
             {
                 _dbInstance = DbInstance.BlockInfos;
+            }
+            else if (dbPath.EndsWith(HeadersPath))
+            {
+                _dbInstance = DbInstance.Headers;
             }
             else if (dbPath.EndsWith(BlocksDbPath))
             {
@@ -169,6 +174,9 @@ namespace Nethermind.Db
                     case DbInstance.Code:
                         Metrics.CodeDbReads++;
                         break;
+                    case DbInstance.Headers:
+                        Metrics.HeaderDbReads++;
+                        break;
                     case DbInstance.Receipts:
                         Metrics.ReceiptsDbReads++;
                         break;
@@ -202,6 +210,9 @@ namespace Nethermind.Db
                         break;
                     case DbInstance.Code:
                         Metrics.CodeDbWrites++;
+                        break;
+                    case DbInstance.Headers:
+                        Metrics.HeaderDbWrites++;
                         break;
                     case DbInstance.Receipts:
                         Metrics.ReceiptsDbWrites++;
@@ -283,6 +294,7 @@ namespace Nethermind.Db
             BlockInfos,
             Blocks,
             Code,
+            Headers,
             Receipts,
             Trace,
             PendingTxs,

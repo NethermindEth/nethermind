@@ -60,6 +60,13 @@ namespace Nethermind.Blockchain
         AddBlockResult SuggestBlock(Block block);
         
         /// <summary>
+        /// Suggests a block header (without body)
+        /// </summary>
+        /// <param name="header">Header to add</param>
+        /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        AddBlockResult SuggestHeader(BlockHeader header);
+        
+        /// <summary>
         /// Checks if the block is currently in the canonical chain
         /// </summary>
         /// <param name="blockHash">Hash of the block to check</param>

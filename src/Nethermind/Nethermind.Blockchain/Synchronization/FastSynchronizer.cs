@@ -465,7 +465,7 @@ namespace Nethermind.Blockchain.Synchronization
                 var hashesArray = hashes.ToArray();
                 if (_logger.IsTrace) _logger.Trace($"Actual batch size was {hashesArray.Length}/{_currentBatchSize}");
 
-                Block[] blocks = new Block[hashesArray.Length];
+                BlockHeader[] blocks = new BlockHeader[hashesArray.Length];
 
                 if (blocks.Length == 0 && blocksLeft == 1)
                 {
@@ -510,14 +510,7 @@ namespace Nethermind.Blockchain.Synchronization
                         return;
                     }
 
-                    if (blocks[i] == null)
-                    {
-                        blocks[i] = new Block(headersByHash[hashes[i]]);
-                    }
-                    else
-                    {
-                        blocks[i].Header = headersByHash[hashes[i]];
-                    }
+                    blocks[i] = headersByHash[hashes[i]];
                 }
 
                 if (blocks.Length > 0)
@@ -556,7 +549,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                     try
                     {
-                        if (!_sealValidator.ValidateSeal(blocks[i].Header))
+                        if (!_sealValidator.ValidateSeal(blocks[i]))
                         {
                             if (_logger.IsTrace) _logger.Trace($"One of the seals is invalid");
                             state.Stop();
@@ -587,13 +580,13 @@ namespace Nethermind.Blockchain.Synchronization
 
                     if (_logger.IsTrace) _logger.Trace($"Received {blocks[i]} from {peer.Node:s}");
 
-                    if (!_headerValidator.Validate(blocks[i].Header))
+                    if (!_headerValidator.Validate(blocks[i]))
                     {
                         if (_logger.IsWarn) _logger.Warn($"Block {blocks[i].Number} skipped (validation failed)");
                         continue;
                     }
 
-                    AddBlockResult addResult = _blockTree.SuggestBlock(blocks[i]);
+                    AddBlockResult addResult = _blockTree.SuggestHeader(blocks[i]);
                     switch (addResult)
                     {
                         case AddBlockResult.UnknownParent:

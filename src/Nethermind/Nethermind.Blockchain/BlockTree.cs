@@ -55,6 +55,8 @@ namespace Nethermind.Blockchain
         private ReaderWriterLockSlim _blockInfoLock = new ReaderWriterLockSlim();
 
         private readonly IDb _blockDb;
+        
+        private readonly IDb _headerDb;
 
         private ConcurrentDictionary<UInt256, HashSet<Keccak>> _invalidBlocks = new ConcurrentDictionary<UInt256, HashSet<Keccak>>();
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
@@ -265,13 +267,14 @@ namespace Nethermind.Blockchain
         public UInt256 BestKnownNumber { get; private set; }
         public int ChainId => _specProvider.ChainId;
 
-        public AddBlockResult SuggestBlock(Block block)
+        private AddBlockResult Suggest(Block block, BlockHeader header)
         {
+            
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
-            if (block.StateRoot == null && !block.IsGenesis)
+            if (header.StateRoot == null && !header.IsGenesis)
             {
-                throw new InvalidDataException($"State root is null in {block.ToString(Block.Format.Short)}");
+                throw new InvalidDataException($"State root is null in {header.ToString(BlockHeader.Format.Short)}");
             }
 #endif
 
@@ -280,53 +283,65 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
-            if (_invalidBlocks.ContainsKey(block.Number) && _invalidBlocks[block.Number].Contains(block.Hash))
+            if (_invalidBlocks.ContainsKey(header.Number) && _invalidBlocks[header.Number].Contains(header.Hash))
             {
                 return AddBlockResult.InvalidBlock;
             }
 
-            if (block.Number == 0)
+            if (header.Number == 0)
             {
                 if (BestSuggested != null)
                 {
-                    throw new InvalidOperationException("Genesis block should be added only once"); // TODO: make sure it cannot happen
+                    throw new InvalidOperationException("Genesis block should be added only once");
                 }
             }
-            else if (IsKnownBlock(block.Number, block.Hash))
+            else if (IsKnownBlock(header.Number, header.Hash))
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Block {block.Hash} already known.");
+                    _logger.Trace($"Block {header.Hash} already known.");
                 }
 
                 return AddBlockResult.AlreadyKnown;
             }
-            else if (!IsKnownBlock(block.Number - 1, block.Header.ParentHash))
+            else if (!IsKnownBlock(header.Number - 1, header.ParentHash))
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Could not find parent ({block.Header.ParentHash}) of block {block.Hash}");
+                    _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
                 }
 
                 return AddBlockResult.UnknownParent;
             }
 
-            using (MemoryStream stream = Rlp.BorrowStream())
+            SetTotalDifficulty(header);
+            if (block != null)
             {
-                Rlp.Encode(stream, block);
-                byte[] newRlp = stream.ToArray();
-                _blockDb.Set(block.Hash, newRlp);
+                using (MemoryStream stream = Rlp.BorrowStream())
+                {
+                    Rlp.Encode(stream, block);
+                    byte[] newRlp = stream.ToArray();
+                    _blockDb.Set(block.Hash, newRlp);
+                }
+                
+                SetTotalTransactions(block);
+            }
+            else
+            {
+                using (MemoryStream stream = Rlp.BorrowStream())
+                {
+                    Rlp.Encode(stream, header);
+                    byte[] newRlp = stream.ToArray();
+                    _headerDb.Set(header.Hash, newRlp);
+                }                
             }
 
-            // TODO: when reviewing the entire data chain need to look at the transactional storing of level and block
-            SetTotalDifficulty(block);
-            SetTotalTransactions(block);
-            BlockInfo blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
+            BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0, block?.TotalTransactions ?? 0);
 
             try
             {
                 _blockInfoLock.EnterWriteLock();
-                UpdateOrCreateLevel(block.Number, blockInfo);
+                UpdateOrCreateLevel(header.Number, blockInfo);
             }
             finally
             {
@@ -334,13 +349,26 @@ namespace Nethermind.Blockchain
             }
 
 
-            if (block.IsGenesis || block.TotalDifficulty > (BestSuggested?.TotalDifficulty ?? 0))
+            if (header.IsGenesis || header.TotalDifficulty > (BestSuggested?.TotalDifficulty ?? 0))
             {
-                BestSuggested = block.Header;
-                NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+                BestSuggested = header;
+                if (block != null)
+                {
+                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+                }
             }
 
             return AddBlockResult.Added;
+        }
+        
+         public AddBlockResult SuggestHeader(BlockHeader header)
+        {
+            return Suggest(null, header);
+        }
+        
+        public AddBlockResult SuggestBlock(Block block)
+        {
+            return Suggest(block, block.Header);
         }
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
@@ -932,7 +960,7 @@ namespace Nethermind.Blockchain
             {
                 // TODO: this is here because storing block data is not transactional
                 // TODO: would be great to remove it, he?
-                SetTotalDifficulty(block);
+                SetTotalDifficulty(block.Header);
                 SetTotalTransactions(block);
                 blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
                 try
@@ -956,37 +984,37 @@ namespace Nethermind.Blockchain
             return (block, blockInfo, level);
         }
 
-        private void SetTotalDifficulty(Block block)
+        private void SetTotalDifficulty(BlockHeader header)
         {
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Calculating total difficulty for {block}");
+                _logger.Trace($"Calculating total difficulty for {header}");
             }
 
-            if (block.Number == 0)
+            if (header.Number == 0)
             {
-                block.Header.TotalDifficulty = block.Difficulty;
+                header.TotalDifficulty = header.Difficulty;
             }
             else
             {
-                Block parent = this.FindParent(block.Header);
+                Block parent = this.FindParent(header);
                 if (parent == null)
                 {
-                    throw new InvalidOperationException($"An orphaned block on the chain {block}");
+                    throw new InvalidOperationException($"An orphaned block on the chain {header}");
                 }
 
                 if (parent.TotalDifficulty == null)
                 {
                     throw new InvalidOperationException(
-                        $"Parent's {nameof(parent.TotalDifficulty)} unknown when calculating for {block}");
+                        $"Parent's {nameof(parent.TotalDifficulty)} unknown when calculating for {header}");
                 }
 
-                block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
+                header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
             }
 
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Calculated total difficulty for {block} is {block.TotalDifficulty}");
+                _logger.Trace($"Calculated total difficulty for {header} is {header.TotalDifficulty}");
             }
         }
 
