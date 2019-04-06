@@ -19,7 +19,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
@@ -30,18 +30,18 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test
 {
     [TestFixture]
-    public class TransactionPoolInfoProviderTests
+    public class TxPoolInfoProviderTests
     {
         private Address _address;
         private IStateProvider _stateProvider;
-        private ITransactionPoolInfoProvider _infoProvider;
+        private ITxPoolInfoProvider _infoProvider;
 
         [SetUp]
         public void Setup()
         {
             _address = Address.FromNumber(1);
             _stateProvider = Substitute.For<IStateProvider>();
-            _infoProvider = new TransactionPoolInfoProvider(_stateProvider);
+            _infoProvider = new TxPoolInfoProvider(_stateProvider);
         }
 
         [Test]

@@ -21,9 +21,9 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Synchronization;
-using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Blockchain.TransactionPools.Filters;
-using Nethermind.Blockchain.TransactionPools.Storages;
+using Nethermind.Blockchain.TxPools;
+using Nethermind.Blockchain.TxPools.Filters;
+using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -36,7 +36,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test
 {
     [TestFixture]
-    public class TransactionPoolTests
+    public class TxPoolTests
     {
         private Block _genesisBlock;
         private IBlockTree _remoteBlockTree;

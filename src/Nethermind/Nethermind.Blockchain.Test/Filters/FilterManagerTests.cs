@@ -22,7 +22,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;

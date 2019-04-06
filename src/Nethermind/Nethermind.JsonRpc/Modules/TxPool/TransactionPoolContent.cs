@@ -18,15 +18,15 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {   
-    public class TransactionPoolContent
+    public class TxPoolContent
     {
-        public TransactionPoolContent(TransactionPoolInfo info)
+        public TxPoolContent(TxPoolInfo info)
         {
             Pending = info.Pending.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => v.Value.Select(tx => new TransactionForRpc(null, null, null, tx)).ToArray()));
             Queued = info.Queued.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => v.Value.Select(tx => new TransactionForRpc(null, null, null, tx)).ToArray()));            

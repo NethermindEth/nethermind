@@ -17,13 +17,13 @@
  */
 
 using System.Linq;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {
-    public class TransactionPoolStatus
+    public class TxPoolStatus
     {
-        public TransactionPoolStatus(TransactionPoolInfo info)
+        public TxPoolStatus(TxPoolInfo info)
         {
             Pending = info.Pending.Sum(t => t.Value.Count);
             Queued = info.Queued.Sum(t => t.Value.Count);

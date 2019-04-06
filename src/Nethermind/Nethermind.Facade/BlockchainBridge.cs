@@ -22,7 +22,7 @@ using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -40,7 +40,7 @@ namespace Nethermind.Facade
     {
         private readonly IBlockTree _blockTree;
         private readonly ITxPool _txPool;
-        private readonly ITransactionPoolInfoProvider _transactionPoolInfoProvider;
+        private readonly ITxPoolInfoProvider _transactionPoolInfoProvider;
         private readonly IFilterManager _filterManager;
         private readonly IFilterStore _filterStore;
         private readonly IStateReader _stateReader;
@@ -56,7 +56,7 @@ namespace Nethermind.Facade
             IStorageProvider storageProvider,
             IBlockTree blockTree,
             ITxPool txPool,
-            ITransactionPoolInfoProvider transactionPoolInfoProvider,
+            ITxPoolInfoProvider transactionPoolInfoProvider,
             IReceiptStorage receiptStorage,
             IFilterStore filterStore,
             IFilterManager filterManager,
@@ -233,7 +233,7 @@ namespace Nethermind.Facade
             return new FilterLog[0];
         }
 
-        public TransactionPoolInfo GetTransactionPoolInfo()
+        public TxPoolInfo GetTxPoolInfo()
             => _transactionPoolInfoProvider.GetInfo(_txPool.GetPendingTransactions());
 
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,

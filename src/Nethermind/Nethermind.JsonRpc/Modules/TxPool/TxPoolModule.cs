@@ -33,24 +33,24 @@ namespace Nethermind.JsonRpc.Modules.TxPool
             _blockchainBridge = blockchainBridge;
         }
 
-        public ResultWrapper<TransactionPoolStatus> txpool_status()
+        public ResultWrapper<TxPoolStatus> txpool_status()
         {
-            var poolInfo = _blockchainBridge.GetTransactionPoolInfo();
-            var poolStatus = new TransactionPoolStatus(poolInfo);
+            var poolInfo = _blockchainBridge.GetTxPoolInfo();
+            var poolStatus = new TxPoolStatus(poolInfo);
          
-            return ResultWrapper<TransactionPoolStatus>.Success(poolStatus);
+            return ResultWrapper<TxPoolStatus>.Success(poolStatus);
         }
 
-        public ResultWrapper<TransactionPoolContent> txpool_content()
+        public ResultWrapper<TxPoolContent> txpool_content()
         {
-            var poolInfo = _blockchainBridge.GetTransactionPoolInfo();
-            return ResultWrapper<TransactionPoolContent>.Success(new TransactionPoolContent(poolInfo));
+            var poolInfo = _blockchainBridge.GetTxPoolInfo();
+            return ResultWrapper<TxPoolContent>.Success(new TxPoolContent(poolInfo));
         }
 
-        public ResultWrapper<TransactionPoolInspection> txpool_inspect()
+        public ResultWrapper<TxPoolInspection> txpool_inspect()
         {
-            var poolInfo = _blockchainBridge.GetTransactionPoolInfo();
-            return ResultWrapper<TransactionPoolInspection>.Success(new TransactionPoolInspection(poolInfo));
+            var poolInfo = _blockchainBridge.GetTxPoolInfo();
+            return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo));
         }
         
         public override ModuleType ModuleType => ModuleType.TxPool;

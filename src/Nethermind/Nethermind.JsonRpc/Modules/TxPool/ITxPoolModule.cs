@@ -20,8 +20,8 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 {
     public interface ITxPoolModule : IModule
     {
-        ResultWrapper<TransactionPoolStatus> txpool_status();
-        ResultWrapper<TransactionPoolContent> txpool_content();
-        ResultWrapper<TransactionPoolInspection> txpool_inspect();
+        ResultWrapper<TxPoolStatus> txpool_status();
+        ResultWrapper<TxPoolContent> txpool_content();
+        ResultWrapper<TxPoolInspection> txpool_inspect();
     }
 }

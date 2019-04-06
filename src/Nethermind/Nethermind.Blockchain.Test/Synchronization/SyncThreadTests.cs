@@ -18,14 +18,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Blockchain.TransactionPools.Storages;
+using Nethermind.Blockchain.TxPools;
+using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -40,7 +39,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Stats;
 using Nethermind.Store;
 using NUnit.Framework;
-using NUnit.Framework.Constraints;
 
 namespace Nethermind.Blockchain.Test.Synchronization
 {

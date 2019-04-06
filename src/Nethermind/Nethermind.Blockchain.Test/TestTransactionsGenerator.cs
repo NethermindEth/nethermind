@@ -19,14 +19,14 @@
 using System;
 using System.IO;
 using System.Timers;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Test
 {
     public class TestTransactionsGenerator
     {

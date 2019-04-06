@@ -28,8 +28,8 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Blockchain.TransactionPools.Storages;
+using Nethermind.Blockchain.TxPools;
+using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Clique;
 using Nethermind.Config;
@@ -110,7 +110,7 @@ namespace Nethermind.Runner.Runners
         private INodeStatsManager _nodeStatsManager;
         private IPerfService _perfService;
         private ITxPool _txPool;
-        private ITransactionPoolInfoProvider _transactionPoolInfoProvider;
+        private ITxPoolInfoProvider _transactionPoolInfoProvider;
         private IReceiptStorage _receiptStorage;
         private IEthereumEcdsa _ethereumEcdsa;
         private IEthSyncPeerPool _syncPeerPool;
@@ -570,7 +570,7 @@ namespace Nethermind.Runner.Runners
                 stateProvider,
                 _logManager);
 
-            _transactionPoolInfoProvider = new TransactionPoolInfoProvider(stateProvider);
+            _transactionPoolInfoProvider = new TxPoolInfoProvider(stateProvider);
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(

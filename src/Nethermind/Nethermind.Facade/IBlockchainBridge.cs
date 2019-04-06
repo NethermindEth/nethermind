@@ -19,7 +19,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -79,6 +79,6 @@ namespace Nethermind.Facade
         FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
 
-        TransactionPoolInfo GetTransactionPoolInfo();
+        TxPoolInfo GetTxPoolInfo();
     }
 }
