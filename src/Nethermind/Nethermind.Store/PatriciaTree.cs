@@ -20,6 +20,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -679,5 +680,27 @@ namespace Nethermind.Store
             public TrieNode Node { get; }
             public int PathIndex { get; }
         }
+
+        public string DumpState()
+        {
+            DumpStateContext context = new DumpStateContext();
+            RootRef.DumpState(context, this);
+
+            return context.Builder.ToString();
+        }
+    }
+    
+    internal class DumpStateContext
+    {
+        public DumpStateContext()
+        {
+            Builder.AppendLine();
+        }
+        
+        public StringBuilder Builder { get; } = new StringBuilder();
+            
+        public string Indent { get; set; } = string.Empty;
+
+        public string Prefix { get; set; } = string.Empty;
     }
 }

@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Test.Filters
     {
         private IFilterStore _filterStore;
         private IBlockProcessor _blockProcessor;
-        private ITransactionPool _transactionPool;
+        private ITxPool _txPool;
         private ILogManager _logManager;
         private FilterManager _filterManager;
         private int _currentFilterId;
@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test.Filters
             _currentFilterId = 0;
             _filterStore = Substitute.For<IFilterStore>();
             _blockProcessor = Substitute.For<IBlockProcessor>();
-            _transactionPool = Substitute.For<ITransactionPool>();
+            _txPool = Substitute.For<ITxPool>();
             _logManager = Substitute.For<ILogManager>();
         }
 
@@ -324,7 +324,7 @@ namespace Nethermind.Blockchain.Test.Filters
 
             _filterStore.GetFilters<LogFilter>().Returns(filters.OfType<LogFilter>().ToArray());
             _filterStore.GetFilters<BlockFilter>().Returns(filters.OfType<BlockFilter>().ToArray());
-            _filterManager = new FilterManager(_filterStore, _blockProcessor, _transactionPool, _logManager);
+            _filterManager = new FilterManager(_filterStore, _blockProcessor, _txPool, _logManager);
 
             _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block));
 

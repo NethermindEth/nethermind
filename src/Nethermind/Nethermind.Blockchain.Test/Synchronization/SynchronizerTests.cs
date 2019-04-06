@@ -270,7 +270,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 _logger = _logManager.GetClassLogger();
                 ISnapshotableDb stateDb = new StateDb();
-                BlockTree = new BlockTree(new MemDb(), new MemDb(), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTransactionPool.Instance, _logManager);
+                BlockTree = new BlockTree(new MemDb(), new MemDb(), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, _logManager);
                 var stats = new NodeStatsManager(new StatsConfig(), _logManager);
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, new SyncConfig(), _logManager);
 

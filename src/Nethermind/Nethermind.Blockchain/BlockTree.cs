@@ -61,20 +61,20 @@ namespace Nethermind.Blockchain
         private readonly IDb _blockInfoDb;
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
-        private readonly ITransactionPool _transactionPool;
+        private readonly ITxPool _txPool;
 
         public BlockTree(
             IDb blockDb,
             IDb blockInfoDb,
             ISpecProvider specProvider,
-            ITransactionPool transactionPool,
+            ITxPool txPool,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockDb = blockDb;
             _blockInfoDb = blockInfoDb;
             _specProvider = specProvider;
-            _transactionPool = transactionPool;
+            _txPool = txPool;
 
             ChainLevelInfo genesisLevel = LoadLevel(0, true);
             if (genesisLevel != null)
@@ -665,7 +665,7 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _transactionPool.RemoveTransaction(block.Transactions[i].Hash);
+                _txPool.RemoveTransaction(block.Transactions[i].Hash);
             }
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");

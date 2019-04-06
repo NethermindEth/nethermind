@@ -50,7 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private bool _statusReceived;
         private Keccak _remoteHeadBlockHash;
         private IPerfService _perfService;
-        private readonly ITransactionPool _transactionPool;
+        private readonly ITxPool _txPool;
         private readonly ITimestamp _timestamp;
 
         public Eth62ProtocolHandler(
@@ -60,12 +60,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ISyncServer syncServer,
             ILogManager logManager,
             IPerfService perfService,
-            ITransactionPool transactionPool)
+            ITxPool txPool)
             : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer;
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
-            _transactionPool = transactionPool;
+            _txPool = txPool;
             _timestamp = new Timestamp();
 
             _txFloodCheckTimer = new System.Timers.Timer(_txFloodCheckInterval.TotalMilliseconds);
@@ -304,7 +304,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 var transaction = msg.Transactions[i];
                 transaction.DeliveredBy = Node.Id;
                 transaction.Timestamp = _timestamp.EpochSeconds;
-                AddTransactionResult result = _transactionPool.AddTransaction(transaction, SyncServer.Head.Number);
+                AddTransactionResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number);
                 if (result == AddTransactionResult.AlreadyKnown)
                 {
                     _notAcceptedTxsSinceLastCheck++;

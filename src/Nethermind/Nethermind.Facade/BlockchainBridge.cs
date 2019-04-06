@@ -39,7 +39,7 @@ namespace Nethermind.Facade
     public class BlockchainBridge : IBlockchainBridge
     {
         private readonly IBlockTree _blockTree;
-        private readonly ITransactionPool _transactionPool;
+        private readonly ITxPool _txPool;
         private readonly ITransactionPoolInfoProvider _transactionPoolInfoProvider;
         private readonly IFilterManager _filterManager;
         private readonly IFilterStore _filterStore;
@@ -55,7 +55,7 @@ namespace Nethermind.Facade
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             IBlockTree blockTree,
-            ITransactionPool transactionPool,
+            ITxPool txPool,
             ITransactionPoolInfoProvider transactionPoolInfoProvider,
             IReceiptStorage receiptStorage,
             IFilterStore filterStore,
@@ -67,7 +67,7 @@ namespace Nethermind.Facade
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(_transactionPool));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _transactionPoolInfoProvider = transactionPoolInfoProvider ?? throw new ArgumentNullException(nameof(transactionPoolInfoProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
@@ -120,7 +120,7 @@ namespace Nethermind.Facade
             transaction.Hash = Transaction.CalculateHash(transaction);
             transaction.Timestamp = _timestamp.EpochSeconds;
 
-            _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
+            _txPool.AddTransaction(transaction, _blockTree.Head.Number);
 
             _stateProvider.Reset();
             return transaction.Hash;
@@ -234,7 +234,7 @@ namespace Nethermind.Facade
         }
 
         public TransactionPoolInfo GetTransactionPoolInfo()
-            => _transactionPoolInfoProvider.GetInfo(_transactionPool.GetPendingTransactions());
+            => _transactionPoolInfoProvider.GetInfo(_txPool.GetPendingTransactions());
 
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)

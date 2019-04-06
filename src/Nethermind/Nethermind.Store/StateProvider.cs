@@ -48,11 +48,12 @@ namespace Nethermind.Store
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(StateTree stateTree, IDb codeDb, ILogManager logManager)
+        public StateProvider(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
         {
+            if (stateDb == null) throw new ArgumentNullException(nameof(stateDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _state = stateTree ?? throw new ArgumentNullException(nameof(stateTree));
+            _state = new StateTree(stateDb);
         }
 
         public Keccak StateRoot
@@ -245,6 +246,11 @@ namespace Nethermind.Store
         {
             if (_logger.IsTrace) _logger.Trace($"State snapshot {_currentPosition}");
             return _currentPosition;
+        }
+
+        public string DumpState()
+        {
+            return _state.DumpState();
         }
 
         public void Restore(int snapshot)
@@ -645,7 +651,6 @@ namespace Nethermind.Store
 
         public void CommitTree()
         {
-            if (_logger.IsWarn) _logger.Warn("COMMITTING TREE");
             _state.Commit();
         }
     }

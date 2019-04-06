@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Test
         private ILogManager _logManager;
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
-        private ITransactionPool _transactionPool;
+        private ITxPool _txPool;
         private ITransactionStorage _noTransactionStorage;
         private ITransactionStorage _inMemoryTransactionStorage;
         private ITransactionStorage _persistentTransactionStorage;
@@ -64,61 +64,61 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void should_add_peers()
         {
-            _transactionPool = CreatePool(_noTransactionStorage);
+            _txPool = CreatePool(_noTransactionStorage);
             var peers = GetPeers();
 
             foreach ((ISyncPeer peer, _) in peers)
             {
-                _transactionPool.AddPeer(peer);
+                _txPool.AddPeer(peer);
             }
         }
 
         [Test]
         public void should_delete_peers()
         {
-            _transactionPool = CreatePool(_noTransactionStorage);
+            _txPool = CreatePool(_noTransactionStorage);
             var peers = GetPeers();
 
             foreach ((ISyncPeer peer, _) in peers)
             {
-                _transactionPool.AddPeer(peer);
+                _txPool.AddPeer(peer);
             }
 
             foreach ((ISyncPeer peer, _) in peers)
             {
-                _transactionPool.RemovePeer(peer.Node.Id);
+                _txPool.RemovePeer(peer.Node.Id);
             }
         }
 
         [Test]
         public void should_ignore_transactions_with_different_chain_id()
         {
-            _transactionPool = CreatePool(_noTransactionStorage);
+            _txPool = CreatePool(_noTransactionStorage);
             EthereumEcdsa ecdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, _logManager);
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA, MainNetSpecProvider.ByzantiumBlockNumber).TestObject;
-            AddTransactionResult result = _transactionPool.AddTransaction(tx, 1);
-            _transactionPool.GetPendingTransactions().Length.Should().Be(0);
+            AddTransactionResult result = _txPool.AddTransaction(tx, 1);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTransactionResult.InvalidChainId);
         }
         
         [Test]
         public void should_ignore_old_scheme_signatures()
         {
-            _transactionPool = CreatePool(_noTransactionStorage);
+            _txPool = CreatePool(_noTransactionStorage);
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
-            AddTransactionResult result = _transactionPool.AddTransaction(tx, 1);
-            _transactionPool.GetPendingTransactions().Length.Should().Be(0);
+            AddTransactionResult result = _txPool.AddTransaction(tx, 1);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTransactionResult.OldScheme);
         }
         
         [Test]
         public void should_ignore_already_known()
         {
-            _transactionPool = CreatePool(_noTransactionStorage);
+            _txPool = CreatePool(_noTransactionStorage);
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, RopstenSpecProvider.ByzantiumBlockNumber).TestObject;
-            AddTransactionResult result1 = _transactionPool.AddTransaction(tx, 1);
-            AddTransactionResult result2 = _transactionPool.AddTransaction(tx, 1);
-            _transactionPool.GetPendingTransactions().Length.Should().Be(1);
+            AddTransactionResult result1 = _txPool.AddTransaction(tx, 1);
+            AddTransactionResult result2 = _txPool.AddTransaction(tx, 1);
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
             result1.Should().Be(AddTransactionResult.Added);
             result2.Should().Be(AddTransactionResult.AlreadyKnown);
         }
@@ -126,28 +126,28 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void should_add_valid_transactions()
         {
-            _transactionPool = CreatePool(_noTransactionStorage);
+            _txPool = CreatePool(_noTransactionStorage);
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, RopstenSpecProvider.ByzantiumBlockNumber).TestObject;
-            AddTransactionResult result = _transactionPool.AddTransaction(tx, 1);
-            _transactionPool.GetPendingTransactions().Length.Should().Be(1);
+            AddTransactionResult result = _txPool.AddTransaction(tx, 1);
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
             result.Should().Be(AddTransactionResult.Added);
         }
 
         [Test]
         public void should_add_pending_transactions()
         {
-            _transactionPool = CreatePool(_noTransactionStorage);
+            _txPool = CreatePool(_noTransactionStorage);
             var transactions = AddTransactionsToPool();
-            _transactionPool.GetPendingTransactions().Length.Should().Be(transactions.Length);
+            _txPool.GetPendingTransactions().Length.Should().Be(transactions.Length);
         }
 
         [Test]
         public void should_delete_pending_transactions()
         {
-            _transactionPool = CreatePool(_noTransactionStorage);
+            _txPool = CreatePool(_noTransactionStorage);
             var transactions = AddTransactionsToPool();
             DeleteTransactionsFromPool(transactions);
-            _transactionPool.GetPendingTransactions().Should().BeEmpty();
+            _txPool.GetPendingTransactions().Should().BeEmpty();
         }
 
         [Test]
@@ -202,10 +202,10 @@ namespace Nethermind.Blockchain.Test
 
         private Transactions AddAndFilterTransactions(ITransactionStorage storage, params ITransactionFilter[] filters)
         {
-            _transactionPool = CreatePool(storage);
+            _txPool = CreatePool(storage);
             foreach (var filter in filters ?? Enumerable.Empty<ITransactionFilter>())
             {
-                _transactionPool.AddFilter(filter);
+                _txPool.AddFilter(filter);
             }
 
             var pendingTransactions = AddTransactionsToPool();
@@ -226,8 +226,8 @@ namespace Nethermind.Blockchain.Test
             return peers;
         }
 
-        private TransactionPool CreatePool(ITransactionStorage transactionStorage)
-            => new TransactionPool(transactionStorage, new PendingTransactionThresholdValidator(),
+        private TxPool CreatePool(ITransactionStorage transactionStorage)
+            => new TxPool(transactionStorage, new PendingTransactionThresholdValidator(),
                 new Timestamp(), _ethereumEcdsa, _specProvider, _logManager);
 
         private ISyncPeer GetPeer(PublicKey publicKey)
@@ -238,7 +238,7 @@ namespace Nethermind.Blockchain.Test
             var transactions = GetTransactions(GetPeers(transactionsPerPeer));
             foreach (var transaction in transactions)
             {
-                _transactionPool.AddTransaction(transaction, 1);
+                _txPool.AddTransaction(transaction, 1);
             }
 
             return transactions;
@@ -248,7 +248,7 @@ namespace Nethermind.Blockchain.Test
         {
             foreach (var transaction in transactions)
             {
-                _transactionPool.RemoveTransaction(transaction.Hash);
+                _txPool.RemoveTransaction(transaction.Hash);
             }
         }
 

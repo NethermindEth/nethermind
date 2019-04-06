@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Test
         {
             _specProvider = MainNetSpecProvider.Instance;
             StateDb stateDb = new StateDb();
-            _stateProvider = new StateProvider(new StateTree(stateDb), new MemDb(), LimboLogs.Instance);
+            _stateProvider = new StateProvider(stateDb, new MemDb(), LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance);
             _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);

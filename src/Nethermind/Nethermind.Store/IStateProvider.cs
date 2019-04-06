@@ -74,5 +74,7 @@ namespace Nethermind.Store
         void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer);
         
         int TakeSnapshot();
+        
+        string DumpState();
     }
 }

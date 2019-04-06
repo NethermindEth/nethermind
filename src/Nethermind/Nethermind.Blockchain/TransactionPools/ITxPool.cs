@@ -25,7 +25,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TransactionPools
 {
-    public interface ITransactionPool
+    public interface ITxPool
     {
         Transaction[] GetPendingTransactions();
         void AddFilter<T>(T filter) where T : ITransactionFilter;

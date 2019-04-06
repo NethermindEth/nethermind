@@ -40,16 +40,16 @@ namespace Nethermind.Blockchain
         private readonly ILogger _logger;
 
         private readonly IBlockchainProcessor _processor;
-        private readonly ITransactionPool _transactionPool;
+        private readonly ITxPool _txPool;
 
         public DevBlockProducer(
-            ITransactionPool transactionPool,
+            ITxPool txPool,
             IBlockchainProcessor devProcessor,
             IBlockTree blockTree,
             ITimestamp timestamp,
             ILogManager logManager)
         {
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _processor = devProcessor ?? throw new ArgumentNullException(nameof(devProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _timestamp = timestamp;
@@ -58,12 +58,12 @@ namespace Nethermind.Blockchain
 
         public void Start()
         {
-            _transactionPool.NewPending += OnNewPendingTx;
+            _txPool.NewPending += OnNewPendingTx;
         }
 
         public async Task StopAsync()
         {
-            _transactionPool.NewPending -= OnNewPendingTx;
+            _txPool.NewPending -= OnNewPendingTx;
             await Task.CompletedTask;
         }
 
@@ -88,7 +88,7 @@ namespace Nethermind.Blockchain
             header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
 
-            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
+            var transactions = _txPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
 
             var selectedTxs = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;
@@ -145,6 +145,8 @@ namespace Nethermind.Blockchain
             }
 
             Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullBlockTracer.Instance);
+            if (_logger.IsInfo) _logger.Info($"Mined a DEV block {processedBlock.ToString(Block.Format.FullHashAndNumber)} State Root: {processedBlock.StateRoot}");
+            
             if (processedBlock == null)
             {
                 if (_logger.IsError) _logger.Error("Block prepared by block producer was rejected by processor");

@@ -335,7 +335,6 @@ namespace Nethermind.Store
         {
             foreach (KeyValuePair<Address, StorageTree> storage in _storages)
             {
-                throw new Exception();
                 storage.Value.Commit();
             }
 

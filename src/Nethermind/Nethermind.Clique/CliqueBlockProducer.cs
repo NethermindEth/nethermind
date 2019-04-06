@@ -48,7 +48,7 @@ namespace Nethermind.Clique
         private readonly ICryptoRandom _cryptoRandom;
 
         private readonly IBlockchainProcessor _processor;
-        private readonly ITransactionPool _transactionPool;
+        private readonly ITxPool _txPool;
         private ISealer _sealer;
         private readonly ISnapshotManager _snapshotManager;
         private ICliqueConfig _config;
@@ -58,7 +58,7 @@ namespace Nethermind.Clique
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private System.Timers.Timer _timer = new System.Timers.Timer();
 
-        public CliqueBlockProducer(ITransactionPool transactionPool,
+        public CliqueBlockProducer(ITxPool txPool,
             IBlockchainProcessor blockchainProcessor,
             IBlockTree blockTree,
             ITimestamp timestamp,
@@ -71,7 +71,7 @@ namespace Nethermind.Clique
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -363,7 +363,7 @@ namespace Nethermind.Clique
                 header.Timestamp = new UInt256(_timestamp.EpochSeconds);
             }
 
-            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t.Nonce).ThenByDescending(t => t.GasPrice).ThenBy(t => t.GasLimit); // by nonce in case there are two transactions for the same account
+            var transactions = _txPool.GetPendingTransactions().OrderBy(t => t.Nonce).ThenByDescending(t => t.GasPrice).ThenBy(t => t.GasLimit); // by nonce in case there are two transactions for the same account
 
             var selectedTxs = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;

@@ -109,7 +109,7 @@ namespace Nethermind.Runner.Runners
         private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
         private INodeStatsManager _nodeStatsManager;
         private IPerfService _perfService;
-        private ITransactionPool _transactionPool;
+        private ITxPool _txPool;
         private ITransactionPoolInfoProvider _transactionPoolInfoProvider;
         private IReceiptStorage _receiptStorage;
         private IEthereumEcdsa _ethereumEcdsa;
@@ -230,11 +230,11 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsDebug) _logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
 
             IReadOnlyDbProvider rpcDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            AlternativeChain rpcChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, _transactionPool, _receiptStorage);
+            AlternativeChain rpcChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage);
 
             ITracer tracer = new Tracer(rpcChain.Processor, _receiptStorage, _blockTree, _dbProvider.TraceDb);
             IFilterStore filterStore = new FilterStore();
-            IFilterManager filterManager = new FilterManager(filterStore, _blockProcessor, _transactionPool, _logManager);
+            IFilterManager filterManager = new FilterManager(filterStore, _blockProcessor, _txPool, _logManager);
 
             RpcState rpcState = new RpcState(_blockTree, _specProvider, rpcDbProvider, _logManager);
 
@@ -244,7 +244,7 @@ namespace Nethermind.Runner.Runners
                 rpcState.StateProvider,
                 rpcState.StorageProvider,
                 rpcState.BlockTree,
-                _transactionPool,
+                _txPool,
                 _transactionPoolInfoProvider,
                 _receiptStorage,
                 filterStore,
@@ -252,7 +252,7 @@ namespace Nethermind.Runner.Runners
                 _wallet,
                 rpcState.TransactionProcessor);
 
-            TransactionPool debugTransactionPool = new TransactionPool(new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
+            TxPool debugTxPool = new TxPool(new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
                 new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval, _initConfig.RemovePendingTransactionInterval),
                 _timestamp,
                 _ethereumEcdsa,
@@ -262,7 +262,7 @@ namespace Nethermind.Runner.Runners
                 _initConfig.PeerNotificationThreshold);
 
             var debugReceiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
-            AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, debugTransactionPool, debugReceiptStorage);
+            AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, debugTxPool, debugReceiptStorage);
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             var debugBridge = new DebugBridge(_configProvider, debugDbProvider, tracer, debugChain.Processor);
 
@@ -381,17 +381,17 @@ namespace Nethermind.Runner.Runners
                 IReadOnlyDbProvider dbProvider,
                 IBlockDataRecoveryStep recoveryStep,
                 ILogManager logManager,
-                ITransactionPool customTransactionPool,
+                ITxPool customTxPool,
                 IReceiptStorage receiptStorage)
             {
-                StateProvider = new StateProvider(new StateTree(dbProvider.StateDb), dbProvider.CodeDb, logManager);
+                StateProvider = new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, logManager);
                 StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, StateProvider, logManager);
                 IBlockTree readOnlyTree = new ReadOnlyBlockTree(blockTree);
                 BlockhashProvider blockhashProvider = new BlockhashProvider(readOnlyTree);
                 VirtualMachine virtualMachine = new VirtualMachine(StateProvider, storageProvider, blockhashProvider, logManager);
                 ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, StateProvider, storageProvider, virtualMachine, logManager);
-                ITransactionPool transactionPool = customTransactionPool;
-                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, storageProvider, transactionPool, receiptStorage, logManager);
+                ITxPool txPool = customTxPool;
+                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, storageProvider, txPool, receiptStorage, logManager);
                 Processor = new FastSyncBlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false);
             }
         }
@@ -410,10 +410,9 @@ namespace Nethermind.Runner.Runners
             {
                 ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
                 IDb codeDb = readOnlyDbProvider.CodeDb;
-                StateTree stateTree = new StateTree(readOnlyDbProvider.StateDb);
 
-                StateReader = new StateReader(new StateTree(readOnlyDbProvider.StateDb), codeDb, logManager);
-                StateProvider = new StateProvider(stateTree, codeDb, logManager);
+                StateReader = new StateReader(stateDb, codeDb, logManager);
+                StateProvider = new StateProvider(stateDb, codeDb, logManager);
                 StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
 
                 BlockTree = new ReadOnlyBlockTree(blockTree);
@@ -465,7 +464,7 @@ namespace Nethermind.Runner.Runners
                 : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts);
 
             _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
-            _transactionPool = new TransactionPool(
+            _txPool = new TxPool(
                 new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
                 new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
                     _initConfig.RemovePendingTransactionInterval), new Timestamp(),
@@ -483,10 +482,10 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.BlocksDb,
                 _dbProvider.BlockInfosDb,
                 _specProvider,
-                _transactionPool,
+                _txPool,
                 _logManager);
 
-            _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _transactionPool);
+            _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _txPool);
 
             CliqueConfig cliqueConfig = null;
             _snapshotManager = null;
@@ -559,10 +558,8 @@ namespace Nethermind.Runner.Runners
                 _specProvider,
                 _logManager);
 
-            var stateTree = new StateTree(_dbProvider.StateDb);
-
             var stateProvider = new StateProvider(
-                stateTree,
+                _dbProvider.StateDb,
                 _dbProvider.CodeDb,
                 _logManager);
 
@@ -602,7 +599,7 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.TraceDb,
                 stateProvider,
                 storageProvider,
-                _transactionPool,
+                _txPool,
                 _receiptStorage,
                 _logManager);
 
@@ -622,21 +619,21 @@ namespace Nethermind.Runner.Runners
             {
                 IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 AlternativeChain producerChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator,
-                    _specProvider, minerDbProvider, _recoveryStep, _logManager, _transactionPool, _receiptStorage);
+                    _specProvider, minerDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage);
 
                 switch (_chainSpec.SealEngineType)
                 {
                     case SealEngineType.Clique:
                     {
                         if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
-                        _blockProducer = new CliqueBlockProducer(_transactionPool, producerChain.Processor,
+                        _blockProducer = new CliqueBlockProducer(_txPool, producerChain.Processor,
                             _blockTree, _timestamp, _cryptoRandom, producerChain.StateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
                         break;
                     }
                     case SealEngineType.NethDev:
                     {
                         if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
-                        _blockProducer = new DevBlockProducer(_transactionPool, producerChain.Processor, _blockTree,
+                        _blockProducer = new DevBlockProducer(_txPool, producerChain.Processor, _blockTree,
                             _timestamp, _logManager);
                         break;
                     }
@@ -846,7 +843,7 @@ namespace Nethermind.Runner.Runners
             var peerStorage = new NetworkStorage(PeersDbPath, networkConfig, _logManager, _perfService);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
-            _protocolsManager = new ProtocolsManager(_syncPeerPool, _syncServer, _transactionPool, _discoveryApp, _messageSerializationService, _rlpxPeer, _nodeStatsManager, protocolValidator, peerStorage, _perfService, _logManager);
+            _protocolsManager = new ProtocolsManager(_syncPeerPool, _syncServer, _txPool, _discoveryApp, _messageSerializationService, _rlpxPeer, _nodeStatsManager, protocolValidator, peerStorage, _perfService, _logManager);
             PeerLoader peerLoader = new PeerLoader(networkConfig, _nodeStatsManager, peerStorage, _logManager);
             _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, networkConfig, _logManager);
             _peerManager.Init();

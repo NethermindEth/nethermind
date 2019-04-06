@@ -24,13 +24,13 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TransactionPools
 {
-    public class NullTransactionPool : ITransactionPool
+    public class NullTxPool : ITxPool
     {
-        private NullTransactionPool()
+        private NullTxPool()
         {
         }
 
-        public static NullTransactionPool Instance { get; } = new NullTransactionPool();
+        public static NullTxPool Instance { get; } = new NullTxPool();
 
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
 

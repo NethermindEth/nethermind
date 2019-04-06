@@ -45,12 +45,12 @@ namespace Nethermind.Blockchain
         private readonly IBlockTree _blockTree;
         private readonly ITimestamp _timestamp;
         private readonly IDifficultyCalculator _difficultyCalculator;
-        private readonly ITransactionPool _transactionPool;
+        private readonly ITxPool _txPool;
         private readonly ILogger _logger;
 
         public MinedBlockProducer(
             IDifficultyCalculator difficultyCalculator,
-            ITransactionPool transactionPool,
+            ITxPool txPool,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain
             ILogManager logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain
             
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
-            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
+            var transactions = _txPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
 
             List<Transaction> selected = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;

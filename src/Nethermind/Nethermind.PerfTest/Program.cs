@@ -155,10 +155,9 @@ namespace Nethermind.PerfTest
         {
             ILogManager logManager = NullLogManager.Instance;
             ISnapshotableDb stateDb = new StateDb();
-            StateTree stateTree = new StateTree(stateDb);
-            IStateProvider stateProvider = new StateProvider(stateTree, new StateDb(), logManager);
+            IStateProvider stateProvider = new StateProvider(stateDb, new StateDb(), logManager);
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance,
-                new TransactionPool(NullTransactionStorage.Instance,
+                new TxPool(NullTransactionStorage.Instance,
                     new PendingTransactionThresholdValidator(), new Timestamp(),
                     NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, logManager), logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
@@ -320,7 +319,7 @@ namespace Nethermind.PerfTest
             var receiptsDb = dbProvider.ReceiptsDb;
 
             /* store & validation */
-            var transactionPool = new TransactionPool(NullTransactionStorage.Instance,
+            var transactionPool = new TxPool(NullTransactionStorage.Instance,
                 new PendingTransactionThresholdValidator(), new Timestamp(),
                 NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, _logManager);
             var receiptStorage = new InMemoryReceiptStorage();
@@ -332,8 +331,7 @@ namespace Nethermind.PerfTest
 
             /* state & storage */
 
-            var stateTree = new StateTree(stateDb);
-            var stateProvider = new StateProvider(stateTree, codeDb, _logManager);
+            var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
 
             /* blockchain processing */

@@ -65,10 +65,10 @@ namespace Nethermind.Blockchain.Test
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider, logManager);
             MemDb receiptsDb = new MemDb();
             MemDb traceDb = new MemDb();
-            TransactionPool transactionPool = new TransactionPool(new NullTransactionStorage(),
+            TxPool txPool = new TxPool(new NullTransactionStorage(),
                 new PendingTransactionThresholdValidator(), new Timestamp(), ethereumEcdsa, specProvider, logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider);
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, logManager);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, txPool, logManager);
             Timestamp timestamp = new Timestamp();
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, logManager);
@@ -79,11 +79,10 @@ namespace Nethermind.Blockchain.Test
             /* state & storage */
             StateDb codeDb = new StateDb();
             StateDb stateDb = new StateDb();
-            StateTree stateTree = new StateTree(stateDb);
-            StateProvider stateProvider = new StateProvider(stateTree, codeDb, logManager);
+            StateProvider stateProvider = new StateProvider(stateDb, codeDb, logManager);
             StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
 
-            TestTransactionsGenerator generator = new TestTransactionsGenerator(transactionPool, ethereumEcdsa, TimeSpan.FromMilliseconds(5 * timeMultiplier), NullLogManager.Instance);
+            TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ethereumEcdsa, TimeSpan.FromMilliseconds(5 * timeMultiplier), NullLogManager.Instance);
             generator.Start();
 
             /* blockchain processing */
@@ -92,8 +91,8 @@ namespace Nethermind.Blockchain.Test
             TransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator,
-                processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, logManager);
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumEcdsa, NullTransactionPool.Instance), logManager, false, false);
+                processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumEcdsa, NullTxPool.Instance), logManager, false, false);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
@@ -111,7 +110,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
 
-            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(difficultyCalculator, transactionPool, blockchainProcessor, sealer, blockTree, timestamp, NullLogManager.Instance);
+            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(difficultyCalculator, txPool, blockchainProcessor, sealer, blockTree, timestamp, NullLogManager.Instance);
             minedBlockProducer.Start();
 
             ManualResetEventSlim manualResetEvent = new ManualResetEventSlim(false);

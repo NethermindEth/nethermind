@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain
         private readonly Random _random = new Random();
         private readonly IEthereumEcdsa _ecdsa;
         private readonly TimeSpan _txDelay;
-        private readonly ITransactionPool _transactionPool;
+        private readonly ITxPool _txPool;
         private readonly Timer _timer = new Timer();
 
         private ulong _count;
@@ -46,10 +46,10 @@ namespace Nethermind.Blockchain
             return _txDelay + TimeSpan.FromMilliseconds((_random.Next((int)_txDelay.TotalMilliseconds) - (int)_txDelay.TotalMilliseconds / 2));
         }
         
-        public TestTransactionsGenerator(ITransactionPool transactionPool, IEthereumEcdsa ecdsa, TimeSpan txDelay, ILogManager logManager)
+        public TestTransactionsGenerator(ITxPool txPool, IEthereumEcdsa ecdsa, TimeSpan txDelay, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txDelay = txDelay;
 
@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain
 
             tx.Hash = Transaction.CalculateHash(tx);
 
-            _transactionPool.AddTransaction(tx, 1);
+            _txPool.AddTransaction(tx, 1);
             _logger.Debug($"Generated a test transaction for testing ({_count - 1}).");
         }
 

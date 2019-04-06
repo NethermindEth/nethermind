@@ -22,9 +22,9 @@ namespace Nethermind.Core.Crypto
 {
     public interface IEthereumEcdsa : IEcdsa
     {
-        void Sign(PrivateKey privateKey, Transaction transaction, UInt256 blockNumber);
-        Address RecoverAddress(Transaction transaction, UInt256 blockNumber);
+        void Sign(PrivateKey privateKey, Transaction tx, UInt256 blockNumber);
+        Address RecoverAddress(Transaction tx, UInt256 blockNumber);
         Address RecoverAddress(Signature signature, Keccak message);
-        bool Verify(Address sender, Transaction transaction, UInt256 blockNumber);
+        bool Verify(Address sender, Transaction tx, UInt256 blockNumber);
     }
 }

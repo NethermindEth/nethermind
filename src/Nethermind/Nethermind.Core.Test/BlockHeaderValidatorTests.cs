@@ -50,7 +50,7 @@ namespace Nethermind.Core.Test
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));
             _ethash = new EthashSealValidator(NullLogManager.Instance, calculator, new Ethash(NullLogManager.Instance));
             _testLogger = new TestLogger();
-            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, Substitute.For<ITransactionPool>(), NullLogManager.Instance);
+            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
             
             _validator = new HeaderValidator(blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;

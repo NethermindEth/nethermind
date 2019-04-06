@@ -34,7 +34,7 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.TransactionPools
 {
-    public class TransactionPool : ITransactionPool
+    public class TxPool : ITxPool
     {
         private static int _seed = Environment.TickCount;
 
@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.TransactionPools
 
         private readonly int _peerNotificationThreshold;
 
-        public TransactionPool(ITransactionStorage transactionStorage,
+        public TxPool(ITransactionStorage transactionStorage,
             IPendingTransactionThresholdValidator pendingTransactionThresholdValidator,
             ITimestamp timestamp, IEthereumEcdsa ecdsa, ISpecProvider specProvider, ILogManager logManager,
             int removePendingTransactionInterval = 600,

@@ -39,12 +39,12 @@ namespace Nethermind.Core.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public void Sign(PrivateKey privateKey, Transaction transaction, UInt256 blockNumber)
+        public void Sign(PrivateKey privateKey, Transaction tx, UInt256 blockNumber)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public Address RecoverAddress(Transaction transaction, UInt256 blockNumber)
+        public Address RecoverAddress(Transaction tx, UInt256 blockNumber)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
@@ -59,7 +59,7 @@ namespace Nethermind.Core.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public bool Verify(Address sender, Transaction transaction, UInt256 blockNumber)
+        public bool Verify(Address sender, Transaction tx, UInt256 blockNumber)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }

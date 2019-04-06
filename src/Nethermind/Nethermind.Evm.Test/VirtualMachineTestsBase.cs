@@ -56,8 +56,7 @@ namespace Nethermind.Evm.Test
             ILogManager logger = LimboLogs.Instance;;
             IDb codeDb = new StateDb();
             _stateDb = new StateDb();
-            StateTree stateTree = new StateTree(_stateDb);
-            TestState = new StateProvider(stateTree, codeDb, logger);
+            TestState = new StateProvider(_stateDb, codeDb, logger);
             Storage = new StorageProvider(_stateDb, TestState, logger);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider, logger);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();

@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test
             private IMessageSerializationService _serializer;
             private ISyncServer _syncServer;
             private IEthSyncPeerPool _syncPeerPool;
-            private ITransactionPool _transactionPool;
+            private ITxPool _txPool;
             private IChannelHandlerContext _channelHandlerContext;
             private IChannel _channel;
             private IChannelPipeline _pipeline;
@@ -85,7 +85,7 @@ namespace Nethermind.Network.Test
                 _syncServer = Substitute.For<ISyncServer>();
                 _syncServer.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
                 _syncServer.Head.Returns(Build.A.BlockHeader.TestObject);
-                _transactionPool = Substitute.For<ITransactionPool>();
+                _txPool = Substitute.For<ITxPool>();
                 _discoveryApp = Substitute.For<IDiscoveryApp>();
                 _serializer = new MessageSerializationService();
                 _localPeer = Substitute.For<IRlpxPeer>();
@@ -102,7 +102,7 @@ namespace Nethermind.Network.Test
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
-                    _transactionPool,
+                    _txPool,
                     _discoveryApp,
                     _serializer,
                     _localPeer,
@@ -213,14 +213,14 @@ namespace Nethermind.Network.Test
 
             public Context VerifySyncPeersRemoved()
             {
-                _transactionPool.Received().RemovePeer(Arg.Any<PublicKey>());
+                _txPool.Received().RemovePeer(Arg.Any<PublicKey>());
                 _syncPeerPool.Received().RemovePeer(Arg.Any<ISyncPeer>());
                 return this;
             }
 
             public Context RaiseSyncPoolFailed()
             {
-                _syncPeerPool.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _syncServer, LimboLogs.Instance, _perfService, _transactionPool), SyncStatus.InitFailed));
+                _syncPeerPool.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _syncServer, LimboLogs.Instance, _perfService, _txPool), SyncStatus.InitFailed));
                 return this;
             }
 

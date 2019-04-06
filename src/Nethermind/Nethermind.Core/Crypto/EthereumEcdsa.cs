@@ -46,34 +46,34 @@ namespace Nethermind.Core.Crypto
             _chainIdValue = specProvider.ChainId;
         }
 
-        public void Sign(PrivateKey privateKey, Transaction transaction, UInt256 blockNumber)
+        public void Sign(PrivateKey privateKey, Transaction tx, UInt256 blockNumber)
         {
-            if(_logger.IsDebug) _logger.Debug($"Signing transaction: {transaction.Value} to {transaction.To} with data {transaction.Data}");
+            if(_logger.IsDebug) _logger.Debug($"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data {tx.Data}");
             bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, isEip155Enabled, _chainIdValue));
-            transaction.Signature = Sign(privateKey, hash);
+            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue));
+            tx.Signature = Sign(privateKey, hash);
             if (isEip155Enabled)
             {
-                transaction.Signature.V = transaction.Signature.V + 8 + 2 * _chainIdValue;
+                tx.Signature.V = tx.Signature.V + 8 + 2 * _chainIdValue;
             }
 
-            if(_logger.IsDebug) _logger.Debug("Transaction signed");
+            if(_logger.IsDebug) _logger.Debug($"Transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) signed");
         }
 
-        public bool Verify(Address sender, Transaction transaction, UInt256 blockNumber)
+        public bool Verify(Address sender, Transaction tx, UInt256 blockNumber)
         {
             bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, isEip155Enabled, _chainIdValue));
-            Address recovered = RecoverAddress(transaction.Signature, hash);
+            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue));
+            Address recovered = RecoverAddress(tx.Signature, hash);
             return recovered.Equals(sender);
         }
 
-        public Address RecoverAddress(Transaction transaction, UInt256 blockNumber)
+        public Address RecoverAddress(Transaction tx, UInt256 blockNumber)
         {
             bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
-            bool applyEip155 = isEip155Enabled && (transaction.Signature.V == _chainIdValue * 2 + 35 || transaction.Signature.V == _chainIdValue * 2 + 36);
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, applyEip155, _chainIdValue));
-            return RecoverAddress(transaction.Signature, hash);
+            bool applyEip155 = isEip155Enabled && (tx.Signature.V == _chainIdValue * 2 + 35 || tx.Signature.V == _chainIdValue * 2 + 36);
+            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, _chainIdValue));
+            return RecoverAddress(tx.Signature, hash);
         }
 
         public Address RecoverAddress(Signature signature, Keccak message)
