@@ -54,7 +54,7 @@ namespace Ethereum.VM.Test
             _stateDb = new StateDb();
             _codeDb = new StateDb();
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new StateProvider(new StateTree(_stateDb), _codeDb, _logManager);
+            _stateProvider = new StateProvider(_stateDb, _codeDb, _logManager);
             _storageProvider = new StorageProvider(_stateDb, _stateProvider, _logManager);
         }
 

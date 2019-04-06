@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _synchronizerType = synchronizerType;
         }
 
-        private int remotePeersCount = 8;
+        private int remotePeersCount = 1;
 
         [SetUp]
         public void Setup()
