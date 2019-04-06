@@ -217,8 +217,6 @@ namespace Nethermind.Blockchain.Synchronization
 
         private SyncPeerAllocation _allocation;
 
-        private SynchronizationMode _mode = SynchronizationMode.Blocks;
-
         private async Task RunSyncLoop()
         {
             if (_logger.IsDebug) _logger.Debug("Initializing sync loop.");

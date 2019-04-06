@@ -46,7 +46,7 @@ namespace Nethermind.Clique.Test
     {
         private class On
         {
-            private static Timestamp _timestamp = new Timestamp(DateTime.UtcNow);
+            private static Timestamp _timestamp = new Timestamp();
             private CliqueConfig _cliqueConfig;
             private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(GoerliSpecProvider.Instance, NullLogManager.Instance);
             private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new Dictionary<PrivateKey, ISnapshotManager>();
@@ -442,7 +442,7 @@ namespace Nethermind.Clique.Test
             }
         }
 
-        private static int _timeout = 5000;
+        private static int _timeout = 50000;
 
         [Test]
         public void Can_produce_block_with_transactions()

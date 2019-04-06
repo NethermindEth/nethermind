@@ -262,7 +262,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             private IEthSyncPeerPool SyncPeerPool { get; set; }
 
-            ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            ILogManager _logManager = LimboLogs.Instance;
 
             private ILogger _logger;
             
