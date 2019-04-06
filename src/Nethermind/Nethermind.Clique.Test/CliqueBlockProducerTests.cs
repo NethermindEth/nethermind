@@ -95,7 +95,7 @@ namespace Nethermind.Clique.Test
                 ISnapshotableDb codeDb = new StateDb();
                 IDb traceDb = new MemDb();
 
-                StateProvider stateProvider = new StateProvider(new StateTree(stateDb), codeDb, NullLogManager.Instance);
+                StateProvider stateProvider = new StateProvider(stateDb, codeDb, NullLogManager.Instance);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
 
@@ -109,7 +109,7 @@ namespace Nethermind.Clique.Test
                 BlockchainProcessor processor = new BlockchainProcessor(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), NullLogManager.Instance, false, false);
                 processor.Start();
 
-                StateProvider minerStateProvider = new StateProvider(new StateTree(stateDb), codeDb, NullLogManager.Instance);
+                StateProvider minerStateProvider = new StateProvider(stateDb, codeDb, NullLogManager.Instance);
                 StorageProvider minerStorageProvider = new StorageProvider(stateDb, minerStateProvider, NullLogManager.Instance);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, NullLogManager.Instance);
                 TransactionProcessor minerTransactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, minerStateProvider, minerStorageProvider, minerVirtualMachine, NullLogManager.Instance);

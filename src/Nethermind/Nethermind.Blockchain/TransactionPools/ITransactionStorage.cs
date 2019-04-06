@@ -20,7 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Blockchain.TxPools
 {
     public interface ITransactionStorage
     {

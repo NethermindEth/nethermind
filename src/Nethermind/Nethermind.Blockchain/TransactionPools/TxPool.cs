@@ -32,7 +32,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Timer = System.Timers.Timer;
 
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Blockchain.TxPools
 {
     public class TxPool : ITxPool
     {

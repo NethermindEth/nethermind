@@ -20,14 +20,14 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Blockchain.TxPools
 {
-    public class TransactionPoolInfo
+    public class TxPoolInfo
     {
         public IDictionary<Address, IDictionary<ulong, Transaction[]>> Pending { get; }
         public IDictionary<Address, IDictionary<ulong, Transaction[]>> Queued { get; }
 
-        public TransactionPoolInfo(IDictionary<Address, IDictionary<ulong, Transaction[]>> pending,
+        public TxPoolInfo(IDictionary<Address, IDictionary<ulong, Transaction[]>> pending,
             IDictionary<Address, IDictionary<ulong, Transaction[]>> queued)
         {
             Pending = pending;

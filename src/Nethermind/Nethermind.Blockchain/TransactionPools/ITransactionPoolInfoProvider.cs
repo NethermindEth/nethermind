@@ -18,10 +18,10 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Blockchain.TxPools
 {
-    public interface ITransactionPoolInfoProvider
+    public interface ITxPoolInfoProvider
     {
-        TransactionPoolInfo GetInfo(Transaction[] transactions);
+        TxPoolInfo GetInfo(Transaction[] transactions);
     }
 }

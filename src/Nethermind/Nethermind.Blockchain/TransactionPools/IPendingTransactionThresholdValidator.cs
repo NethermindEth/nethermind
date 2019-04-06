@@ -18,7 +18,7 @@
 
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Blockchain.TxPools
 {
     public interface IPendingTransactionThresholdValidator
     {

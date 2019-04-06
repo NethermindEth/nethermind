@@ -18,7 +18,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.TransactionPools.Filters
+namespace Nethermind.Blockchain.TxPools.Filters
 {
     public class AcceptAllTransactionFilter : ITransactionFilter
     {

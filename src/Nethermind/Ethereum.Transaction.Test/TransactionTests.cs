@@ -193,8 +193,7 @@ namespace Ethereum.Transaction.Test
 
             bool useChainId = transaction.Signature.V > 28;            
             
-            SignatureValidator signatureValidator = new SignatureValidator(useChainId ? ChainId.MainNet : 0);
-            TransactionValidator validator = new TransactionValidator(signatureValidator);
+            TxValidator validator = new TxValidator(useChainId ? ChainId.MainNet : 0);
 
             if (validTest != null)
             {

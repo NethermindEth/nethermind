@@ -27,8 +27,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Blockchain.TransactionPools.Storages;
+using Nethermind.Blockchain.TxPools;
+using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -214,8 +214,6 @@ namespace Ethereum.Test.Base
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
             IDb traceDb = new MemDb();
-            StateTree stateTree = new StateTree(stateDb);
-
 
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition != null)
@@ -241,17 +239,16 @@ namespace Ethereum.Test.Base
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, _logManager);
-            ITransactionPool transactionPool = new TransactionPool(NullTransactionStorage.Instance,
+            ITxPool transactionPool = new TxPool(NullTransactionStorage.Instance,
                 new PendingTransactionThresholdValidator(), new Timestamp(), ecdsa, specProvider, _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
-            ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
-            ITransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
+            ITxValidator transactionValidator = new TxValidator(ChainId.MainNet);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
-            IStateProvider stateProvider = new StateProvider(stateTree, codeDb, _logManager);
+            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
@@ -281,7 +278,7 @@ namespace Ethereum.Test.Base
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
                 blockProcessor,
-                new TxSignaturesRecoveryStep(ecdsa, NullTransactionPool.Instance),
+                new TxSignaturesRecoveryStep(ecdsa, NullTxPool.Instance),
                 _logManager,
                 false,
                 false);
@@ -331,7 +328,7 @@ namespace Ethereum.Test.Base
             {
                 if (args.Block.Number == 0)
                 {
-                    Assert.AreEqual(genesisBlock.Header.StateRoot, stateTree.RootHash, "genesis state root");
+                    Assert.AreEqual(genesisBlock.Header.StateRoot, stateProvider.StateRoot, "genesis state root");
                     genesisProcessed.Set();
                 }
             };

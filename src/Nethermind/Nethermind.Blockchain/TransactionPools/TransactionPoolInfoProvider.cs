@@ -22,18 +22,18 @@ using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Blockchain.TxPools
 {
-    public class TransactionPoolInfoProvider : ITransactionPoolInfoProvider
+    public class TxPoolInfoProvider : ITxPoolInfoProvider
     {
         private readonly IStateProvider _stateProvider;
 
-        public TransactionPoolInfoProvider(IStateProvider stateProvider)
+        public TxPoolInfoProvider(IStateProvider stateProvider)
         {
             _stateProvider = stateProvider;
         }
 
-        public TransactionPoolInfo GetInfo(Transaction[] transactions)
+        public TxPoolInfo GetInfo(Transaction[] transactions)
         {
             var groupedTransactions = transactions.GroupBy(t => t.SenderAddress);
             var pendingTransactions = new Dictionary<Address, IDictionary<ulong, Transaction[]>>();
@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.TransactionPools
                 }
             }
 
-            return new TransactionPoolInfo(pendingTransactions, queuedTransactions);
+            return new TxPoolInfo(pendingTransactions, queuedTransactions);
         }
     }
 }

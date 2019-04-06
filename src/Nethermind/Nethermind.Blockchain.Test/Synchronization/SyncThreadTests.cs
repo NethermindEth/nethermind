@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _synchronizerType = synchronizerType;
         }
 
-        private int remotePeersCount = 0;
+        private int remotePeersCount = 8;
 
         [SetUp]
         public void Setup()
@@ -108,7 +108,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
-        private const int _waitTime = 1000;
+        private const int _waitTime = 10000;
 
         [Test]
         public void Can_sync_when_connected()
@@ -135,6 +135,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head.Number, i.ToString());
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary), _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
+                Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB), _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
         }
 
@@ -201,6 +202,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head.Number, i.ToString());
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary), _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
+                Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB), _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
         }
 

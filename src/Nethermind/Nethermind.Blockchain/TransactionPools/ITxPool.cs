@@ -23,7 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.TransactionPools
+namespace Nethermind.Blockchain.TxPools
 {
     public interface ITxPool
     {

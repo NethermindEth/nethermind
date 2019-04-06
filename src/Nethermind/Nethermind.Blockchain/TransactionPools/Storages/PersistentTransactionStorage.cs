@@ -24,7 +24,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
-namespace Nethermind.Blockchain.TransactionPools.Storages
+namespace Nethermind.Blockchain.TxPools.Storages
 {
     public class PersistentTransactionStorage : ITransactionStorage
     {

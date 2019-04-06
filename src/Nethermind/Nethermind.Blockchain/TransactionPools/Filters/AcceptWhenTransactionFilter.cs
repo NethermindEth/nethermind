@@ -22,7 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.TransactionPools.Filters
+namespace Nethermind.Blockchain.TxPools.Filters
 {
     public class AcceptWhenTransactionFilter : ITransactionFilter
     {

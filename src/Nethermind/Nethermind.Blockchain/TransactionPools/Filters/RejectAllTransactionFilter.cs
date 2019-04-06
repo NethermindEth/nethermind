@@ -19,7 +19,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.TransactionPools.Filters
+namespace Nethermind.Blockchain.TxPools.Filters
 {
     public class RejectAllTransactionFilter : ITransactionFilter
     {
