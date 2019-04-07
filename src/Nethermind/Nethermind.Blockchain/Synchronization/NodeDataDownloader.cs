@@ -28,6 +28,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
+using Nethermind.Core.Model;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -45,13 +46,12 @@ namespace Nethermind.Blockchain.Synchronization
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public NodeDataDownloader(IDb codeDb, ISnapshotableDb db, INodeDataRequestExecutor executor, ILogManager logManager)
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
             SetExecutor(executor);
         }
 
@@ -78,8 +78,17 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void HandleResponse(NodeDataRequest request)
         {
+            if(_logger.IsTrace) _logger.Trace($"Received node data - {request.Response.Length} items in response to {request.Response.Length}");
+            
             for (int i = 0; i < request.Request.Length; i++)
             {
+                if (request.Response.Length < i + 1)
+                {
+                    if(_logger.IsTrace) _logger.Trace($"Response missing - readding {request.Request[i].Hash}");
+                    _nodes.Add(request.Request[i]);
+                    continue;
+                }
+                
                 byte[] bytes = request.Response[i];
                 if (Keccak.Compute(bytes) != request.Request[i].Hash)
                 {
@@ -175,15 +184,35 @@ namespace Nethermind.Blockchain.Synchronization
 
                 requests.Add(request);
 
-                if (_logger.IsTrace) _logger.Trace($"Preparing request with {requestHashes.Count} hashes");
+                if (_logger.IsTrace) _logger.Trace($"Preparing a request with {requestHashes.Count} hashes");
                 request.Request = requestHashes.ToArray();
             }
 
-            return requests.ToArray();
+
+            var requestsArray = requests.ToArray();
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"Prepared {requestsArray.Length} requests");
+                for (int i = 0; i < requestsArray.Length; i++)
+                {
+                    _logger.Trace($"Request[{i}] - {requestsArray[i].Request.Length} nodes requested starting from {requestsArray[i].Request[0].Hash}");
+                }
+            }
+
+            return requestsArray;
         }
 
         public async Task SyncNodeData((Keccak Hash, NodeDataType NodeDataType)[] initialNodes)
         {
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"Syncing node data");
+                for (int i = 0; i < initialNodes.Length; i++)
+                {
+                    _logger.Trace($"Initial node: {initialNodes[i].Hash}");   
+                }
+            }
+            
             if (initialNodes.Length == 0 || (initialNodes.Length == 1 && initialNodes[0].Hash == Keccak.EmptyTreeHash))
             {
                 return;
@@ -199,6 +228,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void SetExecutor(INodeDataRequestExecutor executor)
         {
+            if (_logger.IsTrace) _logger.Trace($"Setting request executor to {executor.GetType().Name}");
             _executor = executor ?? throw new ArgumentNullException(nameof(executor));
         }
     }

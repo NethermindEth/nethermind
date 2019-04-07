@@ -165,7 +165,7 @@ namespace Nethermind.Blockchain
                     Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1)?.Header;
                 }
 
-                BigInteger blocksToLoad = BigInteger.Min(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
+                long blocksToLoad = Math.Min(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
                 if (blocksToLoad == 0)
                 {
                     if (_logger.IsInfo) _logger.Info("Found no blocks to load from DB.");
@@ -176,7 +176,7 @@ namespace Nethermind.Blockchain
                 }
 
                 long blockNumber = startBlockNumber.Value;
-                for (int i = 0; i < blocksToLoad; i++)
+                for (long i = 0; i < blocksToLoad; i++)
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
@@ -186,6 +186,7 @@ namespace Nethermind.Blockchain
                     ChainLevelInfo level = LoadLevel(blockNumber);
                     if (level == null)
                     {
+                        _logger.Warn($"Missing level - {blockNumber}");
                         break;
                     }
 
@@ -217,27 +218,47 @@ namespace Nethermind.Blockchain
                     Block block = FindBlock(maxDifficultyBlock.BlockHash, false);
                     if (block == null)
                     {
-                        if (_logger.IsError) _logger.Error($"Could not find block {maxDifficultyBlock.BlockHash}. DB load cancelled.");
-                        _dbBatchProcessed?.SetResult(null);
-                        break;
+                        BlockHeader header = FindHeader(maxDifficultyBlock.BlockHash, false);
+                        BestSuggested = header;
+                        // fast sync WIP
+//                        if (_logger.IsError) _logger.Error($"Could not find block {maxDifficultyBlock.BlockHash}. DB load cancelled.");
+//                        _dbBatchProcessed?.SetResult(null);
+                        // break;
+
+                        if (i < blocksToLoad - 1024)
+                        {
+                            long jumpSize = blocksToLoad - 1024 - 1;
+                            if (_logger.IsInfo) _logger.Info($"Switching to fast sync headers load - jumping from {i} to {i + jumpSize}.");
+                            blockNumber += jumpSize;
+                            i += jumpSize;    
+                        }
+                        
+                        // copy paste from below less batching
+                        if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < blockNumber)
+                        {
+                            if (_logger.IsInfo) _logger.Info($"Loaded {i + 1} out of {blocksToLoad} headers from DB.");
+                        }
                     }
-
-                    BestSuggested = block.Header;
-                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
-
-                    if (i % batchSize == batchSize - 1 && !(i == blocksToLoad - 1) && Head.Number + batchSize < blockNumber)
+                    else
                     {
-                        if (_logger.IsInfo)
+                        BestSuggested = block.Header;
+                        NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+                        
+                        if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < blockNumber)
                         {
-                            _logger.Info($"Loaded {i + 1} out of {blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
+                            if (_logger.IsInfo)
+                            {
+                                _logger.Info($"Loaded {i + 1} out of {blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
+                            }
+
+                            _dbBatchProcessed = new TaskCompletionSource<object>();
+                            using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
+                            {
+                                _currentDbLoadBatchEnd = blockNumber - batchSize;
+                                await _dbBatchProcessed.Task;
+                            }
                         }
 
-                        _dbBatchProcessed = new TaskCompletionSource<object>();
-                        using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
-                        {
-                            _currentDbLoadBatchEnd = blockNumber - batchSize;
-                            await _dbBatchProcessed.Task;
-                        }
                     }
 
                     blockNumber++;
@@ -738,9 +759,9 @@ namespace Nethermind.Blockchain
         }
 
         [Todo(Improve.Refactor, "Look at this magic -1 behaviour, never liked it, now when it is split between BestKnownNumber and Head it is even worse")]
-        private BigInteger FindNumberOfBlocksToLoadFromDb()
+        private long FindNumberOfBlocksToLoadFromDb()
         {
-            BigInteger headNumber = Head == null ? -1 : (BigInteger) Head.Number;
+            long headNumber = Head?.Number ?? -1;
             return BestKnownNumber - headNumber;
         }
 
