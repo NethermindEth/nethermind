@@ -341,16 +341,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 startingHash = SyncServer.Find(getBlockHeadersMessage.StartingBlockNumber)?.Hash;
             }
 
-            Block[] blocks =
+            BlockHeader[] headers =
                 startingHash == null
-                    ? new Block[0]
-                    : SyncServer.Find(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
-
-            BlockHeader[] headers = new BlockHeader[blocks.Length];
-            for (int i = 0; i < blocks.Length; i++)
-            {
-                headers[i] = blocks[i]?.Header;
-            }
+                    ? new BlockHeader[0]
+                    : SyncServer.FindHeaders(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
 
             Send(new BlockHeadersMessage(headers));
         }

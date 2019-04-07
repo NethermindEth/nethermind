@@ -171,6 +171,11 @@ namespace Nethermind.Blockchain.Synchronization
             return transactionReceipts;
         }
 
+        public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
+        {
+            return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        }
+
         public byte[][] GetNodeData(Keccak[] keys)
         {
             var values = new byte[keys.Length][];

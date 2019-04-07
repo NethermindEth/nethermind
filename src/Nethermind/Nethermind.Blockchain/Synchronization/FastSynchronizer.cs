@@ -465,14 +465,14 @@ namespace Nethermind.Blockchain.Synchronization
                 var hashesArray = hashes.ToArray();
                 if (_logger.IsTrace) _logger.Trace($"Actual batch size was {hashesArray.Length}/{_currentBatchSize}");
 
-                BlockHeader[] blocks = new BlockHeader[hashesArray.Length];
+                BlockHeader[] blockHeaders = new BlockHeader[hashesArray.Length];
 
-                if (blocks.Length == 0 && blocksLeft == 1)
+                if (blockHeaders.Length == 0 && blocksLeft == 1)
                 {
                     if (_logger.IsDebug) _logger.Debug($"{peerInfo} does not have block body for {hashes[0]}");
                 }
 
-                if (blocks.Length == 0 && ++emptyBlockListCounter >= 10)
+                if (blockHeaders.Length == 0 && ++emptyBlockListCounter >= 10)
                 {
                     if (_currentBatchSize == MinBatchSize)
                     {
@@ -485,9 +485,9 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                if (blocks.Length != 0)
+                if (blockHeaders.Length != 0)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Blocks length is {blocks.Length}, counter is {emptyBlockListCounter}");
+                    if (_logger.IsTrace) _logger.Trace($"Blocks length is {blockHeaders.Length}, counter is {emptyBlockListCounter}");
                     emptyBlockListCounter = 0;
                 }
                 else
@@ -502,7 +502,7 @@ namespace Nethermind.Blockchain.Synchronization
                     IncreaseBatchSize();
                 }
 
-                for (int i = 0; i < blocks.Length; i++)
+                for (int i = 0; i < blockHeaders.Length; i++)
                 {
                     if (_peerSyncCancellationTokenSource.IsCancellationRequested)
                     {
@@ -510,12 +510,12 @@ namespace Nethermind.Blockchain.Synchronization
                         return;
                     }
 
-                    blocks[i] = headersByHash[hashes[i]];
+                    blockHeaders[i] = headersByHash[hashes[i]];
                 }
 
-                if (blocks.Length > 0)
+                if (blockHeaders.Length > 0)
                 {
-                    Block parent = _blockTree.FindParent(blocks[0]);
+                    BlockHeader parent = _blockTree.FindParentHeader(blockHeaders[0]);
                     if (parent == null)
                     {
                         ancestorLookupLevel += _currentBatchSize;
@@ -528,9 +528,9 @@ namespace Nethermind.Blockchain.Synchronization
                 if (await DownloadReceipts(blocks, peer)) break; */
 
                 // Parity 1.11 non canonical blocks when testing on 27/06
-                for (int i = 0; i < blocks.Length; i++)
+                for (int i = 0; i < blockHeaders.Length; i++)
                 {
-                    if (i != 0 && blocks[i].ParentHash != blocks[i - 1].Hash)
+                    if (i != 0 && blockHeaders[i].ParentHash != blockHeaders[i - 1].Hash)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {peerInfo}");
                         throw new EthSynchronizationException("Peer sent an inconsistent block list");
@@ -539,7 +539,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (_logger.IsTrace) _logger.Trace($"Starting seal validation");
                 var exceptions = new ConcurrentQueue<Exception>();
-                Parallel.For(0, blocks.Length, (i, state) =>
+                Parallel.For(0, blockHeaders.Length, (i, state) =>
                 {
                     if (_peerSyncCancellationTokenSource.IsCancellationRequested)
                     {
@@ -549,7 +549,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                     try
                     {
-                        if (!_sealValidator.ValidateSeal(blocks[i]))
+                        if (!_sealValidator.ValidateSeal(blockHeaders[i]))
                         {
                             if (_logger.IsTrace) _logger.Trace($"One of the seals is invalid");
                             state.Stop();
@@ -570,7 +570,7 @@ namespace Nethermind.Blockchain.Synchronization
                     throw new AggregateException(exceptions);
                 }
 
-                for (int i = 0; i < blocks.Length; i++)
+                for (int i = 0; i < blockHeaders.Length; i++)
                 {
                     if (_peerSyncCancellationTokenSource.IsCancellationRequested)
                     {
@@ -578,21 +578,21 @@ namespace Nethermind.Blockchain.Synchronization
                         return;
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"Received {blocks[i]} from {peer.Node:s}");
+                    if (_logger.IsTrace) _logger.Trace($"Received {blockHeaders[i]} from {peer.Node:s}");
 
-                    if (!_headerValidator.Validate(blocks[i]))
+                    if (!_headerValidator.Validate(blockHeaders[i]))
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Block {blocks[i].Number} skipped (validation failed)");
+                        if (_logger.IsWarn) _logger.Warn($"Block {blockHeaders[i].Number} skipped (validation failed)");
                         continue;
                     }
 
-                    AddBlockResult addResult = _blockTree.SuggestHeader(blocks[i]);
+                    AddBlockResult addResult = _blockTree.SuggestHeader(blockHeaders[i]);
                     switch (addResult)
                     {
                         case AddBlockResult.UnknownParent:
                         {
                             if (_logger.IsTrace)
-                                _logger.Trace($"Block {blocks[i].Number} ignored (unknown parent)");
+                                _logger.Trace($"Block {blockHeaders[i].Number} ignored (unknown parent)");
                             if (i == 0)
                             {
                                 const string message = "Peer sent orphaned blocks inside the batch";
@@ -611,15 +611,15 @@ namespace Nethermind.Blockchain.Synchronization
                         case AddBlockResult.InvalidBlock:
                             throw new EthSynchronizationException("Peer sent an invalid block");
                         case AddBlockResult.Added:
-                            if (_logger.IsTrace) _logger.Trace($"Block {blocks[i].Number} suggested for processing");
+                            if (_logger.IsTrace) _logger.Trace($"Block {blockHeaders[i].Number} suggested for processing");
                             continue;
                         case AddBlockResult.AlreadyKnown:
-                            if (_logger.IsTrace) _logger.Trace($"Block {blocks[i].Number} skipped - already known");
+                            if (_logger.IsTrace) _logger.Trace($"Block {blockHeaders[i].Number} skipped - already known");
                             continue;
                     }
                 }
 
-                currentNumber = blocks[blocks.Length - 1].Number;
+                currentNumber = blockHeaders[blockHeaders.Length - 1].Number;
                 if (_blockTree.BestKnownNumber > _lastSyncNumber + 10000 || _blockTree.BestKnownNumber < _lastSyncNumber)
                 {
                     _lastSyncNumber = _blockTree.BestKnownNumber;

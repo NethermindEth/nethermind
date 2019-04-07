@@ -102,9 +102,11 @@ namespace Nethermind.Blockchain
         bool CanAcceptNewBlocks { get; }
         Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
+        BlockHeader FindHeader(Keccak blockHash, bool mainChainOnly);
         BlockHeader FindHeader(Keccak blockHash);
         BlockHeader FindHeader(long blockNumber);
         Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
+        BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         Block FindBlock(long blockNumber);
         
         void DeleteInvalidBlock(Block invalidBlock);

@@ -32,6 +32,7 @@ namespace Nethermind.Blockchain.Synchronization
         Block Find(Keccak hash);
         Block Find(long number);
         Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);
+        BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         byte[][] GetNodeData(Keccak[] keys);
         int GetPeerCount();
         int ChainId { get; }

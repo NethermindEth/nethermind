@@ -62,6 +62,16 @@ namespace Nethermind.Blockchain
             return _wrapped.FindBlock(blockHash, mainChainOnly);
         }
 
+        public BlockHeader FindHeader(Keccak blockHash, bool mainChainOnly)
+        {
+            throw new NotImplementedException();
+        }
+
+        public long? FindNumber(Keccak blockHash, bool mainChainOnly)
+        {
+            throw new NotImplementedException();
+        }
+
         public BlockHeader FindHeader(Keccak blockHash)
         {
             return _wrapped.FindHeader(blockHash);
@@ -75,6 +85,11 @@ namespace Nethermind.Blockchain
         public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
         {
             return _wrapped.FindBlocks(blockHash, numberOfBlocks, skip, reverse);
+        }
+
+        public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
+        {
+            return _wrapped.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
         public Block FindBlock(long blockNumber)

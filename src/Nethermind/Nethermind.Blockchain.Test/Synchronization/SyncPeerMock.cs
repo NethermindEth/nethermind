@@ -89,12 +89,16 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
-            long firstNumber = _remoteTree.FindBlock(blockHash, true).Number;
-            
             BlockHeader[] result = new BlockHeader[maxBlocks];
+            long? firstNumber = _remoteTree.FindHeader(blockHash, true)?.Number;
+            if (!firstNumber.HasValue)
+            {
+                return Task.FromResult(result);
+            }  
+            
             for (int i = 0; i < maxBlocks; i++)
             {
-                result[i] = _remoteTree.FindBlock(firstNumber + i + skip).Header;
+                result[i] = _remoteTree.FindHeader(firstNumber.Value + i + skip);
             }
             
             return Task.FromResult(result);
@@ -102,12 +106,16 @@ namespace Nethermind.Blockchain.Test.Synchronization
         
         public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
-            long firstNumber = _remoteTree.FindBlock(number).Number;
-            
             BlockHeader[] result = new BlockHeader[maxBlocks];
+            long? firstNumber = _remoteTree.FindHeader(number)?.Number;
+            if (!firstNumber.HasValue)
+            {
+                return Task.FromResult(result);
+            }  
+            
             for (int i = 0; i < maxBlocks; i++)
             {
-                long blockNumber = firstNumber + i + skip;
+                long blockNumber = firstNumber.Value + i + skip;
                 if (blockNumber > (_remoteTree.Head?.Number ?? 0))
                 {
                     result[i] = null;
