@@ -334,7 +334,21 @@ namespace Nethermind.Blockchain.Synchronization
                             _logger.Warn($"[FAST SYNC] {peerInfo}!");
                         }
 
-                        await _nodeDataDownloader.SyncNodeData((_blockTree.BestSuggested?.Hash, NodeDataType.State));
+                        List<Keccak> stateRoots = new List<Keccak>();
+                        BlockHeader bestSuggested = _blockTree.BestSuggested;
+                        if (bestSuggested == null)
+                        {
+                            if (_logger.IsError) _logger.Error("Best suggested block is null when starting fast sync!");
+                            throw new EthSynchronizationException("Best suggested block is null when starting fast sync!");
+                        }
+                        
+                        stateRoots.Add(bestSuggested.StateRoot);
+                        for (int i = 0; i < 64; i++)
+                        {
+                            stateRoots.Add(_blockTree.FindHeader(bestSuggested.ParentHash).StateRoot);
+                        }
+
+                        await _nodeDataDownloader.SyncNodeData(stateRoots.Select<Keccak, (Keccak, NodeDataType)>(sr => (sr, NodeDataType.State)).ToArray());
                         _mode = SynchronizationMode.NodeData;
                     }
                 }
@@ -643,6 +657,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public async Task<NodeDataRequest> ExecuteRequest(NodeDataRequest request)
         {
+            Thread.Sleep(50);
             ISyncPeer peer = _allocation.Current?.SyncPeer;
             if (peer == null)
             {

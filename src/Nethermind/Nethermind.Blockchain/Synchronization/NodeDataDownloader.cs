@@ -76,31 +76,43 @@ namespace Nethermind.Blockchain.Synchronization
 
         private AccountDecoder accountDecoder = new AccountDecoder();
 
+        private object _responseLock = new object();
+
         private void HandleResponse(NodeDataRequest request)
         {
-            if(_logger.IsTrace) _logger.Trace($"Received node data - {request.Response.Length} items in response to {request.Response.Length}");
-            
+            if (_logger.IsTrace) _logger.Trace($"Received node data - {request.Response.Length} items in response to {request.Response.Length}");
+
+            int missing = 0;
+            int added = 0;
+            int invalid = 0;
+
             for (int i = 0; i < request.Request.Length; i++)
             {
                 if (request.Response.Length < i + 1)
                 {
-                    if(_logger.IsTrace) _logger.Trace($"Response missing - readding {request.Request[i].Hash}");
+                    missing++;
+//                    if(_logger.IsTrace) _logger.Trace($"Response missing - adding {request.Request[i].Hash}");
                     _nodes.Add(request.Request[i]);
                     continue;
                 }
-                
+
                 byte[] bytes = request.Response[i];
                 if (Keccak.Compute(bytes) != request.Request[i].Hash)
                 {
-                    throw new InvalidDataException("Peer sent invalid data");
+                    if(_logger.IsWarn) _logger.Warn($"Peer sent invalid data ({request.Request[i].Hash}) of type {request.Request[i].NodeDataType}");
+                    invalid++;
+                    continue;
                 }
 
                 if (bytes == null)
                 {
+                    missing++;
                     _nodes.Add(request.Request[i]);
                 }
                 else
                 {
+                    added++;
+
                     NodeDataType nodeDataType = request.Request[i].NodeDataType;
                     if (nodeDataType == NodeDataType.Code)
                     {
@@ -108,7 +120,11 @@ namespace Nethermind.Blockchain.Synchronization
                         continue;
                     }
 
-                    _db[request.Request[i].Hash.Bytes] = bytes;
+                    lock (_responseLock)
+                    {
+                        _db[request.Request[i].Hash.Bytes] = bytes;
+                    }
+
                     TrieNode node = new TrieNode(NodeType.Unknown, new Rlp(bytes));
                     node.ResolveNode(null);
                     switch (node.NodeType)
@@ -122,7 +138,7 @@ namespace Nethermind.Blockchain.Synchronization
                                 Keccak child = node.GetChildHash(j);
                                 if (child != null)
                                 {
-                                    _nodes.Add((child, nodeDataType));
+                                    _nodes.Add((child, nodeDataType, request.Request[i].Level + 1));
                                 }
                             }
 
@@ -131,7 +147,7 @@ namespace Nethermind.Blockchain.Synchronization
                             Keccak next = node[0].Keccak;
                             if (next != null)
                             {
-                                _nodes.Add((next, nodeDataType));
+                                _nodes.Add((next, nodeDataType, request.Request[i].Level + 1));
                             }
 
                             break;
@@ -141,12 +157,12 @@ namespace Nethermind.Blockchain.Synchronization
                                 Account account = accountDecoder.Decode(new Rlp.DecoderContext(node.Value));
                                 if (account.CodeHash != Keccak.OfAnEmptyString)
                                 {
-                                    _nodes.Add((account.CodeHash, NodeDataType.Code));
+                                    _nodes.Add((account.CodeHash, NodeDataType.Code, 0));
                                 }
 
                                 if (account.StorageRoot != Keccak.EmptyTreeHash)
                                 {
-                                    _nodes.Add((account.StorageRoot, NodeDataType.Storage));
+                                    _nodes.Add((account.StorageRoot, NodeDataType.Storage, 0));
                                 }
                             }
 
@@ -156,25 +172,31 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
             }
+
+            lock (_responseLock)
+            {
+                _db.Commit();
+            }
+            
+            if (_logger.IsTrace) _logger.Trace($"Received node data: requested {request.Request.Length}, missing {missing}, added {added}, invalid {invalid}");
         }
 
-        private ConcurrentBag<(Keccak, NodeDataType)> _nodes = new ConcurrentBag<(Keccak, NodeDataType)>();
+        private ConcurrentBag<(Keccak, NodeDataType, int)> _nodes = new ConcurrentBag<(Keccak, NodeDataType, int)>();
 
-        private const int maxRequestSize = 256;
+        private const int maxRequestSize = 1024;
 
         private NodeDataRequest[] PrepareRequests()
         {
             List<NodeDataRequest> requests = new List<NodeDataRequest>();
-            List<(Keccak Hash, NodeDataType NodeDataType)> requestHashes = new List<(Keccak, NodeDataType)>();
             while (_nodes.Count != 0)
             {
                 NodeDataRequest request = new NodeDataRequest();
-
+                List<(Keccak Hash, NodeDataType NodeDataType, int Level)> requestHashes = new List<(Keccak, NodeDataType, int)>();
                 for (int i = 0; i < maxRequestSize; i++)
                 {
-                    if (_nodes.TryTake(out (Keccak Hash, NodeDataType NodeType) result))
+                    if (_nodes.TryTake(out (Keccak Hash, NodeDataType NodeType, int Level) result))
                     {
-                        requestHashes.Add((result.Hash, result.NodeType));
+                        requestHashes.Add((result.Hash, result.NodeType, result.Level));
                     }
                     else
                     {
@@ -182,10 +204,10 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
 
+                request.Request = requestHashes.ToArray();
                 requests.Add(request);
 
                 if (_logger.IsTrace) _logger.Trace($"Preparing a request with {requestHashes.Count} hashes");
-                request.Request = requestHashes.ToArray();
             }
 
 
@@ -209,10 +231,10 @@ namespace Nethermind.Blockchain.Synchronization
                 _logger.Trace($"Syncing node data");
                 for (int i = 0; i < initialNodes.Length; i++)
                 {
-                    _logger.Trace($"Initial node: {initialNodes[i].Hash}");   
+                    _logger.Trace($"Initial node: {initialNodes[i].Hash}");
                 }
             }
-            
+
             if (initialNodes.Length == 0 || (initialNodes.Length == 1 && initialNodes[0].Hash == Keccak.EmptyTreeHash))
             {
                 return;
@@ -220,7 +242,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             for (int i = 0; i < initialNodes.Length; i++)
             {
-                _nodes.Add((initialNodes[i].Hash, initialNodes[i].NodeDataType));
+                _nodes.Add((initialNodes[i].Hash, initialNodes[i].NodeDataType, 0));
             }
 
             await KeepSyncing();
