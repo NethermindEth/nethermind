@@ -630,6 +630,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public void Will_inform_connecting_peer_about_the_alternative_branch_with_same_difficulty()
         {
+            if (_synchronizerType == SynchronizerType.Fast)
+            {
+                return;
+            }
+            
             SyncPeerMock peerA = new SyncPeerMock("A");
             peerA.AddBlocksUpTo(2);
             

@@ -90,8 +90,11 @@ namespace Nethermind.Blockchain.Synchronization
                             if (peerInfo.TotalDifficulty == _blockTree.BestSuggested?.TotalDifficulty && peerInfo.HeadHash != _blockTree.BestSuggested?.Hash)
                             {
                                 Block block = _blockTree.FindBlock(_blockTree.BestSuggested.Hash, false);
-                                peerInfo.SyncPeer.SendNewBlock(block);
-                                if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {peerInfo}");
+                                if (block != null) // can be null if fast syncing headers only
+                                {
+                                    peerInfo.SyncPeer.SendNewBlock(block);
+                                    if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {peerInfo}");
+                                }
                             }
                         }
 
