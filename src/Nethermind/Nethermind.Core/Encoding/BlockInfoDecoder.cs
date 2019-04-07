@@ -30,7 +30,7 @@ namespace Nethermind.Core.Encoding
             blockInfo.BlockHash = context.DecodeKeccak();
             blockInfo.WasProcessed = context.DecodeBool();
             blockInfo.TotalDifficulty = context.DecodeUInt256();
-            blockInfo.TotalTransactions = context.DecodeUInt256();
+            blockInfo.TotalTransactions = (long)context.DecodeUInt256();
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {

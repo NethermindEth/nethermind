@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return Task.FromResult(result);
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
+            public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 if (_causeTimeoutOnHeaders)
                 {
@@ -219,7 +219,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             public void AddBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
             {
                 Block block = Blocks.Last();
-                for (UInt256 j = block.Number; j < i; j++)
+                for (long j = block.Number; j < i; j++)
                 {
                     block = Build.A.Block.WithParent(block).WithExtraData(j < branchStart ? Bytes.Empty : new byte[] {branchIndex}).TestObject;
                     Blocks.Add(block);
@@ -229,7 +229,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             public void AddHighDifficultyBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
             {
                 Block block = Blocks.Last();
-                for (UInt256 j = block.Number; j < i; j++)
+                for (long j = block.Number; j < i; j++)
                 {
                     block = Build.A.Block.WithParent(block).WithDifficulty(2000000).WithExtraData(j < branchStart ? Bytes.Empty : new byte[] {branchIndex}).TestObject;
                     Blocks.Add(block);
@@ -253,6 +253,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         public class SyncingContext
         {
+            public static HashSet<SyncingContext> AllInstances = new HashSet<SyncingContext>(); 
+            
             private Dictionary<string, ISyncPeer> _peers = new Dictionary<string, ISyncPeer>();
             private BlockTree BlockTree { get;  }
 
@@ -262,7 +264,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             private IEthSyncPeerPool SyncPeerPool { get; set; }
 
-            ILogManager _logManager = LimboLogs.Instance;
+            ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
 
             private ILogger _logger;
             
@@ -270,7 +272,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 _logger = _logManager.GetClassLogger();
                 ISnapshotableDb stateDb = new StateDb();
-                BlockTree = new BlockTree(new MemDb(), new MemDb(), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, _logManager);
+                BlockTree = new BlockTree(new MemDb(), new MemDb(),  new MemDb(), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, _logManager);
                 var stats = new NodeStatsManager(new StatsConfig(), _logManager);
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, new SyncConfig(), _logManager);
 
@@ -298,6 +300,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
                 Synchronizer.Start();
                 Synchronizer.SyncEvent += (sender, args) => TestContext.WriteLine(args.SyncStatus);
+                
+                AllInstances.Add(this);
             }
 
             public SyncingContext BestKnownNumberIs(UInt256 number)
@@ -445,6 +449,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [TearDown]
         public void TearDown()
         {
+            foreach (SyncingContext syncingContext in SyncingContext.AllInstances)
+            {
+                syncingContext.Stop();
+            }
         }
 
         [Test]

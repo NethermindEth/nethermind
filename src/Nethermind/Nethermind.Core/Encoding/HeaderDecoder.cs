@@ -63,7 +63,7 @@ namespace Nethermind.Core.Encoding
                 ommersHash,
                 beneficiary,
                 difficulty,
-                number,
+                (long) number,
                 (long) gasLimit,
                 timestamp,
                 extraData);

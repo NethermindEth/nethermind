@@ -28,7 +28,7 @@ namespace Nethermind.Core
         /// </summary>
         public byte StatusCode { get; set; }
 
-        public UInt256 BlockNumber { get; set; }
+        public long BlockNumber { get; set; }
         public Keccak BlockHash { get; set; }
         public Keccak TransactionHash { get; set; }
         public int Index { get; set; }

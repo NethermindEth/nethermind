@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     {
                         CurrentBlock = _blockchainBridge.Head.Number,
                         HighestBlock = _blockchainBridge.BestKnown,
-                        StartingBlock = UInt256.Zero,
+                        StartingBlock = 0L,
                         IsSyncing = true
                     };
                 }
@@ -902,7 +902,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     var value = blockParameter.BlockId.AsNumber();
                     if (value.HasValue)
                     {
-                        block = _blockchainBridge.FindBlock(new UInt256(value.Value));
+                        block = _blockchainBridge.FindBlock((long)(value.Value));
                     }
 
                     if (block == null && !allowNulls)

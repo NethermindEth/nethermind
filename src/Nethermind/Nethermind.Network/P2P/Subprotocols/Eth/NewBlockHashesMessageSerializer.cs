@@ -41,10 +41,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public NewBlockHashesMessage Deserialize(byte[] bytes)
         {
             Rlp.DecoderContext context = bytes.AsRlpContext();
-            (Keccak, UInt256)[] blockHashes = context.DecodeArray(ctx =>
+            (Keccak, long)[] blockHashes = context.DecodeArray(ctx =>
             {
                 ctx.ReadSequenceLength();
-                return (ctx.DecodeKeccak(), ctx.DecodeUInt256());
+                return (ctx.DecodeKeccak(), (long)ctx.DecodeUInt256());
             });
             return new NewBlockHashesMessage(blockHashes);
         }

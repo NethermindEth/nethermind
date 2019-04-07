@@ -24,11 +24,11 @@ namespace Nethermind.Clique
 {
     public interface ISnapshotManager
     {
-        Snapshot GetOrCreateSnapshot(UInt256 number, Keccak hash);
+        Snapshot GetOrCreateSnapshot(long number, Keccak hash);
         Address GetBlockSealer(BlockHeader header);
         bool IsValidVote(Snapshot snapshot, Address address, bool authorize);
-        bool IsInTurn(Snapshot snapshot, UInt256 number, Address signer);
-        bool HasSignedRecently(Snapshot snapshot, UInt256 number, Address signer);
+        bool IsInTurn(Snapshot snapshot, long number, Address signer);
+        bool HasSignedRecently(Snapshot snapshot, long number, Address signer);
         Keccak CalculateCliqueHeaderHash(BlockHeader blockHeader);
     }
 }

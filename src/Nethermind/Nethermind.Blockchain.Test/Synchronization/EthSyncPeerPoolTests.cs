@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return Task.FromResult(new BlockHeader[0]);
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
+            public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 return Task.FromResult(new BlockHeader[0]);
             }

@@ -26,7 +26,7 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
-        public IReleaseSpec GetSpec(UInt256 blockNumber)
+        public IReleaseSpec GetSpec(long blockNumber)
         {
             if (blockNumber < HomesteadBlockNumber)
             {
@@ -61,12 +61,12 @@ namespace Nethermind.Core.Specs
             return ConstantinopleFix.Instance;
         }
 
-        public static UInt256 HomesteadBlockNumber { get; } = 1150000;
-        public UInt256? DaoBlockNumber { get; } = 1920000;
-        public static UInt256 TangerineWhistleBlockNumber { get; } = 2463000;
-        public static UInt256 SpuriousDragonBlockNumber { get; } = 2675000;
-        public static UInt256 ByzantiumBlockNumber { get; } = 4370000;
-        public static UInt256 ConstantinopleFixBlockNumber { get; } = 7280000;
+        public static long HomesteadBlockNumber { get; } = 1150000;
+        public long? DaoBlockNumber { get; } = 1920000;
+        public static long TangerineWhistleBlockNumber { get; } = 2463000;
+        public static long SpuriousDragonBlockNumber { get; } = 2675000;
+        public static long ByzantiumBlockNumber { get; } = 4370000;
+        public static long ConstantinopleFixBlockNumber { get; } = 7280000;
 
         public int ChainId => 1;
 

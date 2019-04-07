@@ -39,11 +39,13 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockTreeBuilder(Block genesisBlock)
         {
-            MemDb blocksDb = new MemDb(); // so we automatically include in all tests my questionable decision of storing Head block header at 00...
+            MemDb blocksDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            // so we automatically include in all tests my questionable decision of storing Head block header at 00...
             blocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             
             _genesisBlock = genesisBlock;
-            TestObjectInternal = new BlockTree(blocksDb, new MemDb(), RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
+            TestObjectInternal = new BlockTree(blocksDb, headersDb, new MemDb(), RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
         }
 
         public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0)
@@ -53,7 +55,7 @@ namespace Nethermind.Core.Test.Builders
             {
                 TestObjectInternal.SuggestBlock(current);
                 TestObjectInternal.UpdateMainChain(current);
-                current = Build.A.Block.WithNumber((ulong)i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong)splitVariant).TestObject;
+                current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong)splitVariant).TestObject;
             }
 
             return this;
@@ -70,7 +72,7 @@ namespace Nethermind.Core.Test.Builders
                     TestObjectInternal.UpdateMainChain(current);
                 }
                 
-                current = Build.A.Block.WithNumber((ulong)i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+                current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
             }
 
             return this;
@@ -82,7 +84,7 @@ namespace Nethermind.Core.Test.Builders
             int initialLength = (int)previous.Number + 1;
             for (int i = initialLength; i < newChainLength; i++)
             {
-                previous = Build.A.Block.WithNumber((ulong)i).WithParent(previous).TestObject;
+                previous = Build.A.Block.WithNumber(i).WithParent(previous).TestObject;
                 blockTree.SuggestBlock(previous);
                 blockTree.UpdateMainChain(new []{previous});
             }

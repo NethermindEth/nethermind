@@ -159,7 +159,8 @@ namespace Nethermind.Blockchain.Test
             {
                 MemDb blockDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
-                _blockTree = new BlockTree(blockDb, blockInfoDb, MainNetSpecProvider.Instance, NullTxPool.Instance, NullLogManager.Instance);
+                MemDb headersDb = new MemDb();
+                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, MainNetSpecProvider.Instance, NullTxPool.Instance, NullLogManager.Instance);
                 _blockProcessor = new BlockProcessorMock();
                 _recoveryStep = new RecoveryStepMock();
                 _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, NullLogManager.Instance, true, true);

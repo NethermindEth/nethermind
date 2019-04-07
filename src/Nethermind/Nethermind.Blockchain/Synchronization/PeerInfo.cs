@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool IsInitialized { get; set; }
         public ISyncPeer SyncPeer { get; }
         public UInt256 TotalDifficulty { get; set; }
-        public UInt256 HeadNumber { get; set; }
+        public long HeadNumber { get; set; }
         public Keccak HeadHash { get; set; }
 
         public override string ToString()

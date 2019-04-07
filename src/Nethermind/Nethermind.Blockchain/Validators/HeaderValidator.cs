@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Validators
         private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
 
         private readonly ISealValidator _sealValidator;
-        private readonly UInt256? _daoBlockNumber;
+        private readonly long? _daoBlockNumber;
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 

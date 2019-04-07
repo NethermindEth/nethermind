@@ -128,7 +128,7 @@ namespace Nethermind.Blockchain.TxPools
             if (_logger.IsTrace) _logger.Trace($"Removed a peer: {nodeId}");
         }
 
-        public AddTransactionResult AddTransaction(Transaction transaction, UInt256 blockNumber)
+        public AddTransactionResult AddTransaction(Transaction transaction, long blockNumber)
         {
             Metrics.PendingTransactionsReceived++;
 
@@ -176,7 +176,7 @@ namespace Nethermind.Blockchain.TxPools
             return AddTransactionResult.Added;
         }
 
-        private void FilterAndStoreTransaction(Transaction transaction, UInt256 blockNumber)
+        private void FilterAndStoreTransaction(Transaction transaction, long blockNumber)
         {
             var filters = _filters.Values;
             if (filters.Any(filter => !filter.IsValid(transaction)))

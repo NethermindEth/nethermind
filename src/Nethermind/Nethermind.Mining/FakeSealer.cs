@@ -54,7 +54,7 @@ namespace Nethermind.Mining
                     .ContinueWith(t => block, cancellationToken);
         }
 
-        public bool CanSeal(UInt256 blockNumber, Keccak parentHash)
+        public bool CanSeal(long blockNumber, Keccak parentHash)
         {
             return true;
         }

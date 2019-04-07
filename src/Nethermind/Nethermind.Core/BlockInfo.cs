@@ -27,7 +27,7 @@ namespace Nethermind.Core
         {   
         }
         
-        public BlockInfo(Keccak blockHash, UInt256 totalDifficulty, UInt256 totalTransactions)
+        public BlockInfo(Keccak blockHash, UInt256 totalDifficulty, long totalTransactions)
         {
             BlockHash = blockHash;
             TotalDifficulty = totalDifficulty;
@@ -35,7 +35,7 @@ namespace Nethermind.Core
         }
         
         public UInt256 TotalDifficulty { get; set; }
-        public UInt256 TotalTransactions { get; set; }
+        public long TotalTransactions { get; set; }
         public bool WasProcessed { get; set; }
         public Keccak BlockHash { get; set; }
     }

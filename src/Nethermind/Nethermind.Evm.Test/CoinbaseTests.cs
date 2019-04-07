@@ -27,11 +27,11 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class CoinbaseTests : VirtualMachineTestsBase
     {
-        protected override UInt256 BlockNumber => RinkebySpecProvider.SpuriousDragonBlockNumber;
+        protected override long BlockNumber => RinkebySpecProvider.SpuriousDragonBlockNumber;
 
         private bool _setAuthor;
         
-        protected override Block BuildBlock(UInt256 blockNumber)
+        protected override Block BuildBlock(long blockNumber)
         {
             Block block = base.BuildBlock(blockNumber);
             if(_setAuthor) block.Header.Author = TestItem.AddressC;

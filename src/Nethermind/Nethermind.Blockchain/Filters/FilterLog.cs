@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Filters
     {
         public bool Removed { get; }
         public UInt256 LogIndex { get; }
-        public UInt256 BlockNumber { get; }
+        public long BlockNumber { get; }
         public Keccak BlockHash { get; }
         public Keccak TransactionHash { get; }
         public UInt256 TransactionIndex { get; }
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Filters
         public byte[] Data { get; }
         public Keccak[] Topics { get; }
 
-        public FilterLog(UInt256 logIndex, UInt256 blockNumber, Keccak blockHash, UInt256 transactionIndex, Keccak transactionHash, Address address, byte[] data, Keccak[] topics, bool removed = false)
+        public FilterLog(UInt256 logIndex, long blockNumber, Keccak blockHash, UInt256 transactionIndex, Keccak transactionHash, Address address, byte[] data, Keccak[] topics, bool removed = false)
         {
             Removed = removed;
             LogIndex = logIndex;

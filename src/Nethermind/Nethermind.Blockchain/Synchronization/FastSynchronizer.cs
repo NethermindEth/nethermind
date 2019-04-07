@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Synchronization
     public class FastSynchronizer : ISynchronizer, INodeDataRequestExecutor
     {
         private int _sinceLastTimeout;
-        private UInt256 _lastSyncNumber = UInt256.Zero;
+        private long _lastSyncNumber = 0L;
 
         private readonly ILogger _logger;
         private readonly IHeaderValidator _headerValidator;
@@ -385,7 +385,7 @@ namespace Nethermind.Blockchain.Synchronization
             int ancestorLookupLevel = 0;
             int emptyBlockListCounter = 0;
 
-            UInt256 currentNumber = UInt256.Min(_blockTree.BestKnownNumber, peerInfo.HeadNumber - 1);
+            long currentNumber = Math.Min(_blockTree.BestKnownNumber, peerInfo.HeadNumber - 1);
             while (peerInfo.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= peerInfo.HeadNumber)
             {
                 if (_logger.IsTrace) _logger.Trace($"Continue syncing with {peerInfo} (our best {_blockTree.BestKnownNumber})");
@@ -402,7 +402,7 @@ namespace Nethermind.Blockchain.Synchronization
                     return;
                 }
 
-                UInt256 blocksLeft = peerInfo.HeadNumber - currentNumber;
+                long blocksLeft = peerInfo.HeadNumber - currentNumber;
                 int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _currentBatchSize);
                 if (_logger.IsTrace) _logger.Trace($"Sync request {currentNumber}+{blocksToRequest} to peer {peerInfo.SyncPeer.Node.Id} with {peerInfo.HeadNumber} blocks. Got {currentNumber} and asking for {blocksToRequest} more.");
 
@@ -519,7 +519,7 @@ namespace Nethermind.Blockchain.Synchronization
                     if (parent == null)
                     {
                         ancestorLookupLevel += _currentBatchSize;
-                        currentNumber = currentNumber >= _currentBatchSize ? (currentNumber - (UInt256) _currentBatchSize) : UInt256.Zero;
+                        currentNumber = currentNumber >= _currentBatchSize ? (currentNumber - _currentBatchSize) : 0L;
                         continue;
                     }
                 }

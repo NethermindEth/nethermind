@@ -120,7 +120,7 @@ namespace Ethereum.VM.Test
             environment.CurrentCoinbase = envJson.CurrentCoinbase == null ? null : new Address(envJson.CurrentCoinbase);
             environment.CurrentDifficulty = Bytes.FromHexString(envJson.CurrentDifficulty).ToUInt256();
             environment.CurrentGasLimit = Bytes.FromHexString(envJson.CurrentGasLimit).ToUnsignedBigInteger();
-            environment.CurrentNumber = Bytes.FromHexString(envJson.CurrentNumber).ToUInt256();
+            environment.CurrentNumber = (long)Bytes.FromHexString(envJson.CurrentNumber).ToUInt256();
             environment.CurrentTimestamp = Bytes.FromHexString(envJson.CurrentTimestamp).ToUInt256();
             return environment;
         }
@@ -260,7 +260,7 @@ namespace Ethereum.VM.Test
             public Address CurrentCoinbase { get; set; }
             public UInt256 CurrentDifficulty { get; set; }
             public BigInteger CurrentGasLimit { get; set; }
-            public UInt256 CurrentNumber { get; set; }
+            public long CurrentNumber { get; set; }
             public UInt256 CurrentTimestamp { get; set; }
         }
 

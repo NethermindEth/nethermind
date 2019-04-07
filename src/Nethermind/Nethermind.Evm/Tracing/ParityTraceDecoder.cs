@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Tracing
             ParityLikeTxTrace trace = new ParityLikeTxTrace();
             context.ReadSequenceLength();
             trace.BlockHash = context.DecodeKeccak();
-            trace.BlockNumber = context.DecodeUInt256();
+            trace.BlockNumber = (long)context.DecodeUInt256();
             trace.TransactionHash = context.DecodeKeccak();
             byte[] txPosBytes = context.DecodeByteArray();
             trace.TransactionPosition = txPosBytes.Length == 0 ? (int?) null : txPosBytes.ToInt32();

@@ -22,6 +22,6 @@ namespace Nethermind.Mining.Difficulty
 {
     public interface IDifficultyCalculator
     {
-        UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, UInt256 blockNumber, bool parentHasUncles);
+        UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, long blockNumber, bool parentHasUncles);
     }
 }

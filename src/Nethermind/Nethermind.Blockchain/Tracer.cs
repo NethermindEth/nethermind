@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain
             return Trace(block, txHash);
         }
 
-        public GethLikeTxTrace Trace(UInt256 blockNumber, int txIndex)
+        public GethLikeTxTrace Trace(long blockNumber, int txIndex)
         {
             Block block = _blockTree.FindBlock(blockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain
             return Trace(block, block.Transactions[txIndex].Hash);
         }
 
-        public GethLikeTxTrace Trace(UInt256 blockNumber, Transaction tx)
+        public GethLikeTxTrace Trace(long blockNumber, Transaction tx)
         {
             Block block = _blockTree.FindBlock(blockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain
             return TraceBlock(block);
         }
 
-        public GethLikeTxTrace[] TraceBlock(UInt256 blockNumber)
+        public GethLikeTxTrace[] TraceBlock(long blockNumber)
         {
             Block block = _blockTree.FindBlock(blockNumber);
             return TraceBlock(block);
@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain
             if (block.TotalDifficulty == null)
             {
                 block.TotalDifficulty = 1;
-                block.TotalTransactions = new UInt256(block.Transactions.Length);
+                block.TotalTransactions = block.Transactions.Length;
             }
             
             return TraceBlock(block);
@@ -123,7 +123,7 @@ namespace Nethermind.Blockchain
             return ParityTrace(block, txHash, parityTraceTypes);
         }
 
-        public ParityLikeTxTrace[] ParityTraceBlock(UInt256 blockNumber, ParityTraceTypes parityTraceTypes)
+        public ParityLikeTxTrace[] ParityTraceBlock(long blockNumber, ParityTraceTypes parityTraceTypes)
         {
             Block block = _blockTree.FindBlock(blockNumber);
             bool loadedFromDb = true;

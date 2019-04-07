@@ -72,7 +72,7 @@ namespace Nethermind.Clique
             BlockHeader header = block.Header;
 
             // Sealing the genesis block is not supported
-            UInt256 number = header.Number;
+            long number = header.Number;
             if (number == 0) throw new InvalidOperationException("Can't sign genesis block");
 
             // For 0-period chains, refuse to seal empty blocks (no reward but would spin sealing)
@@ -95,7 +95,7 @@ namespace Nethermind.Clique
             return block;
         }
 
-        public bool CanSeal(UInt256 blockNumber, Keccak parentHash)
+        public bool CanSeal(long blockNumber, Keccak parentHash)
         {
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(blockNumber - 1, parentHash);
             if (!snapshot.Signers.ContainsKey(_sealerAddress))

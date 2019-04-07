@@ -94,7 +94,7 @@ namespace Nethermind.Clique.Test
             Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = new UInt256(1);
-            UInt256 number = new UInt256(0);
+            long number = 0L;
             int gasLimit = 4700000;
             UInt256 timestamp = UInt256.Parse("1492009146");
             byte[] extraData = Bytes.FromHexString("52657370656374206d7920617574686f7269746168207e452e436172746d616e42eb768f2244c8811c63729a21a3569731535f067ffc57839b00206d1ad20c69a1981b489f772031b279182d99e65703f0076e4812653aab85fca0f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");

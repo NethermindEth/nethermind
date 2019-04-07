@@ -82,7 +82,7 @@ namespace Nethermind.Core.Test.Encoding
             TransactionReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpContext());
 
             Assert.AreEqual(null, deserialized.BlockHash, "block hash");
-            Assert.AreEqual(UInt256.Zero, deserialized.BlockNumber, "block number");
+            Assert.AreEqual(0L, deserialized.BlockNumber, "block number");
             Assert.AreEqual(0, deserialized.Index, "index");
             Assert.AreEqual(null, deserialized.ContractAddress, "contract");
             Assert.AreEqual(null, deserialized.Sender, "sender");

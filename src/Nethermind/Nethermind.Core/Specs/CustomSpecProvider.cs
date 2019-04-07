@@ -25,9 +25,9 @@ namespace Nethermind.Core.Specs
 {
     public class CustomSpecProvider : ISpecProvider
     {
-        private readonly (UInt256 BlockNumber, IReleaseSpec Release)[] _transitions;
+        private readonly (long BlockNumber, IReleaseSpec Release)[] _transitions;
 
-        public CustomSpecProvider(params (UInt256 BlockNumber, IReleaseSpec Release)[] transitions)
+        public CustomSpecProvider(params (long BlockNumber, IReleaseSpec Release)[] transitions)
         {
             if (transitions.Length == 0)
             {
@@ -46,7 +46,7 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GenesisSpec => _transitions.First().Release;
         
-        public IReleaseSpec GetSpec(UInt256 blockNumber)
+        public IReleaseSpec GetSpec(long blockNumber)
         {
             IReleaseSpec spec = _transitions[0].Release;
             for (int i = 1; i < _transitions.Length; i++)
@@ -64,12 +64,12 @@ namespace Nethermind.Core.Specs
             return spec;
         }
 
-        public UInt256? DaoBlockNumber
+        public long? DaoBlockNumber
         {
             get
             {
-                (UInt256 blockNumber, IReleaseSpec daoRelease) = _transitions.SingleOrDefault(t => t.Release == Dao.Instance);
-                return daoRelease != null ? blockNumber : (UInt256?)null;
+                (long blockNumber, IReleaseSpec daoRelease) = _transitions.SingleOrDefault(t => t.Release == Dao.Instance);
+                return daoRelease != null ? blockNumber : (long?)null;
             }
         }
 

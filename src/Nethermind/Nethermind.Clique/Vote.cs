@@ -24,11 +24,11 @@ namespace Nethermind.Clique
     public class Vote
     {
         public Address Signer { get; }
-        public UInt256 Block { get; }
+        public long Block { get; }
         public Address Address { get; }
         public bool Authorize { get; }
 
-        public Vote(Address signer, UInt256 block, Address address, bool authorize)
+        public Vote(Address signer, long block, Address address, bool authorize)
         {
             Signer = signer;
             Block = block;

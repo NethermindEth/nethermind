@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Best downloaded block number
         /// </summary>
-        UInt256 BestKnownNumber { get; }
+        long BestKnownNumber { get; }
         
         /// <summary>
         /// Best processed block
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
-        bool IsKnownBlock(UInt256 number, Keccak blockHash);
+        bool IsKnownBlock(long number, Keccak blockHash);
         
         /// <summary>
         /// Checks if the state changes of the block can be found in the state tree.
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if processed, otherwise <value>False</value></returns>
-        bool WasProcessed(UInt256 number, Keccak blockHash);
+        bool WasProcessed(long number, Keccak blockHash);
         
         /// <summary>
         /// Marks all <paramref name="processedBlocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>
@@ -100,12 +100,12 @@ namespace Nethermind.Blockchain
         event EventHandler<BlockEventArgs> NewHeadBlock;
         
         bool CanAcceptNewBlocks { get; }
-        Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue);
+        Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
         BlockHeader FindHeader(Keccak blockHash);
-        BlockHeader FindHeader(UInt256 blockNumber);
+        BlockHeader FindHeader(long blockNumber);
         Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
-        Block FindBlock(UInt256 blockNumber);
+        Block FindBlock(long blockNumber);
         
         void DeleteInvalidBlock(Block invalidBlock);
     }

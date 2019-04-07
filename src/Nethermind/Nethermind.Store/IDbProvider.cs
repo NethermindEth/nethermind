@@ -31,6 +31,7 @@ namespace Nethermind.Store
         ISnapshotableDb CodeDb { get; }
         IDb ReceiptsDb { get; }
         IDb BlocksDb { get; }
+        IDb HeadersDb { get; }
         IDb BlockInfosDb { get; }
         IDb PendingTxsDb { get; }
         IDb TraceDb { get; }

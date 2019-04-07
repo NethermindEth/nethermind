@@ -75,12 +75,13 @@ namespace Nethermind.Clique.Test
                 _blockEvents.Add(privateKey, newHeadBlockEvent);
 
                 MemDb blocksDb = new MemDb();
+                MemDb headersDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
 
                 TxPool txPool = new TxPool(new InMemoryTransactionStorage(), new PendingTransactionThresholdValidator(), _timestamp, _ethereumEcdsa, GoerliSpecProvider.Instance, NullLogManager.Instance);
                 _pools[privateKey] = txPool;
 
-                BlockTree blockTree = new BlockTree(blocksDb, blockInfoDb, GoerliSpecProvider.Instance, txPool, NullLogManager.Instance);
+                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, GoerliSpecProvider.Instance, txPool, NullLogManager.Instance);
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
 
                 BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
@@ -143,7 +144,7 @@ namespace Nethermind.Clique.Test
                 Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
                 Address beneficiary = Address.Zero;
                 UInt256 difficulty = new UInt256(1);
-                UInt256 number = new UInt256(0);
+                long number = 0L;
                 int gasLimit = 4700000;
                 UInt256 timestamp = _timestamp.EpochSeconds - _cliqueConfig.BlockPeriod;
                 string extraDataHex = "0x2249276d20646f6e652077616974696e672e2e2e20666f7220626c6f636b2066";
@@ -258,16 +259,16 @@ namespace Nethermind.Clique.Test
                 return this;
             }
 
-            public On AssertHeadBlockIs(PrivateKey nodeKey, UInt256 number)
+            public On AssertHeadBlockIs(PrivateKey nodeKey, long number)
             {
                 WaitForNumber(nodeKey, number);
                 Assert.AreEqual(number, _blockTrees[nodeKey].Head.Number, nodeKey.Address + " head number");
                 return this;
             }
 
-            public On AssertTotalTxCount(PrivateKey nodeKey, int count)
+            public On AssertTotalTxCount(PrivateKey nodeKey, long count)
             {
-                Assert.AreEqual((UInt256) count, _blockTrees[nodeKey].Head.TotalTransactions, nodeKey.Address + " total tx count");
+                Assert.AreEqual(count, _blockTrees[nodeKey].Head.TotalTransactions, nodeKey.Address + " total tx count");
                 return this;
             }
 
@@ -277,7 +278,7 @@ namespace Nethermind.Clique.Test
                 return this;
             }
 
-            public On AssertVote(PrivateKey nodeKey, UInt256 number, Address address, bool vote)
+            public On AssertVote(PrivateKey nodeKey, long number, Address address, bool vote)
             {
                 WaitForNumber(nodeKey, number);
                 Assert.AreEqual(vote ? Clique.NonceAuthVote : Clique.NonceDropVote, _blockTrees[nodeKey].FindBlock(number).Header.Nonce, nodeKey + " vote nonce");
@@ -285,7 +286,7 @@ namespace Nethermind.Clique.Test
                 return this;
             }
             
-            public On AssertSignersCount(PrivateKey nodeKey, UInt256 number, int count)
+            public On AssertSignersCount(PrivateKey nodeKey, long number, int count)
             {
                 WaitForNumber(nodeKey, number);
                 var header = _blockTrees[nodeKey].FindBlock(number).Header;
@@ -294,7 +295,7 @@ namespace Nethermind.Clique.Test
             }
             
             
-            public On AssertTallyEmpty(PrivateKey nodeKey, UInt256 number, PrivateKey privateKeyB)
+            public On AssertTallyEmpty(PrivateKey nodeKey, long number, PrivateKey privateKeyB)
             {
                 WaitForNumber(nodeKey, number);
                 var header = _blockTrees[nodeKey].FindBlock(number).Header;
@@ -302,21 +303,21 @@ namespace Nethermind.Clique.Test
                 return this;
             }
 
-            public On AssertOutOfTurn(PrivateKey nodeKey, UInt256 number)
+            public On AssertOutOfTurn(PrivateKey nodeKey, long number)
             {
                 WaitForNumber(nodeKey, number);
                 Assert.AreEqual(Clique.DifficultyNoTurn, _blockTrees[nodeKey].Head.Difficulty, nodeKey.Address + $" {number} out of turn");
                 return this;
             }
 
-            public On AssertInTurn(PrivateKey nodeKey, UInt256 number)
+            public On AssertInTurn(PrivateKey nodeKey, long number)
             {
                 WaitForNumber(nodeKey, number);
                 Assert.AreEqual(Clique.DifficultyInTurn, _blockTrees[nodeKey].Head.Difficulty, nodeKey.Address + $" {number} in turn");
                 return this;
             }
 
-            private void WaitForNumber(PrivateKey nodeKey, UInt256 number)
+            private void WaitForNumber(PrivateKey nodeKey, long number)
             {
                 SpinWait spinWait = new SpinWait();
                 Stopwatch stopwatch = new Stopwatch();
@@ -331,7 +332,7 @@ namespace Nethermind.Clique.Test
                 }
             }
 
-            public Block GetBlock(PrivateKey privateKey, UInt256 number)
+            public Block GetBlock(PrivateKey privateKey, long number)
             {
                 Block block = _blockTrees[privateKey].FindBlock(number);
                 if (block == null)
@@ -451,8 +452,8 @@ namespace Nethermind.Clique.Test
                 .CreateNode(TestItem.PrivateKeyA)
                 .AddPendingTransaction(TestItem.PrivateKeyA)
                 .ProcessGenesis()
-                .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
-                .AssertTotalTxCount(TestItem.PrivateKeyA, 1);
+                .AssertHeadBlockIs(TestItem.PrivateKeyA, 1L)
+                .AssertTotalTxCount(TestItem.PrivateKeyA, 1L);
         }
 
         [Test]
@@ -467,7 +468,7 @@ namespace Nethermind.Clique.Test
                 .AddQueuedTransaction(TestItem.PrivateKeyA)
                 .ProcessGenesis()
                 .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
-                .AssertTotalTxCount(TestItem.PrivateKeyA, 3);
+                .AssertTotalTxCount(TestItem.PrivateKeyA, 3L);
         }
 
         [Test]
@@ -743,13 +744,13 @@ namespace Nethermind.Clique.Test
                     var nodeKey = keys[j];
                     if (!nodeKey.Equals(inTurnKey))
                     {
-                        goerli.Process(nodeKey, goerli.GetBlock(inTurnKey, (UInt256) i));
-                        goerli.AssertHeadBlockIs(keys[j], (UInt256) i + 1);
+                        goerli.Process(nodeKey, goerli.GetBlock(inTurnKey, i));
+                        goerli.AssertHeadBlockIs(keys[j], i + 1);
                         goerli.AssertHeadBlockTimestamp(keys[j]);
                     }
                     else
                     {
-                        goerli.AssertHeadBlockIs(keys[j], (UInt256) i);
+                        goerli.AssertHeadBlockIs(keys[j], i);
                         goerli.AssertHeadBlockTimestamp(keys[j]);
                     }
                 }

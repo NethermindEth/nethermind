@@ -196,7 +196,7 @@ namespace Ethereum.Test.Base
         {
             public IDifficultyCalculator Wrapped { get; set; }
 
-            public UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, UInt256 blockNumber, bool parentHasUncles)
+            public UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, long blockNumber, bool parentHasUncles)
             {
                 return Wrapped.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
             }
@@ -242,7 +242,7 @@ namespace Ethereum.Test.Base
             ITxPool transactionPool = new TxPool(NullTransactionStorage.Instance,
                 new PendingTransactionThresholdValidator(), new Timestamp(), ecdsa, specProvider, _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ITxValidator transactionValidator = new TxValidator(ChainId.MainNet);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
@@ -548,8 +548,8 @@ namespace Ethereum.Test.Base
                 new Keccak(headerJson.UncleHash),
                 new Address(headerJson.Coinbase),
                 Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
-                Bytes.FromHexString(headerJson.Number).ToUInt256(),
-                (long) Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
+                (long)Bytes.FromHexString(headerJson.Number).ToUInt256(),
+                (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
                 Bytes.FromHexString(headerJson.Timestamp).ToUInt256(),
                 Bytes.FromHexString(headerJson.ExtraData)
             );
@@ -608,7 +608,7 @@ namespace Ethereum.Test.Base
             test.Name = name;
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
-            test.TransitionBlockNumber = (UInt256) testJson.TransitionBlockNumber;
+            test.TransitionBlockNumber = testJson.TransitionBlockNumber;
             test.LastBlockHash = new Keccak(testJson.LastBlockHash);
             test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;

@@ -53,9 +53,9 @@ namespace Nethermind.Core.Test.Specs
         [Test]
         public void Can_find_dao_block_number()
         {
-            UInt256 daoBlockNumber = 100;
+            long daoBlockNumber = 100;
             var specProvider = new CustomSpecProvider(
-                (UInt256.Zero, Frontier.Instance),
+                (0L, Frontier.Instance),
                 (daoBlockNumber, Dao.Instance));
             
             Assert.AreEqual(daoBlockNumber, specProvider.DaoBlockNumber);
@@ -65,8 +65,8 @@ namespace Nethermind.Core.Test.Specs
         public void If_no_dao_then_no_dao_block_number()
         {
             var specProvider = new CustomSpecProvider(
-                (UInt256.Zero, Frontier.Instance),
-                (UInt256.One, Homestead.Instance));
+                (0L, Frontier.Instance),
+                (1L, Homestead.Instance));
             
             Assert.IsNull(specProvider.DaoBlockNumber);
         }

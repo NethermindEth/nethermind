@@ -89,25 +89,25 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
-            UInt256 firstNumber = _remoteTree.FindBlock(blockHash, true).Number;
+            long firstNumber = _remoteTree.FindBlock(blockHash, true).Number;
             
             BlockHeader[] result = new BlockHeader[maxBlocks];
             for (int i = 0; i < maxBlocks; i++)
             {
-                result[i] = _remoteTree.FindBlock((ulong)firstNumber + (ulong)i + (ulong)skip).Header;
+                result[i] = _remoteTree.FindBlock(firstNumber + i + skip).Header;
             }
             
             return Task.FromResult(result);
         }
         
-        public Task<BlockHeader[]> GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
+        public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
-            UInt256 firstNumber = _remoteTree.FindBlock(number).Number;
+            long firstNumber = _remoteTree.FindBlock(number).Number;
             
             BlockHeader[] result = new BlockHeader[maxBlocks];
             for (int i = 0; i < maxBlocks; i++)
             {
-                ulong blockNumber = (ulong) firstNumber + (ulong) i + (ulong) skip;
+                long blockNumber = firstNumber + i + skip;
                 if (blockNumber > (_remoteTree.Head?.Number ?? 0))
                 {
                     result[i] = null;

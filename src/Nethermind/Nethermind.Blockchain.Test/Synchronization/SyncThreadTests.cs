@@ -157,8 +157,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 transaction.GasLimit = 21000;
                 transaction.GasPrice = 20.GWei();
                 transaction.Hash = Transaction.CalculateHash(transaction);
-                _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction, (UInt256)i);
-                _originPeer.TxPool.AddTransaction(transaction, (UInt256)i);
+                _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction, i);
+                _originPeer.TxPool.AddTransaction(transaction, i);
                 if(!resetEvent.WaitOne(1000))
                 {
                     throw new Exception($"Failed to produce block {i + 1}");
@@ -235,6 +235,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             MemDb traceDb = new MemDb();
             MemDb blockDb = new MemDb();
+            MemDb headerDb = new MemDb();
             MemDb blockInfoDb = new MemDb();
             StateDb codeDb = new StateDb();
             StateDb stateDb = new StateDb();;
@@ -249,7 +250,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             var ecdsa = new EthereumEcdsa(specProvider, logManager);
             var txPool = new TxPool(new InMemoryTransactionStorage(), new PendingTransactionThresholdValidator(), new Timestamp(), ecdsa, specProvider, logManager);
-            var tree = new BlockTree(blockDb, blockInfoDb, specProvider, txPool, logManager);
+            var tree = new BlockTree(blockDb, headerDb, blockInfoDb, specProvider, txPool, logManager);
             var blockhashProvider = new BlockhashProvider(tree);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
 

@@ -382,7 +382,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {
-            foreach ((Keccak Hash, UInt256 Number) hint in newBlockHashes.BlockHashes)
+            foreach ((Keccak Hash, long Number) hint in newBlockHashes.BlockHashes)
             {
                 SyncServer.HintBlock(hint.Hash, hint.Number, Node);
             }
@@ -493,7 +493,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return headers;
         }
 
-        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
+        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;

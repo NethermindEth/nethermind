@@ -26,9 +26,9 @@ namespace Nethermind.Core.Specs
         
         IReleaseSpec GenesisSpec { get; }
         
-        IReleaseSpec GetSpec(UInt256 blockNumber);
+        IReleaseSpec GetSpec(long blockNumber);
 
-        UInt256? DaoBlockNumber { get; }
+        long? DaoBlockNumber { get; }
         
         int ChainId { get; }
     }

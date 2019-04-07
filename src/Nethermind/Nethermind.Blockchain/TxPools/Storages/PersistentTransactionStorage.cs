@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.TxPools.Storages
                 ? null
                 : Rlp.Decode<Transaction>(new Rlp(bytes), RlpBehaviors.Storage);
 
-        public void Add(Transaction transaction, UInt256 blockNumber)
+        public void Add(Transaction transaction, long blockNumber)
         {
             if (transaction == null)
             {

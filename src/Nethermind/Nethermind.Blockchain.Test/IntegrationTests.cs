@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Test
             TxPool txPool = new TxPool(new NullTransactionStorage(),
                 new PendingTransactionThresholdValidator(), new Timestamp(), ethereumEcdsa, specProvider, logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider);
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, txPool, logManager);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, txPool, logManager);
             Timestamp timestamp = new Timestamp();
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, logManager);
@@ -127,7 +127,7 @@ namespace Nethermind.Blockchain.Test
             int totalTx = 0;
             for (int i = 0; i < 6; i++)
             {
-                Block block = blockTree.FindBlock(new UInt256(i));
+                Block block = blockTree.FindBlock(i);
                 logger.Info($"Block {i} with {block.Transactions.Length} txs");
 
                 ManualResetEventSlim blockProcessedEvent = new ManualResetEventSlim(false);

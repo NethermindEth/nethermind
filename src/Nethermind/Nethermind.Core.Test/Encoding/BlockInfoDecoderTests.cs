@@ -41,7 +41,7 @@ namespace Nethermind.Core.Test.Encoding
             Assert.True(decoded.WasProcessed, "0 processed");
             Assert.AreEqual(TestItem.KeccakA, decoded.BlockHash, "block hash");
             Assert.AreEqual(UInt256.One, decoded.TotalDifficulty, "difficulty");
-            Assert.AreEqual(UInt256.One, decoded.TotalTransactions, "txs");
+            Assert.AreEqual(1L, decoded.TotalTransactions, "txs");
         }
     }
 }

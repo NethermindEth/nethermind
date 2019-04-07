@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip145Tests : VirtualMachineTestsBase
     {
-        protected override UInt256 BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
+        protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
         
         protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
 

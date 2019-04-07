@@ -284,7 +284,7 @@ namespace Nethermind.Blockchain
 
             UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
             if (_logger.IsTrace) _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
-            UInt256 totalTransactions = suggestedBlock.TotalTransactions ?? 0;
+            long totalTransactions = suggestedBlock.TotalTransactions ?? 0;
             if (_logger.IsTrace) _logger.Trace($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
 
             Block[] processedBlocks = null;

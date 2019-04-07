@@ -31,6 +31,10 @@ namespace Nethermind.Db
                 Path.Combine(basePath, DbOnTheRocks.BlocksDbPath),
                 dbConfig, logManager);
             
+            HeadersDb = new DbOnTheRocks(
+                            Path.Combine(basePath, DbOnTheRocks.HeadersPath),
+                            dbConfig, logManager);
+            
             BlockInfosDb = new DbOnTheRocks(
                 Path.Combine(basePath, DbOnTheRocks.BlockInfosDbPath),
                 dbConfig, logManager);
@@ -73,6 +77,7 @@ namespace Nethermind.Db
         public IDb TraceDb { get; }
         public IDb ReceiptsDb { get; }
         public IDb BlocksDb { get; }
+        public IDb HeadersDb { get; }
         public IDb BlockInfosDb { get; }
         public IDb PendingTxsDb { get; }
 
@@ -82,6 +87,7 @@ namespace Nethermind.Db
             CodeDb?.Dispose();
             ReceiptsDb?.Dispose();
             BlocksDb?.Dispose();
+            HeadersDb?.Dispose();
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
             TraceDb?.Dispose();

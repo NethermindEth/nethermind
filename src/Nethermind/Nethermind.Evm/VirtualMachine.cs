@@ -1519,7 +1519,7 @@ namespace Nethermind.Evm
                         }
 
                         PopUInt256(out UInt256 a, bytesOnStack);
-                        PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, a)?.Bytes ?? BytesZero32, bytesOnStack);
+                        PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, (long)a)?.Bytes ?? BytesZero32, bytesOnStack);
 
                         break;
                     }
@@ -1566,7 +1566,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 blockNumber = env.CurrentBlock.Number;
+                        UInt256 blockNumber = (UInt256)env.CurrentBlock.Number;
                         PushUInt256(ref blockNumber, bytesOnStack);
                         break;
                     }

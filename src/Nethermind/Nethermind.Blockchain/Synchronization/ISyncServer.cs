@@ -26,11 +26,11 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public interface ISyncServer
     {
-        void HintBlock(Keccak hash, UInt256 number, Node receivedFrom);
+        void HintBlock(Keccak hash, long number, Node receivedFrom);
         void AddNewBlock(Block block, Node node);
         TransactionReceipt[][] GetReceipts(Keccak[] blockHashes);
         Block Find(Keccak hash);
-        Block Find(UInt256 number);
+        Block Find(long number);
         Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         byte[][] GetNodeData(Keccak[] keys);
         int GetPeerCount();

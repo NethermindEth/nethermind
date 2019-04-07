@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _tracer.Trace(transactionHash);
         }
 
-        public GethLikeTxTrace GetTransactionTrace(UInt256 blockNumber, int index)
+        public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index)
         {
             return _tracer.Trace(blockNumber, index);
         }
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _tracer.TraceBlock(blockHash);
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(UInt256 blockNumber)
+        public GethLikeTxTrace[] GetBlockTrace(long blockNumber)
         {
             return _tracer.TraceBlock(blockNumber);
         }

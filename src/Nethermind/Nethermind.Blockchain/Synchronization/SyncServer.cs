@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        public void HintBlock(Keccak hash, UInt256 number, Node node)
+        public void HintBlock(Keccak hash, long number, Node node)
         {
             if (!_pool.TryFind(node.Id, out PeerInfo peerInfo))
             {
@@ -184,7 +184,7 @@ namespace Nethermind.Blockchain.Synchronization
             return _blockTree.FindBlock(hash, false);
         }
 
-        public Block Find(UInt256 number)
+        public Block Find(long number)
         {
             return _blockTree.Head.Number >= number ? _blockTree.FindBlock(number) : null;
         }

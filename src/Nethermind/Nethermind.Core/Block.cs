@@ -149,7 +149,7 @@ namespace Nethermind.Core
             set => Header.Timestamp = value;
         }
 
-        public UInt256 Number
+        public long Number
         {
             get => Header.Number;
             set => Header.Number = value;
@@ -167,7 +167,7 @@ namespace Nethermind.Core
             set => Header.TotalDifficulty = value;
         }
 
-        public UInt256? TotalTransactions
+        public long? TotalTransactions
         {
             get => Header?.TotalTransactions;
             set => Header.TotalTransactions = value;

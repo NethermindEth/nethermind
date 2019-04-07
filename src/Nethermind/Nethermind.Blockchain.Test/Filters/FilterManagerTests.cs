@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void logs_should_not_be_empty_for_from_block_number_in_range()
             => LogsShouldNotBeEmpty(filter => filter.FromBlock(UInt256.One),
-                receipt => receipt.WithBlockNumber(new UInt256(2)));
+                receipt => receipt.WithBlockNumber(2L));
 
         [Test]
         public void many_logs_should_not_be_empty_for_from_blocks_numbers_in_range()
@@ -100,20 +100,20 @@ namespace Nethermind.Blockchain.Test.Filters
                 },
                 new Action<ReceiptBuilder>[]
                 {
-                    receipt => receipt.WithBlockNumber(new UInt256(1)),
-                    receipt => receipt.WithBlockNumber(new UInt256(5)),
-                    receipt => receipt.WithBlockNumber(new UInt256(10))
+                    receipt => receipt.WithBlockNumber(1L),
+                    receipt => receipt.WithBlockNumber(5L),
+                    receipt => receipt.WithBlockNumber(10L)
                 });
 
         [Test]
         public void logs_should_be_empty_for_from_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(UInt256.One),
-                receipt => receipt.WithBlockNumber(UInt256.Zero));
+                receipt => receipt.WithBlockNumber(0L));
 
         [Test]
         public void logs_should_not_be_empty_for_to_block_number_in_range()
             => LogsShouldNotBeEmpty(filter => filter.ToBlock(new UInt256(2)),
-                receipt => receipt.WithBlockNumber(UInt256.One));
+                receipt => receipt.WithBlockNumber(1L));
 
         [Test]
         public void many_logs_should_not_be_empty_for_to_blocks_numbers_in_range()
@@ -126,35 +126,35 @@ namespace Nethermind.Blockchain.Test.Filters
                 },
                 new Action<ReceiptBuilder>[]
                 {
-                    receipt => receipt.WithBlockNumber(new UInt256(1)),
-                    receipt => receipt.WithBlockNumber(new UInt256(2)),
-                    receipt => receipt.WithBlockNumber(new UInt256(3))
+                    receipt => receipt.WithBlockNumber(1L),
+                    receipt => receipt.WithBlockNumber(2L),
+                    receipt => receipt.WithBlockNumber(3L)
                 });
 
         [Test]
         public void logs_should_be_empty_for_to_block_number_not_in_range()
-            => LogsShouldBeEmpty(filter => filter.ToBlock(UInt256.One),
-                receipt => receipt.WithBlockNumber(new UInt256(2)));
+            => LogsShouldBeEmpty(filter => filter.ToBlock(1L),
+                receipt => receipt.WithBlockNumber(2L));
 
         [Test]
         public void logs_should_not_be_empty_for_from_block_number_in_range_and_to_block_number_in_range()
             => LogsShouldNotBeEmpty(filter => filter.FromBlock(new UInt256(2)).ToBlock(new UInt256(6)),
-                receipt => receipt.WithBlockNumber(new UInt256(4)));
+                receipt => receipt.WithBlockNumber(4L));
 
         [Test]
         public void logs_should_be_empty_for_from_block_number_in_range_and_to_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(new UInt256(2)).ToBlock(new UInt256(3)),
-                receipt => receipt.WithBlockNumber(new UInt256(4)));
+                receipt => receipt.WithBlockNumber(4L));
 
         [Test]
         public void logs_should_be_empty_for_from_block_number_not_in_range_and_to_block_number_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(new UInt256(5)).ToBlock(new UInt256(7)),
-                receipt => receipt.WithBlockNumber(new UInt256(4)));
+                receipt => receipt.WithBlockNumber(4L));
 
         [Test]
         public void logs_should_be_empty_for_from_block_number_not_in_range_and_to_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(new UInt256(2)).ToBlock(new UInt256(3)),
-                receipt => receipt.WithBlockNumber(new UInt256(4)));
+                receipt => receipt.WithBlockNumber(4L));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_address()
@@ -239,7 +239,7 @@ namespace Nethermind.Blockchain.Test.Filters
                         TestTopicExpressions.Specific(TestItem.KeccakD)
                     })),
                 receipt => receipt
-                    .WithBlockNumber(new UInt256(6))
+                    .WithBlockNumber(6L)
                     .WithLogs(new[]
                     {
                         Build.A.LogEntry.WithAddress(TestItem.AddressA)
@@ -249,8 +249,8 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void logs_should_not_be_empty_for_existing_block_and_addresses_and_topics()
             => LogsShouldNotBeEmpty(filter => filter
-                    .FromBlock(UInt256.One)
-                    .ToBlock(new UInt256(10))
+                    .FromBlock(1L)
+                    .ToBlock(10L)
                     .WithAddresses(new[] {TestItem.AddressA, TestItem.AddressB})
                     .WithTopicExpressions(TestTopicExpressions.Or(new[]
                     {
@@ -258,7 +258,7 @@ namespace Nethermind.Blockchain.Test.Filters
                         TestTopicExpressions.Specific(TestItem.KeccakD)
                     })),
                 receipt => receipt
-                    .WithBlockNumber(new UInt256(6))
+                    .WithBlockNumber(6L)
                     .WithLogs(new[]
                     {
                         Build.A.LogEntry.WithAddress(TestItem.AddressA)
@@ -268,8 +268,8 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void logs_should_be_empty_for_existing_block_and_addresses_and_non_existing_topic()
             => LogsShouldBeEmpty(filter => filter
-                    .FromBlock(UInt256.One)
-                    .ToBlock(new UInt256(10))
+                    .FromBlock(1L)
+                    .ToBlock(10L)
                     .WithAddresses(new[] {TestItem.AddressA, TestItem.AddressB})
                     .WithTopicExpressions(TestTopicExpressions.Or(new[]
                     {
@@ -277,7 +277,7 @@ namespace Nethermind.Blockchain.Test.Filters
                         TestTopicExpressions.Specific(TestItem.KeccakD)
                     })),
                 receipt => receipt
-                    .WithBlockNumber(new UInt256(6))
+                    .WithBlockNumber(6L)
                     .WithLogs(new[]
                     {
                         Build.A.LogEntry.WithAddress(TestItem.AddressA)

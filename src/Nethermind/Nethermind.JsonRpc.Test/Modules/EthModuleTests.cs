@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_balance()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.FindBlock(Arg.Any<UInt256>()).Returns(Build.A.Block.TestObject);
+            bridge.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.TestObject);
             bridge.GetAccount(Arg.Any<Address>(), Arg.Any<Keccak>()).Returns(Build.A.Account.WithBalance(1.Ether()).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
@@ -115,7 +115,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(false);
             bridge.Head.Returns(Build.A.BlockHeader.WithNumber(900).TestObject);
-            bridge.BestKnown.Returns((UInt256) 1000);
+            bridge.BestKnown.Returns( 1000L);
             bridge.IsSyncing.Returns(true);
 
             IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
@@ -131,7 +131,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(false);
             bridge.Head.Returns(Build.A.BlockHeader.WithNumber(900).TestObject);
-            bridge.BestKnown.Returns((UInt256) 1000);
+            bridge.BestKnown.Returns(1000L);
 
             IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
 
@@ -186,7 +186,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number_with_number()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.FindBlock(Arg.Any<UInt256>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
@@ -203,7 +203,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number_with_number_bad_number()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.FindBlock(Arg.Any<UInt256>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
@@ -266,8 +266,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(true);
-            bridge.BestKnown.Returns((UInt256) 6178000);
-            bridge.Head.Returns(Build.A.BlockHeader.WithNumber((UInt256) 6170000).TestObject);
+            bridge.BestKnown.Returns(6178000L);
+            bridge.Head.Returns(Build.A.BlockHeader.WithNumber(6170000L).TestObject);
 
             IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
 

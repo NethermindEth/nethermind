@@ -28,12 +28,12 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GenesisSpec => throw new NotImplementedException();
 
-        public IReleaseSpec GetSpec(UInt256 blockNumber)
+        public IReleaseSpec GetSpec(long blockNumber)
         {
             throw new NotImplementedException();
         }
 
-        public UInt256? DaoBlockNumber { get; } = null;
+        public long? DaoBlockNumber { get; } = null;
         
         public int ChainId => 42;
     }

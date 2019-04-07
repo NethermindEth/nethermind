@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Filters
             return _filters.Select(f => f.Value).OfType<T>().ToArray();
         }
 
-        public BlockFilter CreateBlockFilter(UInt256 startBlockNumber, bool setId = true)
+        public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true)
         {
             var filterId = setId ? GetFilterId() : 0;
             var blockFilter = new BlockFilter(filterId, startBlockNumber);

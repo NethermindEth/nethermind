@@ -392,7 +392,7 @@ namespace Nethermind.Runner.Runners
                 ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, StateProvider, storageProvider, virtualMachine, logManager);
                 ITxPool txPool = customTxPool;
                 IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, storageProvider, txPool, receiptStorage, logManager);
-                Processor = new FastSyncBlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false);
+                Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false);
             }
         }
 
@@ -480,6 +480,7 @@ namespace Nethermind.Runner.Runners
 
             _blockTree = new BlockTree(
                 _dbProvider.BlocksDb,
+                _dbProvider.HeadersDb,
                 _dbProvider.BlockInfosDb,
                 _specProvider,
                 _txPool,
@@ -603,7 +604,7 @@ namespace Nethermind.Runner.Runners
                 _receiptStorage,
                 _logManager);
 
-            _blockchainProcessor = new FastSyncBlockchainProcessor(
+            _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,
                 _blockProcessor,
                 _recoveryStep,

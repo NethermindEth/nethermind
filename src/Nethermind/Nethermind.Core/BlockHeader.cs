@@ -35,7 +35,7 @@ namespace Nethermind.Core
         {
         }
 
-        public BlockHeader(Keccak parentHash, Keccak ommersHash, Address beneficiary, UInt256 difficulty, UInt256 number, long gasLimit, UInt256 timestamp, byte[] extraData)
+        public BlockHeader(Keccak parentHash, Keccak ommersHash, Address beneficiary, UInt256 difficulty, long number, long gasLimit, UInt256 timestamp, byte[] extraData)
         {
             ParentHash = parentHash;
             OmmersHash = ommersHash;
@@ -58,7 +58,7 @@ namespace Nethermind.Core
         public Keccak ReceiptsRoot { get; set; }
         public Bloom Bloom { get; set; }
         public UInt256 Difficulty { get; set; }
-        public UInt256 Number { get; internal set; }
+        public long Number { get; internal set; }
         public long GasUsed { get; set; }
         public long GasLimit { get; internal set; }
         public UInt256 Timestamp { get; set; }
@@ -67,7 +67,7 @@ namespace Nethermind.Core
         public ulong Nonce { get; set; }
         public Keccak Hash { get; set; }
         public UInt256? TotalDifficulty { get; set; }
-        public UInt256? TotalTransactions { get; set; }
+        public long? TotalTransactions { get; set; }
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
 
         private static ThreadLocal<byte[]> _rlpBuffer = new ThreadLocal<byte[]>(() => new byte[1024]);

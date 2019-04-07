@@ -59,7 +59,7 @@ namespace Ethereum.Difficulty.Test
                 (ulong)json.ParentTimestamp,
                 (ulong)json.ParentDifficulty,
                 (ulong)json.CurrentTimestamp,
-                (ulong)json.CurrentBlockNumber,
+                json.CurrentBlockNumber,
                 (ulong)json.CurrentDifficulty,
                 false);
         }
@@ -86,7 +86,7 @@ namespace Ethereum.Difficulty.Test
                 ToUInt256(json.ParentTimestamp),
                 ToUInt256(json.ParentDifficulty),
                 ToUInt256(json.CurrentTimestamp),
-                ToUInt256(json.CurrentBlockNumber),
+                (long)ToUInt256(json.CurrentBlockNumber),
                 ToUInt256(json.CurrentDifficulty),
                 !string.IsNullOrWhiteSpace(json.ParentUncles) && new Keccak(json.ParentUncles) != noUnclesHash);
         }

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -38,7 +39,7 @@ namespace Nethermind.Mining.Difficulty
             UInt256 parentDifficulty,
             UInt256 parentTimestamp,
             UInt256 currentTimestamp,
-            UInt256 blockNumber,
+            long blockNumber,
             bool parentHasUncles)
         {
             IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
@@ -50,21 +51,6 @@ namespace Nethermind.Mining.Difficulty
                 parentDifficulty +
                 timeAdjustment * baseIncrease +
                 timeBomb);
-        }
-
-        public virtual BigInteger Calculate(BlockHeader blockHeader, BlockHeader parentBlockHeader, bool parentHasUncles)
-        {
-            if (parentBlockHeader == null)
-            {
-                return blockHeader.Difficulty;
-            }
-
-            return Calculate(
-                parentBlockHeader.Difficulty,
-                parentBlockHeader.Timestamp,
-                blockHeader.Timestamp,
-                blockHeader.Number,
-                parentHasUncles);
         }
 
         protected internal virtual BigInteger TimeAdjustment(
@@ -91,15 +77,15 @@ namespace Nethermind.Mining.Difficulty
             return currentTimestamp < parentTimestamp + 7 ? BigInteger.One : BigInteger.MinusOne;
         }
 
-        private BigInteger TimeBomb(IReleaseSpec spec, UInt256 blockNumber)
+        private BigInteger TimeBomb(IReleaseSpec spec, long blockNumber)
         {   
             if (spec.IsEip1234Enabled)
             {
-                blockNumber = blockNumber - UInt256.Min(blockNumber, 5000000);
+                blockNumber = blockNumber - Math.Min(blockNumber, 5000000);
             }
             else if (spec.IsEip649Enabled)
             {
-                blockNumber = blockNumber - UInt256.Min(blockNumber, 3000000);
+                blockNumber = blockNumber - Math.Min(blockNumber, 3000000);
             }
 
             return blockNumber < 200000 ? UInt256.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));

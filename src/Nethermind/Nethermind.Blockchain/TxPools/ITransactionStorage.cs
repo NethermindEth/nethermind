@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.TxPools
     {
         Transaction Get(Keccak hash);
         Transaction[] GetAll();
-        void Add(Transaction transaction, UInt256 blockNumber);
+        void Add(Transaction transaction, long blockNumber);
         void Delete(Keccak hash);
     }
 }

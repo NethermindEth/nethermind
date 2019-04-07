@@ -304,7 +304,7 @@ namespace Nethermind.Clique
                 new byte[0]);
 
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
-            UInt256 number = header.Number;
+            long number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
             bool isEpochBlock = (ulong) number % 30000 == 0;

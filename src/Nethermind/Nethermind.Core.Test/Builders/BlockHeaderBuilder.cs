@@ -106,7 +106,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockHeaderBuilder WithNumber(UInt256 blockNumber)
+        public BlockHeaderBuilder WithNumber(long blockNumber)
         {
             TestObjectInternal.Number = blockNumber;
             return this;

@@ -81,7 +81,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 throw new InvalidDataException("Block number value incorrect");
             }
 
-            var transactionTrace = _debugBridge.GetTransactionTrace(blockNo.Value, index);
+            var transactionTrace = _debugBridge.GetTransactionTrace((long)blockNo.Value, index);
             if (transactionTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorType.NotFound);
@@ -104,7 +104,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BigInteger blockNumber)
         {
-            var blockTrace = _debugBridge.GetBlockTrace((UInt256) blockNumber);
+            var blockTrace = _debugBridge.GetBlockTrace((long)blockNumber);
             if (blockTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockNumber}", ErrorType.NotFound);
