@@ -1519,7 +1519,8 @@ namespace Nethermind.Evm
                         }
 
                         PopUInt256(out UInt256 a, bytesOnStack);
-                        PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, (long)a)?.Bytes ?? BytesZero32, bytesOnStack);
+                        long number = a > long.MaxValue ? long.MaxValue : (long)a;
+                        PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, number)?.Bytes ?? BytesZero32, bytesOnStack);
 
                         break;
                     }
