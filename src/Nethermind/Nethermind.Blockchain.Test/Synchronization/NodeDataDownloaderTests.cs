@@ -390,7 +390,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
 
-        private static ILogManager _logManager = new OneLoggerLogManager(new SimpleConsoleLogger(false));
+        private static ILogManager _logManager = LimboLogs.Instance;
 
         [Test]
         public async Task Can_download_an_empty_tree()
