@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         private ISynchronizer _fullSynchronizer;
-        
+
         public FastSynchronizer(IBlockTree blockTree,
             IHeaderValidator headerValidator,
             ISealValidator sealValidator,
@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain.Synchronization
         private async Task StopFastSync()
         {
             StopSyncTimer();
-        
+
             _peerSyncCancellationTokenSource?.Cancel();
             _syncLoopCancelTokenSource?.Cancel();
 
@@ -226,7 +226,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _fullSynchronizer.RequestSynchronization(reason);
                 return;
             }
-            
+
             if (_logger.IsTrace) _logger.Trace($"Requesting synchronization {reason}");
             _syncRequested.Set();
         }
@@ -339,7 +339,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 _allocation.FinishSync();
-                if(_logger.IsInfo) _logger.Info($"[FAST SYNC] Current sync at {_blockTree.BestSuggested?.Number}!");
+                if (_logger.IsInfo) _logger.Info($"[FAST SYNC] Current sync at {_blockTree.BestSuggested?.Number}!");
                 if ((_blockTree.BestSuggested?.Number ?? 0) > 0) // make it 1024 * 128 or configurable for tests
                 {
                     _syncPeerPool.EnsureBest(_allocation, (_blockTree.BestSuggested?.TotalDifficulty - 1) ?? 0);
@@ -351,16 +351,16 @@ namespace Nethermind.Blockchain.Synchronization
                             if (_logger.IsError) _logger.Error("Best suggested block is null when starting fast sync!");
                             throw new EthSynchronizationException("Best suggested block is null when starting fast sync!");
                         }
-                        
-                        if(_logger.IsInfo) _logger.Info($"[FAST SYNC] Switching to node data download at block {bestSuggested.Number}!");
+
+                        if (_logger.IsInfo) _logger.Info($"[FAST SYNC] Switching to node data download at block {bestSuggested.Number}!");
                         foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
                         {
-                            if(_logger.IsInfo) _logger.Info($"[FAST SYNC] Peers:");
-                            if(_logger.IsInfo) _logger.Info($"[FAST SYNC] {peerInfo}!");
+                            if (_logger.IsInfo) _logger.Info($"[FAST SYNC] Peers:");
+                            if (_logger.IsInfo) _logger.Info($"[FAST SYNC] {peerInfo}!");
                         }
 
                         List<Keccak> stateRoots = new List<Keccak>();
-                        
+
                         stateRoots.Add(bestSuggested.StateRoot);
 //                        for (int i = 0; i < 64; i++)
 //                        {
@@ -378,24 +378,27 @@ namespace Nethermind.Blockchain.Synchronization
                                     if (_logger.IsTrace) _logger.Trace($"Sync with {current} failed. Removed node from sync peers.");
                                     SyncEvent?.Invoke(this, new SyncEventArgs(current.SyncPeer, SyncStatus.Failed));
                                 }
-                            });
-                        _mode = SynchronizationMode.Full;
-                        
-                        _allocation.Replaced -= AllocationOnReplaced;
-                        _allocation.Cancelled -= AllocationOnCancelled;
-                        _syncPeerPool.ReturnPeer(_allocation);
+                                else
+                                {
+                                    _mode = SynchronizationMode.Full;
 
-                        if(_logger.IsInfo) _logger.Info($"[FAST SYNC] complete");
-                        
-                        // avoid deadlocking here
+                                    _allocation.Replaced -= AllocationOnReplaced;
+                                    _allocation.Cancelled -= AllocationOnCancelled;
+                                    _syncPeerPool.ReturnPeer(_allocation);
+
+                                    if (_logger.IsInfo) _logger.Info($"[FAST SYNC] complete");
+
+                                    // avoid deadlocking here
 #pragma warning disable 4014
-                        StopFastSync().ContinueWith(t =>
+                                    StopFastSync().ContinueWith(stopTask =>
 #pragma warning restore 4014
-                        {
-                            _fullSynchronizer.Start();
-                            _fullSynchronizer.RequestSynchronization("fast sync complete");
-                            IsInitialSyncFinished = true;
-                        });
+                                    {
+                                        _fullSynchronizer.Start();
+                                        _fullSynchronizer.RequestSynchronization("fast sync complete");
+                                        IsInitialSyncFinished = true;
+                                    });
+                                }
+                            });
                     }
                 }
             }

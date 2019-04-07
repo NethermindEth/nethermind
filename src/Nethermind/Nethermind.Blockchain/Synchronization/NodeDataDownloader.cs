@@ -20,6 +20,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -80,7 +81,11 @@ namespace Nethermind.Blockchain.Synchronization
 //                )).ToArray();
 //                await Task.WhenAll(tasks);
             } while (dataRequests.Length != 0);
+            
+            _logger.Info($"Finished downloading node data (downloaded {_downloadedNodesCount})");
         }
+
+        private int _downloadedNodesCount = 0;
 
         private AccountDecoder accountDecoder = new AccountDecoder();
 
@@ -96,6 +101,7 @@ namespace Nethermind.Blockchain.Synchronization
             
             if (request.Response == null)
             {
+                throw new EthSynchronizationException("Node sent an empty response");
                 if (_logger.IsWarn) _logger.Warn($"Received empty response");
                 for (int i = 0; i < request.Request.Length; i++)
                 {
@@ -124,16 +130,8 @@ namespace Nethermind.Blockchain.Synchronization
                 byte[] bytes = request.Response[i];
                 if (Keccak.Compute(bytes) != request.Request[i].Hash)
                 {
-                    if(_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {request.Response[i]?.Length} of type {request.Request[i].NodeDataType} at level {request.Request[i].Level} Keccak({request.Response[i].ToHexString()}) != {request.Request[i].Hash}");
-                    
-//                    for (int j = 0; j < 5; j++)
-//                    {
-//                        if (Keccak.Compute(bytes.AsSpan(j)) == request.Request[i].Hash)
-//                        {
-//                            if(_logger.IsError) _logger.Error($"But is good without the first item");    
-//                        }    
-//                    }                    
-                    
+                    if(_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {request.Response[i]?.Length} of type {request.Request[i].NodeDataType} at level {request.Request[i].Level} Keccak({request.Response[i].ToHexString()}) != {request.Request[i].Hash}");            
+                    throw new EthSynchronizationException("Node sent invalid data");
                     invalid++;
                     continue;
                 }
@@ -211,6 +209,8 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 _db.Commit();
             }
+
+            Interlocked.Add(ref _downloadedNodesCount, added); 
             
             if (_logger.IsTrace) _logger.Trace($"Received node data: requested {request.Request.Length}, missing {missing}, added {added}, invalid {invalid}");
         }

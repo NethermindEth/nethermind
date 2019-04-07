@@ -117,25 +117,25 @@ namespace Nethermind.Blockchain.Synchronization
         {
 //            _refreshLoopTask = Task.Run(RunRefreshPeerLoop, _refreshLoopCancellation.Token)
             _refreshLoopTask = Task.Factory.StartNew(
-                RunRefreshPeerLoop,
-                _refreshLoopCancellation.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).Unwrap()
+                    RunRefreshPeerLoop,
+                    _refreshLoopCancellation.Token,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default).Unwrap()
                 .ContinueWith(t =>
-            {
-                if (t.IsFaulted)
                 {
-                    if (_logger.IsError) _logger.Error("Init peer loop encountered an exception.", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Init peer loop stopped.");
-                }
-                else if (t.IsCompleted)
-                {
-                    if (_logger.IsError) _logger.Error("Peer loop completed unexpectedly.");
-                }
-            });
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error("Init peer loop encountered an exception.", t.Exception);
+                    }
+                    else if (t.IsCanceled)
+                    {
+                        if (_logger.IsDebug) _logger.Debug("Init peer loop stopped.");
+                    }
+                    else if (t.IsCompleted)
+                    {
+                        if (_logger.IsError) _logger.Error("Peer loop completed unexpectedly.");
+                    }
+                });
 
             _isStarted = true;
             StartUpgradeTimer();
@@ -151,7 +151,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     continue;
                 }
-                
+
                 if (allocation.Current.TotalDifficulty < (e.Block.TotalDifficulty ?? 0))
                 {
                     allocation.Cancel();
@@ -334,6 +334,12 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
+                // TODO: add when we deploy fast sync enabled Neth
+                if (info.SyncPeer.ClientId.Contains("Nethermind"))
+                {
+                    continue;
+                }
+
                 long latency = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000;
 
                 if (latency <= bestPeer.Latency)
@@ -344,14 +350,14 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (bestPeer.Info == null)
             {
-                if (_logger.IsDebug) _logger.Debug($"[{reason}] No peer found for ETH sync");    
+                if (_logger.IsDebug) _logger.Debug($"[{reason}] No peer found for ETH sync");
             }
             else
             {
                 if (_logger.IsDebug) _logger.Debug($"[{reason}] Best ETH sync peer: {bestPeer.Info} | BlockHeaderAvLatency: {bestPeer.Latency}");
             }
-            
-            
+
+
             return bestPeer.Info;
         }
 
