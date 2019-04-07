@@ -45,7 +45,7 @@ namespace Nethermind.Core.Logging
 
         private void Log(string text)
         {
-            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} {_prefix}[{Thread.CurrentThread.ManagedThreadId}] {text}");
+            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Thread.CurrentThread.ManagedThreadId}] {_prefix}{text}");
         }
         
         public void Info(string text)
