@@ -169,8 +169,6 @@ namespace Nethermind.Blockchain
                 selected.Add(transaction);
                 gasRemaining -= transaction.GasLimit;
             }
-
-            header.TotalTransactions = parent.TotalTransactions + selected.Count;
             
             if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {total} pending transactions.");
             Block block = new Block(header, selected, new BlockHeader[0]);

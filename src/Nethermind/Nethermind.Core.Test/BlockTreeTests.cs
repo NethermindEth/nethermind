@@ -405,7 +405,7 @@ namespace Nethermind.Core.Test
             MemDb blockInfosDb = new MemDb();
             blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
             
-            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, headBlock.Transactions.Length)});
+            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty)});
             level.BlockInfos[0].WasProcessed = true;
 
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
@@ -427,7 +427,7 @@ namespace Nethermind.Core.Test
 
             MemDb blockInfosDb = new MemDb();
             blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash.Bytes);
-            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, headBlock.Transactions.Length)});
+            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty)});
             level.BlockInfos[0].WasProcessed = true;
 
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
@@ -454,7 +454,7 @@ namespace Nethermind.Core.Test
                     Block ithBlock = testTree.FindBlock(i);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, ithBlock.Transactions.Length)});
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value)});
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
@@ -484,7 +484,7 @@ namespace Nethermind.Core.Test
                     Block ithBlock = testTree.FindBlock(i);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, ithBlock.Transactions.Length)});
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value)});
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 

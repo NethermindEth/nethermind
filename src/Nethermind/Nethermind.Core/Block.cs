@@ -167,12 +167,6 @@ namespace Nethermind.Core
             set => Header.TotalDifficulty = value;
         }
 
-        public long? TotalTransactions
-        {
-            get => Header?.TotalTransactions;
-            set => Header.TotalTransactions = value;
-        }
-
         public string ToString(string indent)
         {
             StringBuilder builder = new StringBuilder();

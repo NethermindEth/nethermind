@@ -102,7 +102,6 @@ namespace Nethermind.Blockchain
             if (block.TotalDifficulty == null)
             {
                 block.TotalDifficulty = 1;
-                block.TotalTransactions = block.Transactions.Length;
             }
             
             return TraceBlock(block);

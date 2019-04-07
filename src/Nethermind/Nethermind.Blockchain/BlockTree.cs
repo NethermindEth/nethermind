@@ -326,8 +326,6 @@ namespace Nethermind.Blockchain
                     byte[] newRlp = stream.ToArray();
                     _blockDb.Set(block.Hash, newRlp);
                 }
-
-                SetTotalTransactions(block);
             }
 
             using (MemoryStream stream = Rlp.BorrowStream())
@@ -337,7 +335,7 @@ namespace Nethermind.Blockchain
                 _headerDb.Set(header.Hash, newRlp);
             }
 
-            BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0, block?.TotalTransactions ?? 0);
+            BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
 
             try
             {
@@ -768,7 +766,6 @@ namespace Nethermind.Blockchain
                 }
 
                 headBlockHeader.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
-                headBlockHeader.TotalTransactions = level.BlockInfos[index.Value].TotalTransactions;
 
                 Head = BestSuggested = headBlockHeader;
             }
@@ -953,8 +950,6 @@ namespace Nethermind.Blockchain
             }
 
             BlockInfo blockInfo = LoadInfo(header.Number, header.Hash).Info;
-            header.TotalTransactions = blockInfo.TotalTransactions;
-            if (_logger.IsTrace) _logger.Trace($"Updating total transactions of the main chain to {header.TotalTransactions}");
             header.TotalDifficulty = blockInfo.TotalDifficulty;
             if (_logger.IsTrace) _logger.Trace($"Updating total difficulty of the main chain to {header.TotalDifficulty}");
 
@@ -998,7 +993,7 @@ namespace Nethermind.Blockchain
                 // TODO: this is here because storing block data is not transactional
                 // TODO: would be great to remove it, he?
                 SetTotalDifficulty(block);
-                blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
+                blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value);
                 try
                 {
                     _blockInfoLock.EnterWriteLock();
@@ -1014,7 +1009,6 @@ namespace Nethermind.Blockchain
             else
             {
                 block.TotalDifficulty = blockInfo.TotalDifficulty;
-                block.TotalTransactions = blockInfo.TotalTransactions;
             }
 
             return (block, blockInfo, level);
@@ -1046,8 +1040,7 @@ namespace Nethermind.Blockchain
                 // TODO: this is here because storing block data is not transactional
                 // TODO: would be great to remove it, he?
                 SetTotalDifficulty(block.Header);
-                SetTotalTransactions(block);
-                blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
+                blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value);
                 try
                 {
                     _blockInfoLock.EnterWriteLock();
@@ -1063,7 +1056,6 @@ namespace Nethermind.Blockchain
             else
             {
                 block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
-                block.Header.TotalTransactions = blockInfo.TotalTransactions;
             }
 
             return (block, blockInfo, level);
@@ -1100,30 +1092,6 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Calculated total difficulty for {header} is {header.TotalDifficulty}");
-            }
-        }
-
-        private void SetTotalTransactions(Block block)
-        {
-            if (block.Number == 0)
-            {
-                block.Header.TotalTransactions = block.Transactions.Length;
-            }
-            else
-            {
-                Block parent = this.FindParent(block);
-                if (parent == null)
-                {
-                    throw new InvalidOperationException($"An orphaned block on the chain {block}");
-                }
-
-                if (parent.TotalTransactions == null)
-                {
-                    throw new InvalidOperationException(
-                        $"Parent's {nameof(parent.TotalTransactions)} unknown when calculating for {block}");
-                }
-
-                block.Header.TotalTransactions = parent.TotalTransactions + block.Transactions.Length;
             }
         }
     }

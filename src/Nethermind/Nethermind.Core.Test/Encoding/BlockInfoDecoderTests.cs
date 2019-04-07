@@ -33,7 +33,6 @@ namespace Nethermind.Core.Test.Encoding
             BlockInfo blockInfo = new BlockInfo();
             blockInfo.BlockHash = TestItem.KeccakA;
             blockInfo.TotalDifficulty = 1;
-            blockInfo.TotalTransactions = 1;
             blockInfo.WasProcessed = true;
 
             Rlp rlp = Rlp.Encode(blockInfo);
@@ -41,7 +40,6 @@ namespace Nethermind.Core.Test.Encoding
             Assert.True(decoded.WasProcessed, "0 processed");
             Assert.AreEqual(TestItem.KeccakA, decoded.BlockHash, "block hash");
             Assert.AreEqual(UInt256.One, decoded.TotalDifficulty, "difficulty");
-            Assert.AreEqual(1L, decoded.TotalTransactions, "txs");
         }
     }
 }

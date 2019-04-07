@@ -33,13 +33,11 @@ namespace Nethermind.Core.Test.Encoding
             BlockInfo blockInfo = new BlockInfo();
             blockInfo.BlockHash = TestItem.KeccakA;
             blockInfo.TotalDifficulty = 1;
-            blockInfo.TotalTransactions = 1;
             blockInfo.WasProcessed = true;
 
             BlockInfo blockInfo2 = new BlockInfo();
             blockInfo2.BlockHash = TestItem.KeccakB;
             blockInfo2.TotalDifficulty = 2;
-            blockInfo2.TotalTransactions = 2;
             blockInfo2.WasProcessed = false;
 
             ChainLevelInfo chainLevelInfo = new ChainLevelInfo(true, new[] {blockInfo, blockInfo2});
@@ -52,7 +50,6 @@ namespace Nethermind.Core.Test.Encoding
             Assert.False(decoded.BlockInfos[1].WasProcessed, "1 not processed");
             Assert.AreEqual(TestItem.KeccakA, decoded.BlockInfos[0].BlockHash, "block hash");
             Assert.AreEqual(UInt256.One, decoded.BlockInfos[0].TotalDifficulty, "difficulty");
-            Assert.AreEqual(1L, decoded.BlockInfos[0].TotalTransactions, "txs");
         }
     }
 }

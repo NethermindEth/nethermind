@@ -266,12 +266,6 @@ namespace Nethermind.Clique.Test
                 return this;
             }
 
-            public On AssertTotalTxCount(PrivateKey nodeKey, long count)
-            {
-                Assert.AreEqual(count, _blockTrees[nodeKey].Head.TotalTransactions, nodeKey.Address + " total tx count");
-                return this;
-            }
-
             public On AssertHeadBlockTimestamp(PrivateKey nodeKey)
             {
                 Assert.LessOrEqual(_blockTrees[nodeKey].FindBlock(_blockTrees[nodeKey].Head.Number - 1).Timestamp + _cliqueConfig.BlockPeriod, _blockTrees[nodeKey].Head.Timestamp + 1);
@@ -452,8 +446,7 @@ namespace Nethermind.Clique.Test
                 .CreateNode(TestItem.PrivateKeyA)
                 .AddPendingTransaction(TestItem.PrivateKeyA)
                 .ProcessGenesis()
-                .AssertHeadBlockIs(TestItem.PrivateKeyA, 1L)
-                .AssertTotalTxCount(TestItem.PrivateKeyA, 1L);
+                .AssertHeadBlockIs(TestItem.PrivateKeyA, 1L);
         }
 
         [Test]
@@ -467,8 +460,7 @@ namespace Nethermind.Clique.Test
                 .AddAllBadTransactions(TestItem.PrivateKeyA)
                 .AddQueuedTransaction(TestItem.PrivateKeyA)
                 .ProcessGenesis()
-                .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
-                .AssertTotalTxCount(TestItem.PrivateKeyA, 3L);
+                .AssertHeadBlockIs(TestItem.PrivateKeyA, 1);
         }
 
         [Test]
@@ -755,8 +747,6 @@ namespace Nethermind.Clique.Test
                     }
                 }
             }
-
-            goerli.AssertTotalTxCount(keys[0], 9);
         }
     }
 }

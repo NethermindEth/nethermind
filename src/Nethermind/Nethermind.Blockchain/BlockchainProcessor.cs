@@ -284,8 +284,6 @@ namespace Nethermind.Blockchain
 
             UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
             if (_logger.IsTrace) _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
-            long totalTransactions = suggestedBlock.TotalTransactions ?? 0;
-            if (_logger.IsTrace) _logger.Trace($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
 
             Block[] processedBlocks = null;
             if (_blockTree.Head == null || totalDifficulty > _blockTree.Head.TotalDifficulty || (options & ProcessingOptions.ForceProcessing) != 0)
@@ -386,7 +384,6 @@ namespace Nethermind.Blockchain
                 lastProcessed = processedBlocks[processedBlocks.Length - 1];
                 if (_logger.IsTrace) _logger.Trace($"Setting total on last processed to {lastProcessed.ToString(Block.Format.Short)}");
                 lastProcessed.TotalDifficulty = suggestedBlock.TotalDifficulty;
-                lastProcessed.TotalTransactions = suggestedBlock.TotalTransactions;
             }
             else
             {
