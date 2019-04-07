@@ -92,7 +92,9 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_logger.IsInfo) _logger.Info("Sync shutdown complete.. please wait for all components to close");
         }
-        
+
+        public bool IsInitialSyncFinished => true;
+
         private System.Timers.Timer _syncTimer;
         
         private void StopSyncTimer()

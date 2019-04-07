@@ -107,6 +107,8 @@ namespace Nethermind.Blockchain.Synchronization
             await StopFastSync();
         }
 
+        public bool IsInitialSyncFinished { get; set; }
+
         private async Task StopFastSync()
         {
             StopSyncTimer();
@@ -343,7 +345,14 @@ namespace Nethermind.Blockchain.Synchronization
                     _syncPeerPool.EnsureBest(_allocation, (_blockTree.BestSuggested?.TotalDifficulty - 1) ?? 0);
                     if ((_allocation.Current?.HeadNumber ?? 0) <= (_blockTree.BestSuggested?.Number ?? 0) + 1024)
                     {
-                        if(_logger.IsInfo) _logger.Info($"[FAST SYNC] Switching to node data download at block {_blockTree.BestSuggested?.Number}!");
+                        BlockHeader bestSuggested = _blockTree.BestSuggested;
+                        if (bestSuggested == null)
+                        {
+                            if (_logger.IsError) _logger.Error("Best suggested block is null when starting fast sync!");
+                            throw new EthSynchronizationException("Best suggested block is null when starting fast sync!");
+                        }
+                        
+                        if(_logger.IsInfo) _logger.Info($"[FAST SYNC] Switching to node data download at block {bestSuggested.Number}!");
                         foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
                         {
                             if(_logger.IsInfo) _logger.Info($"[FAST SYNC] Peers:");
@@ -351,12 +360,6 @@ namespace Nethermind.Blockchain.Synchronization
                         }
 
                         List<Keccak> stateRoots = new List<Keccak>();
-                        BlockHeader bestSuggested = _blockTree.BestSuggested;
-                        if (bestSuggested == null)
-                        {
-                            if (_logger.IsError) _logger.Error("Best suggested block is null when starting fast sync!");
-                            throw new EthSynchronizationException("Best suggested block is null when starting fast sync!");
-                        }
                         
                         stateRoots.Add(bestSuggested.StateRoot);
 //                        for (int i = 0; i < 64; i++)
@@ -365,7 +368,17 @@ namespace Nethermind.Blockchain.Synchronization
 //                        }
 
                         _mode = SynchronizationMode.NodeData;
-                        await _nodeDataDownloader.SyncNodeData(stateRoots.Select<Keccak, (Keccak, NodeDataType)>(sr => (sr, NodeDataType.State)).ToArray());
+                        await _nodeDataDownloader.SyncNodeData(stateRoots.Select<Keccak, (Keccak, NodeDataType)>(sr => (sr, NodeDataType.State)).ToArray()).ContinueWith(
+                            t =>
+                            {
+                                PeerInfo current = _allocation.Current;
+                                if (t.IsFaulted && _allocation.Current != null)
+                                {
+                                    _syncPeerPool.RemovePeer(current.SyncPeer);
+                                    if (_logger.IsTrace) _logger.Trace($"Sync with {current} failed. Removed node from sync peers.");
+                                    SyncEvent?.Invoke(this, new SyncEventArgs(current.SyncPeer, SyncStatus.Failed));
+                                }
+                            });
                         _mode = SynchronizationMode.Full;
                         
                         _allocation.Replaced -= AllocationOnReplaced;
@@ -380,7 +393,8 @@ namespace Nethermind.Blockchain.Synchronization
 #pragma warning restore 4014
                         {
                             _fullSynchronizer.Start();
-                            _fullSynchronizer.RequestSynchronization("fast sync complete");    
+                            _fullSynchronizer.RequestSynchronization("fast sync complete");
+                            IsInitialSyncFinished = true;
                         });
                     }
                 }
@@ -432,8 +446,8 @@ namespace Nethermind.Blockchain.Synchronization
             int ancestorLookupLevel = 0;
             int emptyBlockListCounter = 0;
 
-            // fast sync 64 (BetsKnown + 64 below) here - review where it should be added
-            long currentNumber = Math.Min(_blockTree.BestKnownNumber + 64, peerInfo.HeadNumber - 1);
+            // fast sync 16 (BetsKnown + 16 below) here - review where it should be added
+            long currentNumber = Math.Min(_blockTree.BestKnownNumber + 16, peerInfo.HeadNumber - 1);
             while (peerInfo.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= peerInfo.HeadNumber)
             {
                 if (_logger.IsTrace) _logger.Trace($"Continue syncing with {peerInfo} (our best {_blockTree.BestKnownNumber})");
@@ -703,50 +717,6 @@ namespace Nethermind.Blockchain.Synchronization
     }
 }
 
-
-///*
-// * Copyright (c) 2018 Demerzel Solutions Limited
-// * This file is part of the Nethermind library.
-// *
-// * The Nethermind library is free software: you can redistribute it and/or modify
-// * it under the terms of the GNU Lesser General Public License as published by
-// * the Free Software Foundation, either version 3 of the License, or
-// * (at your option) any later version.
-// *
-// * The Nethermind library is distributed in the hope that it will be useful,
-// * but WITHOUT ANY WARRANTY; without even the implied warranty of
-// * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// * GNU Lesser General Public License for more details.
-// *
-// * You should have received a copy of the GNU Lesser General Public License
-// * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// */
-//
-//using System;
-//using System.Data;
-//using System.Linq;
-//using System.Threading;
-//using System.Threading.Tasks;
-//using Nethermind.Blockchain.Receipts;
-//using Nethermind.Core;
-//using Nethermind.Core.Logging;
-//
-//namespace Nethermind.Blockchain.Synchronization
-//{
-//    public class FastSynchronizer : IFastSynchronizer
-//    {
-//        private readonly ILogger _logger;
-//        private readonly INodeDataDownloader _nodeDataDownloader;
-//        private readonly IReceiptStorage _receiptStorage;
-//
-//        public FastSynchronizer(INodeDataDownloader nodeDataDownloader, IReceiptStorage receiptStorage, ILogManager logManager)
-//        {
-//            _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
-//            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-//            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-//        }
-//
-//        [Todo(Improve.MissingFunctionality, "Eth63 / fast sync can download receipts using this method. Fast sync is not implemented although its methods and serializers are already written.")]
 //        private async Task<bool> DownloadReceipts(Block[] blocks, ISyncPeer peer)
 //        {
 //            var blocksWithTransactions = blocks.Where(b => b.Transactions.Length != 0).ToArray();

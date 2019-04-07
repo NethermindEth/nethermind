@@ -62,13 +62,6 @@ namespace Nethermind.Blockchain.Synchronization
         public BlockHeader Genesis => _blockTree.Genesis;
         public BlockHeader Head => _blockTree.Head;
 
-        private bool _initialSyncDone = false;
-        
-        public void MarkInitialSyncFinished()
-        {
-            _initialSyncDone = true;
-        }
-
         public int GetPeerCount()
         {
             return _pool.PeerCount;
@@ -76,7 +69,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void AddNewBlock(Block block, Node nodeWhoSentTheBlock)
         {
-            if (!_initialSyncDone)
+            if (!_synchronizer.IsInitialSyncFinished)
             {
                 return;
             }
@@ -142,7 +135,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void HintBlock(Keccak hash, long number, Node node)
         {
-            if (!_initialSyncDone)
+            if (!_synchronizer.IsInitialSyncFinished)
             {
                 return;
             }
