@@ -498,7 +498,6 @@ namespace Nethermind.Runner.Runners
                     _rewardCalculator = NoBlockRewards.Instance;
                     break;
                 case SealEngineType.Clique:
-                    Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(CliqueHeaderDecoder)));
                     _rewardCalculator = NoBlockRewards.Instance;
                     cliqueConfig = new CliqueConfig();
                     cliqueConfig.BlockPeriod = _chainSpec.CliquePeriod;

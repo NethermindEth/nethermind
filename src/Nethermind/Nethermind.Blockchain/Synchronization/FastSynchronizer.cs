@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
-            
+
             _nodeDataDownloader.SetExecutor(this);
         }
 
@@ -321,25 +321,27 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 _allocation.FinishSync();
-//                _logger.Warn($"[FAST SYNC] Current sync at {_blockTree.BestSuggested?.Number}!");
-//                if ((_blockTree.BestSuggested?.Number ?? 0) > 10)
-//                {
-//                    _syncPeerPool.EnsureBest(_allocation, (_blockTree.BestSuggested?.TotalDifficulty - 1) ?? 0);
-//                    if ((_allocation.Current?.HeadNumber ?? 0) <= (_blockTree.BestSuggested?.Number ?? 0) + 1024)
-//                    {
-//                        _logger.Warn($"[FAST SYNC] Switching to node data download at block {_blockTree.BestSuggested?.Number}!");
-//                        foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
-//                        {
-//                            _logger.Warn($"[FAST SYNC] Peers:");
-//                            _logger.Warn($"[FAST SYNC] {peerInfo}!");
-//                        }
-//
-//                        await _nodeDataDownloader.SyncNodeData((_blockTree.BestSuggested?.Hash, NodeDataType.State));
-//                        _mode = SynchronizationMode.NodeData;
-//                    }
-//                }
+                _logger.Warn($"[FAST SYNC] Current sync at {_blockTree.BestSuggested?.Number}!");
+                if ((_blockTree.BestSuggested?.Number ?? 0) > 10)
+                {
+                    _syncPeerPool.EnsureBest(_allocation, (_blockTree.BestSuggested?.TotalDifficulty - 1) ?? 0);
+                    if ((_allocation.Current?.HeadNumber ?? 0) <= (_blockTree.BestSuggested?.Number ?? 0) + 1024)
+                    {
+                        _logger.Warn($"[FAST SYNC] Switching to node data download at block {_blockTree.BestSuggested?.Number}!");
+                        foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
+                        {
+                            _logger.Warn($"[FAST SYNC] Peers:");
+                            _logger.Warn($"[FAST SYNC] {peerInfo}!");
+                        }
+
+                        await _nodeDataDownloader.SyncNodeData((_blockTree.BestSuggested?.Hash, NodeDataType.State));
+                        _mode = SynchronizationMode.NodeData;
+                    }
+                }
             }
         }
+
+        SynchronizationMode _mode = SynchronizationMode.Blocks;
 
         private ConcurrentDictionary<PublicKey, Keccak> _doNotAskForThis = new ConcurrentDictionary<PublicKey, Keccak>();
 
@@ -439,15 +441,24 @@ namespace Nethermind.Blockchain.Synchronization
 
                 List<Keccak> hashes = new List<Keccak>();
                 Dictionary<Keccak, BlockHeader> headersByHash = new Dictionary<Keccak, BlockHeader>();
-                for (int i = 1; i < headers.Length; i++)
+                try
                 {
-                    if (headers[i] == null)
+                    for (int i = 1; i < headers.Length; i++)
                     {
-                        break;
-                    }
+                        BlockHeader header = headers[i];
+                        if (header == null)
+                        {
+                            break;
+                        }
 
-                    hashes.Add(headers[i].Hash);
-                    headersByHash[headers[i].Hash] = headers[i];
+                        hashes.Add(header.Hash);
+                        headersByHash[header.Hash] = header;
+                    }
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    throw;
                 }
 
                 if (hashes.Count == 0)
@@ -533,7 +544,7 @@ namespace Nethermind.Blockchain.Synchronization
                     if (i != 0 && blockHeaders[i].ParentHash != blockHeaders[i - 1].Hash)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {peerInfo}");
-                        throw new EthSynchronizationException("Peer sent an inconsistent block list");
+                        throw new EthSynchronizationException($"Peer sent an inconsistent block list - {currentNumber + 1 + i}.ParentHash ({blockHeaders[i].ParentHash}) != {currentNumber + 1 + i - 1}.Hash ({blockHeaders[i - 1].Hash})");
                     }
                 }
 
@@ -620,10 +631,10 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 currentNumber = blockHeaders[blockHeaders.Length - 1].Number;
-                if (_blockTree.BestKnownNumber > _lastSyncNumber + 10000 || _blockTree.BestKnownNumber < _lastSyncNumber)
+                if (_blockTree.BestKnownNumber > _lastSyncNumber + 1000 || _blockTree.BestKnownNumber < _lastSyncNumber)
                 {
                     _lastSyncNumber = _blockTree.BestKnownNumber;
-                    if (_logger.IsDebug) _logger.Debug($"Downloading blocks. Current best at {_blockTree.BestSuggested?.ToString(BlockHeader.Format.Short)}");
+                    if (_logger.IsInfo) _logger.Info($"Downloading headers {_blockTree.BestSuggested?.Number}/{_allocation.Current?.HeadNumber}");
                 }
             }
 
