@@ -185,7 +185,7 @@ namespace Nethermind.Blockchain
 
             if (block.Number != 0)
             {
-                Block parent = _blockTree.FindParent(block);
+                BlockHeader parent = _blockTree.FindParentHeader(block.Header);
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
@@ -200,7 +200,7 @@ namespace Nethermind.Blockchain
 
             if (block.Number != 0)
             {
-                Block parent = _blockTree.FindParent(block);
+                BlockHeader parent = _blockTree.FindParentHeader(block.Header);
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 

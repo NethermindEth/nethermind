@@ -335,7 +335,7 @@ namespace Nethermind.Runner.Runners
 
             if (_logger.IsInfo) _logger.Info("Stopping synchronizer...");
             var synchronizerTask = _synchronizer?.StopAsync() ?? Task.CompletedTask;
-            
+
             if (_logger.IsInfo) _logger.Info("Stopping sync peer pool...");
             var peerPoolTask = _syncPeerPool?.StopAsync() ?? Task.CompletedTask;
 
@@ -700,9 +700,13 @@ namespace Nethermind.Runner.Runners
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             ISyncConfig syncConfig = _configProvider.GetConfig<ISyncConfig>();
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
-            _synchronizer = new FastSynchronizer(_blockTree, _headerValidator, _sealValidator, txValidator, _syncPeerPool, syncConfig, nodeDataDownloader, _logManager);
+
+            ISynchronizer fullSynchronizer = new FullSynchronizer(_blockTree, _blockValidator, sealValidator, txValidator, _syncPeerPool, syncConfig, _logManager);
+            _synchronizer = syncConfig.FastSync ? new FastSynchronizer(_blockTree, _headerValidator, _sealValidator, txValidator, _syncPeerPool, syncConfig, nodeDataDownloader, fullSynchronizer, _logManager) : fullSynchronizer;
+
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,
+                _dbProvider.CodeDb,
                 _blockTree,
                 _receiptStorage,
                 sealValidator,
@@ -826,7 +830,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             _messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
             _messageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
-            
+
             var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher,
                 _cryptoRandom, new Ecdsa(), _nodeKey, _logManager);
 

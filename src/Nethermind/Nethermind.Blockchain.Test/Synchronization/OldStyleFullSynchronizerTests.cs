@@ -45,6 +45,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             _stateDb = new StateDb();
+            _codeDb = new StateDb();
             _receiptsDb = new MemDb();
             _receiptStorage = Substitute.For<IReceiptStorage>();
             SyncConfig quickConfig = new SyncConfig();
@@ -57,7 +58,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
             _pool = new EthSyncPeerPool(_blockTree, stats, quickConfig, LimboLogs.Instance);
             _synchronizer = new FullSynchronizer(_blockTree, blockValidator, sealValidator, txValidator, _pool, quickConfig, LimboLogs.Instance);
-            _syncServer = new SyncServer(_stateDb, _blockTree, _receiptStorage, sealValidator, _pool, _synchronizer, LimboLogs.Instance);
+            _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, sealValidator, _pool, _synchronizer, LimboLogs.Instance);
         }
 
         [TearDown]
@@ -68,6 +69,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         private ISnapshotableDb _stateDb;
+        private ISnapshotableDb _codeDb;
         private IDb _receiptsDb;
         private IBlockTree _blockTree;
         private IBlockTree _remoteBlockTree;

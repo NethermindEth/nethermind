@@ -397,7 +397,7 @@ namespace Nethermind.Blockchain
         private bool RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)
         {
             /* a bit hacky way to get the invalid branch out of the processing loop */
-            if (suggestedBlock.Number != 0 && _blockTree.FindParent(suggestedBlock) == null)
+            if (suggestedBlock.Number != 0 && _blockTree.FindParentHeader(suggestedBlock.Header) == null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
                 return false;

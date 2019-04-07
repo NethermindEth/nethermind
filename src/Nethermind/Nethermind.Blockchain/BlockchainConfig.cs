@@ -23,6 +23,7 @@ namespace Nethermind.Blockchain
     [Todo(Improve.Refactor, "Rename to SyncConfig")]
     public class SyncConfig : ISyncConfig
     {
+        public bool FastSync { get; set; } = true;
         public int SyncTimerInterval { get; set; } = 1000;
         public int SyncPeersMaxCount { get; set; } = 25;
         public long MinAvailableBlockDiffForSyncSwitch { get; } = 100;

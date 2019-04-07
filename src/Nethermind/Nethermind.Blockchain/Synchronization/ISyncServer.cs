@@ -38,5 +38,7 @@ namespace Nethermind.Blockchain.Synchronization
         int ChainId { get; }
         BlockHeader Genesis { get; }
         BlockHeader Head { get; }
+
+        void MarkInitialSyncFinished();
     }
 }

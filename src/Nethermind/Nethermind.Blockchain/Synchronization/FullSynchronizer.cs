@@ -496,7 +496,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (blocks.Length > 0)
                 {
-                    Block parent = _blockTree.FindParent(blocks[0]);
+                    BlockHeader parent = _blockTree.FindParentHeader(blocks[0].Header);
                     if (parent == null)
                     {
                         ancestorLookupLevel += _currentBatchSize;

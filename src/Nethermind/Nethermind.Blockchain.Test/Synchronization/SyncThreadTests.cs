@@ -280,15 +280,17 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var producer = new DevBlockProducer(txPool, devChainProcessor, tree, new Timestamp(), logManager);
             
             ISynchronizer synchronizer;
+            ISynchronizer fullSynchronizer = new FullSynchronizer(
+                tree,
+                blockValidator,
+                sealValidator,
+                txValidator,
+                syncPeerPool, new SyncConfig(), logManager);
+
             switch (_synchronizerType)
-            {
+            { 
                 case SynchronizerType.Full:
-                    synchronizer = new FullSynchronizer(
-                        tree,
-                        blockValidator,
-                        sealValidator,
-                        txValidator,
-                        syncPeerPool, new SyncConfig(), logManager);
+                    synchronizer = fullSynchronizer;
                     break;
                 case SynchronizerType.Fast:
                     NodeDataDownloader downloader = new NodeDataDownloader(codeDb, stateDb, logManager);
@@ -297,13 +299,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
                         headerValidator,
                         sealValidator,
                         txValidator,
-                        syncPeerPool, new SyncConfig(), downloader, logManager);
+                        syncPeerPool, new SyncConfig(), downloader, fullSynchronizer, logManager);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
 
-            var syncServer = new SyncServer(stateDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, logManager);
+            var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, logManager);
 
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();
             tree.NewHeadBlock += (s, e) => waitEvent.Set();

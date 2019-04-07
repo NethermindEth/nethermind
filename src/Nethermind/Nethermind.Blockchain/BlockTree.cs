@@ -219,6 +219,14 @@ namespace Nethermind.Blockchain
                     if (block == null)
                     {
                         BlockHeader header = FindHeader(maxDifficultyBlock.BlockHash, false);
+                        if (header == null)
+                        {
+                            _blockInfoDb.Delete(blockNumber);
+                            BestKnownNumber = blockNumber - 1;
+                            // TODO: check if it is the last one
+                            break;
+                        }
+                        
                         BestSuggested = header;
                         // fast sync WIP
 //                        if (_logger.IsError) _logger.Error($"Could not find block {maxDifficultyBlock.BlockHash}. DB load cancelled.");
@@ -271,7 +279,7 @@ namespace Nethermind.Blockchain
 
                 if (_logger.IsInfo)
                 {
-                    _logger.Info($"Completed loading blocks from DB at block {blockNumber}");
+                    _logger.Info($"Completed loading blocks from DB at block {blockNumber} - best known {BestKnownNumber}");
                 }
             }
             finally

@@ -37,26 +37,37 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISealValidator _sealValidator;
         private readonly ISnapshotableDb _stateDb;
+        private readonly ISnapshotableDb _codeDb;
         private readonly ISynchronizer _synchronizer;
         private object _dummyValue = new object();
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
         
-        public SyncServer(ISnapshotableDb stateDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ILogManager logManager)
+        public SyncServer(ISnapshotableDb stateDb, ISnapshotableDb codeDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ILogManager logManager)
         {
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
             _blockTree.NewHeadBlock += OnNewHeadBlock;
         }
+        
+        
 
         public int ChainId => _blockTree.ChainId;
         public BlockHeader Genesis => _blockTree.Genesis;
         public BlockHeader Head => _blockTree.Head;
+
+        private bool _initialSyncDone = false;
+        
+        public void MarkInitialSyncFinished()
+        {
+            _initialSyncDone = true;
+        }
 
         public int GetPeerCount()
         {
@@ -65,6 +76,11 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void AddNewBlock(Block block, Node nodeWhoSentTheBlock)
         {
+            if (!_initialSyncDone)
+            {
+                return;
+            }
+            
             if (block.TotalDifficulty == null) throw new InvalidOperationException("Cannot add a block with unknown total difficulty");
 
             _pool.TryFind(nodeWhoSentTheBlock.Id, out PeerInfo peerInfo);
@@ -126,6 +142,11 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void HintBlock(Keccak hash, long number, Node node)
         {
+            if (!_initialSyncDone)
+            {
+                return;
+            }
+            
             if (!_pool.TryFind(node.Id, out PeerInfo peerInfo))
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a block hint from an unknown {node:c}, ignoring");
@@ -179,7 +200,10 @@ namespace Nethermind.Blockchain.Synchronization
         public byte[][] GetNodeData(Keccak[] keys)
         {
             var values = new byte[keys.Length][];
-            for (int i = 0; i < keys.Length; i++) values[i] = _stateDb.Get(keys[i]);
+            for (int i = 0; i < keys.Length; i++)
+            {
+                values[i] = _stateDb.Get(keys[i]) ?? _codeDb.Get(keys[i]);
+            }
 
             return values;
         }

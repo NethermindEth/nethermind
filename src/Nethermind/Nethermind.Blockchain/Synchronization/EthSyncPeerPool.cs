@@ -413,6 +413,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void ReturnPeer(SyncPeerAllocation syncPeerAllocation)
         {
+            if (_logger.IsInfo) _logger.Info($"Returning {syncPeerAllocation}");
             _allocations.TryRemove(syncPeerAllocation, out _);
         }
 

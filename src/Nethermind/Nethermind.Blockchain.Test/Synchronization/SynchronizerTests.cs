@@ -273,30 +273,31 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 _logger = _logManager.GetClassLogger();
                 ISnapshotableDb stateDb = new StateDb();
+                ISnapshotableDb codeDb = new StateDb();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(),  new MemDb(), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, _logManager);
                 var stats = new NodeStatsManager(new StatsConfig(), _logManager);
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, new SyncConfig(), _logManager);
 
-                MemDb codeDb = new MemDb();
                 NodeDataDownloader downloader = new NodeDataDownloader(codeDb, stateDb, _logManager);
+                ISynchronizer fullSynchronizer = new FullSynchronizer(BlockTree,
+                    TestBlockValidator.AlwaysValid,
+                    TestSealValidator.AlwaysValid,
+                    TestTxValidator.AlwaysValid,
+                    SyncPeerPool, new SyncConfig(), _logManager); 
                 if (synchronizerType == SynchronizerType.Fast)
                 {
                     Synchronizer = new FastSynchronizer(BlockTree,
                         TestHeaderValidator.AlwaysValid,
                         TestSealValidator.AlwaysValid,
                         TestTxValidator.AlwaysValid,
-                        SyncPeerPool, new SyncConfig(), downloader, _logManager);
+                        SyncPeerPool, new SyncConfig(), downloader, fullSynchronizer, _logManager);
                 }
                 else
                 {
-                    Synchronizer = new FullSynchronizer(BlockTree,
-                        TestBlockValidator.AlwaysValid,
-                        TestSealValidator.AlwaysValid,
-                        TestTxValidator.AlwaysValid,
-                        SyncPeerPool, new SyncConfig(), _logManager);
+                    Synchronizer = fullSynchronizer;
                 }
                 
-                SyncServer = new SyncServer(stateDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, _logManager);
+                SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, _logManager);
                 SyncPeerPool.Start();
 
                 Synchronizer.Start();

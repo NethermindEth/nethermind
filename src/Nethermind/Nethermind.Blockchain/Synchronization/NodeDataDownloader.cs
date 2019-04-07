@@ -19,16 +19,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -61,27 +58,55 @@ namespace Nethermind.Blockchain.Synchronization
             do
             {
                 dataRequests = PrepareRequests();
-                Task[] tasks = dataRequests.Select(dr => _executor.ExecuteRequest(dr).ContinueWith(
-                    t =>
+                for (int i = 0; i < dataRequests.Length; i++)
+                {
+                    await _executor.ExecuteRequest(dataRequests[i]).ContinueWith(t =>
                     {
                         if (t.IsCompleted)
                         {
                             HandleResponse(t.Result);
                         }
-                    }
-                )).ToArray();
-                await Task.WhenAll(tasks);
+                    });
+                }
+                
+//                Task[] tasks = dataRequests.Select(dr => _executor.ExecuteRequest(dr).ContinueWith(
+//                    t =>
+//                    {
+//                        if (t.IsCompleted)
+//                        {
+//                            HandleResponse(t.Result);
+//                        }
+//                    }
+//                )).ToArray();
+//                await Task.WhenAll(tasks);
             } while (dataRequests.Length != 0);
         }
 
         private AccountDecoder accountDecoder = new AccountDecoder();
 
         private object _responseLock = new object();
-
+        
         private void HandleResponse(NodeDataRequest request)
         {
-            if (_logger.IsTrace) _logger.Trace($"Received node data - {request.Response.Length} items in response to {request.Response.Length}");
+            if (request.Request == null)
+            {
+                if (_logger.IsError) _logger.Error($"Sent a null node data request!");
+                return;
+            }
+            
+            if (request.Response == null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Received empty response");
+                for (int i = 0; i < request.Request.Length; i++)
+                {
+                    _nodes.Add(request.Request[i]);
+                }
 
+                return;
+            }
+            
+            if (_logger.IsTrace) _logger.Trace($"Received node data - {request.Response.Length} items in response to {request.Request.Length}");
+            
             int missing = 0;
             int added = 0;
             int invalid = 0;
@@ -99,7 +124,16 @@ namespace Nethermind.Blockchain.Synchronization
                 byte[] bytes = request.Response[i];
                 if (Keccak.Compute(bytes) != request.Request[i].Hash)
                 {
-                    if(_logger.IsWarn) _logger.Warn($"Peer sent invalid data ({request.Request[i].Hash}) of type {request.Request[i].NodeDataType}");
+                    if(_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {request.Response[i]?.Length} of type {request.Request[i].NodeDataType} at level {request.Request[i].Level} Keccak({request.Response[i].ToHexString()}) != {request.Request[i].Hash}");
+                    
+//                    for (int j = 0; j < 5; j++)
+//                    {
+//                        if (Keccak.Compute(bytes.AsSpan(j)) == request.Request[i].Hash)
+//                        {
+//                            if(_logger.IsError) _logger.Error($"But is good without the first item");    
+//                        }    
+//                    }                    
+                    
                     invalid++;
                     continue;
                 }

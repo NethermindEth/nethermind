@@ -342,7 +342,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 request.Response = new byte[request.Request.Length][];
 
                 int i = 0;
-                foreach ((Keccak hash, NodeDataType nodeType) in request.Request)
+                foreach ((Keccak hash, NodeDataType nodeType, int level) in request.Request)
                 {
                     request.Response[i++] = _stateDb[hash.Bytes] ?? _codeDb[hash.Bytes];
                 }
@@ -358,7 +358,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 request.Response = new byte[request.Request.Length][];
 
                 int i = 0;
-                foreach ((_, _) in request.Request)
+                foreach ((_, _, _) in request.Request)
                 {
                     request.Response[i++] = new byte[] {1, 2, 3};
                 }
