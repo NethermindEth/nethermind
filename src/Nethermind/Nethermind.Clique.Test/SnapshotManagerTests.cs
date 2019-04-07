@@ -94,11 +94,10 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Can_calculate_clique_header_hash()
         {
-            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
             BlockHeader header = BuildCliqueBlock();
 
             Keccak expectedHeaderHash = new Keccak("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
-            Keccak headerHash = snapshotManager.CalculateCliqueHeaderHash(header);
+            Keccak headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Assert.AreEqual(expectedHeaderHash, headerHash);
         }
 

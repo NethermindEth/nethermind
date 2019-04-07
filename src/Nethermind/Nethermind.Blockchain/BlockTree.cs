@@ -673,6 +673,7 @@ namespace Nethermind.Blockchain
                 for (int i = 0; i < processedBlocks.Length; i++)
                 {
                     _blockCache.Set(processedBlocks[i].Hash, processedBlocks[i]);
+                    _headerCache.Set(processedBlocks[i].Hash, processedBlocks[i].Header);
                     MoveToMain(processedBlocks[i]);
                 }
             }

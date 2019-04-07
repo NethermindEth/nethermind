@@ -97,7 +97,7 @@ namespace Nethermind.Clique.Test
         {
             Block block6 = CreateBlock(2, 6, _lastBlock);
             Block signed = await _clique.SealBlock(block6, CancellationToken.None);
-            bool validHeader = _sealValidator.ValidateParams(_blockTree.FindBlock(signed.ParentHash, false), signed.Header);
+            bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(signed.ParentHash, false), signed.Header);
             bool validSeal = _sealValidator.ValidateSeal(signed.Header);
             Assert.True(validHeader);
             Assert.True(validSeal);

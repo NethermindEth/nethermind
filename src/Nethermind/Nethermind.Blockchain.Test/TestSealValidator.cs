@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Test
             _processedValidationResults = processedValidationResults ?? throw new ArgumentNullException(nameof(processedValidationResults));
         }
 
-        public bool ValidateParams(Block parent, BlockHeader header)
+        public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             return _alwaysSameResultForParams ?? _suggestedValidationResults.Dequeue();
         }

@@ -78,7 +78,7 @@ namespace Nethermind.Clique
             return (blockHeader.ExtraData.Length - Clique.ExtraVanityLength - Clique.ExtraSealLength) / Address.ByteLength;
         }
 
-        public Keccak CalculateCliqueHeaderHash(BlockHeader blockHeader)
+        public static Keccak CalculateCliqueHeaderHash(BlockHeader blockHeader)
         {
             int extraSeal = 65;
             int shortExtraLength = blockHeader.ExtraData.Length - extraSeal;

@@ -50,7 +50,7 @@ namespace Nethermind.Clique
         public Rlp Encode(Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             return Rlp.Encode(
-                Rlp.Encode(item.Number),
+                Rlp.Encode((UInt256)item.Number),
                 Rlp.Encode(item.Hash),
                 Rlp.Encode(EncodeSigners(item.Signers)),
                 Rlp.Encode(EncodeVotes(item.Votes)),
@@ -126,7 +126,7 @@ namespace Nethermind.Clique
             foreach ((Address address, long signedAt) in signers)
             {
                 rlp[i + 1] = Rlp.Encode(address);
-                rlp[i + 2] = Rlp.Encode(signedAt);
+                rlp[i + 2] = Rlp.Encode((UInt256)signedAt);
                 i += 2;
             }
             return rlp;
@@ -140,7 +140,7 @@ namespace Nethermind.Clique
             for (int i = 0; i < voteCount; i++)
             {
                 rlp[4 * i + 1] = Rlp.Encode(votes[i].Signer);
-                rlp[4 * i + 2] = Rlp.Encode(votes[i].Block);
+                rlp[4 * i + 2] = Rlp.Encode((UInt256)votes[i].Block);
                 rlp[4 * i + 3] = Rlp.Encode(votes[i].Address);
                 rlp[4 * i + 4] = Rlp.Encode(votes[i].Authorize);
             }

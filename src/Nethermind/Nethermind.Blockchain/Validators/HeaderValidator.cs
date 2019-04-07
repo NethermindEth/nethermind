@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Validators
                 _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
             }
             
-            Block parent = _blockTree.FindBlock(header.ParentHash, false);
+            BlockHeader parent = _blockTree.FindHeader(header.ParentHash, false);
             if (parent == null)
             {
                 if (header.Number == 0)
@@ -108,27 +108,27 @@ namespace Nethermind.Blockchain.Validators
                 _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
             }
 
-            long maxGasLimitDifference = parent.Header.GasLimit / 1024;
-            bool gasLimitNotTooHigh = header.GasLimit < parent.Header.GasLimit + maxGasLimitDifference;
+            long maxGasLimitDifference = parent.GasLimit / 1024;
+            bool gasLimitNotTooHigh = header.GasLimit < parent.GasLimit + maxGasLimitDifference;
             if (!gasLimitNotTooHigh)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
             }
 
-            bool gasLimitNotTooLow = header.GasLimit > parent.Header.GasLimit - maxGasLimitDifference;
+            bool gasLimitNotTooLow = header.GasLimit > parent.GasLimit - maxGasLimitDifference;
             if (!gasLimitNotTooLow)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
             }
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
-            bool timestampMoreThanAtParent = header.Timestamp > parent.Header.Timestamp;
+            bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
             }
 
-            bool numberIsParentPlusOne = header.Number == parent.Header.Number + 1;
+            bool numberIsParentPlusOne = header.Number == parent.Number + 1;
             if (!numberIsParentPlusOne)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");

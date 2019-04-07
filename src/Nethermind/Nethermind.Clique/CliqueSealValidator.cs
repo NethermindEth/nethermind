@@ -39,7 +39,7 @@ namespace Nethermind.Clique
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public bool ValidateParams(Block parent, BlockHeader header)
+        public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             long number = header.Number;
             // Retrieve the snapshot needed to validate this header and cache it
@@ -154,7 +154,7 @@ namespace Nethermind.Clique
             return (ulong) number % _cliqueConfig.Epoch == 0;
         }
 
-        private bool ValidateCascadingFields(Block parent, BlockHeader header)
+        private bool ValidateCascadingFields(BlockHeader parent, BlockHeader header)
         {
             long number = header.Number;
             if (parent.Timestamp + _cliqueConfig.BlockPeriod > header.Timestamp)

@@ -83,7 +83,7 @@ namespace Nethermind.Clique
             }
 
             // Sign all the things!
-            Keccak headerHash = _snapshotManager.CalculateCliqueHeaderHash(header);
+            Keccak headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Signature signature = _wallet.Sign(headerHash, _sealerAddress);
             // Copy signature bytes (R and S)
             var signatureBytes = signature.Bytes;

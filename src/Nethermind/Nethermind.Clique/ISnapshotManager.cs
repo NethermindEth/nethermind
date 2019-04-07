@@ -29,6 +29,5 @@ namespace Nethermind.Clique
         bool IsValidVote(Snapshot snapshot, Address address, bool authorize);
         bool IsInTurn(Snapshot snapshot, long number, Address signer);
         bool HasSignedRecently(Snapshot snapshot, long number, Address signer);
-        Keccak CalculateCliqueHeaderHash(BlockHeader blockHeader);
     }
 }

@@ -73,7 +73,7 @@ namespace Nethermind.Clique.Test
             _clique = new CliqueSealer(new BasicWallet(key), config, _snapshotManager, key.Address, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
         }
-
+        
         [TestCase(Block1Rlp)]
         [TestCase(Block2Rlp)]
         [TestCase(Block3Rlp)]
@@ -82,7 +82,7 @@ namespace Nethermind.Clique.Test
         public void Test_real_block(string blockRlp)
         {
             Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
-            bool validHeader = _sealValidator.ValidateParams(_blockTree.FindBlock(block.ParentHash, false), block.Header);
+            bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(block.ParentHash, false), block.Header);
             bool validSeal = _sealValidator.ValidateSeal(block.Header);
             Assert.True(validHeader);
             Assert.True(validSeal);

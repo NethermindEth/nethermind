@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,40 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
+using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Encoding;
 
-namespace Nethermind.Mining
+namespace Nethermind.Clique
 {
-    public class NullSealEngine : ISealer, ISealValidator
+    public class CliqueHeaderDecoder : HeaderDecoder
     {
-        private NullSealEngine()
+        public CliqueHeaderDecoder()
         {
+            
         }
-
-        public static NullSealEngine Instance { get; } = new NullSealEngine();
-
-        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
+        
+        protected override void AssignHash(BlockHeader blockHeader, Span<byte> headerRlp)
         {
-            return Task.FromResult(block);
-        }
-
-        public bool CanSeal(long blockNumber, Keccak parentHash)
-        {
-            return true;
-        }
-
-        public bool ValidateParams(BlockHeader parent, BlockHeader header)
-        {
-            return true;
-        }
-
-        public bool ValidateSeal(BlockHeader header)
-        {
-            return true;
+            SnapshotManager.CalculateCliqueHeaderHash(blockHeader);
         }
     }
 }

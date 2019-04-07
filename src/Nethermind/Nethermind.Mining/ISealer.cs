@@ -32,7 +32,7 @@ namespace Nethermind.Mining
     
     public interface ISealValidator
     {
-        bool ValidateParams(Block parent, BlockHeader header);
+        bool ValidateParams(BlockHeader parent, BlockHeader header);
         bool ValidateSeal(BlockHeader header);
     }
 }

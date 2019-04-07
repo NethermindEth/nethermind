@@ -59,7 +59,7 @@ namespace Nethermind.Mining
             return true;
         }
 
-        public bool ValidateParams(Block parent, BlockHeader header)
+        public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             return true;
         }
