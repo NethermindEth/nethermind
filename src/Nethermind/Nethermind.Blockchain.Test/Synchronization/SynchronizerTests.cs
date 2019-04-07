@@ -304,7 +304,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 AllInstances.Add(this);
             }
 
-            public SyncingContext BestKnownNumberIs(UInt256 number)
+            public SyncingContext BestKnownNumberIs(long number)
             {
                 Assert.AreEqual(number, BlockTree.BestKnownNumber);
                 return this;
@@ -329,7 +329,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return this;
             }
 
-            public SyncingContext BlockHasNumber(UInt256 number)
+            public SyncingContext BlockHasNumber(long number)
             {
                 _logger.Info($"ASSERTING THAT NUMBER IS {number}");
                 Assert.AreEqual(number, _blockHeader.Number);
