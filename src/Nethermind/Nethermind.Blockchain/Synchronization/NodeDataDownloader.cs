@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Synchronization
             _logger.Info($"Finished downloading node data (downloaded {_downloadedNodesCount})");
         }
 
-        private int _downloadedNodesCount = 0;
+        private int _downloadedNodesCount;
 
         private AccountDecoder accountDecoder = new AccountDecoder();
 
@@ -102,27 +102,18 @@ namespace Nethermind.Blockchain.Synchronization
             if (request.Response == null)
             {
                 throw new EthSynchronizationException("Node sent an empty response");
-                if (_logger.IsWarn) _logger.Warn($"Received empty response");
-                for (int i = 0; i < request.Request.Length; i++)
-                {
-                    _nodes.Add(request.Request[i]);
-                }
-
-                return;
             }
             
             if (_logger.IsTrace) _logger.Trace($"Received node data - {request.Response.Length} items in response to {request.Request.Length}");
             
             int missing = 0;
             int added = 0;
-            int invalid = 0;
 
             for (int i = 0; i < request.Request.Length; i++)
             {
                 if (request.Response.Length < i + 1)
                 {
                     missing++;
-//                    if(_logger.IsTrace) _logger.Trace($"Response missing - adding {request.Request[i].Hash}");
                     _nodes.Add(request.Request[i]);
                     continue;
                 }
@@ -132,8 +123,6 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if(_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {request.Response[i]?.Length} of type {request.Request[i].NodeDataType} at level {request.Request[i].Level} Keccak({request.Response[i].ToHexString()}) != {request.Request[i].Hash}");            
                     throw new EthSynchronizationException("Node sent invalid data");
-                    invalid++;
-                    continue;
                 }
 
                 if (bytes == null)
@@ -212,7 +201,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             Interlocked.Add(ref _downloadedNodesCount, added); 
             
-            if (_logger.IsTrace) _logger.Trace($"Received node data: requested {request.Request.Length}, missing {missing}, added {added}, invalid {invalid}");
+            if (_logger.IsTrace) _logger.Trace($"Received node data: requested {request.Request.Length}, missing {missing}, added {added}");
         }
 
         private ConcurrentBag<(Keccak, NodeDataType, int)> _nodes = new ConcurrentBag<(Keccak, NodeDataType, int)>();

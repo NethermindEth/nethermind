@@ -37,27 +37,36 @@ namespace Nethermind.Blockchain.Test
     {
         private class ProcessingTestContext
         {
+            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            
             private class BlockProcessorMock : IBlockProcessor
             {
+                private ILogger _logger;
+                
                 private HashSet<Keccak> _allowed = new HashSet<Keccak>();
 
                 private HashSet<Keccak> _allowedToFail = new HashSet<Keccak>();
 
+                public BlockProcessorMock(ILogManager logManager)
+                {
+                    _logger = logManager.GetClassLogger();
+                }
+                
                 public void Allow(Keccak hash)
                 {
-                    Console.WriteLine($"Allowing {hash} to process");
+                    _logger.Info($"Allowing {hash} to process");
                     _allowed.Add(hash);
                 }
 
                 public void AllowToFail(Keccak hash)
                 {
-                    Console.WriteLine($"Allowing {hash} to fail");
+                    _logger.Info($"Allowing {hash} to fail");
                     _allowedToFail.Add(hash);
                 }
 
                 public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
                 {
-                    Console.WriteLine($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
+                    _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                     while (true)
                     {
                         bool notYet = false;
@@ -103,28 +112,35 @@ namespace Nethermind.Blockchain.Test
 
             private class RecoveryStepMock : IBlockDataRecoveryStep
             {
+                private ILogger _logger;
+                
                 private HashSet<Keccak> _allowed = new HashSet<Keccak>();
 
                 private HashSet<Keccak> _allowedToFail = new HashSet<Keccak>();
 
+                public RecoveryStepMock(ILogManager logManager)
+                {
+                    _logger = logManager.GetClassLogger();
+                }
+                
                 public void Allow(Keccak hash)
                 {
-                    Console.WriteLine($"Allowing {hash} to recover");
+                    _logger.Info($"Allowing {hash} to recover");
                     _allowed.Add(hash);
                 }
 
                 public void AllowToFail(Keccak hash)
                 {
-                    Console.WriteLine($"Allowing {hash} to fail recover");
+                    _logger.Info($"Allowing {hash} to fail recover");
                     _allowedToFail.Add(hash);
                 }
 
                 public void RecoverData(Block block)
                 {
-                    Console.WriteLine($"Recovering data for {block.ToString(Block.Format.Short)}");
+                    _logger.Info($"Recovering data for {block.ToString(Block.Format.Short)}");
                     if (block.Author != null)
                     {
-                        Console.WriteLine($"Data was already there for {block.ToString(Block.Format.Short)}");
+                        _logger.Info($"Data was already there for {block.ToString(Block.Format.Short)}");
                         return;
                     }
 
@@ -154,26 +170,23 @@ namespace Nethermind.Blockchain.Test
             private BlockProcessorMock _blockProcessor;
             private RecoveryStepMock _recoveryStep;
             private BlockchainProcessor _processor;
+            private ILogger _logger;
 
             public ProcessingTestContext()
             {
+                _logger = _logManager.GetClassLogger();
                 MemDb blockDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
                 MemDb headersDb = new MemDb();
                 _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, MainNetSpecProvider.Instance, NullTxPool.Instance, NullLogManager.Instance);
-                _blockProcessor = new BlockProcessorMock();
-                _recoveryStep = new RecoveryStepMock();
+                _blockProcessor = new BlockProcessorMock(_logManager);
+                _recoveryStep = new RecoveryStepMock(_logManager);
                 _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, NullLogManager.Instance, true, true);
                 _resetEvent = new AutoResetEvent(false);
-//                _blockProcessor.BlockProcessed += (sender, args) =>
-//                {
-//                    Console.WriteLine($"Finished waiting for {args.Block.ToString(Block.Format.Short)} as block was processed");
-//                    _resetEvent.Set();
-//                };
 
                 _blockTree.NewHeadBlock += (sender, args) =>
                 {
-                    Console.WriteLine($"Finished waiting for {args.Block.ToString(Block.Format.Short)} as block became the new head block");
+                    _logger.Info($"Finished waiting for {args.Block.ToString(Block.Format.Short)} as block became the new head block");
                     _resetEvent.Set();
                 };
 
@@ -200,20 +213,20 @@ namespace Nethermind.Blockchain.Test
                     }
                 };
 
-                Console.WriteLine($"Waiting for {block.ToString(Block.Format.Short)} to process");
+                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to process");
                 _blockProcessor.Allow(block.Hash);
                 processedEvent.WaitOne(AfterBlock.ProcessingWait);
-                Assert.True(wasProcessed, $"Block was never processed {block.ToString(Block.Format.Short)}");
+                Assert.True(wasProcessed, $"Expected this block to get processed but it was not: {block.ToString(Block.Format.Short)}");
 
-                return new AfterBlock(this, block);
+                return new AfterBlock(_logManager, this, block);
             }
 
             public AfterBlock ProcessedSkipped(Block block)
             {
                 _headBefore = _blockTree.Head?.Hash;
-                Console.WriteLine($"Waiting for {block.ToString(Block.Format.Short)} to be skipped");
+                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be skipped");
                 _blockProcessor.Allow(block.Hash);
-                return new AfterBlock(this, block);
+                return new AfterBlock(_logManager, this, block);
             }
 
             public AfterBlock ProcessedFail(Block block)
@@ -230,13 +243,13 @@ namespace Nethermind.Blockchain.Test
                     }
                 };
 
-                Console.WriteLine($"Waiting for {block.ToString(Block.Format.Short)} to fail processing");
+                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to fail processing");
                 _blockProcessor.AllowToFail(block.Hash);
                 processedEvent.WaitOne(AfterBlock.ProcessingWait);
                 Assert.True(wasProcessed, $"Block was never processed {block.ToString(Block.Format.Short)}");
-                Assert.AreEqual(_headBefore, _blockTree.Head.Hash, $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
-                Console.WriteLine($"Finished waiting for {block.ToString(Block.Format.Short)} to fail processing");
-                return new AfterBlock(this, block);
+                Assert.AreEqual(_headBefore, _blockTree.Head?.Hash, $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
+                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to fail processing");
+                return new AfterBlock(_logManager, this, block);
             }
 
             public ProcessingTestContext Suggested(Block block)
@@ -244,7 +257,7 @@ namespace Nethermind.Blockchain.Test
                 AddBlockResult result = _blockTree.SuggestBlock(block);
                 if (result != AddBlockResult.Added)
                 {
-                    Console.WriteLine($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
+                    _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
                     _resetEvent.Set();
                 }
 
@@ -288,21 +301,23 @@ namespace Nethermind.Blockchain.Test
 
             public class AfterBlock
             {
+                private ILogger _logger;
                 public const int ProcessingWait = 1000;
                 public const int IgnoreWait = 200;
                 private readonly Block _block;
 
                 private readonly ProcessingTestContext _processingTestContext;
 
-                public AfterBlock(ProcessingTestContext processingTestContext, Block block)
+                public AfterBlock(ILogManager logManager, ProcessingTestContext processingTestContext, Block block)
                 {
+                    _logger = logManager.GetClassLogger();
                     _processingTestContext = processingTestContext;
                     _block = block;
                 }
 
                 public ProcessingTestContext BecomesGenesis()
                 {
-                    Console.WriteLine($"Waiting for {_block.ToString(Block.Format.Short)} to become genesis block");
+                    _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to become genesis block");
                     _processingTestContext._resetEvent.WaitOne(ProcessingWait);
                     Assert.AreEqual(_block.Header.Hash, _processingTestContext._blockTree.Genesis.Hash, "genesis");
                     return _processingTestContext;
@@ -310,7 +325,7 @@ namespace Nethermind.Blockchain.Test
 
                 public ProcessingTestContext BecomesNewHead()
                 {
-                    Console.WriteLine($"Waiting for {_block.ToString(Block.Format.Short)} to become the new head block");
+                    _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to become the new head block");
                     _processingTestContext._resetEvent.WaitOne(ProcessingWait);
                     Assert.AreEqual(_block.Header.Hash, _processingTestContext._blockTree.Head.Hash, "head");
                     return _processingTestContext;
@@ -318,19 +333,19 @@ namespace Nethermind.Blockchain.Test
 
                 public ProcessingTestContext IsKeptOnBranch()
                 {
-                    Console.WriteLine($"Waiting for {_block.ToString(Block.Format.Short)} to be ignored");
+                    _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to be ignored");
                     _processingTestContext._resetEvent.WaitOne(IgnoreWait);
                     Assert.AreEqual(_processingTestContext._headBefore, _processingTestContext._blockTree.Head.Hash, "head");
-                    Console.WriteLine($"Finished waiting for {_block.ToString(Block.Format.Short)} to be ignored");
+                    _logger.Info($"Finished waiting for {_block.ToString(Block.Format.Short)} to be ignored");
                     return _processingTestContext;
                 }
 
                 public ProcessingTestContext IsDeletedAsInvalid()
                 {
-                    Console.WriteLine($"Waiting for {_block.ToString(Block.Format.Short)} to be deleted");
+                    _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to be deleted");
                     _processingTestContext._resetEvent.WaitOne(IgnoreWait);
                     Assert.AreEqual(_processingTestContext._headBefore, _processingTestContext._blockTree.Head.Hash, "head");
-                    Console.WriteLine($"Finished waiting for {_block.ToString(Block.Format.Short)} to be deleted");
+                    _logger.Info($"Finished waiting for {_block.ToString(Block.Format.Short)} to be deleted");
                     Assert.Null(_processingTestContext._blockTree.FindBlock(_block.Hash, false));
                     return _processingTestContext;
                 }
@@ -460,7 +475,12 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockB2D4).BecomesNewHead();
         }
 
-        [Test]
+        [Test(Description = "Covering scenario when we have an invalid block followed by its descendants." +
+                            "All the descandant blocks should get discarded and an alternative branch should get selected." +
+                            "BRANCH A | BLOCK 2 | INVALID |  DISCARD" +
+                            "BRANCH A | BLOCK 3 |   VALID |  DISCARD" +
+                            "BRANCH A | BLOCK 4 |   VALID |  DISCARD" +
+                            "BRANCH B | BLOCK 2 |   VALID | NEW HEAD")]
         public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue()
         {
             When.ProcessingBlocks
