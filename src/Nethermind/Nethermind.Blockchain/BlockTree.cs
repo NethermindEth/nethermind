@@ -39,6 +39,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
+    [Todo(Improve.Refactor, "After the fast sync work there are some duplicated code parts for the 'by header' and 'by block' approaches.")]
     public class BlockTree : IBlockTree
     {
         private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(64);
@@ -97,8 +98,8 @@ namespace Nethermind.Blockchain
 
                 if (genesisLevel.BlockInfos[0].WasProcessed)
                 {
-                    Block genesisBlock = Load(genesisLevel.BlockInfos[0].BlockHash).Block;
-                    Genesis = genesisBlock.Header;
+                    BlockHeader genesisHeader = LoadHeader(genesisLevel.BlockInfos[0].BlockHash).Header;
+                    Genesis = genesisHeader;
                     LoadHeadBlock();
                 }
             }
@@ -418,8 +419,8 @@ namespace Nethermind.Blockchain
 
         public BlockHeader FindHeader(Keccak blockHash, bool mainChainOnly)
         {
-            (BlockHeader block, BlockInfo _, ChainLevelInfo level) = LoadHeader(blockHash);
-            if (block == null)
+            (BlockHeader header, BlockInfo _, ChainLevelInfo level) = LoadHeader(blockHash);
+            if (header == null)
             {
                 return null;
             }
@@ -427,10 +428,10 @@ namespace Nethermind.Blockchain
             if (mainChainOnly)
             {
                 bool isMain = level.HasBlockOnMainChain && level.BlockInfos[0].BlockHash.Equals(blockHash);
-                return isMain ? block : null;
+                return isMain ? header : null;
             }
 
-            return block;
+            return header;
         }
 
         public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
@@ -779,15 +780,9 @@ namespace Nethermind.Blockchain
             byte[] data = _blockInfoDb.Get(HeadAddressInDb);
             if (data != null)
             {
-                BlockHeader headBlockHeader;
-                if (data.Length == 32)
-                {
-                    headBlockHeader = FindBlock(new Keccak(data), false).Header;
-                }
-                else
-                {
-                    headBlockHeader = Rlp.Decode<BlockHeader>(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
-                }
+                BlockHeader headBlockHeader = data.Length == 32
+                    ? FindHeader(new Keccak(data), false)
+                    : Rlp.Decode<BlockHeader>(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
 
                 ChainLevelInfo level = LoadLevel(headBlockHeader.Number);
                 int? index = FindIndex(headBlockHeader.Hash, level);
@@ -809,6 +804,8 @@ namespace Nethermind.Blockchain
                 return false;
             }
 
+            // IsKnownBlock will be mainly called when new blocks are incoming
+            // and these are very likely to be all at the head of the chain
             if (blockHash == Head?.Hash)
             {
                 return true;
@@ -820,12 +817,7 @@ namespace Nethermind.Blockchain
             }
 
             ChainLevelInfo level = LoadLevel(number);
-            if (level == null)
-            {
-                return false;
-            }
-
-            return FindIndex(blockHash, level).HasValue;
+            return level != null && FindIndex(blockHash, level).HasValue;
         }
 
         internal static Keccak HeadAddressInDb = Keccak.Zero;
@@ -998,7 +990,7 @@ namespace Nethermind.Blockchain
             return FindHeader(hash);
         }
         
-        private (BlockHeader Block, BlockInfo BlockInfo, ChainLevelInfo Level) LoadHeader(Keccak blockHash)
+        private (BlockHeader Header, BlockInfo BlockInfo, ChainLevelInfo Level) LoadHeader(Keccak blockHash)
         {
             if (blockHash == null || blockHash == Keccak.Zero)
             {

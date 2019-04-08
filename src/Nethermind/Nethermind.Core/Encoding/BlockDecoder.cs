@@ -28,12 +28,12 @@ namespace Nethermind.Core.Encoding
         
         public Block Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            int sequenceLength = context.ReadSequenceLength();
-            if (sequenceLength == 0)
+            if (context.IsNextItemNull())
             {
                 return null;
             }
             
+            int sequenceLength = context.ReadSequenceLength();
             int blockCheck = context.Position + sequenceLength;
 
             BlockHeader header = Rlp.Decode<BlockHeader>(context);

@@ -26,6 +26,11 @@ namespace Nethermind.Core.Encoding
     {
         public LogEntry Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (context.IsNextItemNull())
+            {
+                return null;
+            }
+            
             context.ReadSequenceLength();
             Address address = context.DecodeAddress();
             long sequenceLength = context.ReadSequenceLength();
@@ -42,6 +47,11 @@ namespace Nethermind.Core.Encoding
 
         public Rlp Encode(LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence;
+            }
+            
             return Rlp.Encode(
                 Rlp.Encode(item.LoggersAddress),
                 Rlp.Encode(item.Topics),

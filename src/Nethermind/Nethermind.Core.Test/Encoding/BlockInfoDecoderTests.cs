@@ -41,5 +41,13 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(TestItem.KeccakA, decoded.BlockHash, "block hash");
             Assert.AreEqual(UInt256.One, decoded.TotalDifficulty, "difficulty");
         }
+        
+        [Test]
+        public void Can_handle_nulls()
+        {
+            Rlp rlp = Rlp.Encode((BlockInfo)null);
+            BlockInfo decoded = Rlp.Decode<BlockInfo>(rlp);
+            Assert.Null(decoded);
+        }
     }
 }

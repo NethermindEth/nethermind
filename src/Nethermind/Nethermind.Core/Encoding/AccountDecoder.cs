@@ -27,19 +27,11 @@ namespace Nethermind.Core.Encoding
         public Account Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             context.ReadSequenceLength();
-            //long checkValue = context.ReadSequenceLength() + context.Position;
-
             UInt256 nonce = context.DecodeUInt256();
             UInt256 balance = context.DecodeUInt256();
             Keccak storageRoot = context.DecodeKeccak();
             Keccak codeHash = context.DecodeKeccak();
             Account account = new Account(nonce, balance, storageRoot, codeHash);
-
-            //if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
-            //{
-            //    context.Check(checkValue);
-            //}
-
             return account;
         }
 

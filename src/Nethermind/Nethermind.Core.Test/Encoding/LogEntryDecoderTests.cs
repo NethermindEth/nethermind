@@ -38,5 +38,13 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");
             Assert.AreEqual(logEntry.Topics, deserialized.Topics, "topics");
         }
+        
+        [Test]
+        public void Can_handle_nulls()
+        {
+            Rlp rlp = Rlp.Encode((LogEntry)null);
+            LogEntry decoded = Rlp.Decode<LogEntry>(rlp);
+            Assert.Null(decoded);
+        }
     }
 }

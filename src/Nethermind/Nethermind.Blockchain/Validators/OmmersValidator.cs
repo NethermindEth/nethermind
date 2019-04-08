@@ -23,6 +23,7 @@ using Nethermind.Core.Logging;
 
 namespace Nethermind.Blockchain.Validators
 {
+    [Todo(Improve.Performance, "We execute the search up the tree twice - once for IsKin and once for HasAlreadyBeenIncluded")]
     public class OmmersValidator : IOmmersValidator
     {
         private readonly IBlockTree _blockTree;

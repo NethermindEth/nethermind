@@ -16,8 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace Nethermind.Core.Encoding
 {
@@ -25,6 +27,11 @@ namespace Nethermind.Core.Encoding
     {
         public ChainLevelInfo Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (context.IsNextItemNull())
+            {
+                return null;
+            }
+            
             int lastCheck = context.ReadSequenceLength() + context.Position;
             bool hasMainChainBlock = context.DecodeBool();
 
@@ -47,10 +54,24 @@ namespace Nethermind.Core.Encoding
 
         public Rlp Encode(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence;
+            }
+            
             Rlp[] elements = new Rlp[2];
             elements[0] = Rlp.Encode(item.HasBlockOnMainChain);
             elements[1] = Rlp.Encode(item.BlockInfos);
-            return Rlp.Encode(elements);
+
+            if (item.BlockInfos.Any(bi => bi == null))
+            {
+                throw new Exception();
+            }
+            
+            Rlp rlp = Rlp.Encode(elements);
+            
+            
+            return rlp;
         }
 
         public void Encode(MemoryStream stream, ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -1115,6 +1115,11 @@ namespace Nethermind.Core.Encoding
                 Position -= item.Length;
                 return item;
             }
+            
+            public bool IsNextItemNull()
+            {
+                return Data[Position] == 192;
+            }
 
             public bool DecodeBool()
             {

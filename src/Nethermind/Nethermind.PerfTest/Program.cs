@@ -387,6 +387,7 @@ namespace Nethermind.PerfTest
             BigInteger totalGas = BigInteger.Zero;
             Stopwatch stopwatch = new Stopwatch();
             Block currentHead;
+            long maxMemory = 0;
             blockTree.NewHeadBlock += (sender, args) =>
             {
                 currentHead = args.Block;
@@ -395,21 +396,20 @@ namespace Nethermind.PerfTest
                     return;
                 }
 
+                maxMemory = Math.Max(maxMemory, GC.GetTotalMemory(false));
                 totalGas += currentHead.GasUsed;
                 if ((BigInteger) args.Block.Number % 10000 == 9999)
                 {
                     stopwatch.Stop();
                     long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                     BigInteger number = args.Block.Number + 1;
-                    _logger.Warn($"TOTAL after {number} (ms)     : " + ms);
-                    _logger.Warn($"TOTAL after {number} blocks/s : {(decimal) currentHead.Number / (ms / 1000m),5}");
-                    _logger.Warn($"TOTAL after {number} Mgas/s   : {((decimal) totalGas / 1000000) / (ms / 1000m),5}");
-                    _logger.Warn($"TOTAL after {number} mem (GC) : {GC.GetTotalMemory(false)}");
-                    _logger.Warn($"TOTAL after {number} GC (0)   : {GC.CollectionCount(0)}");
-                    _logger.Warn($"TOTAL after {number} GC (1)   : {GC.CollectionCount(1)}");
-                    _logger.Warn($"TOTAL after {number} GC (2)   : {GC.CollectionCount(2)}");
-                    _logger.Warn($"Is server GC at {number}      : {System.Runtime.GCSettings.IsServerGC}");
-                    _logger.Warn($"GC latency mode at {number}   : {System.Runtime.GCSettings.LatencyMode}");
+                    _logger.Warn($"TOTAL after {number} (ms)       : " + ms);
+                    _logger.Warn($"TOTAL after {number} blocks/s   : {(decimal) currentHead.Number / (ms / 1000m),5}");
+                    _logger.Warn($"TOTAL after {number} Mgas/s     : {((decimal) totalGas / 1000000) / (ms / 1000m),5}");
+                    _logger.Warn($"TOTAL after {number} max mem    : {maxMemory}");
+                    _logger.Warn($"TOTAL after {number} GC (0/1/2) : {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
+                    _logger.Warn($"Is server GC {number}           : {System.Runtime.GCSettings.IsServerGC}");
+                    _logger.Warn($"GC latency mode {number}        : {System.Runtime.GCSettings.LatencyMode}");
 
                     _logger.Warn($"TOTAL after {number} blocks DB reads      : {Store.Metrics.BlocksDbReads}");
                     _logger.Warn($"TOTAL after {number} blocks DB writes     : {Store.Metrics.BlocksDbWrites}");

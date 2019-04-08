@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.IO;
 
 namespace Nethermind.Core.Encoding
@@ -24,6 +25,11 @@ namespace Nethermind.Core.Encoding
     {
         public BlockInfo Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (context.IsNextItemNull())
+            {
+                return null;
+            }
+            
             int lastCheck = context.ReadSequenceLength() + context.Position;
 
             BlockInfo blockInfo = new BlockInfo();
@@ -41,6 +47,11 @@ namespace Nethermind.Core.Encoding
 
         public Rlp Encode(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence;
+            }
+            
             Rlp[] elements = new Rlp[3];
             elements[0] = Rlp.Encode(item.BlockHash);
             elements[1] = Rlp.Encode(item.WasProcessed);

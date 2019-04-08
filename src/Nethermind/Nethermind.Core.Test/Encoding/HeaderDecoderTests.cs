@@ -43,5 +43,13 @@ namespace Nethermind.Core.Test.Encoding
             HeaderDecoder decoder = new HeaderDecoder();
             Assert.AreEqual(1, decoder.GetLength(null, RlpBehaviors.None));
         }
+        
+        [Test]
+        public void Can_handle_nulls()
+        {
+            Rlp rlp = Rlp.Encode((BlockHeader)null);
+            BlockHeader decoded = Rlp.Decode<BlockHeader>(rlp);
+            Assert.Null(decoded);
+        }
     }
 }
