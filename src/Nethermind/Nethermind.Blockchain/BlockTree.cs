@@ -40,9 +40,10 @@ namespace Nethermind.Blockchain
     [Todo(Improve.Refactor, "After the fast sync work there are some duplicated code parts for the 'by header' and 'by block' approaches.")]
     public class BlockTree : IBlockTree
     {
-        private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(64);
-        private readonly LruCache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(64);
-        private readonly LruCache<long, ChainLevelInfo> _blockInfoCache = new LruCache<long, ChainLevelInfo>(64);
+        private const int CacheSize = 64; 
+        private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(CacheSize);
+        private readonly LruCache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(CacheSize);
+        private readonly LruCache<long, ChainLevelInfo> _blockInfoCache = new LruCache<long, ChainLevelInfo>(CacheSize);
 
         private const int MaxQueueSize = 10_000_000;
 
@@ -699,8 +700,13 @@ namespace Nethermind.Blockchain
 
                 for (int i = 0; i < processedBlocks.Length; i++)
                 {
-                    _blockCache.Set(processedBlocks[i].Hash, processedBlocks[i]);
-                    _headerCache.Set(processedBlocks[i].Hash, processedBlocks[i].Header);
+                    Block block = processedBlocks[i];
+                    if (ShouldCache(block.Number))
+                    {
+                        _blockCache.Set(block.Hash, processedBlocks[i]);
+                        _headerCache.Set(block.Hash, block.Header);
+                    }
+
                     MoveToMain(processedBlocks[i]);
                 }
             }
@@ -993,8 +999,8 @@ namespace Nethermind.Blockchain
                 return (null, null, null);
             }
 
-            BlockHeader block = _headerCache.Get(blockHash);
-            if (block == null)
+            BlockHeader header = _headerCache.Get(blockHash);
+            if (header == null)
             {
                 byte[] data = _headerDb.Get(blockHash);
                 if (data == null)
@@ -1002,35 +1008,48 @@ namespace Nethermind.Blockchain
                     return (null, null, null);
                 }
 
-                block = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
-                _headerCache.Set(blockHash, block);
+                header = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                if (ShouldCache(header.Number))
+                {
+                    _headerCache.Set(blockHash, header);
+                }
             }
 
-            (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash);
+            (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(header.Number, header.Hash);
             if (level == null || blockInfo == null)
             {
                 // TODO: this is here because storing block data is not transactional
                 // TODO: would be great to remove it, he?
-                SetTotalDifficulty(block);
-                blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value);
+                SetTotalDifficulty(header);
+                blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty.Value);
                 try
                 {
                     _blockInfoLock.EnterWriteLock();
-                    UpdateOrCreateLevel(block.Number, blockInfo);
+                    UpdateOrCreateLevel(header.Number, blockInfo);
                 }
                 finally
                 {
                     _blockInfoLock.ExitWriteLock();
                 }
 
-                (blockInfo, level) = LoadInfo(block.Number, block.Hash);
+                (blockInfo, level) = LoadInfo(header.Number, header.Hash);
             }
             else
             {
-                block.TotalDifficulty = blockInfo.TotalDifficulty;
+                header.TotalDifficulty = blockInfo.TotalDifficulty;
             }
 
-            return (block, blockInfo, level);
+            return (block: header, blockInfo, level);
+        }
+
+        /// <summary>
+        /// To make cache useful even when we handle sync requests
+        /// </summary>
+        /// <param name="number"></param>
+        /// <returns></returns>
+        private bool ShouldCache(long number)
+        {
+            return number == 0L || Head == null || number > Head.Number - CacheSize && number <= Head.Number + 1;
         }
 
         private (Block Block, BlockInfo Info, ChainLevelInfo Level) Load(Keccak blockHash)
@@ -1050,7 +1069,11 @@ namespace Nethermind.Blockchain
                 }
 
                 block = _blockDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
-                _blockCache.Set(blockHash, block);
+                if (ShouldCache(block.Number))
+                {
+                    _blockCache.Set(blockHash, block);
+                    _headerCache.Set(blockHash, block.Header);
+                }
             }
 
             (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash);
