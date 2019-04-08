@@ -44,6 +44,8 @@
     <Content Include="git-hash*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Remove="out\**" />
+    <Content Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
     <Content Update="NLog.config">
@@ -96,6 +98,39 @@
     <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\Data\genesis.json" />
     <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\Nethermind.Runner.deps.json" />
     <_ContentIncludedByDefault Remove="out\nethermind-windows-amd64-0.9.3-eef0532\Nethermind.Runner.runtimeconfig.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\NLog.config" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\web.config" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\foundation.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\genesis.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\goerli.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\hive.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\kovan.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\pre-goerli.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\pre-goerli_private.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\pre-goerli_private_validator.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\private_bootnode.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\private_client.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\private_miner1.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\private_miner2.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\rinkeby.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\ropsten.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\spaceneth.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\chainspec\stureby.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\Data\genesis.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\Nethermind.Runner.deps.json" />
+    <_ContentIncludedByDefault Remove="out\nethermind-linux-amd64-0.9.5-02bbe7f\Nethermind.Runner.runtimeconfig.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="out\**" />
+    <Compile Remove="keystore\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Remove="out\**" />
+    <EmbeddedResource Remove="keystore\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="out\**" />
+    <None Remove="keystore\**" />
   </ItemGroup>
   <Target Name="StoreGitHash" BeforeTargets="Build">
     <Exec Command="git describe --all --long &gt; git-hash" />

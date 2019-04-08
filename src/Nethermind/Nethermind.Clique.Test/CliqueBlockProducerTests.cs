@@ -262,7 +262,7 @@ namespace Nethermind.Clique.Test
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine(e);
+                    _logger.Error("PROCESS ERROR", e);
                     throw;
                 }
             }

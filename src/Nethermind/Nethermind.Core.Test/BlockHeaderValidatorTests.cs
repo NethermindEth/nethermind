@@ -34,7 +34,6 @@ using NUnit.Framework.Constraints;
 
 namespace Nethermind.Core.Test
 {
-    // TODO: need to recalculate nonce and mix hash for this test to be fine again (after Bloom added)
     [TestFixture]
     public class BlockHeaderValidatorTests
     {
@@ -63,7 +62,6 @@ namespace Nethermind.Core.Test
             blockStore.SuggestBlock(_block);
         }
         
-        // TODO: fix this test
         [Test]
         public void Valid_when_valid()
         {

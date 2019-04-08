@@ -23,7 +23,7 @@ namespace Nethermind.Mining
 {
     public class EthashCache : IEthashDataSet
     {
-        internal uint[][] Data { get; set; }
+        private uint[][] Data { get; set; }
 
         public uint Size => (uint)(Data.Length * Ethash.HashBytes);
 
