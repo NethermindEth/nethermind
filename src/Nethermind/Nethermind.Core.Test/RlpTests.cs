@@ -21,6 +21,7 @@ using System.IO;
 using System.Numerics;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Json;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
@@ -92,6 +93,7 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((UInt256) value), "length");
         }
 
+//        [TestCase(-1)]
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(55)]
@@ -110,6 +112,7 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(bytesOld.Length, Rlp.LengthOf((long) value), "length");
         }
 
+//        [TestCase(-1)]
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(55)]
@@ -283,6 +286,28 @@ namespace Nethermind.Core.Test
 
             Assert.AreEqual(expectedResult, Rlp.Encode(input), "byte array");
             Assert.AreEqual(expectedResult, Rlp.Encode(input.AsSpan()), "span");
+        }
+        
+        
+        [TestCase(Int64.MinValue)]
+        [TestCase(-1L)]
+        [TestCase(0L)]
+        [TestCase(1L)]
+        [TestCase(129L)]
+        [TestCase(257L)]
+        [TestCase(Int64.MaxValue / 256 / 256)]
+        [TestCase(Int64.MaxValue)]
+        public void Long_and_big_integer_encoded_the_same(long value)
+        {
+            Rlp rlpLong = Rlp.Encode(value);
+
+            Rlp rlpBigInt = Rlp.Encode(new BigInteger(value));
+            if (value < 0)
+            {
+                rlpBigInt = Rlp.Encode(new BigInteger(value), 8);
+            }
+            
+            Assert.AreEqual(rlpLong.Bytes, rlpBigInt.Bytes);
         }
     }
 }

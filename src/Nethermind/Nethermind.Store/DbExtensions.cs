@@ -47,19 +47,19 @@ namespace Nethermind.Store
             db.Remove(key.Bytes);
         }
         
-        public static void Set(this IDb db, BigInteger key, byte[] value)
+        public static void Set(this IDb db, long key, byte[] value)
         {
-            db[key.ToBigEndianByteArray()] = value;
+            db[key.ToBigEndianByteArrayWithoutLeadingZeros()] = value;
         }
         
-        public static byte[] Get(this IDb db, BigInteger key)
+        public static byte[] Get(this IDb db, long key)
         {
-            return db[key.ToBigEndianByteArray()];
+            return db[key.ToBigEndianByteArrayWithoutLeadingZeros()];
         }
         
-        public static void Delete(this IDb db, BigInteger key)
+        public static void Delete(this IDb db, long key)
         {
-            db.Remove(key.ToBigEndianByteArray());
+            db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());
         }
     }
 }

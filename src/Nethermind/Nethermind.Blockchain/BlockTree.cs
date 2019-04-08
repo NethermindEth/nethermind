@@ -23,7 +23,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.TxPools;
@@ -34,7 +33,6 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain
@@ -44,9 +42,7 @@ namespace Nethermind.Blockchain
     {
         private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(64);
         private readonly LruCache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(64);
-
-        private readonly LruCache<BigInteger, ChainLevelInfo> _blockInfoCache =
-            new LruCache<BigInteger, ChainLevelInfo>(64);
+        private readonly LruCache<long, ChainLevelInfo> _blockInfoCache = new LruCache<long, ChainLevelInfo>(64);
 
         private const int MaxQueueSize = 10_000_000;
 
@@ -884,7 +880,7 @@ namespace Nethermind.Blockchain
         }
 
         /* error-prone: all methods that load a level, change it and then persist need to execute everything under a lock */
-        private void PersistLevel(BigInteger number, ChainLevelInfo level)
+        private void PersistLevel(long number, ChainLevelInfo level)
         {
             _blockInfoCache.Set(number, level);
             _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
