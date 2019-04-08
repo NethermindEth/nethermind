@@ -353,7 +353,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         private class MaliciousExecutorMock : INodeDataRequestExecutor
         {
-            public Task<NodeDataRequest> ExecuteRequest(NodeDataRequest request)
+            public static Func<NodeDataRequest, Task<NodeDataRequest>> NotPreimage = request =>
             {
                 request.Response = new byte[request.Request.Length][];
 
@@ -364,6 +364,51 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 }
 
                 return Task.FromResult(request);
+            };
+            
+            public static Func<NodeDataRequest, Task<NodeDataRequest>> MissingResponse = Task.FromResult;
+            
+            public static Func<NodeDataRequest, Task<NodeDataRequest>> MissingRequest = request =>
+            {
+                request.Response = new byte[request.Request.Length][];
+
+                int i = 0;
+                foreach ((_, _, _) in request.Request)
+                {
+                    request.Response[i++] = null;
+                }
+
+                request.Request = null;
+
+                return Task.FromResult(request);
+            };
+            
+            public static Func<NodeDataRequest, Task<NodeDataRequest>> EmptyArraysInResponses = request =>
+            {
+                request.Response = new byte[request.Request.Length][];
+
+                int i = 0;
+                foreach ((_, _, _) in request.Request)
+                {
+                    request.Response[i++] = new byte[0];
+                }
+
+                return Task.FromResult(request);
+            };
+
+            private Func<NodeDataRequest, Task<NodeDataRequest>> _executorResultFunction = NotPreimage;
+
+            public MaliciousExecutorMock(Func<NodeDataRequest, Task<NodeDataRequest>> executorResultFunction = null)
+            {
+                if (executorResultFunction != null)
+                {
+                    _executorResultFunction = executorResultFunction;
+                }
+            }
+
+            public Task<NodeDataRequest> ExecuteRequest(NodeDataRequest request)
+            {
+                return _executorResultFunction.Invoke(request);
             }
         }
 
@@ -417,15 +462,54 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test]
-        public async Task Can_detect_a_malicious_peer()
+        public async Task Throws_when_peer_sends_data_that_is_not_the_preimage()
         {
-            MaliciousExecutorMock mock = new MaliciousExecutorMock();
+            MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.NotPreimage);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
             await downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")).ContinueWith(t =>
             {
                 Assert.True(t.IsFaulted);
                 Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
-                Assert.AreEqual(typeof(InvalidDataException), t.Exception?.InnerExceptions[0].GetType());
+                Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
+            });
+        }
+        
+        [Test]
+        public async Task Throws_when_peer_sends_null_response()
+        {
+            MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.MissingResponse);
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
+            await downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")).ContinueWith(t =>
+            {
+                Assert.True(t.IsFaulted);
+                Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
+                Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
+            });
+        }
+        
+        [Test]
+        public async Task Throws_when_peer_sends_null_request()
+        {
+            MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.MissingRequest);
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
+            await downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")).ContinueWith(t =>
+            {
+                Assert.True(t.IsFaulted);
+                Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
+                Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
+            });
+        }
+        
+        [Test]
+        public async Task Throws_when_peer_sends_empty_byte_arrays()
+        {
+            MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.EmptyArraysInResponses);
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
+            await downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")).ContinueWith(t =>
+            {
+                Assert.True(t.IsFaulted);
+                Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
+                Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
             });
         }
 

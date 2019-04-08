@@ -20,7 +20,7 @@ using System;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    internal class EthSynchronizationException : Exception
+    public class EthSynchronizationException : Exception
     {
         public EthSynchronizationException(string message) : base(message)
         {

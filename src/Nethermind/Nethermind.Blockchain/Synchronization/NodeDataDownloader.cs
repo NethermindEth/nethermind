@@ -33,23 +33,28 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class NodeDataDownloader : INodeDataDownloader
     {
+        private static AccountDecoder accountDecoder = new AccountDecoder();
+        
+        private const int MaxRequestSize = 1024;
+        private int _downloadedNodesCount;
+        
         private readonly ILogger _logger;
+        private readonly ISnapshotableDb _stateDb;
         private readonly IDb _codeDb;
-        private readonly ISnapshotableDb _db;
         private INodeDataRequestExecutor _executor;
 
-        public NodeDataDownloader(IDb codeDb, ISnapshotableDb db, ILogManager logManager)
+        private object _responseLock = new object();
+        
+        public NodeDataDownloader(IDb codeDb, ISnapshotableDb stateDb, ILogManager logManager)
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _db = db ?? throw new ArgumentNullException(nameof(db));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public NodeDataDownloader(IDb codeDb, ISnapshotableDb db, INodeDataRequestExecutor executor, ILogManager logManager)
+        public NodeDataDownloader(IDb codeDb, ISnapshotableDb stateDb, INodeDataRequestExecutor executor, ILogManager logManager)
+            : this(codeDb, stateDb, logManager)
         {
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _db = db ?? throw new ArgumentNullException(nameof(db));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             SetExecutor(executor);
         }
 
@@ -69,43 +74,25 @@ namespace Nethermind.Blockchain.Synchronization
                         }
                     });
                 }
-                
-//                Task[] tasks = dataRequests.Select(dr => _executor.ExecuteRequest(dr).ContinueWith(
-//                    t =>
-//                    {
-//                        if (t.IsCompleted)
-//                        {
-//                            HandleResponse(t.Result);
-//                        }
-//                    }
-//                )).ToArray();
-//                await Task.WhenAll(tasks);
             } while (dataRequests.Length != 0);
-            
+
             _logger.Info($"Finished downloading node data (downloaded {_downloadedNodesCount})");
         }
 
-        private int _downloadedNodesCount;
-
-        private AccountDecoder accountDecoder = new AccountDecoder();
-
-        private object _responseLock = new object();
-        
         private void HandleResponse(NodeDataRequest request)
         {
             if (request.Request == null)
             {
-                if (_logger.IsError) _logger.Error($"Sent a null node data request!");
-                return;
+                throw new EthSynchronizationException("Received a response with a missing request.");
             }
-            
+
             if (request.Response == null)
             {
                 throw new EthSynchronizationException("Node sent an empty response");
             }
-            
+
             if (_logger.IsTrace) _logger.Trace($"Received node data - {request.Response.Length} items in response to {request.Request.Length}");
-            
+
             int missing = 0;
             int added = 0;
 
@@ -121,7 +108,7 @@ namespace Nethermind.Blockchain.Synchronization
                 byte[] bytes = request.Response[i];
                 if (Keccak.Compute(bytes) != request.Request[i].Hash)
                 {
-                    if(_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {request.Response[i]?.Length} of type {request.Request[i].NodeDataType} at level {request.Request[i].Level} Keccak({request.Response[i].ToHexString()}) != {request.Request[i].Hash}");            
+                    if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {request.Response[i]?.Length} of type {request.Request[i].NodeDataType} at level {request.Request[i].Level} Keccak({request.Response[i].ToHexString()}) != {request.Request[i].Hash}");
                     throw new EthSynchronizationException("Node sent invalid data");
                 }
 
@@ -143,7 +130,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                     lock (_responseLock)
                     {
-                        _db[request.Request[i].Hash.Bytes] = bytes;
+                        _stateDb[request.Request[i].Hash.Bytes] = bytes;
                     }
 
                     TrieNode node = new TrieNode(NodeType.Unknown, new Rlp(bytes));
@@ -196,17 +183,15 @@ namespace Nethermind.Blockchain.Synchronization
 
             lock (_responseLock)
             {
-                _db.Commit();
+                _stateDb.Commit();
             }
 
-            Interlocked.Add(ref _downloadedNodesCount, added); 
-            
+            Interlocked.Add(ref _downloadedNodesCount, added);
+
             if (_logger.IsTrace) _logger.Trace($"Received node data: requested {request.Request.Length}, missing {missing}, added {added}");
         }
 
         private ConcurrentBag<(Keccak, NodeDataType, int)> _nodes = new ConcurrentBag<(Keccak, NodeDataType, int)>();
-
-        private const int maxRequestSize = 1024;
 
         private NodeDataRequest[] PrepareRequests()
         {
@@ -215,7 +200,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 NodeDataRequest request = new NodeDataRequest();
                 List<(Keccak Hash, NodeDataType NodeDataType, int Level)> requestHashes = new List<(Keccak, NodeDataType, int)>();
-                for (int i = 0; i < maxRequestSize; i++)
+                for (int i = 0; i < MaxRequestSize; i++)
                 {
                     if (_nodes.TryTake(out (Keccak Hash, NodeDataType NodeType, int Level) result))
                     {
