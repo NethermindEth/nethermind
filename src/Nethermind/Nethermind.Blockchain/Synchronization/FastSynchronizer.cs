@@ -23,83 +23,101 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Mining;
-using PublicKey = System.Security.Cryptography.X509Certificates.PublicKey;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class FastSynchronizer : ISynchronizer, INodeDataRequestExecutor
+    /// <summary>
+    /// Responsible for fast sync processing.
+    /// Fast sync starts with headers download followed by node data (state DB + code DB) downloads and then
+    /// switches to full sync mode.
+    /// </summary>
+    public class FastSynchronizer : ISynchronizer, INodeDataRequestExecutor, IDisposable
     {
+        private const int MinBatchSize = 8;
+
+        /* set to 512 because other clients do not respond to larger batch sizes */
+        private const int MaxBatchSize = 512;
+
+        private const int MaxReorganizationLength = 2 * MaxBatchSize;
+
+        /* headers batch can start at max as headers are predictable in size, unlike blocks */
+        private int _currentBatchSize = MaxBatchSize;
+
+        private TimeSpan _fullPeerListInterval = TimeSpan.FromSeconds(120);
+        private DateTime _timeOfTheLastFullPeerListLogEntry = DateTime.UtcNow;
+        private long _lastSyncNumber;
+        private int _lastSyncPeersCount;
         private int _sinceLastTimeout;
-        private long _lastSyncNumber = 0L;
 
         private readonly ILogger _logger;
+        private readonly ISyncConfig _syncConfig;
         private readonly IHeaderValidator _headerValidator;
         private readonly ISealValidator _sealValidator;
         private readonly IEthSyncPeerPool _syncPeerPool;
-
-        private readonly ITxValidator _txValidator;
-        private readonly Blockchain.ISyncConfig _syncConfig;
+        private readonly ISynchronizer _fullSynchronizer;
         private readonly INodeDataDownloader _nodeDataDownloader;
         private readonly IBlockTree _blockTree;
 
-        private int _currentBatchSize = 256;
+        private System.Timers.Timer _syncTimer;
+        private SyncPeerAllocation _allocation;
+        private Task _syncLoopTask;
+        private CancellationTokenSource _syncLoopCancellation = new CancellationTokenSource();
+        private CancellationTokenSource _peerSyncCancellation;
+        private bool _requestedSyncCancelDueToBetterPeer;
+        private readonly ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
+        private SynchronizationMode _mode = SynchronizationMode.Blocks;
 
-        public const int MinBatchSize = 8;
-
-        public const int MaxBatchSize = 512;
-
-        public const int MaxReorganizationLength = 2 * MaxBatchSize;
-
-        private void IncreaseBatchSize()
-        {
-            _currentBatchSize = Math.Min(MaxBatchSize, _currentBatchSize * 2);
-            if (_logger.IsDebug) _logger.Debug($"Changing batch size to {_currentBatchSize}");
-        }
-
-        private void DecreaseBatchSize()
-        {
-            _currentBatchSize = Math.Max(MinBatchSize, _currentBatchSize / 2);
-            if (_logger.IsDebug) _logger.Debug($"Changing batch size to {_currentBatchSize}");
-        }
-
-        private ISynchronizer _fullSynchronizer;
+        /* sync events are used mainly for managing sync peers reputation */
+        public event EventHandler<SyncEventArgs> SyncEvent;
 
         public FastSynchronizer(IBlockTree blockTree,
             IHeaderValidator headerValidator,
             ISealValidator sealValidator,
-            ITxValidator txValidator,
             IEthSyncPeerPool peerPool,
             ISyncConfig syncConfig,
             INodeDataDownloader nodeDataDownloader,
             ISynchronizer fullSynchronizer,
             ILogManager logManager)
         {
-            _fullSynchronizer = fullSynchronizer ?? throw new ArgumentNullException(nameof(fullSynchronizer));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _fullSynchronizer = fullSynchronizer ?? throw new ArgumentNullException(nameof(fullSynchronizer));
             _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
-
-            _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
-
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
 
             _nodeDataDownloader.SetExecutor(this);
-
             _fullSynchronizer.SyncEvent += (s, e) => SyncEvent?.Invoke(this, e);
         }
 
-        private CancellationTokenSource _syncLoopCancelTokenSource = new CancellationTokenSource();
+        public bool IsInitialSyncFinished { get; private set; }
 
-        private Task _syncLoopTask;
+        /// <summary>
+        /// Can be increased when the sync has not timed a few times in a row.
+        /// </summary>
+        private void IncreaseBatchSize()
+        {
+            if (_logger.IsDebug) _logger.Debug($"Changing header request batch size to {_currentBatchSize}");
+            _currentBatchSize = Math.Min(MaxBatchSize, _currentBatchSize * 2);
+        }
+
+        /// <summary>
+        /// Decreases header request batch size after timeout in case the sync peer is not able to deliver
+        /// more headers at once.
+        /// </summary>
+        private void DecreaseBatchSize()
+        {
+            if (_logger.IsDebug) _logger.Debug($"Changing header request batch size to {_currentBatchSize}");
+            _currentBatchSize = Math.Max(MinBatchSize, _currentBatchSize / 2);
+        }
 
         public async Task StopAsync()
         {
@@ -107,118 +125,127 @@ namespace Nethermind.Blockchain.Synchronization
             await StopFastSync();
         }
 
-        public bool IsInitialSyncFinished { get; set; }
-
+        /// <summary>
+        /// This is invoked when the node data download phase finalizes and we can transition to full sync.
+        /// </summary>
         private async Task StopFastSync()
         {
             StopSyncTimer();
 
-            _peerSyncCancellationTokenSource?.Cancel();
-            _syncLoopCancelTokenSource?.Cancel();
+            _peerSyncCancellation?.Cancel();
+            _syncLoopCancellation?.Cancel();
 
             await (_syncLoopTask ?? Task.CompletedTask);
 
-            if (_logger.IsInfo) _logger.Info("Sync shutdown complete.. please wait for all components to close");
+            if (_logger.IsInfo) _logger.Info("Fast sync stopped...");
         }
-
-        private System.Timers.Timer _syncTimer;
 
         private void StopSyncTimer()
         {
             try
             {
-                if (_logger.IsDebug) _logger.Debug("Stopping sync timer");
+                if (_logger.IsDebug) _logger.Debug("Stopping fast sync timer");
                 _syncTimer?.Stop();
             }
             catch (Exception e)
             {
-                _logger.Error("Error during sync timer stop", e);
+                if (_logger.IsError) _logger.Error("Error during the fast sync timer stop", e);
             }
         }
 
         public void Start()
         {
-//            _syncLoopTask = Task.Run(RunSyncLoop, _syncLoopCancelTokenSource.Token) 
+            AllocateSyncPeerPool();
+            
+            // Task.Run may cause trouble - make sure to test it well if planning to uncomment 
+            // _syncLoopTask = Task.Run(RunSyncLoop, _syncLoopCancelTokenSource.Token) 
             _syncLoopTask = Task.Factory.StartNew(
-                    RunSyncLoop,
-                    _syncLoopCancelTokenSource.Token,
+                    RunFastSyncLoop,
+                    _syncLoopCancellation.Token,
                     TaskCreationOptions.LongRunning,
                     TaskScheduler.Default).Unwrap()
-                .ContinueWith(t =>
+                .ContinueWith(task =>
                 {
-                    if (t.IsFaulted)
+                    switch (task)
                     {
-                        if (_logger.IsError) _logger.Error("Sync loop encountered an exception.", t.Exception);
-                    }
-                    else if (t.IsCanceled)
-                    {
-                        if (_logger.IsDebug) _logger.Debug("Sync loop stopped.");
-                    }
-                    else if (t.IsCompleted)
-                    {
-                        if (_logger.IsDebug) _logger.Debug("Sync loop complete.");
+                        case Task t when t.IsFaulted:
+                            if (_logger.IsError) _logger.Error("Sync loop encountered an exception.", t.Exception);
+                            break;
+                        case Task t when t.IsCanceled:
+                            if (_logger.IsInfo) _logger.Info("Sync loop canceled.");
+                            break;
+                        case Task t when t.IsCompletedSuccessfully:
+                            if (_logger.IsInfo) _logger.Info("Sync loop completed successfully.");
+                            break;
+                        default:
+                            if (_logger.IsInfo) _logger.Info("Sync loop completed.");
+                            break;
                     }
                 });
 
             StartSyncTimer();
         }
 
-        private DateTime _lastFullInfo = DateTime.UtcNow;
-        private int _lastSyncPeersCount;
-
         private void StartSyncTimer()
         {
-            if (_logger.IsDebug) _logger.Debug("Starting sync timer");
+            if (_logger.IsDebug) _logger.Debug($"Starting fast sync timer with interval of {_syncConfig.SyncTimerInterval}ms");
             _syncTimer = new System.Timers.Timer(_syncConfig.SyncTimerInterval);
-            _syncTimer.Elapsed += (s, e) =>
-            {
-                try
-                {
-                    _syncTimer.Enabled = false;
-                    var initPeerCount = _syncPeerPool.AllPeers.Count(p => p.IsInitialized);
-
-                    if (DateTime.UtcNow - _lastFullInfo > TimeSpan.FromSeconds(120) && _logger.IsDebug)
-                    {
-                        if (_logger.IsDebug) _logger.Debug("Sync peers:");
-                        foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"{peerInfo}");
-                        }
-
-                        _lastFullInfo = DateTime.UtcNow;
-                    }
-                    else if (initPeerCount != _lastSyncPeersCount)
-                    {
-                        _lastSyncPeersCount = initPeerCount;
-                        if (_logger.IsInfo) _logger.Info($"Sync peers {initPeerCount}({_syncPeerPool.PeerCount})/{_syncConfig.SyncPeersMaxCount} {(_allocation.Current != null ? $"(sync in progress with {_allocation.Current})" : string.Empty)}");
-                    }
-                    else if (initPeerCount == 0)
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Sync peers 0, searching for peers to sync with...");
-                    }
-
-                    if (_logger.IsTrace) _logger.Trace("Requesting synchronization");
-                    _syncRequested.Set();
-                }
-                catch (Exception exception)
-                {
-                    if (_logger.IsDebug) _logger.Error("Sync timer failed", exception);
-                }
-                finally
-                {
-                    _syncTimer.Enabled = true;
-                }
-            };
-
+            _syncTimer.Elapsed += SyncTimerOnElapsed;
             _syncTimer.Start();
         }
 
-        private bool _requestedSyncCancelDueToBetterPeer;
+        private void SyncTimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            _syncTimer.Enabled = false;
+            
+            try
+            {
+                LogSyncPeers();
+                RequestSynchronization("[SYNC TIMER]");
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsDebug) _logger.Error("Sync timer failed", ex);
+            }
+            finally
+            {
+                _syncTimer.Enabled = true;
+            }
+        }
 
-        private CancellationTokenSource _peerSyncCancellationTokenSource;
+        private void LogSyncPeers()
+        {
+            var initPeerCount = _syncPeerPool.AllPeers.Count(p => p.IsInitialized);
+            if (DateTime.UtcNow - _timeOfTheLastFullPeerListLogEntry > _fullPeerListInterval && _logger.IsDebug)
+            {
+                if (_logger.IsDebug) _logger.Debug("Sync peers:");
+                foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
+                {
+                    string prefix = peerInfo == _allocation.Current
+                        ? "[SYNCING] "
+                        : string.Empty;
 
-        public event EventHandler<SyncEventArgs> SyncEvent;
+                    if (_logger.IsDebug) _logger.Debug($"{prefix}{peerInfo}");
+                }
 
+                _timeOfTheLastFullPeerListLogEntry = DateTime.UtcNow;
+            }
+            else if (initPeerCount != _lastSyncPeersCount)
+            {
+                _lastSyncPeersCount = initPeerCount;
+                if (_logger.IsInfo) _logger.Info($"Sync peers {initPeerCount}({_syncPeerPool.PeerCount})/{_syncConfig.SyncPeersMaxCount} {(_allocation.Current != null ? $"(sync in progress with {_allocation.Current})" : string.Empty)}");
+            }
+            else if (initPeerCount == 0)
+            {
+                if (_logger.IsInfo) _logger.Info($"Sync peers 0({_syncPeerPool.PeerCount})/{_syncConfig.SyncPeersMaxCount}, searching for peers to sync with...");
+            }
+        }
+
+        /// <summary>
+        /// Notifies synchronizer that an event occured that should trigger synchronization
+        /// at the nearest convenient time.
+        /// </summary>
+        /// <param name="reason">Reason for the synchronization request for logging</param>
         public void RequestSynchronization(string reason)
         {
             if (_mode == SynchronizationMode.Full)
@@ -231,22 +258,12 @@ namespace Nethermind.Blockchain.Synchronization
             _syncRequested.Set();
         }
 
-        private readonly ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
-
-        private SyncPeerAllocation _allocation;
-
-        private async Task RunSyncLoop()
+        private async Task RunFastSyncLoop()
         {
-            if (_logger.IsDebug) _logger.Debug("Initializing sync loop.");
-            _allocation = _syncPeerPool.BorrowPeer("fast sync");
-            if (_logger.IsDebug) _logger.Debug("Sync loop allocated.");
-            _allocation.Replaced += AllocationOnReplaced;
-            _allocation.Cancelled += AllocationOnCancelled;
-
             while (true)
             {
                 if (_logger.IsTrace) _logger.Trace("Sync loop - next iteration WAIT.");
-                _syncRequested.Wait(_syncLoopCancelTokenSource.Token);
+                _syncRequested.Wait(_syncLoopCancellation.Token);
                 _syncRequested.Reset();
                 if (_logger.IsTrace) _logger.Trace("Sync loop - next iteration IN.");
                 /* If block tree is processing blocks from DB then we are not going to start the sync process.
@@ -264,7 +281,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 while (true)
                 {
-                    if (_syncLoopCancelTokenSource.IsCancellationRequested)
+                    if (_syncLoopCancellation.IsCancellationRequested)
                     {
                         if (_logger.IsTrace) _logger.Trace("Sync loop cancellation requested - leaving.");
                         break;
@@ -283,7 +300,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                     SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, SyncStatus.Started));
 
-                    _peerSyncCancellationTokenSource = new CancellationTokenSource();
+                    _peerSyncCancellation = new CancellationTokenSource();
                     var peerSynchronizationTask = SynchronizeWithPeerAsync(peerInfo);
                     await peerSynchronizationTask.ContinueWith(t =>
                     {
@@ -305,7 +322,7 @@ namespace Nethermind.Blockchain.Synchronization
                             if (_logger.IsTrace) _logger.Trace($"Sync with {peerInfo} failed. Removed node from sync peers.");
                             SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, SyncStatus.Failed));
                         }
-                        else if (t.IsCanceled || _peerSyncCancellationTokenSource.IsCancellationRequested)
+                        else if (t.IsCanceled || _peerSyncCancellation.IsCancellationRequested)
                         {
                             if (_requestedSyncCancelDueToBetterPeer)
                             {
@@ -332,10 +349,10 @@ namespace Nethermind.Blockchain.Synchronization
 
                         _allocation.FinishSync();
 
-                        var source = _peerSyncCancellationTokenSource;
-                        _peerSyncCancellationTokenSource = null;
+                        var source = _peerSyncCancellation;
+                        _peerSyncCancellation = null;
                         source?.Dispose();
-                    }, _syncLoopCancelTokenSource.Token);
+                    }, _syncLoopCancellation.Token);
                 }
 
                 _allocation.FinishSync();
@@ -403,20 +420,27 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
         }
-
-        private SynchronizationMode _mode = SynchronizationMode.Blocks;
+        
+        private void AllocateSyncPeerPool()
+        {
+            if (_logger.IsDebug) _logger.Debug("Initializing fast sync loop.");
+            _allocation = _syncPeerPool.BorrowPeer("fast sync");
+            if (_logger.IsDebug) _logger.Debug("Fast sync loop allocated.");
+            _allocation.Replaced += AllocationOnReplaced;
+            _allocation.Cancelled += AllocationOnCancelled;
+        }
 
         private void AllocationOnCancelled(object sender, AllocationChangeEventArgs e)
         {
             if (_logger.IsDebug) _logger.Debug($"Cancelling {e.Previous} on {_allocation}.");
-            _peerSyncCancellationTokenSource?.Cancel();
+            _peerSyncCancellation?.Cancel();
         }
 
         private void AllocationOnReplaced(object sender, AllocationChangeEventArgs e)
         {
             if (e.Previous == null)
             {
-                if (_logger.IsDebug) _logger.Debug($"Allocating {e.Current} to {_allocation}.");
+                if (_logger.IsDebug) _logger.Debug($"Allocating {e.Current} on {_allocation}.");
             }
             else
             {
@@ -426,14 +450,13 @@ namespace Nethermind.Blockchain.Synchronization
             if (e.Previous != null)
             {
                 _requestedSyncCancelDueToBetterPeer = true;
-                _peerSyncCancellationTokenSource?.Cancel();
+                _peerSyncCancellation?.Cancel();
             }
 
             PeerInfo newPeer = e.Current;
             if (newPeer.TotalDifficulty > _blockTree.BestSuggested.TotalDifficulty)
             {
-                if (_logger.IsTrace) _logger.Trace("Requesting synchronization - REPLACE");
-                _syncRequested.Set();
+                RequestSynchronization("[REPLACE]");
             }
         }
 
@@ -445,7 +468,6 @@ namespace Nethermind.Blockchain.Synchronization
 
             ISyncPeer peer = peerInfo.SyncPeer;
 
-            const int maxLookup = MaxReorganizationLength;
             int ancestorLookupLevel = 0;
             int emptyBlockListCounter = 0;
 
@@ -455,13 +477,13 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_logger.IsTrace) _logger.Trace($"Continue syncing with {peerInfo} (our best {_blockTree.BestKnownNumber})");
 
-                if (ancestorLookupLevel > maxLookup)
+                if (ancestorLookupLevel > MaxReorganizationLength)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {peerInfo}");
                     throw new EthSynchronizationException("Peer with inconsistent chain in sync");
                 }
 
-                if (_peerSyncCancellationTokenSource.IsCancellationRequested)
+                if (_peerSyncCancellation.IsCancellationRequested)
                 {
                     if (_logger.IsInfo) _logger.Info($"Sync with {peerInfo} cancelled");
                     return;
@@ -471,7 +493,7 @@ namespace Nethermind.Blockchain.Synchronization
                 int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _currentBatchSize);
                 if (_logger.IsTrace) _logger.Trace($"Sync request {currentNumber}+{blocksToRequest} to peer {peerInfo.SyncPeer.Node.Id} with {peerInfo.HeadNumber} blocks. Got {currentNumber} and asking for {blocksToRequest} more.");
 
-                Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(currentNumber, blocksToRequest, 0, _peerSyncCancellationTokenSource.Token);
+                Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(currentNumber, blocksToRequest, 0, _peerSyncCancellation.Token);
                 BlockHeader[] headers = await headersTask;
                 if (headersTask.IsCanceled)
                 {
@@ -496,7 +518,7 @@ namespace Nethermind.Blockchain.Synchronization
                     throw headersTask.Exception;
                 }
 
-                if (_peerSyncCancellationTokenSource.IsCancellationRequested)
+                if (_peerSyncCancellation.IsCancellationRequested)
                 {
                     if (_logger.IsTrace) _logger.Trace("Peer sync cancelled");
                     return;
@@ -578,7 +600,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 for (int i = 0; i < blockHeaders.Length; i++)
                 {
-                    if (_peerSyncCancellationTokenSource.IsCancellationRequested)
+                    if (_peerSyncCancellation.IsCancellationRequested)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Cancel requested - stopping sync with {peerInfo}");
                         return;
@@ -615,7 +637,7 @@ namespace Nethermind.Blockchain.Synchronization
                 var exceptions = new ConcurrentQueue<Exception>();
                 Parallel.For(0, blockHeaders.Length, (i, state) =>
                 {
-                    if (_peerSyncCancellationTokenSource.IsCancellationRequested)
+                    if (_peerSyncCancellation.IsCancellationRequested)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Returning fom seal validation");
                         return;
@@ -646,7 +668,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 for (int i = 0; i < blockHeaders.Length; i++)
                 {
-                    if (_peerSyncCancellationTokenSource.IsCancellationRequested)
+                    if (_peerSyncCancellation.IsCancellationRequested)
                     {
                         if (_logger.IsTrace) _logger.Trace("Peer sync cancelled");
                         return;
@@ -714,62 +736,69 @@ namespace Nethermind.Blockchain.Synchronization
 
             var hashes = request.Request.Select(r => r.Hash).ToArray();
             request.Response =
-                await peer.GetNodeData(hashes, _syncLoopCancelTokenSource.Token);
+                await peer.GetNodeData(hashes, _syncLoopCancellation.Token);
             return request;
+        }
+
+        public void Dispose()
+        {
+            _syncTimer?.Dispose();
+            _syncLoopTask?.Dispose();
+            _syncLoopCancellation?.Dispose();
+            _peerSyncCancellation?.Dispose();
+            _syncRequested?.Dispose();
         }
     }
 }
 
-//        private async Task<bool> DownloadReceipts(Block[] blocks, ISyncPeer peer)
-//        {
-//            var blocksWithTransactions = blocks.Where(b => b.Transactions.Length != 0).ToArray();
-//            if (blocksWithTransactions.Length != 0)
-//            {
-//                var receiptsTask = peer.GetReceipts(blocksWithTransactions.Select(b => b.Hash).ToArray(), CancellationToken.None);
-//                var transactionReceipts = await receiptsTask;
-//                if (receiptsTask.IsCanceled) return true;
+//  private async Task<bool> DownloadReceipts(Block[] blocks, ISyncPeer peer)
+//  {
+//      var blocksWithTransactions = blocks.Where(b => b.Transactions.Length != 0).ToArray();
+//      if (blocksWithTransactions.Length != 0)
+//      {
+//          var receiptsTask = peer.GetReceipts(blocksWithTransactions.Select(b => b.Hash).ToArray(), CancellationToken.None);
+//          var transactionReceipts = await receiptsTask;
+//          if (receiptsTask.IsCanceled) return true;
 //
-//                if (receiptsTask.IsFaulted)
-//                {
-//                    if (receiptsTask.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
-//                    {
-//                        if (_logger.IsTrace) _logger.Error("Failed to retrieve receipts when synchronizing (Timeout)", receiptsTask.Exception);
-//                    }
-//                    else
-//                    {
-//                        if (_logger.IsError) _logger.Error("Failed to retrieve receipts when synchronizing", receiptsTask.Exception);
-//                    }
+//          if (receiptsTask.IsFaulted)
+//          {
+//              if (receiptsTask.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
+//              {
+//                  if (_logger.IsTrace) _logger.Error("Failed to retrieve receipts when synchronizing (Timeout)", receiptsTask.Exception);
+//              }
+//              else
+//              {
+//                  if (_logger.IsError) _logger.Error("Failed to retrieve receipts when synchronizing", receiptsTask.Exception);
+//              }
 //
-//                    throw receiptsTask.Exception;
-//                }
+//              throw receiptsTask.Exception;
+//          }
 //
-//                for (int blockIndex = 0; blockIndex < blocksWithTransactions.Length; blockIndex++)
-//                {
-//                    long gasUsedTotal = 0;
-//                    for (int txIndex = 0; txIndex < blocksWithTransactions[blockIndex].Transactions.Length; txIndex++)
-//                    {
-//                        TransactionReceipt transactionReceipt = transactionReceipts[blockIndex][txIndex];
-//                        if (transactionReceipt == null) throw new DataException($"Missing receipt for {blocksWithTransactions[blockIndex].Hash}->{txIndex}");
+//          for (int blockIndex = 0; blockIndex < blocksWithTransactions.Length; blockIndex++)
+//          {
+//              long gasUsedTotal = 0;
+//              for (int txIndex = 0; txIndex < blocksWithTransactions[blockIndex].Transactions.Length; txIndex++)
+//              {
+//                  TransactionReceipt transactionReceipt = transactionReceipts[blockIndex][txIndex];
+//                  if (transactionReceipt == null) throw new DataException($"Missing receipt for {blocksWithTransactions[blockIndex].Hash}->{txIndex}");
 //
-//                        transactionReceipt.Index = txIndex;
-//                        transactionReceipt.BlockHash = blocksWithTransactions[blockIndex].Hash;
-//                        transactionReceipt.BlockNumber = blocksWithTransactions[blockIndex].Number;
-//                        transactionReceipt.TransactionHash = blocksWithTransactions[blockIndex].Transactions[txIndex].Hash;
-//                        gasUsedTotal += transactionReceipt.GasUsed;
-//                        transactionReceipt.GasUsedTotal = gasUsedTotal;
-//                        transactionReceipt.Recipient = blocksWithTransactions[blockIndex].Transactions[txIndex].To;
+//                  transactionReceipt.Index = txIndex;
+//                  transactionReceipt.BlockHash = blocksWithTransactions[blockIndex].Hash;
+//                  transactionReceipt.BlockNumber = blocksWithTransactions[blockIndex].Number;
+//                  transactionReceipt.TransactionHash = blocksWithTransactions[blockIndex].Transactions[txIndex].Hash;
+//                  gasUsedTotal += transactionReceipt.GasUsed;
+//                  transactionReceipt.GasUsedTotal = gasUsedTotal;
+//                  transactionReceipt.Recipient = blocksWithTransactions[blockIndex].Transactions[txIndex].To;
 //
-//                        // only after execution
-//                        // receipt.Sender = blocksWithTransactions[blockIndex].Transactions[txIndex].SenderAddress; 
-//                        // receipt.Error = ...
-//                        // receipt.ContractAddress = ...
+//                  // only after execution
+//                  // receipt.Sender = blocksWithTransactions[blockIndex].Transactions[txIndex].SenderAddress; 
+//                  // receipt.Error = ...
+//                  // receipt.ContractAddress = ...
 //
-//                        _receiptStorage.Add(transactionReceipt);
-//                    }
-//                }
-//            }
+//                  _receiptStorage.Add(transactionReceipt);
+//              }
+//          }
+//      }
 //
-//            return false;
-//        }
-//    }
-//}
+//      return false;
+//  }
