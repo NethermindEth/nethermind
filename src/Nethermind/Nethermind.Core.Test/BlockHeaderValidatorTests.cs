@@ -19,7 +19,7 @@
 using System;
 using System.Numerics;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -34,7 +34,6 @@ using NUnit.Framework.Constraints;
 
 namespace Nethermind.Core.Test
 {
-    // TODO: need to recalculate nonce and mix hash for this test to be fine again (after Bloom added)
     [TestFixture]
     public class BlockHeaderValidatorTests
     {
@@ -50,7 +49,7 @@ namespace Nethermind.Core.Test
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));
             _ethash = new EthashSealValidator(NullLogManager.Instance, calculator, new Ethash(NullLogManager.Instance));
             _testLogger = new TestLogger();
-            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, Substitute.For<ITransactionPool>(), NullLogManager.Instance);
+            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(),  new MemDb(), FrontierSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
             
             _validator = new HeaderValidator(blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
@@ -63,7 +62,6 @@ namespace Nethermind.Core.Test
             blockStore.SuggestBlock(_block);
         }
         
-        // TODO: fix this test
         [Test]
         public void Valid_when_valid()
         {

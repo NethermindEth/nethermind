@@ -18,13 +18,11 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -35,10 +33,10 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler, ISynchronizationPeer
+    public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler, ISyncPeer
     {
         private System.Timers.Timer _txFloodCheckTimer;
-        protected ISynchronizationManager SyncManager { get; }
+        protected ISyncServer SyncServer { get; }
 
         private readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests
             = new BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>>();
@@ -49,22 +47,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private bool _statusReceived;
         private Keccak _remoteHeadBlockHash;
         private IPerfService _perfService;
-        private readonly ITransactionPool _transactionPool;
+        private readonly ITxPool _txPool;
         private readonly ITimestamp _timestamp;
 
         public Eth62ProtocolHandler(
             ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
-            ISynchronizationManager syncManager,
+            ISyncServer syncServer,
             ILogManager logManager,
             IPerfService perfService,
-            ITransactionPool transactionPool)
+            ITxPool txPool)
             : base(session, statsManager, serializer, logManager)
         {
-            SyncManager = syncManager;
+            SyncServer = syncServer;
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
-            _transactionPool = transactionPool;
+            _txPool = txPool;
             _timestamp = new Timestamp();
 
             _txFloodCheckTimer = new System.Timers.Timer(_txFloodCheckInterval.TotalMilliseconds);
@@ -112,18 +110,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public void Init()
         {
             if(Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
-            if (SyncManager.Head == null)
+            if (SyncServer.Head == null)
             {
                 throw new InvalidOperationException($"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
             }
 
-            BlockHeader head = SyncManager.Head;
+            BlockHeader head = SyncServer.Head;
             StatusMessage statusMessage = new StatusMessage();
-            statusMessage.ChainId = (UInt256) SyncManager.ChainId;
+            statusMessage.ChainId = (UInt256) SyncServer.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
             statusMessage.BestHash = head.Hash;
-            statusMessage.GenesisHash = SyncManager.Genesis.Hash;
+            statusMessage.GenesisHash = SyncServer.Genesis.Hash;
 
             Send(statusMessage);
             Metrics.StatusesSent++;
@@ -303,7 +301,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 var transaction = msg.Transactions[i];
                 transaction.DeliveredBy = Node.Id;
                 transaction.Timestamp = _timestamp.EpochSeconds;
-                AddTransactionResult result = _transactionPool.AddTransaction(transaction, SyncManager.Head.Number);
+                AddTransactionResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number);
                 if (result == AddTransactionResult.AlreadyKnown)
                 {
                     _notAcceptedTxsSinceLastCheck++;
@@ -320,7 +318,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             for (int i = 0; i < hashes.Length; i++)
             {
-                blocks[i] = SyncManager.Find(hashes[i]);
+                blocks[i] = SyncServer.Find(hashes[i]);
             }
 
             Send(new BlockBodiesMessage(blocks));
@@ -340,60 +338,37 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
             if (startingHash == null)
             {
-                startingHash = SyncManager.Find(getBlockHeadersMessage.StartingBlockNumber)?.Hash;
+                startingHash = SyncServer.Find(getBlockHeadersMessage.StartingBlockNumber)?.Hash;
             }
 
-            Block[] blocks =
+            BlockHeader[] headers =
                 startingHash == null
-                    ? new Block[0]
-                    : SyncManager.Find(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
-
-            BlockHeader[] headers = new BlockHeader[blocks.Length];
-            for (int i = 0; i < blocks.Length; i++)
-            {
-                headers[i] = blocks[i]?.Header;
-            }
+                    ? new BlockHeader[0]
+                    : SyncServer.FindHeaders(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
 
             Send(new BlockHeadersMessage(headers));
         }
 
-        [Todo(Improve.MissingFunctionality, "Need to compare response")]
-        private bool IsRequestMatched(
-            Request<GetBlockHeadersMessage, BlockHeader[]> request,
-            BlockHeadersMessage response)
-        {
-            return response.PacketType == Eth62MessageCode.BlockHeaders; // TODO: more detailed
-        }
-
-        [Todo(Improve.MissingFunctionality, "Need to compare response")]
-        private bool IsRequestMatched(
-            Request<GetBlockBodiesMessage, Block[]> request,
-            BlockBodiesMessage response)
-        {
-            return response.PacketType == Eth62MessageCode.BlockBodies; // TODO: more detailed
-        }
-
         private void Handle(BlockBodiesMessage message)
         {
-            List<Block> blocks = new List<Block>();
-            foreach (BlockBody body in message.Bodies)
+            Block[] blocks = new Block[message.Bodies.Length];
+            for (int i = 0; i < message.Bodies.Length; i++)
             {
-                // TODO: match with headers
-                Block block = new Block(null, body.Transactions, body.Ommers);
-                blocks.Add(block);
+                Block block = new Block(null, message.Bodies[i].Transactions, message.Bodies[i].Ommers);
+                blocks[i] = block;
             }
 
             var request = _bodiesRequests.Take();
-            if (IsRequestMatched(request, message))
+            if (message.PacketType == Eth62MessageCode.BlockBodies)
             {
-                request.CompletionSource.SetResult(blocks.ToArray());
+                request.CompletionSource.SetResult(blocks);
             }
         }
 
         private void Handle(BlockHeadersMessage message)
         {
             var request = _headersRequests.Take();
-            if (IsRequestMatched(request, message))
+            if (message.PacketType == Eth62MessageCode.BlockHeaders)
             {
                 request.CompletionSource.SetResult(message.BlockHeaders);
             }
@@ -401,16 +376,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {
-            foreach ((Keccak Hash, UInt256 Number) hint in newBlockHashes.BlockHashes)
+            foreach ((Keccak Hash, long Number) hint in newBlockHashes.BlockHashes)
             {
-                SyncManager.HintBlock(hint.Hash, hint.Number, Node);
+                SyncServer.HintBlock(hint.Hash, hint.Number, Node);
             }
         }
 
         private void Handle(NewBlockMessage newBlockMessage)
         {
             newBlockMessage.Block.TotalDifficulty = (UInt256) newBlockMessage.TotalDifficulty;
-            SyncManager.AddNewBlock(newBlockMessage.Block, Session.Node);
+            SyncServer.AddNewBlock(newBlockMessage.Block, Session.Node);
         }
 
         protected class Request<TMsg, TResult>
@@ -500,7 +475,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Length} block hashes");
         }
 
-        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
+        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
@@ -512,7 +487,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return headers;
         }
 
-        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
+        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
@@ -524,15 +499,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return headers;
         }
 
-        async Task<Block[]> ISynchronizationPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
+        async Task<Block[]> ISyncPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
-            var bodiesMsg = new GetBlockBodiesMessage(blockHashes.ToArray());
+            var bodiesMsg = new GetBlockBodiesMessage(blockHashes);
 
             Block[] blocks = await SendRequest(bodiesMsg, token);
             return blocks;
         }
 
-        async Task<BlockHeader> ISynchronizationPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
+        async Task<BlockHeader> ISyncPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.StartingBlockHash = hash ?? _remoteHeadBlockHash;

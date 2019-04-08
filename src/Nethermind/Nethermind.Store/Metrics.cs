@@ -43,5 +43,7 @@ namespace Nethermind.Store
         public static long TreeNodeHashCalculations { get; set; }
         public static long TreeNodeRlpEncodings { get; set; }
         public static long TreeNodeRlpDecodings { get; set; }
+        public static long HeaderDbReads { get; set; }
+        public static long HeaderDbWrites { get; set; }
     }
 } 

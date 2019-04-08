@@ -22,7 +22,7 @@ using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -39,8 +39,8 @@ namespace Nethermind.Facade
     public class BlockchainBridge : IBlockchainBridge
     {
         private readonly IBlockTree _blockTree;
-        private readonly ITransactionPool _transactionPool;
-        private readonly ITransactionPoolInfoProvider _transactionPoolInfoProvider;
+        private readonly ITxPool _txPool;
+        private readonly ITxPoolInfoProvider _transactionPoolInfoProvider;
         private readonly IFilterManager _filterManager;
         private readonly IFilterStore _filterStore;
         private readonly IStateReader _stateReader;
@@ -55,8 +55,8 @@ namespace Nethermind.Facade
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             IBlockTree blockTree,
-            ITransactionPool transactionPool,
-            ITransactionPoolInfoProvider transactionPoolInfoProvider,
+            ITxPool txPool,
+            ITxPoolInfoProvider transactionPoolInfoProvider,
             IReceiptStorage receiptStorage,
             IFilterStore filterStore,
             IFilterManager filterManager,
@@ -67,7 +67,7 @@ namespace Nethermind.Facade
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(_transactionPool));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _transactionPoolInfoProvider = transactionPoolInfoProvider ?? throw new ArgumentNullException(nameof(transactionPoolInfoProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
@@ -93,10 +93,10 @@ namespace Nethermind.Facade
 
         public BlockHeader Head => _blockTree.Head;
         public BlockHeader BestSuggested => _blockTree.BestSuggested;
-        public UInt256 BestKnown => _blockTree.BestKnownNumber;
+        public long BestKnown => _blockTree.BestKnownNumber;
         public bool IsSyncing => _blockTree.BestSuggested.Hash != _blockTree.Head.Hash;
         public Block FindBlock(Keccak blockHash, bool mainChainOnly) => _blockTree.FindBlock(blockHash, mainChainOnly);
-        public Block FindBlock(UInt256 blockNumber) => _blockTree.FindBlock(blockNumber);
+        public Block FindBlock(long blockNumber) => _blockTree.FindBlock(blockNumber);
         public Block RetrieveHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, false);
         public Block RetrieveGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, true);
 
@@ -120,7 +120,7 @@ namespace Nethermind.Facade
             transaction.Hash = Transaction.CalculateHash(transaction);
             transaction.Timestamp = _timestamp.EpochSeconds;
 
-            _transactionPool.AddTransaction(transaction, _blockTree.Head.Number);
+            _txPool.AddTransaction(transaction, _blockTree.Head.Number);
 
             _stateProvider.Reset();
             return transaction.Hash;
@@ -233,8 +233,8 @@ namespace Nethermind.Facade
             return new FilterLog[0];
         }
 
-        public TransactionPoolInfo GetTransactionPoolInfo()
-            => _transactionPoolInfoProvider.GetInfo(_transactionPool.GetPendingTransactions());
+        public TxPoolInfo GetTxPoolInfo()
+            => _transactionPoolInfoProvider.GetInfo(_txPool.GetPendingTransactions());
 
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)

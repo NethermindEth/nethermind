@@ -23,14 +23,19 @@ namespace Nethermind.Blockchain.Validators
     // ReSharper disable once InconsistentNaming
     public static class IBlockTreeExtensions
     {
-        public static Block FindParent(this IBlockTree tree, BlockHeader header)
+        public static BlockHeader FindParentHeader(this IBlockTree tree, BlockHeader header)
         {
-            return tree.FindBlock(header.ParentHash, false);
+            return tree.FindHeader(header.ParentHash, false);
         }
 
         public static Block FindParent(this IBlockTree tree, Block block)
         {
             return tree.FindBlock(block.Header.ParentHash, false);
+        }
+        
+        public static Block FindParent(this IBlockTree tree, BlockHeader blockHeader)
+        {
+            return tree.FindBlock(blockHeader.ParentHash, false);
         }
 
         public static Block RetrieveBestSuggestedBlock(this IBlockTree tree)

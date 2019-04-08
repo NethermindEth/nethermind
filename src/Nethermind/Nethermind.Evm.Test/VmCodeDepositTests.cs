@@ -31,9 +31,9 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class VmCodeDepositTests : VirtualMachineTestsBase
     {
-        private UInt256 _blockNumber = MainNetSpecProvider.ByzantiumBlockNumber;
+        private long _blockNumber = MainNetSpecProvider.ByzantiumBlockNumber;
 
-        protected override UInt256 BlockNumber => _blockNumber;
+        protected override long BlockNumber => _blockNumber;
 
         [SetUp]
         public override void Setup()

@@ -32,12 +32,12 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GenesisSpec => ConstantinopleFix.Instance;
 
-        public IReleaseSpec GetSpec(UInt256 blockNumber)
+        public IReleaseSpec GetSpec(long blockNumber)
         {
             return ConstantinopleFix.Instance;
         }
 
-        public UInt256? DaoBlockNumber { get; } = null;
+        public long? DaoBlockNumber { get; } = null;
 
         public int ChainId => 0x5;
     }

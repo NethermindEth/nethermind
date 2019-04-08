@@ -46,6 +46,7 @@ namespace Nethermind.Evm.Test
         [TestCase(32)]
         [TestCase(256)]
         [TestCase(2048)]
+        [TestCase(1024 * 1024)]
         [TestCase(Int32.MaxValue)]
         public void MemoryCost(int memoryAllocation)
         {

@@ -40,11 +40,11 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GenesisSpec => _releaseSpec;
 
-        public IReleaseSpec GetSpec(UInt256 blockNumber)
+        public IReleaseSpec GetSpec(long blockNumber)
         {
             return _releaseSpec;
         }
         
-        public UInt256? DaoBlockNumber { get; }
+        public long? DaoBlockNumber { get; }
     }
 }

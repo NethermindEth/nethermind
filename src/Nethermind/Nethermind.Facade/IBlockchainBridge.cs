@@ -19,7 +19,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -37,11 +37,11 @@ namespace Nethermind.Facade
         int GetNetworkId();
         BlockHeader Head { get; }
         BlockHeader BestSuggested { get; }
-        UInt256 BestKnown { get; }
+        long BestKnown { get; }
         bool IsSyncing { get; }
 
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
-        Block FindBlock(UInt256 blockNumber);
+        Block FindBlock(long blockNumber);
         Block RetrieveHeadBlock();
         Block RetrieveGenesisBlock();
 
@@ -79,6 +79,6 @@ namespace Nethermind.Facade
         FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
 
-        TransactionPoolInfo GetTransactionPoolInfo();
+        TxPoolInfo GetTxPoolInfo();
     }
 }

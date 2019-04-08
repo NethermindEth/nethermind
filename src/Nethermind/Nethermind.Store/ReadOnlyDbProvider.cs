@@ -33,6 +33,7 @@ namespace Nethermind.Store
             NestedReceiptsDb = new ReadOnlyDb(wrappedProvider.ReceiptsDb, createInMemoryWriteStore);
             NestedBlockInfosDb = new ReadOnlyDb(wrappedProvider.BlockInfosDb, createInMemoryWriteStore);
             NestedBlocksDb = new ReadOnlyDb(wrappedProvider.BlocksDb, createInMemoryWriteStore);
+            NestedHeadersDb = new ReadOnlyDb(wrappedProvider.HeadersDb, createInMemoryWriteStore);
             NestedPendingTxsDb = new ReadOnlyDb(wrappedProvider.PendingTxsDb, createInMemoryWriteStore);
             NestedTraceDb = new ReadOnlyDb(wrappedProvider.TraceDb, createInMemoryWriteStore);
         }
@@ -48,11 +49,13 @@ namespace Nethermind.Store
         public ISnapshotableDb CodeDb { get; }
         public IDb ReceiptsDb => NestedReceiptsDb;
         public IDb BlocksDb => NestedBlocksDb;
+        public IDb HeadersDb => NestedHeadersDb;
         public IDb BlockInfosDb => NestedBlockInfosDb;
         public IDb PendingTxsDb => NestedPendingTxsDb;
         public IDb TraceDb => NestedTraceDb;
         public ReadOnlyDb NestedReceiptsDb { get; }
         public ReadOnlyDb NestedBlocksDb { get; }
+        public ReadOnlyDb NestedHeadersDb { get; }
         public ReadOnlyDb NestedBlockInfosDb { get; }
         public ReadOnlyDb NestedPendingTxsDb { get; }
         public ReadOnlyDb NestedTraceDb { get; }
@@ -65,6 +68,7 @@ namespace Nethermind.Store
             NestedCodeDb.ClearTempChanges();
             NestedReceiptsDb.ClearTempChanges();
             NestedBlocksDb.ClearTempChanges();
+            NestedHeadersDb.ClearTempChanges();
             NestedBlockInfosDb.ClearTempChanges();
             NestedTraceDb.ClearTempChanges();
         }

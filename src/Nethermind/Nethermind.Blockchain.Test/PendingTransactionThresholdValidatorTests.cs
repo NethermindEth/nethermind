@@ -18,9 +18,8 @@
 
 using System;
 using FluentAssertions;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
@@ -37,8 +36,7 @@ namespace Nethermind.Blockchain.Test
         {
             var utcNow = DateTime.UtcNow;
             var validator = GetValidator();
-            var dateTimeProvider = Build.A.DateTimeProvider.WithUtcNow(utcNow).TestObject;
-            var timestamp = new Timestamp(dateTimeProvider);
+            var timestamp = new Timestamp(utcNow);
             var transaction1 = GetTransaction(utcNow, 5);
             var transaction2 = GetTransaction(utcNow, 15);
             var transaction3 = GetTransaction(utcNow, 25);
@@ -53,8 +51,7 @@ namespace Nethermind.Blockchain.Test
         {
             var utcNow = DateTime.UtcNow;
             var validator = GetValidator();
-            var dateTimeProvider = Build.A.DateTimeProvider.WithUtcNow(utcNow).TestObject;
-            var timestamp = new Timestamp(dateTimeProvider);
+            var timestamp = new Timestamp(utcNow);
             var transaction1 = GetTransaction(utcNow, 5);
             var transaction2 = GetTransaction(utcNow, 600);
             var transaction3 = GetTransaction(utcNow, 1000);

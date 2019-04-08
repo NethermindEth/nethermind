@@ -39,9 +39,9 @@ namespace Nethermind.Clique
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public bool ValidateParams(Block parent, BlockHeader header)
+        public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
-            UInt256 number = header.Number;
+            long number = header.Number;
             // Retrieve the snapshot needed to validate this header and cache it
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
             // Resolve the authorization key and check against signers
@@ -149,14 +149,14 @@ namespace Nethermind.Clique
             return header.Author != null;
         }
 
-        private bool IsEpochTransition(UInt256 number)
+        private bool IsEpochTransition(long number)
         {
             return (ulong) number % _cliqueConfig.Epoch == 0;
         }
 
-        private bool ValidateCascadingFields(Block parent, BlockHeader header)
+        private bool ValidateCascadingFields(BlockHeader parent, BlockHeader header)
         {
-            UInt256 number = header.Number;
+            long number = header.Number;
             if (parent.Timestamp + _cliqueConfig.BlockPeriod > header.Timestamp)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect block timestamp ({header.Timestamp}) - should have big enough difference with parent");

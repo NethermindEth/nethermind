@@ -22,13 +22,13 @@ using NSubstitute;
 
 namespace Nethermind.Core.Test.Builders
 {
-    public class TransactionValidatorBuilder : BuilderBase<ITransactionValidator>
+    public class TransactionValidatorBuilder : BuilderBase<ITxValidator>
     {
         private bool _alwaysTrue;
  
         public TransactionValidatorBuilder()
         {
-            TestObject = Substitute.For<ITransactionValidator>();
+            TestObject = Substitute.For<ITxValidator>();
         }
  
         public TransactionValidatorBuilder ThatAlwaysReturnsFalse
@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Builders
         protected override void BeforeReturn()
         {
             TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_alwaysTrue);
-            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), Arg.Any<bool>()).Returns(_alwaysTrue);
+            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_alwaysTrue);
             base.BeforeReturn();
         }
     }

@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -39,7 +40,7 @@ namespace Nethermind.Blockchain.Test
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
             IDb traceDb = new MemDb();
-            IStateProvider stateProvider = new StateProvider(new StateTree(stateDb, Keccak.EmptyTreeHash), codeDb, LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new BlockProcessor(
                 RinkebySpecProvider.Instance,
@@ -51,7 +52,7 @@ namespace Nethermind.Blockchain.Test
                 traceDb,
                 stateProvider,
                 new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
-                NullTransactionPool.Instance,
+                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance);
 

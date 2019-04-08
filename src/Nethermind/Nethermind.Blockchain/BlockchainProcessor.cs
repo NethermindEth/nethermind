@@ -284,9 +284,8 @@ namespace Nethermind.Blockchain
 
             UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
             if (_logger.IsTrace) _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
-            UInt256 totalTransactions = suggestedBlock.TotalTransactions ?? 0;
-            if (_logger.IsTrace) _logger.Trace($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
 
+            BlockHeader branchingPoint = null;
             Block[] processedBlocks = null;
             if (_blockTree.Head == null || totalDifficulty > _blockTree.Head.TotalDifficulty || (options & ProcessingOptions.ForceProcessing) != 0)
             {
@@ -295,14 +294,25 @@ namespace Nethermind.Blockchain
                 do
                 {
                     blocksToBeAddedToMain.Add(toBeProcessed);
-                    toBeProcessed = toBeProcessed.Number == 0 ? null : _blockTree.FindParent(toBeProcessed);
-                    if (toBeProcessed == null)
+                    if (toBeProcessed.IsGenesis)
                     {
                         break;
                     }
-                } while (!_blockTree.IsMainChain(toBeProcessed.Hash));
 
-                BlockHeader branchingPoint = toBeProcessed?.Header;
+                    branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header);
+                    if (branchingPoint == null)
+                    {
+                        break; //failure here
+                    }
+                    
+                    toBeProcessed = _blockTree.FindParent(toBeProcessed.Header);
+                    if (toBeProcessed == null)
+                    {
+                        // fast synced from here
+                        break;
+                    }
+                } while (!_blockTree.IsMainChain(branchingPoint.Hash));
+
                 if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Head block was: {_blockTree.Head?.ToString(BlockHeader.Format.Short)}");
@@ -386,7 +396,6 @@ namespace Nethermind.Blockchain
                 lastProcessed = processedBlocks[processedBlocks.Length - 1];
                 if (_logger.IsTrace) _logger.Trace($"Setting total on last processed to {lastProcessed.ToString(Block.Format.Short)}");
                 lastProcessed.TotalDifficulty = suggestedBlock.TotalDifficulty;
-                lastProcessed.TotalTransactions = suggestedBlock.TotalTransactions;
             }
             else
             {
@@ -400,7 +409,7 @@ namespace Nethermind.Blockchain
         private bool RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)
         {
             /* a bit hacky way to get the invalid branch out of the processing loop */
-            if (suggestedBlock.Number != 0 && _blockTree.FindParent(suggestedBlock) == null)
+            if (suggestedBlock.Number != 0 && _blockTree.FindParentHeader(suggestedBlock.Header) == null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
                 return false;

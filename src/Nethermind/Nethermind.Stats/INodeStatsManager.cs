@@ -37,7 +37,7 @@ namespace Nethermind.Stats
         void ReportDisconnect(Node node, DisconnectType disconnectType, DisconnectReason disconnectReason);
         long GetNewPersistedReputation(Node node);
         long GetCurrentPersistedReputation(Node node);
-        void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent, SyncNodeDetails syncNodeDetails);
+        void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent);
         bool HasFailedValidation(Node node);
         void ReportLatencyCaptureEvent(Node node, NodeLatencyStatType latencyType, long value);
     }

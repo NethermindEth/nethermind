@@ -28,6 +28,5 @@ namespace Nethermind.Stats.Model
         public EthNodeDetails EthNodeDetails { get; set; }
         public DisconnectDetails DisconnectDetails { get; set; }
         public ConnectionDirection? ConnectionDirection { get; set; }
-        public SyncNodeDetails SyncNodeDetails { get; set; }
     }
 }

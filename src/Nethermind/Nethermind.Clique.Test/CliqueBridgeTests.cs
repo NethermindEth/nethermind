@@ -17,7 +17,7 @@
  */
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -38,7 +38,7 @@ namespace Nethermind.Clique.Test
             CliqueConfig cliqueConfig = new CliqueConfig();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             CliqueBlockProducer producer = new CliqueBlockProducer(
-                Substitute.For<ITransactionPool>(),
+                Substitute.For<ITxPool>(),
                 Substitute.For<IBlockchainProcessor>(),
                 blockTree,
                 Substitute.For<ITimestamp>(),

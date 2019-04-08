@@ -28,26 +28,12 @@ namespace Nethermind.Evm.Tracing
 {
     public class ParityTraceDecoder : IRlpDecoder<ParityLikeTxTrace>
     {
-        public static void Init()
-        {
-            // here to register with RLP in static constructor
-        }
-        
-        private ParityTraceDecoder()
-        {
-        }
-
-        static ParityTraceDecoder()
-        {
-            Rlp.Decoders[typeof(ParityLikeTxTrace)] = new ParityTraceDecoder();
-        }
-
         public ParityLikeTxTrace Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ParityLikeTxTrace trace = new ParityLikeTxTrace();
             context.ReadSequenceLength();
             trace.BlockHash = context.DecodeKeccak();
-            trace.BlockNumber = context.DecodeUInt256();
+            trace.BlockNumber = (long)context.DecodeUInt256();
             trace.TransactionHash = context.DecodeKeccak();
             byte[] txPosBytes = context.DecodeByteArray();
             trace.TransactionPosition = txPosBytes.Length == 0 ? (int?) null : txPosBytes.ToInt32();

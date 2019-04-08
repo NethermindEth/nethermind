@@ -16,14 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {
     public interface IJsonRpcModelMapper
     {
-        TransactionPoolStatus MapTransactionPoolStatus(TransactionPoolInfo transactionPoolInfo);
-        TransactionPoolContent MapTransactionPoolContent(TransactionPoolInfo transactionPoolInfo);
-        TransactionPoolInspection MapTransactionPoolInspection(TransactionPoolInfo transactionPoolInfo);
+        TxPoolStatus MapTxPoolStatus(TxPoolInfo transactionPoolInfo);
+        TxPoolContent MapTxPoolContent(TxPoolInfo transactionPoolInfo);
+        TxPoolInspection MapTxPoolInspection(TxPoolInfo transactionPoolInfo);
     }
 }

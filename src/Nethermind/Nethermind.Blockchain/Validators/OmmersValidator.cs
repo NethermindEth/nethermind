@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Validators
                 return IsKin(header, ommer, (int)header.Number);
             }
             
-            if (ommer.Number < header.Number - (ulong)relationshipLevel)
+            if (ommer.Number < header.Number - relationshipLevel)
             {
                 return false;
             }

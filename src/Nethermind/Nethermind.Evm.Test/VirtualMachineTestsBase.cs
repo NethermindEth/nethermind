@@ -45,7 +45,7 @@ namespace Nethermind.Evm.Test
         protected internal static Address Recipient { get; } = TestItem.AddressB;
         protected internal static Address Miner { get; } = TestItem.AddressD;
 
-        protected virtual UInt256 BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
+        protected virtual long BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
         
         protected virtual ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
 
@@ -56,8 +56,7 @@ namespace Nethermind.Evm.Test
             ILogManager logger = LimboLogs.Instance;;
             IDb codeDb = new StateDb();
             _stateDb = new StateDb();
-            StateTree stateTree = new StateTree(_stateDb);
-            TestState = new StateProvider(stateTree, codeDb, logger);
+            TestState = new StateProvider(_stateDb, codeDb, logger);
             Storage = new StorageProvider(_stateDb, TestState, logger);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider, logger);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
@@ -118,7 +117,7 @@ namespace Nethermind.Evm.Test
             return (tracer.BuildResult(), block, transaction);
         }
 
-        protected GethLikeTxTrace ExecuteAndTrace(UInt256 blockNumber, long gasLimit, params byte[] code)
+        protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
         {
             GethLikeTxTracer tracer = new GethLikeTxTracer();
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
@@ -134,7 +133,7 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
-        protected CallOutputTracer Execute(UInt256 blockNumber, long gasLimit, byte[] code)
+        protected CallOutputTracer Execute(long blockNumber, long gasLimit, byte[] code)
         {
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
             CallOutputTracer tracer = new CallOutputTracer();
@@ -142,7 +141,7 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
-        private (Block block, Transaction transaction) PrepareTx(UInt256 blockNumber, long gasLimit, byte[] code)
+        private (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code)
         {
             TestState.CreateAccount(Sender, 100.Ether());
             TestState.CreateAccount(Recipient, 100.Ether());
@@ -162,7 +161,7 @@ namespace Nethermind.Evm.Test
             return (block, transaction);
         }
 
-        private (Block block, Transaction transaction) PrepareTx(UInt256 blockNumber, long gasLimit, byte[] code, byte[] input, UInt256 value)
+        private (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code, byte[] input, UInt256 value)
         {
             TestState.CreateAccount(Sender, 100.Ether());
             TestState.CreateAccount(Recipient, 100.Ether());
@@ -184,7 +183,7 @@ namespace Nethermind.Evm.Test
             return (block, transaction);
         }
 
-        private (Block block, Transaction transaction) PrepareInitTx(UInt256 blockNumber, long gasLimit, byte[] code)
+        private (Block block, Transaction transaction) PrepareInitTx(long blockNumber, long gasLimit, byte[] code)
         {
             TestState.CreateAccount(Sender, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
@@ -202,7 +201,7 @@ namespace Nethermind.Evm.Test
             return (block, transaction);
         }
 
-        protected virtual Block BuildBlock(UInt256 blockNumber)
+        protected virtual Block BuildBlock(long blockNumber)
         {
             return Build.A.Block.WithNumber(blockNumber).WithBeneficiary(Miner).TestObject;
         }

@@ -73,7 +73,7 @@ namespace Nethermind.Clique.Test
             _clique = new CliqueSealer(new BasicWallet(key), config, _snapshotManager, key.Address, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
         }
-
+        
         [TestCase(Block1Rlp)]
         [TestCase(Block2Rlp)]
         [TestCase(Block3Rlp)]
@@ -82,25 +82,28 @@ namespace Nethermind.Clique.Test
         public void Test_real_block(string blockRlp)
         {
             Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
-            bool validHeader = _sealValidator.ValidateParams(_blockTree.FindBlock(block.ParentHash, false), block.Header);
+            bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(block.ParentHash, false), block.Header);
             bool validSeal = _sealValidator.ValidateSeal(block.Header);
             Assert.True(validHeader);
             Assert.True(validSeal);
         }
 
-        private Block GetRinkebyGenesis()
+        public static Block GetRinkebyGenesis()
         {
             Keccak parentHash = Keccak.Zero;
             Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = new UInt256(1);
-            UInt256 number = new UInt256(0);
+            long number = 0L;
             int gasLimit = 4700000;
             UInt256 timestamp = UInt256.Parse("1492009146");
             byte[] extraData = Bytes.FromHexString("52657370656374206d7920617574686f7269746168207e452e436172746d616e42eb768f2244c8811c63729a21a3569731535f067ffc57839b00206d1ad20c69a1981b489f772031b279182d99e65703f0076e4812653aab85fca0f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             Block genesis = new Block(header);
             genesis.Hash = new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177");
+            // this would need to be loaded from rinkeby chainspec to include allocations
+            // Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
+            
             return genesis;
         }
 

@@ -53,7 +53,7 @@ namespace Nethermind.Core
         {
         }
 
-        public bool IsGenesis => Number == 0;
+        public bool IsGenesis => Header.IsGenesis;
 
         public BlockHeader Header { get; set; }
         public Transaction[] Transactions { get; set; }
@@ -149,7 +149,7 @@ namespace Nethermind.Core
             set => Header.Timestamp = value;
         }
 
-        public UInt256 Number
+        public long Number
         {
             get => Header.Number;
             set => Header.Number = value;
@@ -165,12 +165,6 @@ namespace Nethermind.Core
         {
             get => Header?.TotalDifficulty;
             set => Header.TotalDifficulty = value;
-        }
-
-        public UInt256? TotalTransactions
-        {
-            get => Header?.TotalTransactions;
-            set => Header.TotalTransactions = value;
         }
 
         public string ToString(string indent)

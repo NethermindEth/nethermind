@@ -20,7 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly ITransactionPool _transactionPool;
+        private readonly ITxPool _txPool;
         private readonly IReceiptStorage _receiptStorage;
 
         public BlockProcessor(
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain
             IDb traceDb,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
-            ITransactionPool transactionPool,
+            ITxPool txPool,
             IReceiptStorage receiptStorage,
             ILogManager logManager)
         {
@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
@@ -83,6 +83,8 @@ namespace Nethermind.Blockchain
 
         public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
+            if(_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlocks[0].Number} from state root: {branchStateRoot}");
+            
             if (suggestedBlocks.Length == 0) return Array.Empty<Block>();
 
             int stateSnapshot = _stateDb.TakeSnapshot();
@@ -167,7 +169,7 @@ namespace Nethermind.Blockchain
             block.Header.Bloom = transactionReceipts.Length > 0 ? BuildBloom(transactionReceipts) : Bloom.Empty;
         }
 
-        public Bloom BuildBloom(TransactionReceipt[] transactionReceipts)
+        private Bloom BuildBloom(TransactionReceipt[] transactionReceipts)
         {
             Bloom bloom = new Bloom();
             for (int i = 0; i < transactionReceipts.Length; i++)
@@ -203,6 +205,7 @@ namespace Nethermind.Blockchain
             var receipts = ProcessTransactions(block, options, blockTracer);
             SetReceiptsRootAndBloom(block, receipts);
             ApplyMinerRewards(block, blockTracer);
+            
             _stateProvider.Commit(_specProvider.GetSpec(block.Number));
 
             block.Header.StateRoot = _stateProvider.StateRoot;
@@ -233,7 +236,7 @@ namespace Nethermind.Blockchain
             {
                 transactionReceipts[i].BlockHash = block.Hash;
                 _receiptStorage.Add(transactionReceipts[i]);
-                _transactionPool.RemoveTransaction(transactionReceipts[i].TransactionHash);
+                _txPool.RemoveTransaction(transactionReceipts[i].TransactionHash);
             }
         }
         

@@ -18,6 +18,8 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Text;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
@@ -26,7 +28,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
-    internal class TrieNode
+    public class TrieNode
     {
         private static readonly object NullNode = new object();
 
@@ -113,7 +115,7 @@ namespace Nethermind.Store
 
         public static bool AllowBranchValues { get; set; } = false;
 
-        internal byte[] Value
+        public byte[] Value
         {
             get
             {
@@ -386,6 +388,30 @@ namespace Nethermind.Store
             }
         }
 
+        public Keccak GetChildHash(int i)
+        {
+            Rlp.DecoderContext context = DecoderContext;
+            if (context == null)
+            {
+                return null;
+            } 
+            
+            if (NodeType == NodeType.Extension)
+            {
+                return context.DecodeKeccak();
+            }
+            
+            context.Position = _lookupTable[i * 2];
+            int prefix = context.ReadByte();
+            if (prefix == 160)
+            {
+                context.Position--;
+                return context.DecodeKeccak();
+            }
+
+            return null;
+        }
+
         public bool IsChildNull(int i)
         {
             Rlp.DecoderContext context = DecoderContext;
@@ -499,6 +525,53 @@ namespace Nethermind.Store
             InitData();
             int index = IsExtension ? i + 1 : i;
             _data[index] = node ?? NullNode;
+        }
+
+        internal void DumpState(DumpStateContext ctx, PatriciaTree tree)
+        {   
+            ResolveNode(tree);
+            AccountDecoder decoder
+                 = new AccountDecoder();
+            
+            ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix}{Keccak} {NodeType}");
+            ctx.Prefix = string.Empty;
+            switch (NodeType)
+            {
+                case NodeType.Unknown:
+                    break;
+                case NodeType.Branch:
+                {
+                    string indent = ctx.Indent + "++";
+                    for (int i = 0; i < 16; i++)
+                    {
+                        ctx.Indent = indent;
+                        TrieNode child = GetChild(i);
+                        if (child != null)
+                        {
+                            ctx.Prefix = $"[{i:00}]";
+                            child.DumpState(ctx, tree);
+                        }
+                    }
+                    
+                    break;
+                }
+                case NodeType.Extension:
+                {
+                    ctx.Indent += "++";
+                    TrieNode child = GetChild(0);
+                    child?.DumpState(ctx, tree);
+                    break;
+                }
+                case NodeType.Leaf:
+                {
+                    ctx.Indent += "++";
+                    Account account = decoder.Decode(Value.AsRlpContext());
+                    ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix} N{account.Nonce} B{account.Balance}");
+                    break;
+                }
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
         }
     }
 }

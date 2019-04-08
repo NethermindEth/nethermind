@@ -24,6 +24,7 @@ namespace Nethermind.Store
         public ISnapshotableDb CodeDb { get; } = new StateDb();
         public IDb ReceiptsDb { get; } = new MemDb();
         public IDb BlocksDb { get; } = new MemDb();
+        public IDb HeadersDb { get; } = new MemDb();
         public IDb BlockInfosDb { get; } = new MemDb();
         public IDb PendingTxsDb { get; } = new MemDb();
         public IDb TraceDb { get; } = new MemDb();

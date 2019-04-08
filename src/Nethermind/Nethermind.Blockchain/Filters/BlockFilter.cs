@@ -22,9 +22,9 @@ namespace Nethermind.Blockchain.Filters
 {
     public class BlockFilter : FilterBase
     {
-        public UInt256 StartBlockNumber { get; set; }
+        public long StartBlockNumber { get; set; }
 
-        public BlockFilter(int id, UInt256 startBlockNumber) : base(id)
+        public BlockFilter(int id, long startBlockNumber) : base(id)
         {
             StartBlockNumber = startBlockNumber;
         }

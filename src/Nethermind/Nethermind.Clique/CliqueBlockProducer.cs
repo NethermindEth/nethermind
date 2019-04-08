@@ -27,7 +27,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -48,7 +48,7 @@ namespace Nethermind.Clique
         private readonly ICryptoRandom _cryptoRandom;
 
         private readonly IBlockchainProcessor _processor;
-        private readonly ITransactionPool _transactionPool;
+        private readonly ITxPool _txPool;
         private ISealer _sealer;
         private readonly ISnapshotManager _snapshotManager;
         private ICliqueConfig _config;
@@ -58,7 +58,7 @@ namespace Nethermind.Clique
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private System.Timers.Timer _timer = new System.Timers.Timer();
 
-        public CliqueBlockProducer(ITransactionPool transactionPool,
+        public CliqueBlockProducer(ITxPool txPool,
             IBlockchainProcessor blockchainProcessor,
             IBlockTree blockTree,
             ITimestamp timestamp,
@@ -71,7 +71,7 @@ namespace Nethermind.Clique
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -91,6 +91,7 @@ namespace Nethermind.Clique
         private readonly BlockingCollection<Block> _signalsQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
 
         private Block _scheduledBlock;
+        private ulong? _extraDelayMilliseconds = 0;
 
         public void CastVote(Address signer, bool vote)
         {
@@ -135,18 +136,26 @@ namespace Nethermind.Clique
                     return;
                 }
 
-                ulong extraDelayMilliseconds = 0;
-                if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
+                string turnDescription = _scheduledBlock.Difficulty == Clique.DifficultyInTurn ? "IN TURN " : "OUT OF TURN ";
+                if (_extraDelayMilliseconds == null)
                 {
-                    int wiggle = _snapshotManager.GetOrCreateSnapshot(_scheduledBlock.Header.Number - 1, _scheduledBlock.Header.ParentHash).Signers.Count / 2 + 1 * Clique.WiggleTime;
-                    extraDelayMilliseconds += (ulong) _cryptoRandom.NextInt(wiggle);
+                    if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
+                    {
+                        int wiggle = _snapshotManager.GetOrCreateSnapshot(_scheduledBlock.Header.Number - 1, _scheduledBlock.Header.ParentHash).Signers.Count / 2 + 1 * Clique.WiggleTime;
+                        _extraDelayMilliseconds = (ulong) _cryptoRandom.NextInt(wiggle);
+                        if (_logger.IsInfo) _logger.Info($"Setting extra delay for own {turnDescription}block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} to {_extraDelayMilliseconds}");
+                    }
+                    else
+                    {
+                        _extraDelayMilliseconds = 0;
+                    }
                 }
 
-                if (_scheduledBlock.Timestamp * 1000 + extraDelayMilliseconds < _timestamp.EpochMilliseconds)
+                if (_scheduledBlock.Timestamp * 1000 + _extraDelayMilliseconds < _timestamp.EpochMilliseconds)
                 {
                     if (_scheduledBlock.TotalDifficulty > _blockTree.Head.TotalDifficulty)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Suggesting own block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
+                        if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription}block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} after the delay of {_extraDelayMilliseconds}");
                         _blockTree.SuggestBlock(_scheduledBlock);
                     }
                     else
@@ -155,6 +164,11 @@ namespace Nethermind.Clique
                     }
 
                     _scheduledBlock = null;
+                    _extraDelayMilliseconds = null;
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Not yet {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
                 }
 
                 _timer.Enabled = true;
@@ -304,7 +318,7 @@ namespace Nethermind.Clique
                 new byte[0]);
 
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
-            UInt256 number = header.Number;
+            long number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
             bool isEpochBlock = (ulong) number % 30000 == 0;
@@ -363,7 +377,7 @@ namespace Nethermind.Clique
                 header.Timestamp = new UInt256(_timestamp.EpochSeconds);
             }
 
-            var transactions = _transactionPool.GetPendingTransactions().OrderBy(t => t.Nonce).ThenByDescending(t => t.GasPrice).ThenBy(t => t.GasLimit); // by nonce in case there are two transactions for the same account
+            var transactions = _txPool.GetPendingTransactions().OrderBy(t => t.Nonce).ThenByDescending(t => t.GasPrice).ThenBy(t => t.GasLimit); // by nonce in case there are two transactions for the same account
 
             var selectedTxs = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;
@@ -417,7 +431,7 @@ namespace Nethermind.Clique
             if (_logger.IsDebug) _logger.Debug($"Collected {selectedTxs.Count} out of {total} pending transactions.");
 
             Block block = new Block(header, selectedTxs, new BlockHeader[0]);
-            header.TransactionsRoot = block.CalculateTransactionsRoot();
+            header.TransactionsRoot = block.CalculateTxRoot();
             block.Author = _address;
             return block;
         }

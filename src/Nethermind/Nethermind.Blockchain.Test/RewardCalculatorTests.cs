@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Byzantium_reward_two_uncles()
         {
-            UInt256 blockNumber = RopstenSpecProvider.ByzantiumBlockNumber;
+            long blockNumber = RopstenSpecProvider.ByzantiumBlockNumber;
             Block ommer = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block ommer2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithOmmers(ommer, ommer2).TestObject;
@@ -88,7 +88,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Constantinople_reward_two_uncles()
         {
-            UInt256 blockNumber = RopstenSpecProvider.ConstantinopleBlockNumber;
+            long blockNumber = RopstenSpecProvider.ConstantinopleBlockNumber;
             Block ommer = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block ommer2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithOmmers(ommer, ommer2).TestObject;

@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain
 {
     public static class BlockExtensions
     {
-        public static Keccak CalculateTransactionsRoot(this Block block)
+        public static Keccak CalculateTxRoot(this Block block)
         {
             if (block.Transactions.Length == 0)
             {

@@ -29,7 +29,7 @@ namespace Nethermind.Store
     {
         private const int InitialCapacity = 4;
 
-        private readonly IDb _db;
+        internal readonly IDb _db;
 
         private int _capacity = InitialCapacity;
 

@@ -30,7 +30,7 @@ namespace Nethermind.Core.Test.Builders
             List<Block> blocks = new List<Block>();
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
-                Block block = alternative.FindBlock((ulong)i);
+                Block block = alternative.FindBlock(i);
                 blockTree.SuggestBlock(block);
                 blocks.Add(block);
             }

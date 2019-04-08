@@ -51,7 +51,7 @@ namespace Nethermind.Core.Test.Builders
         protected override void BeforeReturn()
         {
             TestObjectInternal.ValidateSeal(Arg.Any<BlockHeader>()).Returns(_alwaysTrue);
-            TestObjectInternal.ValidateParams(Arg.Any<Block>(), Arg.Any<BlockHeader>()).Returns(_alwaysTrue);
+            TestObjectInternal.ValidateParams(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()).Returns(_alwaysTrue);
             base.BeforeReturn();
         }
     }

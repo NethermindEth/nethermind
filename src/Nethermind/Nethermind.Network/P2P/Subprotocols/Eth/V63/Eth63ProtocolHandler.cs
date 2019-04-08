@@ -21,7 +21,8 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -42,9 +43,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
-            ISynchronizationManager syncManager,
+            ISyncServer syncServer,
             ILogManager logManager, IPerfService perfService,
-            ITransactionPool transactionPool) : base(session, serializer, nodeStatsManager, syncManager, logManager, perfService, transactionPool)
+            ITxPool txPool) : base(session, serializer, nodeStatsManager, syncServer, logManager, perfService, txPool)
         {
         }
 
@@ -81,7 +82,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         
         private void Handle(GetReceiptsMessage msg)
         {
-            TransactionReceipt[][] transactionReceipts = SyncManager.GetReceipts(msg.BlockHashes);
+            TransactionReceipt[][] transactionReceipts = SyncServer.GetReceipts(msg.BlockHashes);
             Send(new ReceiptsMessage(transactionReceipts));
         }
 
@@ -96,7 +97,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private void Handle(GetNodeDataMessage msg)
         {
-            byte[][] nodeData = SyncManager.GetNodeData(msg.Keys);
+            byte[][] nodeData = SyncServer.GetNodeData(msg.Keys);
             Send(new NodeDataMessage(nodeData));
         }
 

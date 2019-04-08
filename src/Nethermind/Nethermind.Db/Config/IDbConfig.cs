@@ -42,6 +42,11 @@ namespace Nethermind.Db.Config
         ulong BlocksDbBlockCacheSize { get; set; }
         bool BlocksDbCacheIndexAndFilterBlocks { get; set; }
         
+        ulong HeadersDbWriteBufferSize { get; set; }
+        uint HeadersDbWriteBufferNumber { get; set; }
+        ulong HeadersDbBlockCacheSize { get; set; }
+        bool HeadersDbCacheIndexAndFilterBlocks { get; set; }
+        
         ulong BlockInfosDbWriteBufferSize { get; set; }
         uint BlockInfosDbWriteBufferNumber { get; set; }
         ulong BlockInfosDbBlockCacheSize { get; set; }

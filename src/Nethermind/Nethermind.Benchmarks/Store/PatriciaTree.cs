@@ -39,21 +39,21 @@ namespace Nethermind.Benchmarks.Store
 
         private (string Name, Action<StateTree> Action)[] _scenarios = new (string, Action<StateTree>)[]
         {
-            ("setting_1", tree =>
+                      ("set_3_via_address", tree =>
             {
                 tree.Set(TestItem.AddressA, _account0);
                 tree.Set(TestItem.AddressB, _account0);
                 tree.Set(TestItem.AddressC, _account0);
                 tree.Commit();
             }),
-            ("setting_2", tree =>
+            ("set_3_via_hash", tree =>
             {
                 tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
                 tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
                 tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
                 tree.Commit();
             }),
-            ("setting_3", tree =>
+            ("set_3_delete_1", tree =>
             {
                 tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
                 tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
@@ -61,7 +61,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
                 tree.Commit();
             }),
-            ("setting_4", tree =>
+            ("set_3_delete_2", tree =>
             {
                 tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
                 tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
@@ -70,7 +70,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
                 tree.Commit();
             }),
-            ("setting_5", tree =>
+            ("set_3_delete_all", tree =>
             {
                 tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
                 tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
@@ -142,7 +142,7 @@ namespace Nethermind.Benchmarks.Store
                 Keccak rootHash = tree.RootHash;
                 tree.Commit();
             }),
-            ("leaf_read", tree =>
+            ("leaf_delete", tree =>
             {
                 tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
                 tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), null);
@@ -166,7 +166,7 @@ namespace Nethermind.Benchmarks.Store
                 Keccak rootHash = tree.RootHash;
                 tree.Commit();
             }),
-            ("leaf_delete_matching", tree =>
+            ("leaf_read", tree =>
             {
                 tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
                 Account account = tree.Get(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"));

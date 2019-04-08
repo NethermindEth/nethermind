@@ -30,7 +30,7 @@ namespace Ethereum.Test.Base
         public string Name { get; set; }
         public IReleaseSpec Network { get; set; }
         public IReleaseSpec NetworkAfterTransition { get; set; }
-        public UInt256 TransitionBlockNumber { get; set; }
+        public long TransitionBlockNumber { get; set; }
         public Keccak LastBlockHash { get; set; }
         public Rlp GenesisRlp { get; set; }
 

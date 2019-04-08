@@ -30,7 +30,6 @@ namespace Nethermind.Core.Encoding
             blockInfo.BlockHash = context.DecodeKeccak();
             blockInfo.WasProcessed = context.DecodeBool();
             blockInfo.TotalDifficulty = context.DecodeUInt256();
-            blockInfo.TotalTransactions = context.DecodeUInt256();
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {
@@ -42,11 +41,10 @@ namespace Nethermind.Core.Encoding
 
         public Rlp Encode(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            Rlp[] elements = new Rlp[4];
+            Rlp[] elements = new Rlp[3];
             elements[0] = Rlp.Encode(item.BlockHash);
             elements[1] = Rlp.Encode(item.WasProcessed);
             elements[2] = Rlp.Encode(item.TotalDifficulty);
-            elements[3] = Rlp.Encode(item.TotalTransactions);
             return Rlp.Encode(elements);
         }
 

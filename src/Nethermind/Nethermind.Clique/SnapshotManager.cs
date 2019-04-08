@@ -78,7 +78,7 @@ namespace Nethermind.Clique
             return (blockHeader.ExtraData.Length - Clique.ExtraVanityLength - Clique.ExtraSealLength) / Address.ByteLength;
         }
 
-        public Keccak CalculateCliqueHeaderHash(BlockHeader blockHeader)
+        public static Keccak CalculateCliqueHeaderHash(BlockHeader blockHeader)
         {
             int extraSeal = 65;
             int shortExtraLength = blockHeader.ExtraData.Length - extraSeal;
@@ -92,7 +92,7 @@ namespace Nethermind.Clique
 
         private object _snapshotCreationLock = new object();
 
-        public Snapshot GetOrCreateSnapshot(UInt256 number, Keccak hash)
+        public Snapshot GetOrCreateSnapshot(long number, Keccak hash)
         {
             Snapshot snapshot = GetSnapshot(number, hash);
             if (snapshot != null)
@@ -122,11 +122,11 @@ namespace Nethermind.Clique
                     if (number == 0 || IsEpochTransition(number) && _blockTree.FindHeader(parentHash) == null)
                     {
                         int signersCount = CalculateSignersCount(header);
-                        var signers = new SortedList<Address, UInt256>(signersCount, CliqueAddressComparer.Instance);
+                        var signers = new SortedList<Address, long>(signersCount, CliqueAddressComparer.Instance);
                         for (int i = 0; i < signersCount; i++)
                         {
                             Address signer = new Address(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));
-                            signers.Add(signer, UInt256.Zero);
+                            signers.Add(signer, 0L);
                         }
 
                         snapshot = new Snapshot(number, header.Hash, signers);
@@ -158,7 +158,7 @@ namespace Nethermind.Clique
                     {
                         int signerIndex = 0;
                         string word = countAfter > countBefore ? "added to" : "removed from";
-                        _logger.Info($"At block {number } a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, CliqueAddressComparer.Instance).Select(s => $"Signer {signerIndex++}: " +  s.Key.ToString()))}");
+                        _logger.Info($"At block {number } a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, CliqueAddressComparer.Instance).Select(s => $"Signer {signerIndex++}: " + (KnownAddresses.GoerliValidators.ContainsKey(s.Key) ? KnownAddresses.GoerliValidators[s.Key] : s.Key.ToString())))}");
                     }
                 }
 
@@ -174,10 +174,10 @@ namespace Nethermind.Clique
             return snapshot;
         }
 
-        public bool HasSignedRecently(Snapshot snapshot, UInt256 number, Address signer)
+        public bool HasSignedRecently(Snapshot snapshot, long number, Address signer)
         {
-            UInt256 signedAt = snapshot.Signers[signer];
-            if (signedAt.IsZero) return false;
+            long signedAt = snapshot.Signers[signer];
+            if (signedAt == 0L) return false;
 
             return number - signedAt < snapshot.SignerLimit;
         }
@@ -188,17 +188,17 @@ namespace Nethermind.Clique
             return signer && !authorize || !signer && authorize;
         }
 
-        public bool IsInTurn(Snapshot snapshot, UInt256 number, Address signer)
+        public bool IsInTurn(Snapshot snapshot, long number, Address signer)
         {
             return (long) number % snapshot.Signers.Count == snapshot.Signers.IndexOfKey(signer);
         }
 
-        private bool IsEpochTransition(UInt256 number)
+        private bool IsEpochTransition(long number)
         {
             return (ulong) number % _cliqueConfig.Epoch == 0;
         }
 
-        private Snapshot GetSnapshot(UInt256 number, Keccak hash)
+        private Snapshot GetSnapshot(long number, Keccak hash)
         {
             // If an in-memory snapshot was found, use that
             Snapshot cachedSnapshot = _snapshotCache.Get(hash);
@@ -250,7 +250,7 @@ namespace Nethermind.Clique
             // Sanity check that the headers can be applied
             for (int i = 0; i < headers.Count - 1; i++)
             {
-                if (headers[i].Number != original.Number + (UInt256) i + 1)
+                if (headers[i].Number != original.Number + i + 1)
                 {
                     throw new InvalidOperationException("Invalid voting chain");
                 }
@@ -261,7 +261,7 @@ namespace Nethermind.Clique
             foreach (BlockHeader header in headers)
             {
                 // Remove any votes on checkpoint blocks
-                UInt256 number = header.Number;
+                long number = header.Number;
                 if ((ulong) number % epoch == 0)
                 {
                     snapshot.Votes.Clear();
@@ -339,7 +339,7 @@ namespace Nethermind.Clique
                 }
             }
 
-            snapshot.Number += (ulong) headers.Count;
+            snapshot.Number += headers.Count;
             snapshot.Hash = BlockHeader.CalculateHash(headers[headers.Count - 1]);
             return snapshot;
         }

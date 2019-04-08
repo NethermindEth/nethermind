@@ -22,7 +22,8 @@ using System.Numerics;
 using System.Threading;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -62,8 +63,9 @@ namespace Nethermind.Network.Test
             private IPerfService _perfService;
             private IProtocolValidator _protocolValidator;
             private IMessageSerializationService _serializer;
-            private ISynchronizationManager _synchronizationManager;
-            private ITransactionPool _transactionPool;
+            private ISyncServer _syncServer;
+            private IEthSyncPeerPool _syncPeerPool;
+            private ITxPool _txPool;
             private IChannelHandlerContext _channelHandlerContext;
             private IChannel _channel;
             private IChannelPipeline _pipeline;
@@ -79,10 +81,11 @@ namespace Nethermind.Network.Test
                 _channel.Pipeline.Returns(_pipeline);
                 _pipeline.Get<NettyPacketSplitter>().Returns(new NettyPacketSplitter());
                 _packetSender = Substitute.For<IPacketSender>();
-                _synchronizationManager = Substitute.For<ISynchronizationManager>();
-                _synchronizationManager.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-                _synchronizationManager.Head.Returns(Build.A.BlockHeader.TestObject);
-                _transactionPool = Substitute.For<ITransactionPool>();
+                _syncServer = Substitute.For<ISyncServer>();
+                _syncServer = Substitute.For<ISyncServer>();
+                _syncServer.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
+                _syncServer.Head.Returns(Build.A.BlockHeader.TestObject);
+                _txPool = Substitute.For<ITxPool>();
                 _discoveryApp = Substitute.For<IDiscoveryApp>();
                 _serializer = new MessageSerializationService();
                 _localPeer = Substitute.For<IRlpxPeer>();
@@ -95,9 +98,11 @@ namespace Nethermind.Network.Test
                 _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _perfService = new PerfService(LimboLogs.Instance);
+                _syncPeerPool = Substitute.For<IEthSyncPeerPool>();
                 _manager = new ProtocolsManager(
-                    _synchronizationManager,
-                    _transactionPool,
+                    _syncPeerPool,
+                    _syncServer,
+                    _txPool,
                     _discoveryApp,
                     _serializer,
                     _localPeer,
@@ -208,14 +213,14 @@ namespace Nethermind.Network.Test
 
             public Context VerifySyncPeersRemoved()
             {
-                _transactionPool.Received().RemovePeer(Arg.Any<PublicKey>());
-                _synchronizationManager.Received().RemovePeer(Arg.Any<ISynchronizationPeer>());
+                _txPool.Received().RemovePeer(Arg.Any<PublicKey>());
+                _syncPeerPool.Received().RemovePeer(Arg.Any<ISyncPeer>());
                 return this;
             }
 
-            public Context RaiseSyncFailed()
+            public Context RaiseSyncPoolFailed()
             {
-                _synchronizationManager.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _synchronizationManager, LimboLogs.Instance, _perfService, _transactionPool), SyncStatus.Failed));
+                _syncPeerPool.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _syncServer, LimboLogs.Instance, _perfService, _txPool), SyncStatus.InitFailed));
                 return this;
             }
 
@@ -407,9 +412,9 @@ namespace Nethermind.Network.Test
                 .Disconnect()
                 .VerifySyncPeersRemoved();
         }
-
+        
         [Test]
-        public void Disconnects_on_sync_failed()
+        public void Disconnects_on_pool_sync_failed()
         {
             When
                 .CreateIncomingSession()
@@ -420,7 +425,7 @@ namespace Nethermind.Network.Test
                 .ReceiveHello()
                 .ReceiveStatus()
                 .VerifyEthInitialized()
-                .RaiseSyncFailed()
+                .RaiseSyncPoolFailed()
                 .VerifyDisconnected();
         }
 
@@ -492,7 +497,7 @@ namespace Nethermind.Network.Test
                 .VerifyEthInitialized()
                 .Disconnect()
                 .VerifyDisconnected()
-                .RaiseSyncFailed();
+                .RaiseSyncPoolFailed();
         }
     }
 }

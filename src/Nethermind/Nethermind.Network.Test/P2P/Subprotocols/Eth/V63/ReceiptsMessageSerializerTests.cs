@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                                 Assert.Null(deserialized.TransactionReceipts[i][j].Recipient, $"receipts[{i}][{j}].Recipient");
                                 Assert.Null(deserialized.TransactionReceipts[i][j].Sender, $"receipts[{i}][{j}].Sender");
                                 Assert.Null(deserialized.TransactionReceipts[i][j].BlockHash, $"receipts[{i}][{j}].BlockHash");
-                                Assert.AreEqual(UInt256.Zero, deserialized.TransactionReceipts[i][j].BlockNumber, $"receipts[{i}][{j}].BlockNumber");
+                                Assert.AreEqual(0L, deserialized.TransactionReceipts[i][j].BlockNumber, $"receipts[{i}][{j}].BlockNumber");
                                 Assert.Null(deserialized.TransactionReceipts[i][j].ContractAddress, $"receipts[{i}][{j}].ContractAddress");
                                 Assert.AreEqual(0L, deserialized.TransactionReceipts[i][j].GasUsed, $"receipts[{i}][{j}].GasUsed");
                                 Assert.AreEqual(transactionReceipts[i][j].StatusCode, deserialized.TransactionReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");

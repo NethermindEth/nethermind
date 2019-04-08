@@ -191,6 +191,12 @@ namespace Nethermind.Network.Test
             _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _stats, _storage, _peerLoader, _networkConfig, LimboLogs.Instance);
         }
 
+        [TearDown]
+        public async Task TearDown()
+        {
+            await _peerManager.StopAsync();
+        }
+
         [Test]
         public async Task Can_start_and_stop()
         {
@@ -222,46 +228,43 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task Will_connect_to_a_candidate_node()
+        public void Will_connect_to_a_candidate_node()
         {
             SetupPersistedPeers(1);
             _peerManager.Init();
             _peerManager.Start();
-            Thread.Sleep(100);
+            Thread.Sleep(_travisDelay);
             Assert.AreEqual(1, _rlpxPeer.ConnectAsyncCallsCount);
-            await _peerManager.StopAsync();
         }
 
         [Test]
-        public async Task Will_only_connect_up_to_max_peers()
+        public void Will_only_connect_up_to_max_peers()
         {
             SetupPersistedPeers(50);
             _peerManager.Init();
             _peerManager.Start();
-            Thread.Sleep(200);
+            Thread.Sleep(_travisDelay);
             Assert.AreEqual(25, _rlpxPeer.ConnectAsyncCallsCount);
-            await _peerManager.StopAsync();
         }
 
         private List<Session> _sessions = new List<Session>();
 
         [Test]
-        public async Task Will_fill_up_on_disconnects()
+        public void Will_fill_up_on_disconnects()
         {
             SetupPersistedPeers(50);
             _peerManager.Init();
             _peerManager.Start();
-            Thread.Sleep(200);
+            Thread.Sleep(_travisDelay);
             Assert.AreEqual(25, _rlpxPeer.ConnectAsyncCallsCount);
             DisconnectAllSessions();
 
-            Thread.Sleep(200);
+            Thread.Sleep(_travisDelay);
             Assert.AreEqual(50, _rlpxPeer.ConnectAsyncCallsCount);
-            await _peerManager.StopAsync();
         }
 
         [Test]
-        public async Task Ok_if_fails_to_connect()
+        public void Ok_if_fails_to_connect()
         {
             SetupPersistedPeers(50);
             _rlpxPeer.MakeItFail();
@@ -271,15 +274,13 @@ namespace Nethermind.Network.Test
             
             for (int i = 0; i < 10; i++)
             {
-                Thread.Sleep(500);
+                Thread.Sleep(_travisDelay);
                 Assert.AreEqual(0, _peerManager.ActivePeers.Count);
             }
-
-            await _peerManager.StopAsync();
         }
         
         [Test]
-        public async Task Will_fill_up_over_and_over_again_on_disconnects()
+        public void Will_fill_up_over_and_over_again_on_disconnects()
         {
             SetupPersistedPeers(50);
             _peerManager.Init();
@@ -289,16 +290,14 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
-                Thread.Sleep(300);
+                Thread.Sleep(_travisDelay);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
                 DisconnectAllSessions();
             }
-
-            await _peerManager.StopAsync();
         }
         
         [Test]
-        public async Task Will_fill_up_over_and_over_again_on_newly_discovered()
+        public void Will_fill_up_over_and_over_again_on_newly_discovered()
         {
             SetupPersistedPeers(0);
             _peerManager.Init();
@@ -307,15 +306,16 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 DiscoverNew(25);
-                Thread.Sleep(300);
+                Thread.Sleep(_travisDelay);
                 Assert.AreEqual(25, _peerManager.ActivePeers.Count);
             }
-
-            await _peerManager.StopAsync();
         }
 
+        private int _travisDelay = 1000;
+        
         [Test]
-        public async Task Will_fill_up_with_incoming_over_and_over_again_on_disconnects()
+        [Ignore("Behaviour changed that allows peers to go over max if awaiting response")]
+        public void Will_fill_up_with_incoming_over_and_over_again_on_disconnects()
         {
             SetupPersistedPeers(0);
             _peerManager.Init();
@@ -324,11 +324,9 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 CreateNewIncomingSessions(25);
-                Thread.Sleep(300);
+                Thread.Sleep(_travisDelay);
                 Assert.AreEqual(25, _peerManager.ActivePeers.Count);
             }
-
-            await _peerManager.StopAsync();
         }
 
         [Test]
@@ -342,10 +340,10 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
-                Thread.Sleep(200);
+                Thread.Sleep(_travisDelay);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
                 HandshakeAllSessions();
-                Thread.Sleep(200);
+                Thread.Sleep(_travisDelay);
                 DisconnectAllSessions();
             }
 
@@ -353,12 +351,10 @@ namespace Nethermind.Network.Test
             DisconnectAllSessions();
 
             Assert.True(_peerManager.CandidatePeers.All(p => p.OutSession == null));
-            
-            await _peerManager.StopAsync();
         }
 
         [Test]
-        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
+        public void Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
         {
             _networkConfig.MaxCandidatePeerCount = 40;
             _networkConfig.CandidatePeerCountCleanupThreshold = 30;
@@ -371,18 +367,16 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
-                Thread.Sleep(200);
+                Thread.Sleep(_travisDelay);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
                 HandshakeAllSessions();
-                Thread.Sleep(300);
+                Thread.Sleep(_travisDelay);
                 DisconnectAllSessions();
             }
-
-            await _peerManager.StopAsync();
         }
 
         [Test]
-        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40_with_random_incoming_connections()
+        public void Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40_with_random_incoming_connections()
         {
             _networkConfig.MaxCandidatePeerCount = 40;
             _networkConfig.CandidatePeerCountCleanupThreshold = 30;
@@ -395,16 +389,14 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
-                Thread.Sleep(200);
+                Thread.Sleep(_travisDelay);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
                 HandshakeAllSessions();
-                Thread.Sleep(200);
+                Thread.Sleep(_travisDelay);
                 CreateIncomingSessions();
-                Thread.Sleep(300);
+                Thread.Sleep(_travisDelay);
                 DisconnectAllSessions();
             }
-
-            await _peerManager.StopAsync();
         }
 
         private void CreateIncomingSessions()

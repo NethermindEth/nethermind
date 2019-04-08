@@ -125,7 +125,7 @@ namespace Nethermind.Stats
             Increment(NodeStatsEventType.Eth62Initialized);
         }
 
-        public void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType, SyncNodeDetails syncDetails)
+        public void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType)
         {
             Increment(nodeStatsEventType);
         }

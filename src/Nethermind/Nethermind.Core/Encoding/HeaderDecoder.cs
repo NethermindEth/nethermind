@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
@@ -63,7 +64,7 @@ namespace Nethermind.Core.Encoding
                 ommersHash,
                 beneficiary,
                 difficulty,
-                number,
+                (long) number,
                 (long) gasLimit,
                 timestamp,
                 extraData);
@@ -75,8 +76,13 @@ namespace Nethermind.Core.Encoding
             blockHeader.GasUsed = (long) gasUsed;
             blockHeader.MixHash = mixHash;
             blockHeader.Nonce = (ulong) nonce;
-            blockHeader.Hash = Keccak.Compute(headerRlp);
+            AssignHash(blockHeader, headerRlp);
             return blockHeader;
+        }
+
+        protected virtual void AssignHash(BlockHeader blockHeader, Span<byte> headerRlp)
+        {
+            blockHeader.Hash = Keccak.Compute(headerRlp);
         }
 
         public Rlp Encode(BlockHeader item, RlpBehaviors behaviors = RlpBehaviors.None)
@@ -97,7 +103,7 @@ namespace Nethermind.Core.Encoding
             elements[5] = Rlp.Encode(item.ReceiptsRoot);
             elements[6] = Rlp.Encode(item.Bloom);
             elements[7] = Rlp.Encode(item.Difficulty);
-            elements[8] = Rlp.Encode(item.Number);
+            elements[8] = Rlp.Encode((UInt256)item.Number);
             elements[9] = Rlp.Encode(item.GasLimit);
             elements[10] = Rlp.Encode(item.GasUsed);
             elements[11] = Rlp.Encode(item.Timestamp);

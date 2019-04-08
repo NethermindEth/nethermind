@@ -27,15 +27,15 @@ namespace Nethermind.Blockchain
     public interface ITracer
     {
         GethLikeTxTrace Trace(Keccak txHash);
-        GethLikeTxTrace Trace(UInt256 blockNumber, Transaction transaction);
-        GethLikeTxTrace Trace(UInt256 blockNumber, int txIndex);
+        GethLikeTxTrace Trace(long blockNumber, Transaction transaction);
+        GethLikeTxTrace Trace(long blockNumber, int txIndex);
         GethLikeTxTrace Trace(Keccak blockHash, int txIndex);
         GethLikeTxTrace[] TraceBlock(Keccak blockHash);
-        GethLikeTxTrace[] TraceBlock(UInt256 blockNumber);
+        GethLikeTxTrace[] TraceBlock(long blockNumber);
         
         GethLikeTxTrace[] TraceBlock(Rlp blockRlp);
         ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes parityTraceTypes);
         ParityLikeTxTrace[] ParityTraceBlock(Keccak blockHash, ParityTraceTypes parityTraceTypes);
-        ParityLikeTxTrace[] ParityTraceBlock(UInt256 blockNumber, ParityTraceTypes parityTraceTypes);
+        ParityLikeTxTrace[] ParityTraceBlock(long blockNumber, ParityTraceTypes parityTraceTypes);
     }
 }

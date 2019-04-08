@@ -61,7 +61,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithBlockNumber(UInt256 number)
+        public ReceiptBuilder WithBlockNumber(long number)
         {
             TestObject.BlockNumber = number;
             return this;

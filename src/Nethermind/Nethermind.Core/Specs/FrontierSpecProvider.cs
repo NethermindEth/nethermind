@@ -26,12 +26,12 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
-        public IReleaseSpec GetSpec(UInt256 blockNumber)
+        public IReleaseSpec GetSpec(long blockNumber)
         {            
             return Olympic.Instance;
         }
         
-        public UInt256? DaoBlockNumber { get; } = null;
+        public long? DaoBlockNumber { get; } = null;
         
         public int ChainId => Core.ChainId.MainNet;
 

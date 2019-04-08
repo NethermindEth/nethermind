@@ -20,7 +20,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Discovery;
@@ -35,8 +36,9 @@ namespace Nethermind.Network
 {
     public class ProtocolsManager : IProtocolsManager
     {
-        private readonly ISynchronizationManager _syncManager;
-        private readonly ITransactionPool _transactionPool;
+        private readonly IEthSyncPeerPool _syncPool;
+        private readonly ISyncServer _syncServer;
+        private readonly ITxPool _txPool;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IMessageSerializationService _serializer;
         private readonly IRlpxPeer _localPeer;
@@ -48,8 +50,9 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
 
         public ProtocolsManager(
-            ISynchronizationManager synchronizationManager,
-            ITransactionPool transactionPool,
+            IEthSyncPeerPool ethSyncPeerPool,
+            ISyncServer syncServer,
+            ITxPool txPool,
             IDiscoveryApp discoveryApp,
             IMessageSerializationService serializationService,
             IRlpxPeer localPeer,
@@ -59,8 +62,9 @@ namespace Nethermind.Network
             IPerfService perfService,
             ILogManager logManager)
         {
-            _syncManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            _syncPool = ethSyncPeerPool ?? throw new ArgumentNullException(nameof(ethSyncPeerPool));
+            _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _serializer = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _localPeer = localPeer ?? throw new ArgumentNullException(nameof(localPeer));
@@ -71,7 +75,7 @@ namespace Nethermind.Network
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager.GetClassLogger();
 
-            _syncManager.SyncEvent += OnSyncEvent;
+            _syncPool.SyncEvent += OnSyncEvent;
             localPeer.SessionCreated += SessionCreated;
         }
 
@@ -112,11 +116,7 @@ namespace Nethermind.Network
             }
 
             var nodeStatsEvent = GetSyncEventType(e.SyncStatus);
-            _stats.ReportSyncEvent(session.Node, nodeStatsEvent, new SyncNodeDetails
-            {
-                NodeBestBlockNumber = e.NodeBestBlockNumber,
-                OurBestBlockNumber = e.OurBestBlockNumber
-            });
+            _stats.ReportSyncEvent(session.Node, nodeStatsEvent);
 
             if (new[] {SyncStatus.InitFailed, SyncStatus.InitCancelled, SyncStatus.Failed, SyncStatus.Cancelled}.Contains(e.SyncStatus))
             {
@@ -140,9 +140,9 @@ namespace Nethermind.Network
             
             if (_syncPeers.ContainsKey(session.SessionId))
             {
-                ISynchronizationPeer syncPeer = _syncPeers[session.SessionId];
-                _syncManager.RemovePeer(syncPeer);
-                _transactionPool.RemovePeer(syncPeer.Node.Id);
+                ISyncPeer syncPeer = _syncPeers[session.SessionId];
+                _syncPool.RemovePeer(syncPeer);
+                _txPool.RemovePeer(syncPeer.Node.Id);
                 if(_logger.IsDebug) _logger.Debug($"{session.Node.ClientId} sync peer {session} disconnected {e.DisconnectType} {e.DisconnectReason}");
             }
             
@@ -186,8 +186,8 @@ namespace Nethermind.Network
                     }
 
                     Eth62ProtocolHandler ethHandler = version == 62
-                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncManager, _logManager, _perfService, _transactionPool)
-                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncManager, _logManager, _perfService, _transactionPool);
+                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _perfService, _txPool)
+                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _perfService, _txPool);
                     InitEthProtocol(session, ethHandler);
                     protocolHandler = ethHandler;
                     break;
@@ -255,8 +255,8 @@ namespace Nethermind.Network
                     
                     if (_syncPeers.TryAdd(session.SessionId, handler))
                     {
-                        _syncManager.AddPeer(handler);
-                        _transactionPool.AddPeer(handler);
+                        _syncPool.AddPeer(handler);
+                        _txPool.AddPeer(handler);
                         if(_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
                     }
                     else

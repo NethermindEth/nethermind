@@ -37,12 +37,12 @@ namespace Nethermind.Mining
             return Task.FromResult(block);
         }
 
-        public bool CanSeal(UInt256 blockNumber, Keccak parentHash)
+        public bool CanSeal(long blockNumber, Keccak parentHash)
         {
             return true;
         }
 
-        public bool ValidateParams(Block parent, BlockHeader header)
+        public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             return true;
         }

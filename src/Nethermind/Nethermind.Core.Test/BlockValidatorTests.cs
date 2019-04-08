@@ -37,9 +37,8 @@ namespace Nethermind.Core.Test
 
             HeaderValidator headerValidator = new HeaderValidator(blockchain, NullSealEngine.Instance, null, null);
             OmmersValidator ommersValidator = new OmmersValidator(blockchain, headerValidator, null);
-            SignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
-            TransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
-            BlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, RopstenSpecProvider.Instance, null);
+            TxValidator txValidator = new TxValidator(ChainId.MainNet);
+            BlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, RopstenSpecProvider.Instance, null);
         }
     }
 }

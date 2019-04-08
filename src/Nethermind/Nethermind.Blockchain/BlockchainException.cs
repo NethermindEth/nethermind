@@ -23,8 +23,7 @@ namespace Nethermind.Blockchain
     public class BlockchainException : Exception
     {
         public BlockchainException(string message) : base(message)
-        {
-            
+        {     
         }
     }
 }

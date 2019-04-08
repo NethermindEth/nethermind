@@ -18,49 +18,42 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
-using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Store;
-using ILogger = Nethermind.Core.Logging.ILogger;
 
 namespace Nethermind.Clique
 {
     public class Snapshot : ICloneable
     {
-        public UInt256 Number { get; set; }
+        public long Number { get; set; }
         public Keccak Hash { get; set; }
-        public SortedList<Address, UInt256> Signers { get; }
+        public SortedList<Address, long> Signers { get; }
         
         public List<Vote> Votes;
         internal Dictionary<Address, Tally> Tally { get; }
 
-        internal Snapshot(UInt256 number, Keccak hash, SortedList<Address, UInt256> signers, Dictionary<Address, Tally> tally)
+        internal Snapshot(long number, Keccak hash, SortedList<Address, long> signers, Dictionary<Address, Tally> tally)
         {
             Number = number;
             Hash = hash;
-            Signers = new SortedList<Address, UInt256>(signers, CliqueAddressComparer.Instance);
+            Signers = new SortedList<Address, long>(signers, CliqueAddressComparer.Instance);
             Votes = new List<Vote>();
             Tally = tally;
         }
 
-        internal Snapshot(UInt256 number, Keccak hash, SortedList<Address, UInt256> signers)
+        internal Snapshot(long number, Keccak hash, SortedList<Address, long> signers)
             : this(number, hash, signers, new Dictionary<Address, Tally>())
         {
         }
 
         public object Clone()
         {
-            Snapshot clone = new Snapshot(Number, Hash, new SortedList<Address, UInt256>(Signers, CliqueAddressComparer.Instance), new Dictionary<Address, Tally>(Tally));
+            Snapshot clone = new Snapshot(Number, Hash, new SortedList<Address, long>(Signers, CliqueAddressComparer.Instance), new Dictionary<Address, Tally>(Tally));
             clone.Votes = new List<Vote>(Votes);
             return clone;
         }
         
-        public ulong SignerLimit => (ulong) Signers.Count / 2 + 1;
+        public long SignerLimit => Signers.Count / 2 + 1;
     }
 }

@@ -40,7 +40,7 @@ namespace Nethermind.Core.Encoding
             }
 
             if(isStorage) transactionReceipt.BlockHash = context.DecodeKeccak();
-            if(isStorage) transactionReceipt.BlockNumber = context.DecodeUInt256();
+            if(isStorage) transactionReceipt.BlockNumber = (long)context.DecodeUInt256();
             if(isStorage) transactionReceipt.Index = context.DecodeInt();
             if(isStorage) transactionReceipt.Sender = context.DecodeAddress();
             if(isStorage) transactionReceipt.Recipient = context.DecodeAddress();

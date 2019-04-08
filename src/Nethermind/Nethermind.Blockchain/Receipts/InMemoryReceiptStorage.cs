@@ -30,7 +30,6 @@ namespace Nethermind.Blockchain.Receipts
         public TransactionReceipt Get(Keccak hash)
         {
             _receipts.TryGetValue(hash, out var transaction);
-
             return transaction;
         }
 

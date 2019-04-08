@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Trace_vm_errors()
         {
-            var trace = ExecuteAndTrace(UInt256.One, 21000L + 19000L, 
+            var trace = ExecuteAndTrace(1L, 21000L + 19000L, 
                 (byte)Instruction.PUSH1,
                 1,
                 (byte)Instruction.PUSH1,
@@ -85,7 +85,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.MLOAD)
                 .Done;
             
-            var trace = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
+            var trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
             
             Assert.True(trace.Entries.Any(e => e.Error != null));
         }
@@ -99,7 +99,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.JUMP)
                 .Done;
             
-            var trace = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
+            var trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
             
             Assert.True(trace.Entries.Any(e => e.Error != null));
         }
@@ -114,7 +114,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.JUMPI)
                 .Done;
             
-            var trace = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
+            var trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
             
             Assert.True(trace.Entries.Any(e => e.Error != null));
         }

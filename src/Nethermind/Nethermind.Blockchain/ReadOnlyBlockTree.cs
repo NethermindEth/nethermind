@@ -38,11 +38,11 @@ namespace Nethermind.Blockchain
         public int ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggested => _wrapped.BestSuggested;
-        public UInt256 BestKnownNumber => _wrapped.BestKnownNumber;
+        public long BestKnownNumber => _wrapped.BestKnownNumber;
         public BlockHeader Head => _wrapped.Head;
         public bool CanAcceptNewBlocks { get; } = false;
 
-        public Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = Int32.MaxValue)
+        public Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = Int32.MaxValue)
         {
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(LoadBlocksFromDb)} calls");
         }
@@ -52,9 +52,24 @@ namespace Nethermind.Blockchain
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
         }
 
+        public AddBlockResult SuggestHeader(BlockHeader header)
+        {
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestHeader)} calls");
+        }
+
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
         {
             return _wrapped.FindBlock(blockHash, mainChainOnly);
+        }
+
+        public BlockHeader FindHeader(Keccak blockHash, bool mainChainOnly)
+        {
+            throw new NotImplementedException();
+        }
+
+        public long? FindNumber(Keccak blockHash, bool mainChainOnly)
+        {
+            throw new NotImplementedException();
         }
 
         public BlockHeader FindHeader(Keccak blockHash)
@@ -62,7 +77,7 @@ namespace Nethermind.Blockchain
             return _wrapped.FindHeader(blockHash);
         }
 
-        public BlockHeader FindHeader(UInt256 blockNumber)
+        public BlockHeader FindHeader(long blockNumber)
         {
             return _wrapped.FindHeader(blockNumber);
         }
@@ -72,7 +87,12 @@ namespace Nethermind.Blockchain
             return _wrapped.FindBlocks(blockHash, numberOfBlocks, skip, reverse);
         }
 
-        public Block FindBlock(UInt256 blockNumber)
+        public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
+        {
+            return _wrapped.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        }
+
+        public Block FindBlock(long blockNumber)
         {
             return _wrapped.FindBlock(blockNumber);
         }
@@ -87,12 +107,12 @@ namespace Nethermind.Blockchain
             return _wrapped.IsMainChain(blockHash);
         }
 
-        public bool IsKnownBlock(UInt256 number, Keccak blockHash)
+        public bool IsKnownBlock(long number, Keccak blockHash)
         {
             return _wrapped.IsKnownBlock(number, blockHash);
         }
 
-        public bool WasProcessed(UInt256 number, Keccak blockHash)
+        public bool WasProcessed(long number, Keccak blockHash)
         {
             return _wrapped.WasProcessed(number, blockHash);
         }

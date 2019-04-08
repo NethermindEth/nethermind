@@ -26,11 +26,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TransactionPools;
-using Nethermind.Blockchain.TransactionPools.Storages;
+using Nethermind.Blockchain.TxPools;
+using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
@@ -154,10 +155,9 @@ namespace Nethermind.PerfTest
         {
             ILogManager logManager = NullLogManager.Instance;
             ISnapshotableDb stateDb = new StateDb();
-            StateTree stateTree = new StateTree(stateDb);
-            IStateProvider stateProvider = new StateProvider(stateTree, new StateDb(), logManager);
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance,
-                new TransactionPool(NullTransactionStorage.Instance,
+            IStateProvider stateProvider = new StateProvider(stateDb, new StateDb(), logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance,
+                new TxPool(NullTransactionStorage.Instance,
                     new PendingTransactionThresholdValidator(), new Timestamp(),
                     NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, logManager), logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
@@ -201,11 +201,11 @@ namespace Nethermind.PerfTest
             public int ChainId => _blockTree.ChainId;
             public BlockHeader Genesis => _blockTree.Genesis;
             public BlockHeader BestSuggested => _blockTree.BestSuggested;
-            public UInt256 BestKnownNumber => _blockTree.BestKnownNumber;
+            public long BestKnownNumber => _blockTree.BestKnownNumber;
             public BlockHeader Head => _blockTree.Head;
             public bool CanAcceptNewBlocks { get; } = true;
 
-            public async Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
+            public async Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
             {
                 await _blockTree.LoadBlocksFromDb(cancellationToken, startBlockNumber, batchSize, maxBlocksToLoad);
             }
@@ -215,9 +215,19 @@ namespace Nethermind.PerfTest
                 return _blockTree.SuggestBlock(block);
             }
 
+            public AddBlockResult SuggestHeader(BlockHeader header)
+            {
+                return _blockTree.SuggestHeader(header);
+            }
+
             public Block FindBlock(Keccak blockHash, bool mainChainOnly)
             {
                 return _blockTree.FindBlock(blockHash, mainChainOnly);
+            }
+
+            public BlockHeader FindHeader(Keccak blockHash, bool mainChainOnly)
+            {
+                return _blockTree.FindHeader(blockHash, mainChainOnly);
             }
 
             public BlockHeader FindHeader(Keccak blockHash)
@@ -225,7 +235,7 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindHeader(blockHash);
             }
 
-            public BlockHeader FindHeader(UInt256 number)
+            public BlockHeader FindHeader(long number)
             {
                 return _blockTree.FindHeader(number);
             }
@@ -235,7 +245,12 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindBlocks(blockHash, numberOfBlocks, skip, reverse);
             }
 
-            public Block FindBlock(UInt256 blockNumber)
+            public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
+            {
+                return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+            }
+
+            public Block FindBlock(long blockNumber)
             {
                 return _blockTree.FindBlock(blockNumber);
             }
@@ -250,7 +265,7 @@ namespace Nethermind.PerfTest
                 return _blockTree.IsMainChain(blockHash);
             }
 
-            public bool IsKnownBlock(UInt256 number, Keccak blockHash)
+            public bool IsKnownBlock(long number, Keccak blockHash)
             {
                 return _blockTree.IsKnownBlock(number, blockHash);
             }
@@ -260,7 +275,7 @@ namespace Nethermind.PerfTest
                 _blockTree.UpdateMainChain(blocks);
             }
 
-            public bool WasProcessed(UInt256 number, Keccak blockHash)
+            public bool WasProcessed(long number, Keccak blockHash)
             {
                 return false;
             }
@@ -290,7 +305,7 @@ namespace Nethermind.PerfTest
 
         private static async Task RunRopstenBlocks()
         {
-            ParityTraceDecoder.Init();
+            Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
             
             /* logging & instrumentation */
             _logManager = new NLogManager("perTest.logs.txt", null);
@@ -315,24 +330,24 @@ namespace Nethermind.PerfTest
             var codeDb = dbProvider.CodeDb;
             var traceDb = dbProvider.TraceDb;
             var blocksDb = dbProvider.BlocksDb;
+            var headersDb = dbProvider.HeadersDb;
             var blockInfosDb = dbProvider.BlockInfosDb;
             var receiptsDb = dbProvider.ReceiptsDb;
 
             /* store & validation */
-            var transactionPool = new TransactionPool(NullTransactionStorage.Instance,
+            var transactionPool = new TxPool(NullTransactionStorage.Instance,
                 new PendingTransactionThresholdValidator(), new Timestamp(),
                 NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, _logManager);
             var receiptStorage = new InMemoryReceiptStorage();
-            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, transactionPool, _logManager));
+            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, specProvider, transactionPool, _logManager));
             var headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, _logManager);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
-            var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
+            var transactionValidator = new TxValidator(ChainId.Ropsten);
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
 
             /* state & storage */
 
-            var stateTree = new StateTree(stateDb);
-            var stateProvider = new StateProvider(stateTree, codeDb, _logManager);
+            var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
 
             /* blockchain processing */

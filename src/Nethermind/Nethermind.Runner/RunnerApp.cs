@@ -51,7 +51,7 @@ namespace Nethermind.Runner
             typeof(InitConfig),
             typeof(DbConfig),
             typeof(StatsConfig),
-            typeof(BlockchainConfig)
+            typeof(SyncConfig)
         };
 
         [Todo("find better way to enforce assemblies with config impl are loaded")]

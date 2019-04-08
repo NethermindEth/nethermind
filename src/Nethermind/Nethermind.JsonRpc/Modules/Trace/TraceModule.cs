@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 throw new InvalidDataException("Block number value incorrect");
             }
 
-            return ResultWrapper<ParityLikeTxTrace[]>.Success(_tracer.ParityTraceBlock(blockNo.Value, GetParityTypes(traceTypes)));
+            return ResultWrapper<ParityLikeTxTrace[]>.Success(_tracer.ParityTraceBlock((long)blockNo.Value, GetParityTypes(traceTypes)));
         }
 
         public ResultWrapper<ParityLikeTxTrace[]> trace_block(BlockParameter block)

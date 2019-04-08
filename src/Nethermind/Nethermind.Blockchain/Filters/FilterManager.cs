@@ -19,7 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -42,18 +42,18 @@ namespace Nethermind.Blockchain.Filters
         private readonly IFilterStore _filterStore;
         private readonly ILogger _logger;
 
-        public FilterManager(IFilterStore filterStore, IBlockProcessor blockProcessor, ITransactionPool transactionPool,
+        public FilterManager(IFilterStore filterStore, IBlockProcessor blockProcessor, ITxPool txPool,
             ILogManager logManager)
         {
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-            transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             blockProcessor.BlockProcessed += OnBlockProcessed;
             blockProcessor.TransactionProcessed += OnTransactionProcessed;
             _filterStore.FilterRemoved += OnFilterRemoved;
-            transactionPool.NewPending += OnNewPendingTransaction;
-            transactionPool.RemovedPending += OnRemovedPendingTransaction;
+            txPool.NewPending += OnNewPendingTransaction;
+            txPool.RemovedPending += OnRemovedPendingTransaction;
         }
 
         private void OnFilterRemoved(object sender, FilterEventArgs e)

@@ -18,7 +18,8 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.TransactionPools;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
@@ -42,8 +43,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             var svc = Build.A.SerializationService().WithEth().TestObject;
             
             var session = Substitute.For<ISession>();
-            var syncManager = Substitute.For<ISynchronizationManager>();
-            var transactionPool = Substitute.For<ITransactionPool>();
+            var syncManager = Substitute.For<ISyncServer>();
+            var transactionPool = Substitute.For<ITxPool>();
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
@@ -68,7 +69,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
             handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
-            syncManager.Received().Find(TestItem.KeccakA, 3, 1, true);
+            syncManager.Received().FindHeaders(TestItem.KeccakA, 3, 1, true);
         }
         
         [Test]
@@ -77,8 +78,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             var svc = Build.A.SerializationService().WithEth().TestObject;
             
             var session = Substitute.For<ISession>();
-            var syncManager = Substitute.For<ISynchronizationManager>();
-            var transactionPool = Substitute.For<ITransactionPool>();
+            var syncManager = Substitute.For<ISyncServer>();
+            var transactionPool = Substitute.For<ITxPool>();
             syncManager.Find(null, Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>()).Throws(new ArgumentNullException());
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
