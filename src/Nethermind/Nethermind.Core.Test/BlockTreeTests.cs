@@ -401,6 +401,7 @@ namespace Nethermind.Core.Test
             MemDb blocksDb = new MemDb();
             MemDb headersDb = new MemDb();
             blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
+            headersDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
             MemDb blockInfosDb = new MemDb();
             blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
@@ -424,6 +425,7 @@ namespace Nethermind.Core.Test
             MemDb blocksDb = new MemDb();
             MemDb headersDb = new MemDb();
             blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
+            headersDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
             MemDb blockInfosDb = new MemDb();
             blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash.Bytes);
