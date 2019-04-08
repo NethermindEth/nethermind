@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _synchronizerType = synchronizerType;
         }
 
-        private int remotePeersCount = 1;
+        private int remotePeersCount = 3;
 
         [SetUp]
         public void Setup()
@@ -106,7 +106,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
-        private const int _waitTime = 10000;
+        private const int _waitTime = 1000;
 
         [Test]
         public void Can_sync_when_connected()
@@ -321,7 +321,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             processor.Start();
             tree.SuggestBlock(_genesis);
 
-            if (!waitEvent.Wait(20000))
+            if (!waitEvent.Wait(1000))
             {
                 throw new Exception("No genesis");
             }
