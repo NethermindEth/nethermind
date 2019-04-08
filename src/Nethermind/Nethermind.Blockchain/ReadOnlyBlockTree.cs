@@ -21,8 +21,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.HashLib;
 
 namespace Nethermind.Blockchain
 {
@@ -64,12 +62,7 @@ namespace Nethermind.Blockchain
 
         public BlockHeader FindHeader(Keccak blockHash, bool mainChainOnly)
         {
-            throw new NotImplementedException();
-        }
-
-        public long? FindNumber(Keccak blockHash, bool mainChainOnly)
-        {
-            throw new NotImplementedException();
+            return _wrapped.FindHeader(blockHash, mainChainOnly);
         }
 
         public BlockHeader FindHeader(Keccak blockHash)
