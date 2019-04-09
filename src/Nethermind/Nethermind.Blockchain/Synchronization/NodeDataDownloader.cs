@@ -34,17 +34,18 @@ namespace Nethermind.Blockchain.Synchronization
     public class NodeDataDownloader : INodeDataDownloader
     {
         private static AccountDecoder accountDecoder = new AccountDecoder();
-        
+
         private const int MaxRequestSize = 1024;
+        private int _lastDownloadedNodesCount = 0;
         private int _downloadedNodesCount;
-        
+
         private readonly ILogger _logger;
         private readonly ISnapshotableDb _stateDb;
         private readonly IDb _codeDb;
         private INodeDataRequestExecutor _executor;
 
         private object _responseLock = new object();
-        
+
         public NodeDataDownloader(IDb codeDb, ISnapshotableDb stateDb, ILogManager logManager)
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -76,11 +77,17 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             } while (dataRequests.Length != 0);
 
-            _logger.Info($"Finished downloading node data (downloaded {_downloadedNodesCount})");
+            if (_logger.IsInfo) _logger.Info($"Finished downloading node data (downloaded {_downloadedNodesCount})");
         }
 
         private void HandleResponse(NodeDataRequest request)
         {
+            if (_downloadedNodesCount > _lastDownloadedNodesCount + 10000)
+            {
+                _lastDownloadedNodesCount = _downloadedNodesCount;
+                if (_logger.IsInfo) _logger.Info($"Downloading nodes (downloaded {_downloadedNodesCount})");
+            }
+
             if (request.Request == null)
             {
                 throw new EthSynchronizationException("Received a response with a missing request.");

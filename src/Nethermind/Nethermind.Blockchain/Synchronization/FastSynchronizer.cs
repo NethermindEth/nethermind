@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Synchronization
         private int _currentBatchSize = MaxBatchSize;
 
         private TimeSpan _fullPeerListInterval = TimeSpan.FromSeconds(120);
-        private DateTime _timeOfTheLastFullPeerListLogEntry = DateTime.UtcNow;
+        private DateTime _timeOfTheLastFullPeerListLogEntry = DateTime.MinValue;
         private long _lastSyncNumber;
         private int _lastSyncPeersCount;
         private int _sinceLastTimeout;
@@ -144,7 +144,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             await (_syncLoopTask ?? Task.CompletedTask);
 
-            if (_logger.IsInfo) _logger.Info("Fast sync stopped...");
+            if (_logger.IsInfo) _logger.Info("Fast sync stopped");
         }
 
         private void StopSyncTimer()
@@ -176,16 +176,16 @@ namespace Nethermind.Blockchain.Synchronization
                     switch (task)
                     {
                         case Task t when t.IsFaulted:
-                            if (_logger.IsError) _logger.Error("Sync loop encountered an exception.", t.Exception);
+                            if (_logger.IsError) _logger.Error("Fast sync loop encountered an exception.", t.Exception);
                             break;
                         case Task t when t.IsCanceled:
-                            if (_logger.IsInfo) _logger.Info("Sync loop canceled.");
+                            if (_logger.IsInfo) _logger.Info("Fast sync loop canceled.");
                             break;
                         case Task t when t.IsCompletedSuccessfully:
-                            if (_logger.IsInfo) _logger.Info("Sync loop completed successfully.");
+                            if (_logger.IsInfo) _logger.Info("Fast sync loop completed successfully.");
                             break;
                         default:
-                            if (_logger.IsInfo) _logger.Info("Sync loop completed.");
+                            if (_logger.IsInfo) _logger.Info("Fast sync loop completed.");
                             break;
                     }
                 });
@@ -224,13 +224,13 @@ namespace Nethermind.Blockchain.Synchronization
         {
             var initPeerCount = _syncPeerPool.AllPeers.Count(p => p.IsInitialized);
             if (DateTime.UtcNow - _timeOfTheLastFullPeerListLogEntry > _fullPeerListInterval && _logger.IsDebug)
-            {
-                if (_logger.IsDebug) _logger.Debug("Sync peers:");
+            {   
+                if (_logger.IsDebug) _logger.Debug("Peers:");
                 foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
                 {
                     string prefix = peerInfo == _allocation.Current
-                        ? "[SYNCING] "
-                        : string.Empty;
+                        ? " * "
+                        : "   ";
 
                     if (_logger.IsDebug) _logger.Debug($"{prefix}{peerInfo}");
                 }
@@ -404,14 +404,14 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (bestPeer.HeadNumber <= bestSuggestedNumber + FullSyncThreshold)
                 {
-                    if (_logger.IsInfo) _logger.Info($"[FAST SYNC] Switching to node data download at block {bestSuggestedNumber}!");
+                    if (_logger.IsInfo) _logger.Info($"Switching to node data download at block {bestSuggestedNumber}");
                     _mode = SynchronizationMode.NodeData;
                     
+                    if (_logger.IsInfo) _logger.Info($"Peers:");
                     foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
                     {
-                        string prefix = peerInfo == bestPeer ? "[CURRENT] " : string.Empty;
-                        if (_logger.IsInfo) _logger.Info($"[FAST SYNC] Peers:");
-                        if (_logger.IsInfo) _logger.Info($"[FAST SYNC] {prefix}{peerInfo}!");
+                        string prefix = peerInfo == bestPeer ? " * " : "   ";
+                        if (_logger.IsInfo) _logger.Info($"{prefix}{peerInfo}");
                     }
 
                     await _nodeDataDownloader.SyncNodeData((bestSuggested.StateRoot, NodeDataType.State)).ContinueWith(
@@ -438,7 +438,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                                     break;
                                 case Task t when t.IsCompletedSuccessfully:
-                                    if (_logger.IsInfo) _logger.Info($"[FAST SYNC] complete - switching to full sync mode");
+                                    if (_logger.IsInfo) _logger.Info("Fast sync completed - switching to full sync mode");
                                     _mode = SynchronizationMode.Full;
                                     DeallocateSyncPeerPool();
 

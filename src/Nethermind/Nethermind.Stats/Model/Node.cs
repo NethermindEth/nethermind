@@ -122,16 +122,17 @@ namespace Nethermind.Stats.Model
        
         public string ToString(string format, IFormatProvider formatProvider)
         {
+            string ipv4Host = Host.Replace("::ffff:", string.Empty);
             switch (format)
             {
                 default:
-                    return $"enode://{Id.ToString(false)}@{Host}:{Port}";
+                    return $"enode://{Id.ToString(false)}@{ipv4Host}:{Port}";
                 case "s":
-                    return $"{Host}:{Port}";
+                    return $"{ipv4Host}:{Port}";
                 case "c":
-                    return $"{ClientId}|{Host}:{Port}";
+                    return $"{ClientId}|{ipv4Host}:{Port}";
                 case "f":
-                    return $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}";    
+                    return $"enode://{Id.ToString(false)}@{ipv4Host}:{Port}|{ClientId}";    
             }
         }
         

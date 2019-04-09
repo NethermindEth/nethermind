@@ -204,7 +204,7 @@ namespace Nethermind.Blockchain.Synchronization
         
         private async Task RunSyncLoop()
         {
-            if (_logger.IsDebug) _logger.Debug("Initializing sync loop.");
+            if (_logger.IsInfo) _logger.Info("Initializing full sync loop.");
             _allocation = _syncPeerPool.BorrowPeer("full sync");
             if (_logger.IsDebug) _logger.Debug("Sync loop allocated.");
             _allocation.Replaced += AllocationOnReplaced;
