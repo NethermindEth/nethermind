@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -80,6 +79,23 @@ namespace Nethermind.Blockchain.Synchronization
             if (_logger.IsInfo) _logger.Info($"Finished downloading node data (downloaded {_downloadedNodesCount})");
         }
 
+        private void AddNode((Keccak hash, NodeDataType nodeType, int level) node)
+        {
+            lock (_stateDb)
+            {
+                if (node.nodeType == NodeDataType.State && _stateDb.Get(node.hash) != null
+                    || node.nodeType == NodeDataType.Storage && _stateDb.Get(node.hash) != null
+                    || node.nodeType == NodeDataType.Code && _codeDb.Get(node.hash) != null)
+                {
+                    // TODO: this will cause no finalized sync (if we do not store pending requests)
+                    // pending requests should have a state root block marked...?
+                    return;
+                }
+            }
+            
+            _nodes.Add(node);
+        }
+        
         private void HandleResponse(NodeDataRequest request)
         {
             if (_downloadedNodesCount > _lastDownloadedNodesCount + 10000)
@@ -108,7 +124,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (request.Response.Length < i + 1)
                 {
                     missing++;
-                    _nodes.Add(request.Request[i]);
+                    AddNode(request.Request[i]);
                     continue;
                 }
 
@@ -122,7 +138,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (bytes == null)
                 {
                     missing++;
-                    _nodes.Add(request.Request[i]);
+                    AddNode(request.Request[i]);
                 }
                 else
                 {
@@ -153,7 +169,7 @@ namespace Nethermind.Blockchain.Synchronization
                                 Keccak child = node.GetChildHash(j);
                                 if (child != null)
                                 {
-                                    _nodes.Add((child, nodeDataType, request.Request[i].Level + 1));
+                                    AddNode((child, nodeDataType, request.Request[i].Level + 1));
                                 }
                             }
 
@@ -162,7 +178,7 @@ namespace Nethermind.Blockchain.Synchronization
                             Keccak next = node[0].Keccak;
                             if (next != null)
                             {
-                                _nodes.Add((next, nodeDataType, request.Request[i].Level + 1));
+                                AddNode((next, nodeDataType, request.Request[i].Level + 1));
                             }
 
                             break;
@@ -172,12 +188,12 @@ namespace Nethermind.Blockchain.Synchronization
                                 Account account = accountDecoder.Decode(new Rlp.DecoderContext(node.Value));
                                 if (account.CodeHash != Keccak.OfAnEmptyString)
                                 {
-                                    _nodes.Add((account.CodeHash, NodeDataType.Code, 0));
+                                    AddNode((account.CodeHash, NodeDataType.Code, 0));
                                 }
 
                                 if (account.StorageRoot != Keccak.EmptyTreeHash)
                                 {
-                                    _nodes.Add((account.StorageRoot, NodeDataType.Storage, 0));
+                                    AddNode((account.StorageRoot, NodeDataType.Storage, 0));
                                 }
                             }
 
@@ -200,8 +216,15 @@ namespace Nethermind.Blockchain.Synchronization
 
         private ConcurrentBag<(Keccak, NodeDataType, int)> _nodes = new ConcurrentBag<(Keccak, NodeDataType, int)>();
 
+        // TODO: depth first
         private NodeDataRequest[] PrepareRequests()
         {
+            /* IDEA1: store all path with both hashes and values for all the nodes on the path to the leaf */
+            /* store separately unresolved storage? */
+            /* only save to the DB when everything is resolved below */
+            /* always save code*/
+            /* create 16 streams and take from the left? does it work together with the above?*/
+            
             List<NodeDataRequest> requests = new List<NodeDataRequest>();
             while (_nodes.Count != 0)
             {
@@ -209,13 +232,16 @@ namespace Nethermind.Blockchain.Synchronization
                 List<(Keccak Hash, NodeDataType NodeDataType, int Level)> requestHashes = new List<(Keccak, NodeDataType, int)>();
                 for (int i = 0; i < MaxRequestSize; i++)
                 {
-                    if (_nodes.TryTake(out (Keccak Hash, NodeDataType NodeType, int Level) result))
+                    lock (_stateDb)
                     {
-                        requestHashes.Add((result.Hash, result.NodeType, result.Level));
-                    }
-                    else
-                    {
-                        break;
+                        if (_nodes.TryTake(out (Keccak Hash, NodeDataType NodeType, int Level) result))
+                        {
+                            requestHashes.Add((result.Hash, result.NodeType, result.Level));
+                        }
+                        else
+                        {
+                            break;
+                        }
                     }
                 }
 
@@ -257,7 +283,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             for (int i = 0; i < initialNodes.Length; i++)
             {
-                _nodes.Add((initialNodes[i].Hash, initialNodes[i].NodeDataType, 0));
+                AddNode((initialNodes[i].Hash, initialNodes[i].NodeDataType, 0));
             }
 
             await KeepSyncing();
