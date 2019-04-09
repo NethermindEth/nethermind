@@ -32,6 +32,7 @@ using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Synchronization
 {
+    [Todo(Improve.Refactor, "We should leave only one sync class now where the sync modes differ very slightly (and are represented by a single method changing depending on the sync mode)")]
     public class FullSynchronizer : ISynchronizer
     {
         private int _sinceLastTimeout;
@@ -90,7 +91,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             await (_syncLoopTask ?? Task.CompletedTask);
 
-            if (_logger.IsInfo) _logger.Info("Sync shutdown complete.. please wait for all components to close");
+            if (_logger.IsInfo) _logger.Info("Full sync shutdown complete.. please wait for all components to close");
         }
 
         public bool IsInitialSyncFinished => true;
@@ -101,12 +102,12 @@ namespace Nethermind.Blockchain.Synchronization
         {
             try
             {
-                if (_logger.IsDebug) _logger.Debug("Stopping sync timer");
+                if (_logger.IsDebug) _logger.Debug("Stopping full sync timer");
                 _syncTimer?.Stop();
             }
             catch (Exception e)
             {
-                _logger.Error("Error during sync timer stop", e);
+                _logger.Error("Error during full sync timer stop", e);
             }
         }
         
@@ -122,15 +123,15 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (t.IsFaulted)
                 {
-                    if (_logger.IsError) _logger.Error("Sync loop encountered an exception.", t.Exception);
+                    if (_logger.IsError) _logger.Error("Full sync loop encountered an exception.", t.Exception);
                 }
                 else if (t.IsCanceled)
                 {
-                    if (_logger.IsDebug) _logger.Debug("Sync loop stopped.");
+                    if (_logger.IsDebug) _logger.Debug("Full sync loop stopped.");
                 }
                 else if (t.IsCompleted)
                 {
-                    if (_logger.IsDebug) _logger.Debug("Sync loop complete.");
+                    if (_logger.IsDebug) _logger.Debug("Full sync loop complete.");
                 }
             });
 
@@ -142,7 +143,7 @@ namespace Nethermind.Blockchain.Synchronization
         
         private void StartSyncTimer()
         {
-            if (_logger.IsDebug) _logger.Debug("Starting sync timer");
+            if (_logger.IsDebug) _logger.Debug("Starting full sync timer");
             _syncTimer = new System.Timers.Timer(_syncConfig.SyncTimerInterval);
             _syncTimer.Elapsed += (s, e) =>
             {
@@ -172,11 +173,11 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                     
                     if(_logger.IsTrace) _logger.Trace("Requesting synchronization");
-                    _syncRequested.Set();
+                    RequestSynchronization("[FULL SYNC TIMER]");
                 }
                 catch (Exception exception)
                 {
-                    if (_logger.IsDebug) _logger.Error("Sync timer failed", exception);
+                    if (_logger.IsDebug) _logger.Error("Full sync timer failed", exception);
                 }
                 finally
                 {
@@ -194,7 +195,7 @@ namespace Nethermind.Blockchain.Synchronization
         public event EventHandler<SyncEventArgs> SyncEvent;
         public void RequestSynchronization(string reason)
         {
-            if(_logger.IsTrace) _logger.Trace($"Requesting synchronization {reason}");
+            if(_logger.IsDebug) _logger.Debug($"Requesting synchronization {reason}");
             _syncRequested.Set();
         }
 
@@ -204,18 +205,18 @@ namespace Nethermind.Blockchain.Synchronization
         
         private async Task RunSyncLoop()
         {
-            if (_logger.IsDebug) _logger.Debug("Initializing sync loop.");
-            _allocation = _syncPeerPool.BorrowPeer("full sync");
+            if (_logger.IsInfo) _logger.Info("Initializing full sync loop.");
+            _allocation = _syncPeerPool.Allocate("full sync");
             if (_logger.IsDebug) _logger.Debug("Sync loop allocated.");
             _allocation.Replaced += AllocationOnReplaced;
             _allocation.Cancelled += AllocationOnCancelled;
             
             while (true)
             {
-                if (_logger.IsTrace) _logger.Trace("Sync loop - next iteration WAIT.");
+                if (_logger.IsDebug) _logger.Debug("Sync loop - next iteration WAIT.");
                 _syncRequested.Wait(_syncLoopCancelTokenSource.Token);
                 _syncRequested.Reset();
-                if (_logger.IsTrace) _logger.Trace("Sync loop - next iteration IN.");
+                if (_logger.IsDebug) _logger.Debug("Sync loop - next iteration IN.");
                 /* If block tree is processing blocks from DB then we are not going to start the sync process.
                  * In the future it may make sense to run sync anyway and let DB loader know that there are more blocks waiting.
                  * */
@@ -260,16 +261,16 @@ namespace Nethermind.Blockchain.Synchronization
                             {
                                 if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
                                 {
-                                    _logger.Debug($"Stopping sync with node: {peerInfo}. {t.Exception?.Message}");
+                                    _logger.Debug($"Stopping full sync with {peerInfo}. {t.Exception?.Message}");
                                 }
                                 else
                                 {
-                                    _logger.Error($"Stopping sync with node: {peerInfo}. Error in the sync process.", t.Exception);
+                                    _logger.Error($"Stopping full sync with {peerInfo}. Error in the sync process.", t.Exception);
                                 }
                             }
 
                             _syncPeerPool.RemovePeer(peerInfo.SyncPeer);
-                            if (_logger.IsTrace) _logger.Trace($"Sync with {peerInfo} failed. Removed node from sync peers.");
+                            if (_logger.IsTrace) _logger.Trace($"Full sync with {peerInfo} failed. Removed node from sync peers.");
                             SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, SyncStatus.Failed));
                         }
                         else if (t.IsCanceled || _peerSyncCancellationTokenSource.IsCancellationRequested)
@@ -281,28 +282,28 @@ namespace Nethermind.Blockchain.Synchronization
                             else
                             {
                                 _syncPeerPool.RemovePeer(peerInfo.SyncPeer);
-                                if (_logger.IsTrace) _logger.Trace($"Sync with {peerInfo} canceled. Removed node from sync peers.");
+                                if (_logger.IsTrace) _logger.Trace($"Full sync with {peerInfo} canceled. Removed node from sync peers.");
                                 SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, SyncStatus.Cancelled));
                             }
                         }
                         else if (t.IsCompleted)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"Sync process finished with {peerInfo}. Best known block is ({_blockTree.BestKnownNumber})");
+                            if (_logger.IsDebug) _logger.Debug($"Full sync finished with {peerInfo}. Best known block is ({_blockTree.BestKnownNumber})");
                             SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, SyncStatus.Completed));
                         }
 
                         if (_logger.IsDebug)
                             _logger.Debug(
-                                $"Finished peer sync process [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELED" : t.IsCompleted ? "COMPLETED" : "OTHER")}] with {peerInfo}], " +
+                                $"Finished peer full sync [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELED" : t.IsCompleted ? "COMPLETED" : "OTHER")}] with {peerInfo}], " +
                                 $"best known block #: {_blockTree.BestKnownNumber} ({_blockTree.BestKnownNumber}), " +
                                 $"best peer block #: {peerInfo.HeadNumber} ({peerInfo.HeadNumber})");
-
-                        _allocation.FinishSync();
                         
                         var source = _peerSyncCancellationTokenSource;
                         _peerSyncCancellationTokenSource = null;
                         source?.Dispose();
                     }, _syncLoopCancelTokenSource.Token);
+                    
+                    _allocation.FinishSync();
                 }
             }
         }
@@ -333,14 +334,14 @@ namespace Nethermind.Blockchain.Synchronization
             if (e.Current.TotalDifficulty > _blockTree.BestSuggested.TotalDifficulty)
             {
                 if(_logger.IsTrace) _logger.Trace("Requesting synchronization - REPLACE");
-                _syncRequested.Set();
+                RequestSynchronization("[FULL REPLACED]");
             }
         }
 
         [Todo(Improve.Readability, "Review cancellation")]
         private async Task SynchronizeWithPeerAsync(PeerInfo peerInfo)
         {
-            if (_logger.IsDebug) _logger.Debug($"Starting sync process with {peerInfo} - theirs {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} | ours {_blockTree.BestSuggested.Number} {_blockTree.BestSuggested.TotalDifficulty}");
+            if (_logger.IsDebug) _logger.Debug($"Starting full sync with {peerInfo} - theirs {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} | ours {_blockTree.BestSuggested.Number} {_blockTree.BestSuggested.TotalDifficulty}");
             bool wasCanceled = false;
 
             ISyncPeer peer = peerInfo.SyncPeer;
@@ -352,7 +353,7 @@ namespace Nethermind.Blockchain.Synchronization
             long currentNumber = Math.Min(_blockTree.BestKnownNumber, peerInfo.HeadNumber - 1);
             while (peerInfo.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= peerInfo.HeadNumber)
             {
-                if (_logger.IsTrace) _logger.Trace($"Continue syncing with {peerInfo} (our best {_blockTree.BestKnownNumber})");
+                if (_logger.IsDebug) _logger.Debug($"Continue full sync with {peerInfo} (our best {_blockTree.BestKnownNumber})");
 
                 if (ancestorLookupLevel > maxLookup)
                 {
@@ -362,13 +363,13 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (_peerSyncCancellationTokenSource.IsCancellationRequested)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Sync with {peerInfo} cancelled");
+                    if (_logger.IsInfo) _logger.Info($"Full sync with {peerInfo} cancelled");
                     return;
                 }
 
                 long blocksLeft = peerInfo.HeadNumber - currentNumber;
                 int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _currentBatchSize);
-                if (_logger.IsTrace) _logger.Trace($"Sync request {currentNumber}+{blocksToRequest} to peer {peerInfo.SyncPeer.Node.Id} with {peerInfo.HeadNumber} blocks. Got {currentNumber} and asking for {blocksToRequest} more.");
+                if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{blocksToRequest} to peer {peerInfo.SyncPeer.Node.Id} with {peerInfo.HeadNumber} blocks. Got {currentNumber} and asking for {blocksToRequest} more.");
 
                 Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(currentNumber, blocksToRequest, 0, _peerSyncCancellationTokenSource.Token);
                 BlockHeader[] headers = await headersTask;
@@ -397,7 +398,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (_peerSyncCancellationTokenSource.IsCancellationRequested)
                 {
-                    if (_logger.IsTrace) _logger.Trace("Peer sync cancelled");
+                    if (_logger.IsTrace) _logger.Trace("Peer full sync cancelled");
                     return;
                 }
 
@@ -563,6 +564,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                     if (_logger.IsTrace) _logger.Trace($"Received {blocks[i]} from {peer.Node:s}");
 
+                    // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(blocks[i]))
                     {
                         if (_logger.IsWarn) _logger.Warn($"Block {blocks[i].Number} skipped (validation failed)");
@@ -611,6 +613,15 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             if (_logger.IsTrace) _logger.Trace($"Stopping sync processes with {peerInfo}, wasCancelled: {wasCanceled}");
+        }
+
+        public void Dispose()
+        {
+            _syncLoopCancelTokenSource?.Dispose();
+            _syncLoopTask?.Dispose();
+            _syncTimer?.Dispose();
+            _peerSyncCancellationTokenSource?.Dispose();
+            _syncRequested?.Dispose();
         }
     }
 }

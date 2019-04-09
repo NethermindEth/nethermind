@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -342,9 +343,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 request.Response = new byte[request.Request.Length][];
 
                 int i = 0;
-                foreach ((Keccak hash, NodeDataType nodeType, int level) in request.Request)
+                foreach (RequestItem item in request.Request)
                 {
-                    request.Response[i++] = _stateDb[hash.Bytes] ?? _codeDb[hash.Bytes];
+                    request.Response[i++] = _stateDb[item.Hash.Bytes] ?? _codeDb[item.Hash.Bytes];
                 }
 
                 return Task.FromResult(request);
@@ -358,7 +359,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 request.Response = new byte[request.Request.Length][];
 
                 int i = 0;
-                foreach ((_, _, _) in request.Request)
+                foreach (RequestItem _ in request.Request)
                 {
                     request.Response[i++] = new byte[] {1, 2, 3};
                 }
@@ -373,7 +374,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 request.Response = new byte[request.Request.Length][];
 
                 int i = 0;
-                foreach ((_, _, _) in request.Request)
+                foreach (RequestItem _ in request.Request)
                 {
                     request.Response[i++] = null;
                 }
@@ -388,7 +389,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 request.Response = new byte[request.Request.Length][];
 
                 int i = 0;
-                foreach ((_, _, _) in request.Request)
+                foreach (RequestItem _ in request.Request)
                 {
                     request.Response[i++] = new byte[0];
                 }
@@ -455,7 +456,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await downloader.SyncNodeData(_remoteStateTree.RootHash);
+            await Task.WhenAny(downloader.SyncNodeData(_remoteStateTree.RootHash), Task.Delay(300));
             _localStateDb.Commit();
 
             CompareDbs();
@@ -466,7 +467,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.NotPreimage);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")).ContinueWith(t =>
+            await Task.WhenAny(downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")), Task.Delay(20000000)).Unwrap()
+            .ContinueWith(t =>
             {
                 Assert.True(t.IsFaulted);
                 Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
@@ -479,7 +481,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.MissingResponse);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")).ContinueWith(t =>
+            await Task.WhenAny(downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
+                .ContinueWith(t =>
             {
                 Assert.True(t.IsFaulted);
                 Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
@@ -492,7 +495,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.MissingRequest);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")).ContinueWith(t =>
+            await Task.WhenAny(downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
+                .ContinueWith(t =>
             {
                 Assert.True(t.IsFaulted);
                 Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
@@ -505,7 +509,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.EmptyArraysInResponses);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")).ContinueWith(t =>
+            await Task.WhenAny(downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
+                .ContinueWith(t =>
             {
                 Assert.True(t.IsFaulted);
                 Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());

@@ -28,9 +28,11 @@ namespace Nethermind.Blockchain.Synchronization
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
         
-        SyncPeerAllocation BorrowPeer(string description = "");
+        SyncPeerAllocation Allocate(string description = "");
         
-        void ReturnPeer(SyncPeerAllocation syncPeerAllocation);
+        void Free(SyncPeerAllocation syncPeerAllocation);
+        
+        void ReportNoSyncProgress(SyncPeerAllocation syncPeerAllocation);
         
         event EventHandler<SyncEventArgs> SyncEvent;
         

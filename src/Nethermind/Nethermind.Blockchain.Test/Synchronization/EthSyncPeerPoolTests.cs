@@ -257,7 +257,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA, "A"));
             await Task.Delay(200);
-            SyncPeerAllocation allocation = _pool.BorrowPeer();
+            SyncPeerAllocation allocation = _pool.Allocate();
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB, "B"));
@@ -275,7 +275,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await Task.Delay(200);
-            SyncPeerAllocation allocation = _pool.BorrowPeer();
+            SyncPeerAllocation allocation = _pool.Allocate();
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -293,7 +293,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await Task.Delay(200);
-            SyncPeerAllocation allocation = _pool.BorrowPeer();
+            SyncPeerAllocation allocation = _pool.Allocate();
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -311,7 +311,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await Task.Delay(200);
-            SyncPeerAllocation allocation = _pool.BorrowPeer();
+            SyncPeerAllocation allocation = _pool.Allocate();
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -329,7 +329,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await Task.Delay(200);
-            SyncPeerAllocation allocation = _pool.BorrowPeer();
+            SyncPeerAllocation allocation = _pool.Allocate();
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -359,7 +359,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.AddPeer(peer);
             await Task.Delay(200);
             
-            var allocation = _pool.BorrowPeer();
+            var allocation = _pool.Allocate();
             
             Assert.AreSame(peer, allocation.Current?.SyncPeer);
         }
@@ -373,7 +373,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.AddPeer(peer);
             await Task.Delay(200);
             
-            var allocation = _pool.BorrowPeer();
+            var allocation = _pool.Allocate();
             _pool.RemovePeer(peer);
             
             Assert.Null(allocation.Current);
@@ -390,7 +390,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await Task.Delay(12000);
             
             
-            var allocation = _pool.BorrowPeer();
+            var allocation = _pool.Allocate();
             
             Assert.AreEqual(null, allocation.Current);
             Assert.AreEqual(0, _pool.PeerCount);
@@ -406,7 +406,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.AddPeer(peer);
             await Task.Delay(200);
             
-            var allocation = _pool.BorrowPeer();
+            var allocation = _pool.Allocate();
             _pool.RemovePeer(peer);
             await Task.Delay(1000);
             
@@ -424,7 +424,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.AddPeer(peer);
             await Task.Delay(200);
             
-            var allocation = _pool.BorrowPeer();
+            var allocation = _pool.Allocate();
             _pool.RemovePeer(peer);
             await Task.Delay(1000);
             
@@ -439,8 +439,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             _pool.Start();
             _pool.AddPeer(peer);
-            var allocation = _pool.BorrowPeer();
-            _pool.ReturnPeer(allocation);
+            var allocation = _pool.Allocate();
+            _pool.Free(allocation);
         }
     }
 }

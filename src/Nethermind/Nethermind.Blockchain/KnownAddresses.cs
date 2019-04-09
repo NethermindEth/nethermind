@@ -35,5 +35,22 @@ namespace Nethermind.Blockchain
             {new Address("0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd"), "Pantheon"},
             {new Address("0xe0a2Bd4258D2768837BAa26A28fE71Dc079f84c7"), "Parity"},
         };
+        
+        public static Dictionary<Address, string> RinkebyValidators = new Dictionary<Address, string>
+        {
+            {new Address("0x42eb768f2244c8811c63729a21a3569731535f06"), "Ethereum Foundation"},
+            {new Address("0x6635f83421bf059cd8111f180f0727128685bae4"), "POA"},
+            {new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"), "Yucong Sun"},
+            {new Address("0xb279182d99e65703f0076e4812653aab85fca0f0"), "Prysm Labs"},
+            {new Address("0xd6ae8250b8348c94847280928c79fb3b63ca453e"), "Dapowerplay"},
+            {new Address("0xfc18cbc391de84dbd87db83b20935d3e89f5dd91"), "Infura"},
+        };
+        
+//        Signer 0: 0x42eb768f2244c8811c63729a21a3569731535f06
+//        Signer 1: 0x6635f83421bf059cd8111f180f0727128685bae4
+//        Signer 2: 0x7ffc57839b00206d1ad20c69a1981b489f772031
+//        Signer 3: 0xb279182d99e65703f0076e4812653aab85fca0f0
+//        Signer 4: 0xd6ae8250b8348c94847280928c79fb3b63ca453e
+//        Signer 5: 0xfc18cbc391de84dbd87db83b20935d3e89f5dd91|
     }
 }
