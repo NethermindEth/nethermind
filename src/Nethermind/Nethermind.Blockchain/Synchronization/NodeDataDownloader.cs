@@ -79,10 +79,9 @@ namespace Nethermind.Blockchain.Synchronization
             if (_logger.IsInfo) _logger.Info($"Finished downloading node data (downloaded {_downloadedNodesCount})");
         }
 
-        
 
         private void AddNode(RequestItem requestItem)
-        {   
+        {
             lock (_stateDb)
             {
                 if (requestItem.NodeDataType == NodeDataType.State && _stateDb.Get(requestItem.Hash) != null
@@ -95,7 +94,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
-            ConcurrentBag<RequestItem> selectedStream;
+            ConcurrentQueue<RequestItem> selectedStream;
             if (requestItem.Priority == 0 && _stream0.Count < _maxStream0Count)
             {
                 selectedStream = _stream0;
@@ -108,19 +107,21 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 selectedStream = _stream2;
             }
-            
-            selectedStream.Add(requestItem);
+
+            selectedStream.Enqueue(requestItem);
         }
 
         private int _maxStream0Count = 4096;
         private int _maxStream1Count = 2048;
-        
+
         private void HandleResponse(NodeDataRequest request)
         {
+            Interlocked.Add(ref _pendingRequests, -1);
+            
             if (_downloadedNodesCount > _lastDownloadedNodesCount + 10000)
             {
                 _lastDownloadedNodesCount = _downloadedNodesCount;
-                if (_logger.IsInfo) _logger.Info($"Downloading nodes (downloaded {_downloadedNodesCount})");
+                if (_logger.IsInfo) _logger.Info($"Downloading nodes (downloaded {_downloadedNodesCount}) - pending requests {_pendingRequests}");
             }
 
             if (request.Request == null)
@@ -164,15 +165,19 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     added++;
 
+                    throw new Exception("Save only on return");
+                    
                     NodeDataType nodeDataType = currentRequestItem.NodeDataType;
                     if (nodeDataType == NodeDataType.Code)
                     {
+                        // save only on return
                         _codeDb[currentRequestItem.Hash.Bytes] = currentResponseItem;
                         continue;
                     }
 
                     lock (_responseLock)
                     {
+                        // save only on return
                         _stateDb[currentRequestItem.Hash.Bytes] = currentResponseItem;
                     }
 
@@ -189,7 +194,7 @@ namespace Nethermind.Blockchain.Synchronization
                                 Keccak child = trieNode.GetChildHash(j);
                                 if (child != null)
                                 {
-                                    AddNode(new RequestItem(child, nodeDataType, currentRequestItem.Level + 1, Math.Max(currentRequestItem.Priority, (int)Math.Sqrt(j)/2)));
+                                    AddNode(new RequestItem(child, nodeDataType, currentRequestItem.Level + 1, Math.Max(currentRequestItem.Priority, (int) Math.Sqrt(j) / 2)));
                                 }
                             }
 
@@ -234,22 +239,23 @@ namespace Nethermind.Blockchain.Synchronization
             Interlocked.Add(ref _downloadedNodesCount, added);
 
             if (_logger.IsTrace) _logger.Trace($"Received node data: requested {request.Request.Length}, missing {missing}, added {added}");
+            if (_logger.IsTrace) _logger.Trace($"Handled responses - now {TotalCount} at ({_stream0.Count}|{_stream1.Count}|{_stream2.Count}) nodes");
         }
 
-        private ConcurrentBag<RequestItem>[] _nodes = new ConcurrentBag<RequestItem>[3];
-        private ConcurrentBag<RequestItem> _stream0 => _nodes[0];
-        private ConcurrentBag<RequestItem> _stream1 => _nodes[1];
-        private ConcurrentBag<RequestItem> _stream2 => _nodes[2];
+        private ConcurrentQueue<RequestItem>[] _nodes = new ConcurrentQueue<RequestItem>[3];
+        private ConcurrentQueue<RequestItem> _stream0 => _nodes[0];
+        private ConcurrentQueue<RequestItem> _stream1 => _nodes[1];
+        private ConcurrentQueue<RequestItem> _stream2 => _nodes[2];
 
         private int TotalCount => _stream0.Count + _stream1.Count + _stream2.Count;
 
         private bool TryTake(out RequestItem node)
         {
-            if (!_stream0.TryTake(out node))
+            if (!_stream0.TryDequeue(out node))
             {
-                if (!_stream1.TryTake(out node))
+                if (!_stream1.TryDequeue(out node))
                 {
-                    if (!_stream2.TryTake(out node))
+                    if (!_stream2.TryDequeue(out node))
                     {
                         return false;
                     }
@@ -257,10 +263,13 @@ namespace Nethermind.Blockchain.Synchronization
                     return true;
                 }
             }
-            
+
             return true;
         }
 
+        private int _pendingRequests;
+        private const int MaxPendingRequestsCount = 1;
+        
         // TODO: depth first
         private NodeDataRequest[] PrepareRequests()
         {
@@ -271,9 +280,11 @@ namespace Nethermind.Blockchain.Synchronization
             /* create 16 streams and take from the left? does it work together with the above?*/
             /* was it enough to hold parent info? */
             /* display confirmation on the number of synced accounts, code, storage bits */
-            
+
             List<NodeDataRequest> requests = new List<NodeDataRequest>();
-            while (TotalCount != 0)
+            if (_logger.IsTrace) _logger.Trace($"Preparing requests from ({_stream0.Count}|{_stream1.Count}|{_stream2.Count}) nodes  - pending requests {_pendingRequests}");
+
+            while (TotalCount != 0 && _pendingRequests + requests.Count < MaxPendingRequestsCount)
             {
                 NodeDataRequest request = new NodeDataRequest();
                 List<RequestItem> requestHashes = new List<RequestItem>();
@@ -302,13 +313,13 @@ namespace Nethermind.Blockchain.Synchronization
             var requestsArray = requests.ToArray();
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Prepared {requestsArray.Length} requests");
                 for (int i = 0; i < requestsArray.Length; i++)
                 {
                     _logger.Trace($"Request[{i}] - {requestsArray[i].Request.Length} nodes requested starting from {requestsArray[i].Request[0].Hash}");
                 }
             }
 
+            Interlocked.Add(ref _pendingRequests, requestsArray.Length);
             return requestsArray;
         }
 
@@ -316,11 +327,11 @@ namespace Nethermind.Blockchain.Synchronization
         {
             if (_stream0 == null)
             {
-                _nodes[0] = new ConcurrentBag<RequestItem>();
-                _nodes[1] = new ConcurrentBag<RequestItem>();
-                _nodes[2] = new ConcurrentBag<RequestItem>();
+                _nodes[0] = new ConcurrentQueue<RequestItem>();
+                _nodes[1] = new ConcurrentQueue<RequestItem>();
+                _nodes[2] = new ConcurrentQueue<RequestItem>();
             }
-            
+
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Syncing node data");

@@ -331,15 +331,20 @@ namespace Nethermind.Blockchain.Synchronization
             (PeerInfo Info, long Latency) bestPeer = (null, 100000);
             foreach ((_, PeerInfo info) in _peers)
             {
+                if (_sleepingPeers.Any())
+                {
+                    
+                }
+                
                 if (_sleepingPeers.TryGetValue(info, out DateTime sleepingSince))
                 {
                     if (DateTime.UtcNow - sleepingSince < _timeBeforeWakingPeerUp)
                     {
-                        _sleepingPeers.TryRemove(info, out _);
+                        continue;
                     }
                     else
-                    {
-                        continue;
+                    {               
+                        _sleepingPeers.TryRemove(info, out _);
                     }
                 }
                 
@@ -433,7 +438,8 @@ namespace Nethermind.Blockchain.Synchronization
         
         public void ReportNoSyncProgress(SyncPeerAllocation allocation)
         {
-            _sleepingPeers.TryAdd(allocation.Current, DateTime.Now);
+            if (_logger.IsInfo) _logger.Info($"No sync progress reported with {allocation.Current}");
+            _sleepingPeers.TryAdd(allocation.Current, DateTime.UtcNow);
         }
 
         public void Free(SyncPeerAllocation syncPeerAllocation)

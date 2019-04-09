@@ -369,6 +369,11 @@ namespace Nethermind.Blockchain.Synchronization
 
                 long blocksLeft = peerInfo.HeadNumber - currentNumber;
                 int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _currentBatchSize);
+                if (blocksToRequest <= 1)
+                {
+                    break;
+                }
+                
                 if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{blocksToRequest} to peer {peerInfo.SyncPeer.Node.Id} with {peerInfo.HeadNumber} blocks. Got {currentNumber} and asking for {blocksToRequest} more.");
 
                 Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(currentNumber, blocksToRequest, 0, _peerSyncCancellationTokenSource.Token);
