@@ -377,11 +377,12 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 _allocation.FinishSync();
-                await DownloadNodes();
+
+                await SwitchToNodeDownloadIfReady();
             }
         }
 
-        private async Task DownloadNodes()
+        private async Task SwitchToNodeDownloadIfReady()
         {
             BlockHeader bestSuggested = _blockTree.BestSuggested;
             if (bestSuggested == null)
@@ -391,23 +392,24 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             long bestSuggestedNumber = bestSuggested.Number;
-            if (_logger.IsInfo) _logger.Info($"[FAST SYNC] Switching to node data download at block {bestSuggestedNumber}!");
-            _mode = SynchronizationMode.NodeData;
-
             if (bestSuggestedNumber > 0L) // make it 1024 * 128 or configurable for tests
             {
+                // TODO: it should be the longest chain here - add allocation preferences
                 _syncPeerPool.EnsureBest(_allocation, (bestSuggested?.TotalDifficulty - 1) ?? 0);
-                PeerInfo currentPeerInfo = _allocation.Current;
-                if (currentPeerInfo == null)
+                PeerInfo bestPeer = _allocation.Current;
+                if (bestPeer == null)
                 {
                     return;
                 }
 
-                if (currentPeerInfo.HeadNumber <= bestSuggestedNumber + 64)
+                if (bestPeer.HeadNumber <= bestSuggestedNumber + FullSyncThreshold)
                 {
+                    if (_logger.IsInfo) _logger.Info($"[FAST SYNC] Switching to node data download at block {bestSuggestedNumber}!");
+                    _mode = SynchronizationMode.NodeData;
+                    
                     foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
                     {
-                        string prefix = peerInfo == currentPeerInfo ? "[CURRENT] " : string.Empty;
+                        string prefix = peerInfo == bestPeer ? "[CURRENT] " : string.Empty;
                         if (_logger.IsInfo) _logger.Info($"[FAST SYNC] Peers:");
                         if (_logger.IsInfo) _logger.Info($"[FAST SYNC] {prefix}{peerInfo}!");
                     }
@@ -418,9 +420,9 @@ namespace Nethermind.Blockchain.Synchronization
                             switch (task)
                             {
                                 case Task t when t.IsFaulted:
-                                    _syncPeerPool.RemovePeer(currentPeerInfo.SyncPeer);
-                                    if (_logger.IsTrace) _logger.Trace($"Sync with {currentPeerInfo} failed. Removed node from sync peers.");
-                                    SyncEvent?.Invoke(this, new SyncEventArgs(currentPeerInfo.SyncPeer, SyncStatus.Failed));
+                                    _syncPeerPool.RemovePeer(bestPeer.SyncPeer);
+                                    if (_logger.IsTrace) _logger.Trace($"Sync with {bestPeer} failed. Removed node from sync peers.");
+                                    SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, SyncStatus.Failed));
                                     break;
                                 case Task t when t.IsCanceled:
                                     if (_requestedSyncCancelDueToBetterPeer)
@@ -429,9 +431,9 @@ namespace Nethermind.Blockchain.Synchronization
                                     }
                                     else
                                     {
-                                        _syncPeerPool.RemovePeer(currentPeerInfo.SyncPeer);
-                                        if (_logger.IsTrace) _logger.Trace($"Fast sync with {currentPeerInfo} canceled. Removed node from sync peers.");
-                                        SyncEvent?.Invoke(this, new SyncEventArgs(currentPeerInfo.SyncPeer, SyncStatus.Cancelled));
+                                        _syncPeerPool.RemovePeer(bestPeer.SyncPeer);
+                                        if (_logger.IsTrace) _logger.Trace($"Fast sync with {bestPeer} canceled. Removed node from sync peers.");
+                                        SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, SyncStatus.Cancelled));
                                     }
 
                                     break;
@@ -497,7 +499,8 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             PeerInfo newPeer = e.Current;
-            if (newPeer.TotalDifficulty > _blockTree.BestSuggested.TotalDifficulty)
+            BlockHeader bestSuggested = _blockTree.BestSuggested;
+            if (newPeer.TotalDifficulty > bestSuggested.TotalDifficulty && newPeer.HeadNumber > bestSuggested.Number + 1)
             {
                 RequestSynchronization("[REPLACE]");
             }
@@ -531,8 +534,13 @@ namespace Nethermind.Blockchain.Synchronization
                     return;
                 }
 
-                long blocksLeft = peerInfo.HeadNumber - currentNumber;
+                long blocksLeft = peerInfo.HeadNumber - currentNumber - FullSyncThreshold;
                 int headersToRequest = (int) BigInteger.Min(blocksLeft + 1, _currentBatchSize);
+                if (headersToRequest < 1)
+                {
+                    break;
+                }
+                
                 if (_logger.IsTrace) _logger.Trace($"Sync request {currentNumber}+{headersToRequest} to peer {peerInfo.SyncPeer.Node.Id} with {peerInfo.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(currentNumber, headersToRequest, 0, _peerSyncCancellation.Token);

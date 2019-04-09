@@ -330,7 +330,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _peerSyncCancellationTokenSource?.Cancel();
             }
 
-            if (e.Current.TotalDifficulty > _blockTree.BestSuggested.TotalDifficulty)
+            if (e.Current.TotalDifficulty > _blockTree.BestSuggested.TotalDifficulty && e.Current.HeadNumber > _blockTree.BestSuggested.Number + 1)
             {
                 if(_logger.IsTrace) _logger.Trace("Requesting synchronization - REPLACE");
                 _syncRequested.Set();
