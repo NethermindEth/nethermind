@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private TimeSpan _fullPeerListInterval = TimeSpan.FromSeconds(120);
         private DateTime _timeOfTheLastFullPeerListLogEntry = DateTime.MinValue;
-        private DateTime _lastSyncTime = DateTime.Now;
+        private DateTime _lastSyncNotificationTime = DateTime.UtcNow;
         private int _lastSyncPeersCount;
         private int _sinceLastTimeout;
 
@@ -134,6 +134,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         /// <summary>
         /// This is invoked when the node data download phase finalizes and we can transition to full sync.
+        /// </summary>
         /// </summary>
         private async Task StopFastSync()
         {
@@ -732,12 +733,11 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 // create sync stats like processing stats?
-                if (DateTime.UtcNow - _lastSyncTime >= TimeSpan.FromSeconds(1))
+                if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1))
                 {
                     if (_logger.IsInfo) _logger.Info($"Downloading headers {_blockTree.BestSuggested?.Number}/{_allocation.Current?.HeadNumber}");
+                    _lastSyncNotificationTime = DateTime.UtcNow;
                 }
-                
-                _lastSyncTime = DateTime.Now;
             }
             
             if (headersSynced == 0)
