@@ -25,5 +25,9 @@ namespace Nethermind.Blockchain.Synchronization
         public EthSynchronizationException(string message) : base(message)
         {
         }
+        
+        public EthSynchronizationException(string message, Exception innerException) : base(message, innerException)
+        {
+        }
     }
 }

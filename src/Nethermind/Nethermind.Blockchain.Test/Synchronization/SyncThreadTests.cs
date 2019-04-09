@@ -298,7 +298,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
                         tree,
                         headerValidator,
                         sealValidator,
-                        txValidator,
                         syncPeerPool, new SyncConfig(), downloader, fullSynchronizer, logManager);
                     break;
                 default:

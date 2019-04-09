@@ -612,5 +612,14 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_logger.IsTrace) _logger.Trace($"Stopping sync processes with {peerInfo}, wasCancelled: {wasCanceled}");
         }
+
+        public void Dispose()
+        {
+            _syncLoopCancelTokenSource?.Dispose();
+            _syncLoopTask?.Dispose();
+            _syncTimer?.Dispose();
+            _peerSyncCancellationTokenSource?.Dispose();
+            _syncRequested?.Dispose();
+        }
     }
 }

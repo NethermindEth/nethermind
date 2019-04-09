@@ -278,7 +278,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 var stats = new NodeStatsManager(new StatsConfig(), _logManager);
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, new SyncConfig(), _logManager);
 
-                NodeDataDownloader downloader = new NodeDataDownloader(codeDb, stateDb, _logManager);
+                NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(codeDb, stateDb, _logManager);
                 ISynchronizer fullSynchronizer = new FullSynchronizer(BlockTree,
                     TestBlockValidator.AlwaysValid,
                     TestSealValidator.AlwaysValid,
@@ -289,8 +289,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     Synchronizer = new FastSynchronizer(BlockTree,
                         TestHeaderValidator.AlwaysValid,
                         TestSealValidator.AlwaysValid,
-                        TestTxValidator.AlwaysValid,
-                        SyncPeerPool, new SyncConfig(), downloader, fullSynchronizer, _logManager);
+                        SyncPeerPool, new SyncConfig(), nodeDataDownloader, fullSynchronizer, _logManager);
                 }
                 else
                 {

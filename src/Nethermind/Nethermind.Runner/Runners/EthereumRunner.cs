@@ -334,7 +334,8 @@ namespace Nethermind.Runner.Runners
             var peerManagerTask = _peerManager?.StopAsync() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping synchronizer...");
-            var synchronizerTask = _synchronizer?.StopAsync() ?? Task.CompletedTask;
+            var synchronizerTask = (_synchronizer?.StopAsync() ?? Task.CompletedTask)
+            .ContinueWith(t => _synchronizer?.Dispose());
 
             if (_logger.IsInfo) _logger.Info("Stopping sync peer pool...");
             var peerPoolTask = _syncPeerPool?.StopAsync() ?? Task.CompletedTask;
@@ -702,7 +703,7 @@ namespace Nethermind.Runner.Runners
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
 
             ISynchronizer fullSynchronizer = new FullSynchronizer(_blockTree, _blockValidator, sealValidator, txValidator, _syncPeerPool, syncConfig, _logManager);
-            _synchronizer = syncConfig.FastSync ? new FastSynchronizer(_blockTree, _headerValidator, _sealValidator, txValidator, _syncPeerPool, syncConfig, nodeDataDownloader, fullSynchronizer, _logManager) : fullSynchronizer;
+            _synchronizer = syncConfig.FastSync ? new FastSynchronizer(_blockTree, _headerValidator, _sealValidator, _syncPeerPool, syncConfig, nodeDataDownloader, fullSynchronizer, _logManager) : fullSynchronizer;
 
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,
