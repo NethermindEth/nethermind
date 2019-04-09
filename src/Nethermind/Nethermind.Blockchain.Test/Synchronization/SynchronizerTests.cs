@@ -264,8 +264,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             private IEthSyncPeerPool SyncPeerPool { get; set; }
 
-            ILogManager _logManager = LimboLogs.Instance;
-//            ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            //ILogManager _logManager = LimboLogs.Instance;
+            ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
 
             private ILogger _logger;
             
@@ -307,7 +307,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext BestKnownNumberIs(long number)
             {
-                Assert.AreEqual(number, BlockTree.BestKnownNumber);
+                Assert.AreEqual(number, BlockTree.BestKnownNumber, "best known number");
                 return this;
             }
 
@@ -319,27 +319,27 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext BlockIsKnown()
             {
-                Assert.True(BlockTree.IsKnownBlock(_blockHeader.Number, _blockHeader.Hash));
+                Assert.True(BlockTree.IsKnownBlock(_blockHeader.Number, _blockHeader.Hash), "block is known");
                 return this;
             }
 
             public SyncingContext HeaderIs(BlockHeader header)
             {
                 _logger.Info($"ASSERTING THAT HEADER IS {header.Number}");
-                Assert.AreSame(header, _blockHeader);
+                Assert.AreSame(header, _blockHeader, "header");
                 return this;
             }
 
             public SyncingContext BlockHasNumber(long number)
             {
                 _logger.Info($"ASSERTING THAT NUMBER IS {number}");
-                Assert.AreEqual(number, _blockHeader.Number);
+                Assert.AreEqual(number, _blockHeader.Number, "block number");
                 return this;
             }
 
             public SyncingContext BlockIsSameAsGenesis()
             {
-                Assert.AreSame(BlockTree.Genesis, _blockHeader);
+                Assert.AreSame(BlockTree.Genesis, _blockHeader, "genesis");
                 return this;
             }
 
@@ -421,7 +421,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext PeerCountIs(long i)
             {
-                Assert.AreEqual(i, Metrics.SyncPeers);
+                Assert.AreEqual(i, Metrics.SyncPeers, "peer count");
                 return this;
             }
 
@@ -597,6 +597,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public void Will_ignore_new_block_that_is_far_ahead()
         {
+            // this test was designed for no sync-timer sync process
+            // now it checks something different
             SyncPeerMock peerA = new SyncPeerMock("A");
             peerA.AddBlocksUpTo(1);
 

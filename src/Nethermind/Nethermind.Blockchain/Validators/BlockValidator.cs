@@ -42,6 +42,11 @@ namespace Nethermind.Blockchain.Validators
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         }
 
+        public bool ValidateHeader(BlockHeader header, bool isOmmer)
+        {
+            return _headerValidator.Validate(header, isOmmer);
+        }
+
         /// <summary>
         /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing. 
         /// </summary>

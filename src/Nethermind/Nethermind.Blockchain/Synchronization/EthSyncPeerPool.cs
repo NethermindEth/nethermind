@@ -17,11 +17,9 @@
  */
 
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -43,13 +41,17 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
 
         private ConcurrentDictionary<SyncPeerAllocation, object> _allocations = new ConcurrentDictionary<SyncPeerAllocation, object>();
-        private const int AllocationsUpgradeInterval = 1000000000;
+        private const int AllocationsUpgradeInterval = 1000;
         private System.Timers.Timer _upgradeTimer;
 
         private readonly BlockingCollection<PeerInfo> _peerRefreshQueue = new BlockingCollection<PeerInfo>();
         private Task _refreshLoopTask;
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
+        public event EventHandler<SyncEventArgs> SyncEvent;
+        
+        private ConcurrentDictionary<PeerInfo, DateTime> _sleepingPeers = new ConcurrentDictionary<PeerInfo, DateTime>();
+        private TimeSpan _timeBeforeWakingPeerUp = TimeSpan.FromSeconds(3);
 
         public EthSyncPeerPool(IBlockTree blockTree, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ILogManager logManager)
         {
@@ -189,9 +191,10 @@ namespace Nethermind.Blockchain.Synchronization
             _refreshLoopCancellation.Cancel();
             await (_refreshLoopTask ?? Task.CompletedTask);
         }
-
+        
         public void EnsureBest(SyncPeerAllocation allocation, UInt256 difficultyThreshold)
         {
+            // only for this allocation (but now we have only one allocation at the time)
             UpdateAllocations("ENSURE BEST", difficultyThreshold);
         }
 
@@ -307,7 +310,6 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             Metrics.SyncPeers = _peers.Count;
-
             foreach ((SyncPeerAllocation allocation, _) in _allocations)
             {
                 if (allocation.Current?.SyncPeer.Node.Id == syncPeer.Node.Id)
@@ -329,6 +331,18 @@ namespace Nethermind.Blockchain.Synchronization
             (PeerInfo Info, long Latency) bestPeer = (null, 100000);
             foreach ((_, PeerInfo info) in _peers)
             {
+                if (_sleepingPeers.TryGetValue(info, out DateTime sleepingSince))
+                {
+                    if (DateTime.UtcNow - sleepingSince < _timeBeforeWakingPeerUp)
+                    {
+                        _sleepingPeers.TryRemove(info, out _);
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+                
                 if (!info.IsInitialized || info.TotalDifficulty <= totalDifficultyThreshold)
                 {
                     continue;
@@ -410,19 +424,22 @@ namespace Nethermind.Blockchain.Synchronization
             return _peers.TryGetValue(nodeId, out peerInfo);
         }
 
-        public SyncPeerAllocation BorrowPeer(string description)
+        public SyncPeerAllocation Allocate(string description)
         {
             SyncPeerAllocation allocation = new SyncPeerAllocation(SelectBestPeerForSync(_blockTree.BestSuggested?.TotalDifficulty ?? 0, "BORROW"), description);
             _allocations.TryAdd(allocation, null);
             return allocation;
         }
+        
+        public void ReportNoSyncProgress(SyncPeerAllocation allocation)
+        {
+            _sleepingPeers.TryAdd(allocation.Current, DateTime.Now);
+        }
 
-        public void ReturnPeer(SyncPeerAllocation syncPeerAllocation)
+        public void Free(SyncPeerAllocation syncPeerAllocation)
         {
             if (_logger.IsInfo) _logger.Info($"Returning {syncPeerAllocation}");
             _allocations.TryRemove(syncPeerAllocation, out _);
         }
-
-        public event EventHandler<SyncEventArgs> SyncEvent;
     }
 }
