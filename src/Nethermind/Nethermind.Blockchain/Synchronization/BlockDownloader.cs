@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISealValidator _sealValidator;
         private readonly ILogger _logger;
 
-        private SynchronizationStats _syncStats;
+        private SyncStats _syncStats;
         private SyncBatchSize _syncBatchSize;
         private int _sinceLastTimeout;
 
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
             _syncBatchSize = new SyncBatchSize(logManager);
-            _syncStats = new SynchronizationStats(logManager);
+            _syncStats = new SyncStats(logManager);
         }
 
         public async Task<int> DownloadHeaders(PeerInfo bestPeer, CancellationToken cancellation)

@@ -39,17 +39,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public override string ToString()
         {
-            return ToString(true);
-        }
-
-        private string ToString(bool fullFormat)
-        {
-            if (fullFormat)
-            {
-                return $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}]";
-            }
-
-            return $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}]";
+            return $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}]";
         }
     }
 }

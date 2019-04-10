@@ -291,7 +291,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 SyncPeerPool.Start();
 
                 Synchronizer.Start();
-                Synchronizer.SyncEvent += (sender, args) => TestContext.WriteLine(args.SyncStatus);
+                Synchronizer.SyncEvent += (sender, args) => TestContext.WriteLine(args.SyncEvent);
                 
                 AllInstances.Add(this);
             }

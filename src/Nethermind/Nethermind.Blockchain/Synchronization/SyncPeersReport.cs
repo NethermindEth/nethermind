@@ -39,7 +39,6 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void Write()
         {
-            int peerCount = _peerPool.PeerCount;
             int initializedPeerCount = _peerPool.AllPeers.Count(p => p.IsInitialized);
 
             if (DateTime.UtcNow - _timeOfTheLastFullPeerListLogEntry > _fullPeerListInterval && _logger.IsDebug)

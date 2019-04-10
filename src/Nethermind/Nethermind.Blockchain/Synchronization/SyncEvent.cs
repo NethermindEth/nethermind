@@ -16,30 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Core.Logging;
-
 namespace Nethermind.Blockchain.Synchronization
 {
-    internal class SynchronizationStats
+    public enum SyncEvent
     {
-        private DateTime _lastSyncNotificationTime = DateTime.UtcNow;
-        
-        private ILogger _logger;
-        
-        public SynchronizationStats(ILogManager logManager)
-        {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-
-        public void Report(long current, long total)
-        {
-            // create sync stats like processing stats?
-            if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1))
-            {
-                if (_logger.IsInfo) _logger.Info($"Downloading headers {current}/{total}");
-                _lastSyncNotificationTime = DateTime.UtcNow;
-            }
-        }
+        InitFailed,
+        InitCancelled,
+        InitCompleted,
+        Started,
+        Failed,
+        Cancelled,
+        Completed
     }
 }

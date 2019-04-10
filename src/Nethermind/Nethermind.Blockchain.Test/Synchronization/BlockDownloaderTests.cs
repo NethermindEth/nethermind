@@ -16,11 +16,27 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.TxPools;
+using Nethermind.Core.Logging;
+using Nethermind.Core.Specs;
+using Nethermind.Store;
+using NUnit.Framework;
+
 namespace Nethermind.Blockchain.Test.Synchronization
 {
-    public enum SynchronizerType
+    [TestFixture]
+    public class BlockDownloaderTests
     {
-        Full,
-        Fast
+        [Test]
+        public void Test()
+        {
+            IDb blockDb = new MemDb();
+            IDb blockInfoDb = new MemDb();
+            IDb headerDb = new MemDb();
+            BlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, GoerliSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, LimboLogs.Instance);   
+//            blockDownloader.DownloadBlocks()
+        }
     }
 }

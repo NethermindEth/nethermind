@@ -79,27 +79,27 @@ namespace Nethermind.Network
             localPeer.SessionCreated += SessionCreated;
         }
 
-        private NodeStatsEventType GetSyncEventType(SyncStatus syncStatus)
+        private NodeStatsEventType GetSyncEventType(SyncEvent syncEvent)
         {
-            switch (syncStatus)
+            switch (syncEvent)
             {
-                case SyncStatus.InitCompleted:
+                case SyncEvent.InitCompleted:
                     return NodeStatsEventType.SyncInitCompleted;
-                case SyncStatus.InitCancelled:
+                case SyncEvent.InitCancelled:
                     return NodeStatsEventType.SyncInitCancelled;
-                case SyncStatus.InitFailed:
+                case SyncEvent.InitFailed:
                     return NodeStatsEventType.SyncInitFailed;
-                case SyncStatus.Started:
+                case SyncEvent.Started:
                     return NodeStatsEventType.SyncStarted;
-                case SyncStatus.Completed:
+                case SyncEvent.Completed:
                     return NodeStatsEventType.SyncCompleted;
-                case SyncStatus.Failed:
+                case SyncEvent.Failed:
                     return NodeStatsEventType.SyncFailed;
-                case SyncStatus.Cancelled:
+                case SyncEvent.Cancelled:
                     return NodeStatsEventType.SyncCancelled;
             }
 
-            throw new Exception($"SyncStatus not supported: {syncStatus.ToString()}");
+            throw new Exception($"SyncStatus not supported: {syncEvent.ToString()}");
         }
 
         private ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
@@ -107,7 +107,7 @@ namespace Nethermind.Network
         [Todo(Improve.Refactor, "this can be all in SyncManager now")]
         private void OnSyncEvent(object sender, SyncEventArgs e)
         {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| sync event {e.SyncStatus.ToString()} on {e.Peer.Node:s}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| sync event {e.SyncEvent.ToString()} on {e.Peer.Node:s}");
 
             if (!_sessions.TryGetValue(e.Peer.SessionId, out ISession session))
             {
@@ -115,13 +115,13 @@ namespace Nethermind.Network
                 return;
             }
 
-            var nodeStatsEvent = GetSyncEventType(e.SyncStatus);
+            var nodeStatsEvent = GetSyncEventType(e.SyncEvent);
             _stats.ReportSyncEvent(session.Node, nodeStatsEvent);
 
-            if (new[] {SyncStatus.InitFailed, SyncStatus.InitCancelled, SyncStatus.Failed, SyncStatus.Cancelled}.Contains(e.SyncStatus))
+            if (new[] {SyncEvent.InitFailed, SyncEvent.InitCancelled, SyncEvent.Failed, SyncEvent.Cancelled}.Contains(e.SyncEvent))
             {
-                if (_logger.IsDebug) _logger.Debug($"Initializing disconnect {session} on sync {e.SyncStatus.ToString()} with {e.Peer.Node:s}");
-                session.InitiateDisconnect(DisconnectReason.Other, $"sync failed {e.SyncStatus}");
+                if (_logger.IsDebug) _logger.Debug($"Initializing disconnect {session} on sync {e.SyncEvent.ToString()} with {e.Peer.Node:s}");
+                session.InitiateDisconnect(DisconnectReason.Other, $"sync failed {e.SyncEvent}");
             }
         }
 

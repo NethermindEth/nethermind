@@ -26,8 +26,8 @@ namespace Nethermind.Blockchain.Synchronization
             Current = current;
         }
 
-        public PeerInfo Previous { get; set; }
+        public PeerInfo Previous { get; }
         
-        public PeerInfo Current { get; set; }
+        public PeerInfo Current { get; }
     }
 }

@@ -16,11 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Logging;
+using NUnit.Framework;
+
 namespace Nethermind.Blockchain.Test.Synchronization
 {
-    public enum SynchronizerType
+    [TestFixture]
+    public class SyncStatsTests
     {
-        Full,
-        Fast
+        [Test]
+        public void Can_keep_going()
+        {
+            SyncStats stats = new SyncStats(NoErrorLimboLogs.Instance);
+            stats.Report(0, 1024);
+            stats.Report(256, 1024);
+            stats.Report(512, 1024);
+            stats.Report(1024, 1024);
+        }
     }
 }

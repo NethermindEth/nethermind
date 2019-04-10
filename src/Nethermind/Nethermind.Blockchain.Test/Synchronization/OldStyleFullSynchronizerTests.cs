@@ -88,7 +88,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
             _pool.Start();
             _synchronizer.Start();
@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             SemaphoreSlim semaphore = new SemaphoreSlim(0);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) semaphore.Release(1);
+                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) semaphore.Release(1);
             };
             _pool.Start();
             _synchronizer.Start();
@@ -162,7 +162,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
             
             _pool.Start();
@@ -186,7 +186,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
             
             _pool.Start();
@@ -225,7 +225,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
             
             _pool.Start();
@@ -259,7 +259,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             AutoResetEvent resetEvent = new AutoResetEvent(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
             
             _pool.Start();
@@ -297,7 +297,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             AutoResetEvent resetEvent = new AutoResetEvent(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncStatus == SyncStatus.Completed || args.SyncStatus == SyncStatus.Failed) resetEvent.Set();
+                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
             
             _pool.Start();

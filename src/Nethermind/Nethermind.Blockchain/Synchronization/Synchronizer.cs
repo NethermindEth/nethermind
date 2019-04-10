@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Synchronization
             _nodeDataDownloader.SetExecutor(this);
 
             _syncPeersReport = new SyncPeersReport(_syncPeerPool, logManager);
-            _syncMode = new SyncModeSelector(_syncPeerPool, logManager);
+            _syncMode = new SyncModeSelector(_syncPeerPool, _syncConfig, logManager);
             _syncMode.Changed += (s, e) => RequestSynchronization(SyncTriggerType.SyncModeChange);
             
             // make ctor parameter?
@@ -216,7 +216,7 @@ namespace Nethermind.Blockchain.Synchronization
                 
                 _peerSyncCancellation = new CancellationTokenSource();
                 var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_peerSyncCancellation.Token, _syncLoopCancellation.Token);
-                SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, SyncStatus.Started));
+                SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
                 if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer.HeadNumber} {bestPeer.TotalDifficulty} | ours {_blockTree.BestSuggested?.Number ?? 0} {_blockTree.BestSuggested?.TotalDifficulty ?? 0}");
                 switch (_syncMode.Current)
                 {
@@ -260,7 +260,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                     if (_logger.IsTrace) _logger.Trace($"{_syncMode.Current} sync with {peerInfo} failed. Removing node from sync peers.");
                     _syncPeerPool.RemovePeer(peerInfo.SyncPeer);
-                    SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, SyncStatus.Failed));
+                    SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Failed));
                     break;
                 case Task t when t.IsCanceled:
                     if (_requestedSyncCancelDueToBetterPeer)
@@ -271,12 +271,12 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         if (_logger.IsTrace) _logger.Trace($"{_syncMode.Current} sync with {peerInfo} canceled. Removing node from sync peers.");
                         _syncPeerPool.RemovePeer(peerInfo.SyncPeer);
-                        SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, SyncStatus.Cancelled));
+                        SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Cancelled));
                     }
                     break;
                 case Task t when t.IsCompletedSuccessfully:
                     if (_logger.IsDebug) _logger.Debug($"{_syncMode.Current} sync with {peerInfo} completed.");
-                    SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, SyncStatus.Completed));
+                    SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Completed));
                     break;
             }
         }

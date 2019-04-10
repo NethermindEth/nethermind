@@ -56,8 +56,6 @@ namespace Nethermind.Blockchain.Synchronization
             _blockTree.NewHeadBlock += OnNewHeadBlock;
         }
         
-        
-
         public int ChainId => _blockTree.ChainId;
         public BlockHeader Genesis => _blockTree.Genesis;
         public BlockHeader Head => _blockTree.Head;

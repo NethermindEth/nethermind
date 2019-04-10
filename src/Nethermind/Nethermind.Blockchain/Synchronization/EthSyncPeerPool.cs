@@ -215,13 +215,13 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         if (_logger.IsTrace) _logger.Trace($"InitPeerInfo failed for node: {syncPeer.Node:s}{Environment.NewLine}{t.Exception}");
                         RemovePeer(syncPeer);
-                        SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? SyncStatus.Failed : SyncStatus.InitFailed));
+                        SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Failed : Synchronization.SyncEvent.InitFailed));
                     }
                     else if (firstToComplete.IsCanceled)
                     {
                         if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:s}{Environment.NewLine}{t.Exception}");
                         RemovePeer(syncPeer);
-                        SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? SyncStatus.Cancelled : SyncStatus.InitCancelled));
+                        SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Cancelled : Synchronization.SyncEvent.InitCancelled));
                         token.ThrowIfCancellationRequested();
                     }
                     else
@@ -231,7 +231,7 @@ namespace Nethermind.Blockchain.Synchronization
                         {
                             SyncEvent?.Invoke(
                                 this,
-                                new SyncEventArgs(syncPeer, SyncStatus.InitCompleted));
+                                new SyncEventArgs(syncPeer, Synchronization.SyncEvent.InitCompleted));
                         }
 
                         if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} to {getHeadHeaderTask.Result.Number}");

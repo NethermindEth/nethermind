@@ -24,21 +24,30 @@ namespace Nethermind.Blockchain.Synchronization
     internal class SyncModeSelector
     {
         public const int FullSyncThreshold = 32;
-        private const int StateSyncThreshold = 16;
         
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly ILogger _logger;
 
-        public SyncModeSelector(IEthSyncPeerPool syncPeerPool, ILogManager logManager)
+        private bool _fastSyncEnabled;
+
+        public SyncModeSelector(IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            _fastSyncEnabled = syncConfig?.FastSync ?? false;
+            Current = _fastSyncEnabled ? SyncMode.Headers : SyncMode.Full;
         }
 
         public SyncMode Current { get; private set; }
 
         public void Update(long bestHeader, long bestFullState)
         {
+            if (!_fastSyncEnabled)
+            {
+                return;
+            }
+            
             if (_syncPeerPool.PeerCount == 0)
             {
                 return;
@@ -51,11 +60,11 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             SyncMode newSyncMode;
-            if (maxBlockNumberAmongPeers - bestFullState < FullSyncThreshold)
+            if (maxBlockNumberAmongPeers - bestFullState <= FullSyncThreshold)
             {
                 newSyncMode = SyncMode.Full;
             }
-            else if (maxBlockNumberAmongPeers - bestHeader < StateSyncThreshold)
+            else if (maxBlockNumberAmongPeers - bestHeader <= FullSyncThreshold)
             {
                 newSyncMode = SyncMode.StateNodes;
             }

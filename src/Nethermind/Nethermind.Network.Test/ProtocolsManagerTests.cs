@@ -220,7 +220,7 @@ namespace Nethermind.Network.Test
 
             public Context RaiseSyncPoolFailed()
             {
-                _syncPeerPool.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _syncServer, LimboLogs.Instance, _perfService, _txPool), SyncStatus.InitFailed));
+                _syncPeerPool.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _syncServer, LimboLogs.Instance, _perfService, _txPool), SyncEvent.InitFailed));
                 return this;
             }
 
