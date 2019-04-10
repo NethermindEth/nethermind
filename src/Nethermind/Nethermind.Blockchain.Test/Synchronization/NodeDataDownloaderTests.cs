@@ -341,10 +341,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch)
             {
-                batch.Responses = new byte[batch.Requests.Length][];
+                batch.Responses = new byte[batch.StateSyncs.Length][];
 
                 int i = 0;
-                foreach (RequestItem item in batch.Requests)
+                foreach (StateSyncItem item in batch.StateSyncs)
                 {
                     batch.Responses[i++] = _stateDb[item.Hash.Bytes] ?? _codeDb[item.Hash.Bytes];
                 }
@@ -357,10 +357,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             public static Func<StateSyncBatch, Task<StateSyncBatch>> NotPreimage = request =>
             {
-                request.Responses = new byte[request.Requests.Length][];
+                request.Responses = new byte[request.StateSyncs.Length][];
 
                 int i = 0;
-                foreach (RequestItem _ in request.Requests)
+                foreach (StateSyncItem _ in request.StateSyncs)
                 {
                     request.Responses[i++] = new byte[] {1, 2, 3};
                 }
@@ -372,25 +372,25 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             public static Func<StateSyncBatch, Task<StateSyncBatch>> MissingRequest = request =>
             {
-                request.Responses = new byte[request.Requests.Length][];
+                request.Responses = new byte[request.StateSyncs.Length][];
 
                 int i = 0;
-                foreach (RequestItem _ in request.Requests)
+                foreach (StateSyncItem _ in request.StateSyncs)
                 {
                     request.Responses[i++] = null;
                 }
 
-                request.Requests = null;
+                request.StateSyncs = null;
 
                 return Task.FromResult(request);
             };
             
             public static Func<StateSyncBatch, Task<StateSyncBatch>> EmptyArraysInResponses = request =>
             {
-                request.Responses = new byte[request.Requests.Length][];
+                request.Responses = new byte[request.StateSyncs.Length][];
 
                 int i = 0;
-                foreach (RequestItem _ in request.Requests)
+                foreach (StateSyncItem _ in request.StateSyncs)
                 {
                     request.Responses[i++] = new byte[0];
                 }

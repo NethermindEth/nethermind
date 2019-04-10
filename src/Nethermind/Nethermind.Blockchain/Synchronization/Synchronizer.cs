@@ -346,7 +346,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return batch;
             }
 
-            var hashes = batch.Requests.Select(r => r.Hash).ToArray();
+            var hashes = batch.StateSyncs.Select(r => r.Hash).ToArray();
             batch.Responses =
                 await peer.GetNodeData(hashes, token);
             return batch;
