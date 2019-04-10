@@ -221,7 +221,7 @@ namespace Nethermind.Blockchain.Synchronization
                 switch (_syncMode.Current)
                 {
                     case SyncMode.Headers:
-                        await _blockDownloader.DownloadHeaders(bestPeer, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                        await _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
                         break;
                     case SyncMode.StateNodes:
                         await DownloadStateNodes(bestPeer, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));

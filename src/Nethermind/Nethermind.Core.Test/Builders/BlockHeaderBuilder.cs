@@ -24,7 +24,13 @@ namespace Nethermind.Core.Test.Builders
     public class BlockHeaderBuilder : BuilderBase<BlockHeader>
     {
         public static UInt256 DefaultDifficulty = 1_000_000;
-        
+
+        protected override void BeforeReturn()
+        {
+            TestObjectInternal.Hash = BlockHeader.CalculateHash(TestObjectInternal);
+            base.BeforeReturn();
+        }
+
         public BlockHeaderBuilder()
         {
             TestObjectInternal = new BlockHeader(
@@ -41,7 +47,6 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.ReceiptsRoot = Keccak.EmptyTreeHash;
             TestObjectInternal.StateRoot = Keccak.EmptyTreeHash;
             TestObjectInternal.TransactionsRoot = Keccak.EmptyTreeHash;
-            TestObjectInternal.Hash = BlockHeader.CalculateHash(TestObjectInternal);
         }
         
         public BlockHeaderBuilder WithParent(BlockHeader parentHeader)
