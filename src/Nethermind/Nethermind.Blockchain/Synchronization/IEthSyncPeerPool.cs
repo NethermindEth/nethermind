@@ -38,7 +38,11 @@ namespace Nethermind.Blockchain.Synchronization
         
         IEnumerable<PeerInfo> AllPeers { get; }
         
+        IEnumerable<SyncPeerAllocation> Allocations { get; }
+        
         int PeerCount { get; }
+        
+        int PeerMaxCount { get; }
         
         void Refresh(PublicKey nodeId);
         

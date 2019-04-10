@@ -701,9 +701,7 @@ namespace Nethermind.Runner.Runners
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             ISyncConfig syncConfig = _configProvider.GetConfig<ISyncConfig>();
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
-
-            ISynchronizer fullSynchronizer = new FullSynchronizer(_blockTree, _blockValidator, sealValidator, txValidator, _syncPeerPool, syncConfig, _logManager);
-            _synchronizer = syncConfig.FastSync ? new FastSynchronizer(_blockTree, _headerValidator, _sealValidator, _syncPeerPool, syncConfig, nodeDataDownloader, fullSynchronizer, _logManager) : fullSynchronizer;
+            _synchronizer = new Synchronizer(_blockTree, _blockValidator, _sealValidator, _syncPeerPool, syncConfig, nodeDataDownloader, _logManager);
 
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,

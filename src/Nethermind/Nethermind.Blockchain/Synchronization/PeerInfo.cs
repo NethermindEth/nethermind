@@ -16,9 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
+[assembly:InternalsVisibleTo("Nethermind.Blockchain.Test")]
 namespace Nethermind.Blockchain.Synchronization
 {
     public class PeerInfo

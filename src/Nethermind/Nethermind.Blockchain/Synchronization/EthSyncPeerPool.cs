@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Synchronization
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
         public event EventHandler<SyncEventArgs> SyncEvent;
-        
+
         private ConcurrentDictionary<PeerInfo, DateTime> _sleepingPeers = new ConcurrentDictionary<PeerInfo, DateTime>();
         private TimeSpan _timeBeforeWakingPeerUp = TimeSpan.FromSeconds(3);
 
@@ -191,7 +191,7 @@ namespace Nethermind.Blockchain.Synchronization
             _refreshLoopCancellation.Cancel();
             await (_refreshLoopTask ?? Task.CompletedTask);
         }
-        
+
         public void EnsureBest(SyncPeerAllocation allocation, UInt256 difficultyThreshold)
         {
             // only for this allocation (but now we have only one allocation at the time)
@@ -260,7 +260,19 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
+        public IEnumerable<SyncPeerAllocation> Allocations
+        {
+            get
+            {
+                foreach ((SyncPeerAllocation allocation, _) in _allocations)
+                {
+                    yield return allocation;
+                }   
+            }
+        }
+
         public int PeerCount => _peers.Count;
+        public int PeerMaxCount => _syncConfig.SyncPeersMaxCount;
 
         public void Refresh(PublicKey publicKey)
         {
@@ -333,9 +345,8 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_sleepingPeers.Any())
                 {
-                    
                 }
-                
+
                 if (_sleepingPeers.TryGetValue(info, out DateTime sleepingSince))
                 {
                     if (DateTime.UtcNow - sleepingSince < _timeBeforeWakingPeerUp)
@@ -343,11 +354,11 @@ namespace Nethermind.Blockchain.Synchronization
                         continue;
                     }
                     else
-                    {               
+                    {
                         _sleepingPeers.TryRemove(info, out _);
                     }
                 }
-                
+
                 if (!info.IsInitialized || info.TotalDifficulty <= totalDifficultyThreshold)
                 {
                     continue;
@@ -435,7 +446,7 @@ namespace Nethermind.Blockchain.Synchronization
             _allocations.TryAdd(allocation, null);
             return allocation;
         }
-        
+
         public void ReportNoSyncProgress(SyncPeerAllocation allocation)
         {
             if (_logger.IsInfo) _logger.Info($"No sync progress reported with {allocation.Current}");

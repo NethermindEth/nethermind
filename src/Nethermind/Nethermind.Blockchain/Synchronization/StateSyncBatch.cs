@@ -18,10 +18,9 @@
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public enum SynchronizationMode
+    public class StateSyncBatch
     {
-        Blocks,
-        NodeData,
-        Full
+        public RequestItem[] Requests { get; set; }
+        public byte[][] Responses { get; set; }
     }
 }

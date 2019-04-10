@@ -146,20 +146,20 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 resetEvent.Set();
                 headBlock = e.Block;
             };
-            
+
             for (int i = 0; i < chainLength; i++)
             {
                 Transaction transaction = new Transaction();
-                transaction.Value =  (UInt256)BigInteger.Divide((BigInteger)1.Ether(), _chainLength);
+                transaction.Value = (UInt256) BigInteger.Divide((BigInteger) 1.Ether(), _chainLength);
                 transaction.SenderAddress = TestItem.AddressA;
                 transaction.To = TestItem.AddressB;
-                transaction.Nonce = (UInt256)i;
+                transaction.Nonce = (UInt256) i;
                 transaction.GasLimit = 21000;
                 transaction.GasPrice = 20.GWei();
                 transaction.Hash = Transaction.CalculateHash(transaction);
                 _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction, i);
                 _originPeer.TxPool.AddTransaction(transaction, i);
-                if(!resetEvent.WaitOne(1000))
+                if (!resetEvent.WaitOne(1000))
                 {
                     throw new Exception($"Failed to produce block {i + 1}");
                 }
@@ -169,7 +169,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         private int _chainLength = 100;
-        
+
         [Test]
         public void Can_sync_when_initially_disconnected()
         {
@@ -177,9 +177,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 Assert.AreEqual(_genesis.Hash, peer.SyncServer.Head.Hash, "genesis hash");
             }
-            
+
             var headBlock = ProduceBlocks(_chainLength);
-            
+
             SemaphoreSlim waitEvent = new SemaphoreSlim(0);
             foreach (var peer in _peers)
             {
@@ -214,7 +214,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             public ISynchronizer Synchronizer { get; set; }
             public IBlockTree Tree { get; set; }
             public IStateProvider StateProvider { get; set; }
-            
+
             public DevBlockProducer BlockProducer { get; set; }
 
             public async Task StopAsync()
@@ -229,7 +229,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
 
-             var logManager = NoErrorLimboLogs.Instance;
+            var logManager = NoErrorLimboLogs.Instance;
 //            var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, "PEER " + index));
             var specProvider = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, MainNetSpecProvider.Instance.ChainId);
 
@@ -238,8 +238,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             MemDb headerDb = new MemDb();
             MemDb blockInfoDb = new MemDb();
             StateDb codeDb = new StateDb();
-            StateDb stateDb = new StateDb();;
-            
+            StateDb stateDb = new StateDb();
+            ;
+
             var stateProvider = new StateProvider(stateDb, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
@@ -264,7 +265,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var rewardCalculator = new RewardCalculator(specProvider);
             var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, txProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
-            
+
             var step = new TxSignaturesRecoveryStep(ecdsa, txPool);
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true, true);
 
@@ -278,32 +279,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, traceDb, devState, devStorage, txPool, receiptStorage, logManager);
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false, false);
             var producer = new DevBlockProducer(txPool, devChainProcessor, tree, new Timestamp(), logManager);
-            
-            ISynchronizer synchronizer;
-            ISynchronizer fullSynchronizer = new FullSynchronizer(
+
+            NodeDataDownloader downloader = new NodeDataDownloader(codeDb, stateDb, logManager);
+            Synchronizer synchronizer = new Synchronizer(
                 tree,
                 blockValidator,
                 sealValidator,
-                txValidator,
-                syncPeerPool, new SyncConfig(), logManager);
-
-            switch (_synchronizerType)
-            { 
-                case SynchronizerType.Full:
-                    synchronizer = fullSynchronizer;
-                    break;
-                case SynchronizerType.Fast:
-                    NodeDataDownloader downloader = new NodeDataDownloader(codeDb, stateDb, logManager);
-                    synchronizer = new FastSynchronizer(
-                        tree,
-                        headerValidator,
-                        sealValidator,
-                        syncPeerPool, new SyncConfig(), downloader, fullSynchronizer, logManager);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
+                syncPeerPool, new SyncConfig(), downloader, logManager);
             var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, logManager);
 
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();
@@ -314,7 +296,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 _genesis = Build.A.Block.Genesis.WithStateRoot(stateProvider.StateRoot).TestObject;
                 producer.Start();
             }
-            
+
             syncPeerPool.Start();
             synchronizer.Start();
             processor.Start();

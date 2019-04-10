@@ -20,6 +20,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -338,68 +339,68 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 _codeDb = codeDb;
             }
 
-            public Task<NodeDataRequest> ExecuteRequest(NodeDataRequest request)
+            public Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch)
             {
-                request.Response = new byte[request.Request.Length][];
+                batch.Responses = new byte[batch.Requests.Length][];
 
                 int i = 0;
-                foreach (RequestItem item in request.Request)
+                foreach (RequestItem item in batch.Requests)
                 {
-                    request.Response[i++] = _stateDb[item.Hash.Bytes] ?? _codeDb[item.Hash.Bytes];
+                    batch.Responses[i++] = _stateDb[item.Hash.Bytes] ?? _codeDb[item.Hash.Bytes];
                 }
 
-                return Task.FromResult(request);
+                return Task.FromResult(batch);
             }
         }
 
         private class MaliciousExecutorMock : INodeDataRequestExecutor
         {
-            public static Func<NodeDataRequest, Task<NodeDataRequest>> NotPreimage = request =>
+            public static Func<StateSyncBatch, Task<StateSyncBatch>> NotPreimage = request =>
             {
-                request.Response = new byte[request.Request.Length][];
+                request.Responses = new byte[request.Requests.Length][];
 
                 int i = 0;
-                foreach (RequestItem _ in request.Request)
+                foreach (RequestItem _ in request.Requests)
                 {
-                    request.Response[i++] = new byte[] {1, 2, 3};
+                    request.Responses[i++] = new byte[] {1, 2, 3};
                 }
 
                 return Task.FromResult(request);
             };
             
-            public static Func<NodeDataRequest, Task<NodeDataRequest>> MissingResponse = Task.FromResult;
+            public static Func<StateSyncBatch, Task<StateSyncBatch>> MissingResponse = Task.FromResult;
             
-            public static Func<NodeDataRequest, Task<NodeDataRequest>> MissingRequest = request =>
+            public static Func<StateSyncBatch, Task<StateSyncBatch>> MissingRequest = request =>
             {
-                request.Response = new byte[request.Request.Length][];
+                request.Responses = new byte[request.Requests.Length][];
 
                 int i = 0;
-                foreach (RequestItem _ in request.Request)
+                foreach (RequestItem _ in request.Requests)
                 {
-                    request.Response[i++] = null;
+                    request.Responses[i++] = null;
                 }
 
-                request.Request = null;
+                request.Requests = null;
 
                 return Task.FromResult(request);
             };
             
-            public static Func<NodeDataRequest, Task<NodeDataRequest>> EmptyArraysInResponses = request =>
+            public static Func<StateSyncBatch, Task<StateSyncBatch>> EmptyArraysInResponses = request =>
             {
-                request.Response = new byte[request.Request.Length][];
+                request.Responses = new byte[request.Requests.Length][];
 
                 int i = 0;
-                foreach (RequestItem _ in request.Request)
+                foreach (RequestItem _ in request.Requests)
                 {
-                    request.Response[i++] = new byte[0];
+                    request.Responses[i++] = new byte[0];
                 }
 
                 return Task.FromResult(request);
             };
 
-            private Func<NodeDataRequest, Task<NodeDataRequest>> _executorResultFunction = NotPreimage;
+            private Func<StateSyncBatch, Task<StateSyncBatch>> _executorResultFunction = NotPreimage;
 
-            public MaliciousExecutorMock(Func<NodeDataRequest, Task<NodeDataRequest>> executorResultFunction = null)
+            public MaliciousExecutorMock(Func<StateSyncBatch, Task<StateSyncBatch>> executorResultFunction = null)
             {
                 if (executorResultFunction != null)
                 {
@@ -407,9 +408,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 }
             }
 
-            public Task<NodeDataRequest> ExecuteRequest(NodeDataRequest request)
+            public Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch)
             {
-                return _executorResultFunction.Invoke(request);
+                return _executorResultFunction.Invoke(batch);
             }
         }
 
@@ -443,7 +444,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await downloader.SyncNodeData(_remoteStateTree.RootHash);
+            await downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
 
             CompareDbs();
         }
@@ -456,7 +457,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await Task.WhenAny(downloader.SyncNodeData(_remoteStateTree.RootHash), Task.Delay(300));
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(300));
             _localStateDb.Commit();
 
             CompareDbs();
@@ -467,7 +468,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.NotPreimage);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await Task.WhenAny(downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")), Task.Delay(20000000)).Unwrap()
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(20000000)).Unwrap()
             .ContinueWith(t =>
             {
                 Assert.True(t.IsFaulted);
@@ -481,7 +482,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.MissingResponse);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await Task.WhenAny(downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
                 .ContinueWith(t =>
             {
                 Assert.True(t.IsFaulted);
@@ -495,7 +496,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.MissingRequest);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await Task.WhenAny(downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
                 .ContinueWith(t =>
             {
                 Assert.True(t.IsFaulted);
@@ -509,7 +510,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.EmptyArraysInResponses);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await Task.WhenAny(downloader.SyncNodeData(Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
                 .ContinueWith(t =>
             {
                 Assert.True(t.IsFaulted);

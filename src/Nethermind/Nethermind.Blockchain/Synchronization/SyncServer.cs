@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void AddNewBlock(Block block, Node nodeWhoSentTheBlock)
         {
-            if (!_synchronizer.IsInitialSyncFinished)
+            if (_synchronizer.SyncMode != SyncMode.Full)
             {
                 return;
             }
@@ -97,14 +97,13 @@ namespace Nethermind.Blockchain.Synchronization
             if (block.Number > _blockTree.BestKnownNumber + 8)
             {
                 // ignore blocks when syncing in a simple non-locking way
-                _synchronizer.RequestSynchronization("NEW FAR BLOCK");
+                _synchronizer.RequestSynchronization(SyncTriggerType.NewDistantBlock);
                 return;
             }
 
             lock (_recentlySuggested)
             {
                 if (_recentlySuggested.Get(block.Hash) != null) return;
-
                 _recentlySuggested.Set(block.Hash, _dummyValue);
             }
 
@@ -124,18 +123,18 @@ namespace Nethermind.Blockchain.Synchronization
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);
                 if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
-                if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization("NEW BLOCK / BRANCH");
+                if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
             }
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"Received a block {block.Hash} ({block.Number}) from {nodeWhoSentTheBlock} - need to resync");
-                _synchronizer.RequestSynchronization("NEW NEAR BLOCK");
+                _synchronizer.RequestSynchronization(SyncTriggerType.NewNearBlock);
             }
         }
 
         public void HintBlock(Keccak hash, long number, Node node)
         {
-            if (!_synchronizer.IsInitialSyncFinished)
+            if (_synchronizer.SyncMode != SyncMode.Full)
             {
                 return;
             }

@@ -29,12 +29,12 @@ namespace Nethermind.Blockchain.Synchronization
     {
         event EventHandler<SyncEventArgs> SyncEvent;
         
-        void RequestSynchronization(string reason);
+        void RequestSynchronization(SyncTriggerType syncTriggerType);
 
         void Start();
 
         Task StopAsync();
 
-        bool IsInitialSyncFinished { get; }
+        SyncMode SyncMode { get; }
     }
 }
