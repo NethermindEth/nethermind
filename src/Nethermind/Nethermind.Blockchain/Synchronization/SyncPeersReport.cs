@@ -46,21 +46,22 @@ namespace Nethermind.Blockchain.Synchronization
             lock (_writeLock)
             {
                 timeSinceLastEntry = DateTime.UtcNow - _timeOfTheLastFullPeerListLogEntry;
+                
                 _timeOfTheLastFullPeerListLogEntry = DateTime.UtcNow;
                  initializedPeerCount = _peerPool.AllPeers.Count(p => p.IsInitialized);
                 _lastInitializedPeerCount = initializedPeerCount;
             }
 
-            if (timeSinceLastEntry > _fullPeerListInterval && _logger.IsDebug)
+            if (timeSinceLastEntry > _fullPeerListInterval)
             {
-                if (_logger.IsDebug) _logger.Debug("Peers:");
+                if (_logger.IsInfo) _logger.Info($"Sync peers {initializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
                 foreach (PeerInfo peerInfo in _peerPool.AllPeers)
                 {
                     string prefix = _peerPool.Allocations.Any(a => a.Current == peerInfo)
                         ? " * "
                         : "   ";
 
-                    if (_logger.IsDebug) _logger.Debug($"{prefix}{peerInfo}");
+                    if (_logger.IsInfo) _logger.Info($"{prefix}{peerInfo}");
                 }
             }
             else if (initializedPeerCount != _lastInitializedPeerCount)
