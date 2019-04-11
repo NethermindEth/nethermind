@@ -34,11 +34,6 @@ using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    /// <summary>
-    /// Responsible for fast sync processing.
-    /// Fast sync starts with headers download followed by node data (state DB + code DB) downloads and then
-    /// switches to full sync mode.
-    /// </summary>
     public class Synchronizer : ISynchronizer, INodeDataRequestExecutor
     {
         private readonly ILogger _logger;
@@ -162,7 +157,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error("Error during the fast sync timer stop", e);
+                if (_logger.IsError) _logger.Error("Error during the sync timer stop", e);
             }
         }
 
@@ -197,7 +192,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 _syncRequested.Reset();
-                if (_logger.IsTrace) _logger.Trace("Fast sync loop - IN.");
+                if (_logger.IsTrace) _logger.Trace("Sync loop - IN.");
                 
                 if (!_blockTree.CanAcceptNewBlocks) continue;
 
@@ -206,7 +201,7 @@ namespace Nethermind.Blockchain.Synchronization
                 PeerInfo bestPeer = _allocation.Current; 
                 if (bestPeer == null)
                 {
-                    if (_logger.IsDebug) _logger.Debug("Skipping fast sync - no peers to sync with.");
+                    if (_logger.IsDebug) _logger.Debug("Skipping sync - no peers to sync with.");
                     continue;
                 }
 
@@ -305,9 +300,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void AllocateSyncPeerPool()
         {
-            if (_logger.IsDebug) _logger.Debug("Initializing fast sync loop.");
-            _allocation = _syncPeerPool.Allocate("fast sync");
-            if (_logger.IsDebug) _logger.Debug("Fast sync loop allocated.");
+            if (_logger.IsDebug) _logger.Debug("Initializing synchronizer loop.");
+            _allocation = _syncPeerPool.Allocate("synchronizer");
             _allocation.Replaced += AllocationOnReplaced;
             _allocation.Cancelled += AllocationOnCancelled;
             _allocation.Refreshed += AllocationOnRefreshed;
