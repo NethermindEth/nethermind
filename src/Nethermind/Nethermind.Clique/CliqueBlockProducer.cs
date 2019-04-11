@@ -142,7 +142,7 @@ namespace Nethermind.Clique
                     if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
                     {
                         int wiggle = _snapshotManager.GetOrCreateSnapshot(_scheduledBlock.Header.Number - 1, _scheduledBlock.Header.ParentHash).Signers.Count / 2 + 1 * Clique.WiggleTime;
-                        _extraDelayMilliseconds = (ulong) _cryptoRandom.NextInt(wiggle);
+                        _extraDelayMilliseconds = Math.Min(250UL, (ulong) _cryptoRandom.NextInt(wiggle));
                         if (_logger.IsInfo) _logger.Info($"Setting extra delay for own {turnDescription}block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} to {_extraDelayMilliseconds}");
                     }
                     else
