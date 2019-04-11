@@ -157,8 +157,11 @@ namespace Nethermind.Blockchain.Synchronization
 
                 _syncStats.Report(_blockTree.BestSuggested?.Number ?? 0, bestPeer.HeadNumber);
             }
-            
-            return headersSynced;
+
+            if (headersSynced > 0)
+            {
+                return headersSynced;
+            }
         }
 
         public async Task<int> DownloadBlocks(PeerInfo bestPeer, CancellationToken cancellation)
@@ -316,7 +319,10 @@ namespace Nethermind.Blockchain.Synchronization
                     currentNumber = currentNumber + 1;
                 }
 
-                _syncStats.Report(_blockTree.BestSuggested?.Number ?? 0, bestPeer.HeadNumber);
+                if (blocksSynced > 0)
+                {
+                    _syncStats.Report(_blockTree.BestSuggested?.Number ?? 0, bestPeer.HeadNumber);
+                }
             }
 
             return blocksSynced;

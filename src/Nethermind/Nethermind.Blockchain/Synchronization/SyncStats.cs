@@ -42,6 +42,8 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_logger.IsInfo) _logger.Info($"Block download progress {current}/{total}");
                 _lastSyncNotificationTime = DateTime.UtcNow;
+                _lastCurrent = current;
+                _lastTotal = total;
             }
         }
     }
