@@ -238,7 +238,7 @@ namespace Nethermind.Blockchain.Synchronization
                         throw new EthSynchronizationException("Bodies task faulted.", bodiesTask.Exception);
                     }
                 });
-
+                
                 Block[] blocks = bodiesTask.Result;
 
                 if (blocks.Length == 0 && blocksLeft == 1)

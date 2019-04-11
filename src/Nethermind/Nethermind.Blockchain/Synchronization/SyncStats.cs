@@ -24,6 +24,8 @@ namespace Nethermind.Blockchain.Synchronization
     internal class SyncStats
     {
         private DateTime _lastSyncNotificationTime = DateTime.MinValue;
+        private long _lastCurrent = 0;
+        private long _lastTotal = 0;
         
         private ILogger _logger;
         
@@ -35,7 +37,8 @@ namespace Nethermind.Blockchain.Synchronization
         public void Report(long current, long total)
         {
             // create sync stats like processing stats?
-            if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1))
+            if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1)
+                && (_lastCurrent != current || _lastTotal != total))
             {
                 if (_logger.IsInfo) _logger.Info($"Block download progress {current}/{total}");
                 _lastSyncNotificationTime = DateTime.UtcNow;

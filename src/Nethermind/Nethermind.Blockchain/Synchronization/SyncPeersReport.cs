@@ -37,11 +37,21 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
+        private object _writeLock = new object();
+
         public void Write()
         {
-            int initializedPeerCount = _peerPool.AllPeers.Count(p => p.IsInitialized);
+            TimeSpan timeSinceLastEntry;
+            int initializedPeerCount;
+            lock (_writeLock)
+            {
+                timeSinceLastEntry = DateTime.UtcNow - _timeOfTheLastFullPeerListLogEntry;
+                _timeOfTheLastFullPeerListLogEntry = DateTime.UtcNow;
+                 initializedPeerCount = _peerPool.AllPeers.Count(p => p.IsInitialized);
+                _lastInitializedPeerCount = initializedPeerCount;
+            }
 
-            if (DateTime.UtcNow - _timeOfTheLastFullPeerListLogEntry > _fullPeerListInterval && _logger.IsDebug)
+            if (timeSinceLastEntry > _fullPeerListInterval && _logger.IsDebug)
             {
                 if (_logger.IsDebug) _logger.Debug("Peers:");
                 foreach (PeerInfo peerInfo in _peerPool.AllPeers)
@@ -52,8 +62,6 @@ namespace Nethermind.Blockchain.Synchronization
 
                     if (_logger.IsDebug) _logger.Debug($"{prefix}{peerInfo}");
                 }
-
-                _timeOfTheLastFullPeerListLogEntry = DateTime.UtcNow;
             }
             else if (initializedPeerCount != _lastInitializedPeerCount)
             {
@@ -70,8 +78,6 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_logger.IsInfo) _logger.Info($"Sync peers 0({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}, searching for peers to sync with...");
             }
-
-            _lastInitializedPeerCount = initializedPeerCount;
         }
     }
 }
