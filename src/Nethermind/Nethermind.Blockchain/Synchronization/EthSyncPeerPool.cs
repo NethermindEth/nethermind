@@ -396,11 +396,11 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (bestPeer.Info == null)
             {
-                if (_logger.IsDebug) _logger.Debug($"[{reason}] No peer found for ETH sync");
+                if (_logger.IsTrace) _logger.Trace($"[{reason}] No peer found for ETH sync");
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"[{reason}] Best ETH sync peer: {bestPeer.Info} | BlockHeaderAvLatency: {bestPeer.Latency}");
+                if (_logger.IsTrace) _logger.Trace($"[{reason}] Best ETH sync peer: {bestPeer.Info} | BlockHeaderAvLatency: {bestPeer.Latency}");
             }
 
             return bestPeer.Info;
