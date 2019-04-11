@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         private TimeSpan _fullPeerListInterval = TimeSpan.FromSeconds(120);
         private DateTime _timeOfTheLastFullPeerListLogEntry = DateTime.MinValue;
-        private int _lastInitializedPeerCount;
+        private int _currentInitializedPeerCount;
 
         private readonly IEthSyncPeerPool _peerPool;
         private readonly ILogger _logger;
@@ -42,19 +42,20 @@ namespace Nethermind.Blockchain.Synchronization
         public void Write()
         {
             TimeSpan timeSinceLastEntry;
-            int initializedPeerCount;
+            bool initializedCountChanged;
             lock (_writeLock)
             {
                 timeSinceLastEntry = DateTime.UtcNow - _timeOfTheLastFullPeerListLogEntry;
-                
                 _timeOfTheLastFullPeerListLogEntry = DateTime.UtcNow;
-                 initializedPeerCount = _peerPool.AllPeers.Count(p => p.IsInitialized);
-                _lastInitializedPeerCount = initializedPeerCount;
+                 
+                 int initializedPeerCount = _peerPool.AllPeers.Count(p => p.IsInitialized);
+                 initializedCountChanged = initializedPeerCount != _currentInitializedPeerCount;
+                _currentInitializedPeerCount = initializedPeerCount;
             }
 
             if (timeSinceLastEntry > _fullPeerListInterval)
             {
-                if (_logger.IsInfo) _logger.Info($"Sync peers {initializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
+                if (_logger.IsInfo) _logger.Info($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
                 foreach (PeerInfo peerInfo in _peerPool.AllPeers)
                 {
                     string prefix = _peerPool.Allocations.Any(a => a.Current == peerInfo)
@@ -64,9 +65,9 @@ namespace Nethermind.Blockchain.Synchronization
                     if (_logger.IsInfo) _logger.Info($"{prefix}{peerInfo}");
                 }
             }
-            else if (initializedPeerCount != _lastInitializedPeerCount)
+            else if (initializedCountChanged)
             {
-                if (_logger.IsInfo) _logger.Info($"Sync peers {initializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
+                if (_logger.IsInfo) _logger.Info($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
                 foreach (SyncPeerAllocation syncPeerAllocation in _peerPool.Allocations)
                 {
                     if (syncPeerAllocation.Current != null)
@@ -75,7 +76,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
             }
-            else if (initializedPeerCount == 0)
+            else if (_currentInitializedPeerCount == 0)
             {
                 if (_logger.IsInfo) _logger.Info($"Sync peers 0({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}, searching for peers to sync with...");
             }
