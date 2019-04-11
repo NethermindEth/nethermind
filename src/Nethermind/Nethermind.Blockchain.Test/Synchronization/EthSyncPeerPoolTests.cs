@@ -160,7 +160,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             for (int i = 3; i > 0; i--)
             {
                 Assert.AreEqual(3, _pool.PeerCount, $"Remove {i}");
-                _pool.RemovePeer(syncPeers[i - 1]);
+                _pool.RemovePeer(syncPeers[i - 1], EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
             }
         }
 
@@ -189,7 +189,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Does_not_crash_when_removing_non_existing_peer()
         {
             _pool.Start();
-            _pool.RemovePeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
+            _pool.RemovePeer(new SimpleSyncPeerMock(TestItem.PublicKeyA), EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
             Assert.AreEqual(0, _pool.PeerCount);
         }
 
@@ -207,7 +207,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             for (int i = 3; i > 0; i--)
             {
                 Assert.AreEqual(i, _pool.PeerCount, $"Remove {i}");
-                _pool.RemovePeer(syncPeers[i - 1]);
+                _pool.RemovePeer(syncPeers[i - 1], EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
             }
         }
 
@@ -392,7 +392,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await Task.Delay(200);
             
             var allocation = _pool.Allocate();
-            _pool.RemovePeer(peer);
+            _pool.RemovePeer(peer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
             
             Assert.Null(allocation.Current);
         }
@@ -425,7 +425,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await Task.Delay(200);
             
             var allocation = _pool.Allocate();
-            _pool.RemovePeer(peer);
+            _pool.RemovePeer(peer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
             await Task.Delay(1000);
             
             Assert.AreEqual(null, allocation.Current);
@@ -443,7 +443,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await Task.Delay(200);
             
             var allocation = _pool.Allocate();
-            _pool.RemovePeer(peer);
+            _pool.RemovePeer(peer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
             await Task.Delay(1000);
             
             Assert.AreEqual(null, allocation.Current);
@@ -459,6 +459,17 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.AddPeer(peer);
             var allocation = _pool.Allocate();
             _pool.Free(allocation);
+        }
+        
+        [Test]
+        public void Report_no_sync_progress_on_null_does_not_crash()
+        {
+            var peer = new SimpleSyncPeerMock(TestItem.PublicKeyA);
+            
+            _pool.Start();
+            _pool.AddPeer(peer);
+            
+            _pool.ReportNoSyncProgress(null);
         }
     }
 }

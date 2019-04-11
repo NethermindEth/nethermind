@@ -396,7 +396,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             public SyncingContext AfterPeerIsRemoved(ISyncPeer syncPeer)
             {
                 _peers.Remove(syncPeer.ClientId);
-                SyncPeerPool.RemovePeer(syncPeer);
+                SyncPeerPool.RemovePeer(syncPeer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
                 return this;
             }
 

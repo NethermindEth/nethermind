@@ -216,13 +216,13 @@ namespace Nethermind.Blockchain.Synchronization
                     if (firstToComplete.IsFaulted || firstToComplete == delayTask)
                     {
                         if (_logger.IsTrace) _logger.Trace($"InitPeerInfo failed for node: {syncPeer.Node:s}{Environment.NewLine}{t.Exception}");
-                        RemovePeer(syncPeer);
+                        RemovePeer(syncPeer, PeerRemoveReason.SyncFault);
                         SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Failed : Synchronization.SyncEvent.InitFailed));
                     }
                     else if (firstToComplete.IsCanceled)
                     {
                         if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:s}{Environment.NewLine}{t.Exception}");
-                        RemovePeer(syncPeer);
+                        RemovePeer(syncPeer, PeerRemoveReason.Cancellation);
                         SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Cancelled : Synchronization.SyncEvent.InitCancelled));
                         token.ThrowIfCancellationRequested();
                     }
@@ -315,9 +315,16 @@ namespace Nethermind.Blockchain.Synchronization
             _peerRefreshQueue.Add(peerInfo);
         }
 
-        public void RemovePeer(ISyncPeer syncPeer)
+        public enum PeerRemoveReason
         {
-            if (_logger.IsDebug) _logger.Debug($"Removing synchronization peer {syncPeer.Node:c}");
+            SyncFault,
+            Cancellation,
+            SessionDisconnected
+        }
+        
+        public void RemovePeer(ISyncPeer syncPeer, PeerRemoveReason reason)
+        {
+            if (_logger.IsInfo) _logger.Info($"Removing synchronization peer {syncPeer.Node:c} - {reason}");
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - removing peer is blocked: {syncPeer.Node:s}");
@@ -449,9 +456,15 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void ReportNoSyncProgress(SyncPeerAllocation allocation)
         {
+            PeerInfo peer = allocation.Current;
+            if (peer == null)
+            {
+                return;
+            }
+            
             // this is generally with the strange Parity nodes behaviour
             if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {allocation.Current}");
-            _sleepingPeers.TryAdd(allocation.Current, DateTime.UtcNow);
+            _sleepingPeers.TryAdd(peer, DateTime.UtcNow);
         }
 
         public void Free(SyncPeerAllocation syncPeerAllocation)

@@ -281,7 +281,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"{_syncMode.Current} sync with {peerInfo} failed. Removing node from sync peers.");
-                    _syncPeerPool.RemovePeer(peerInfo.SyncPeer);
+                    _syncPeerPool.RemovePeer(peerInfo.SyncPeer, EthSyncPeerPool.PeerRemoveReason.SyncFault);
                     SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Failed));
                     break;
                 case Task t when t.IsCanceled:
@@ -292,7 +292,7 @@ namespace Nethermind.Blockchain.Synchronization
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"{_syncMode.Current} sync with {peerInfo} canceled. Removing node from sync peers.");
-                        _syncPeerPool.RemovePeer(peerInfo.SyncPeer);
+                        _syncPeerPool.RemovePeer(peerInfo.SyncPeer, EthSyncPeerPool.PeerRemoveReason.Cancellation);
                         SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Cancelled));
                     }
                     break;
