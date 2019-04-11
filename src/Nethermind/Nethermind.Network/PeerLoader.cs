@@ -49,17 +49,17 @@ namespace Nethermind.Network
             LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
             {
                 n.IsBootnode = true;
-                if(_logger.IsInfo) _logger.Info($"Registering bootnode: {n}");
+                if(_logger.IsInfo) _logger.Info($"Bootnode     : {n}");
             });
             LoadConfigPeers(allPeers, _networkConfig.StaticPeers, n =>
             {
                 n.IsStatic = true;
-                if(_logger.IsInfo) _logger.Info($"Registering static node: {n}");
+                if(_logger.IsInfo) _logger.Info($"Static node  : {n}");
             });
             LoadConfigPeers(allPeers, _networkConfig.TrustedPeers, n =>
             {
                 n.IsTrusted = true;
-                if(_logger.IsInfo) _logger.Info($"Registering trusted node: {n}");
+                if(_logger.IsInfo) _logger.Info($"Trusted node : {n}");
             });
             return allPeers;
         }

@@ -141,7 +141,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeUdpChannel()
         {
-            if(_logger.IsInfo) _logger.Info($"Starting Discovery UDP Channel: {_networkConfig.MasterHost}:{_networkConfig.MasterPort}");
+            if(_logger.IsInfo) _logger.Info($"Discovery    : udp://{_networkConfig.MasterHost}:{_networkConfig.MasterPort}");
             _group = new MultithreadEventLoopGroup(1);
             var bootstrap = new Bootstrap();
             bootstrap
@@ -193,7 +193,7 @@ namespace Nethermind.Network.Discovery
                     
                     if (t.IsCompleted && !_appShutdownSource.IsCancellationRequested)
                     {
-                        _logger.Info("Discovery App initialized.");
+                        _logger.Debug("Discovery App initialized.");
                     }
                 }
             );

@@ -108,8 +108,8 @@ namespace Nethermind.Blockchain.Synchronization
             {   
                 if (_logger.IsInfo)
                 {
-                    string authorString = block.Author == null ? string.Empty : "by " + (KnownAddresses.GoerliValidators.ContainsKey(block.Author) ? KnownAddresses.GoerliValidators[block.Author] : block.Author?.ToString());
-                    if (_logger.IsInfo) _logger.Info($"Discovered a new block {block.ToString(Block.Format.HashNumberAndTx)} {authorString} from {nodeWhoSentTheBlock:s}");
+                    string authorString = block.Author == null ? string.Empty : "sealed by " + (KnownAddresses.GoerliValidators.ContainsKey(block.Author) ? KnownAddresses.GoerliValidators[block.Author] : block.Author?.ToString());
+                    if (_logger.IsInfo) _logger.Info($"Discovered a new block {string.Empty.PadLeft(9 - block.Number.ToString().Length, ' ')}{block.ToString(Block.Format.HashNumberAndTx)} {authorString}, sent by {nodeWhoSentTheBlock:s}");
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"{block}");

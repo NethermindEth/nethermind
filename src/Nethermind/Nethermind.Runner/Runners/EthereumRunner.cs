@@ -157,7 +157,7 @@ namespace Nethermind.Runner.Runners
 
         public async Task Start()
         {
-            if (_logger.IsInfo) _logger.Info("Initializing Ethereum");
+            if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
             _runnerCancellation = new CancellationTokenSource();
 
             SetupKeyStore();
@@ -686,10 +686,6 @@ namespace Nethermind.Runner.Runners
                 {
                     if (_logger.IsWarn) _logger.Warn("Loading blocks from DB canceled.");
                 }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info("Loaded all blocks from DB");
-                }
             });
         }
 
@@ -750,10 +746,10 @@ namespace Nethermind.Runner.Runners
 
             ;
 
-            if (_logger.IsInfo) _logger.Info($"Node is up and listening on {_enode.IpAddress}:{_enode.P2PPort}");
-            if (_logger.IsInfo) _logger.Info($"{ClientVersion.Description}");
-            if (_logger.IsInfo) _logger.Info(_enode.Info);
-            if (_logger.IsInfo) _logger.Info($"enode address for test purposes: {_enode.Address}");
+            if (_logger.IsInfo) _logger.Info($"Ethereum     : tcp://{_enode.IpAddress}:{_enode.P2PPort}");
+            if (_logger.IsInfo) _logger.Info($"Version      : {ClientVersion.Description}");
+            if (_logger.IsInfo) _logger.Info($"This node    : {_enode.Info}");
+            if (_logger.IsInfo) _logger.Info($"Node address : {_enode.Address} (do not use as an account)");
         }
 
         private static void LoadGenesisBlock(

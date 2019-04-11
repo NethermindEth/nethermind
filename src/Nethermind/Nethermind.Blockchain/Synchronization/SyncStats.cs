@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1)
                 && (_lastCurrent != current || _lastTotal != total))
             {
-                if (_logger.IsInfo) _logger.Info($"Block download progress {current}/{total}");
+                if (_logger.IsInfo) _logger.Info($"Blocks download        {string.Empty.PadLeft(9 - current.ToString().Length, ' ')}{current}/{total}");
                 _lastSyncNotificationTime = DateTime.UtcNow;
                 _lastCurrent = current;
                 _lastTotal = total;

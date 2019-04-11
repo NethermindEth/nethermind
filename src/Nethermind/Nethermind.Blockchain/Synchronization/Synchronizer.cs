@@ -135,7 +135,19 @@ namespace Nethermind.Blockchain.Synchronization
         /// <param name="syncTriggerType">Reason for the synchronization request for logging</param>
         public void RequestSynchronization(SyncTriggerType syncTriggerType)
         {
-            if (_logger.IsDebug) _logger.Debug($"Requesting synchronization [{syncTriggerType.ToString().ToUpperInvariant()}]");
+            if (_logger.IsDebug)
+            {
+                string message = $"Requesting synchronization [{syncTriggerType.ToString().ToUpperInvariant()}";
+                if (syncTriggerType == SyncTriggerType.SyncTimer)
+                {
+                    _logger.Trace(message);
+                }
+                else
+                {
+                    _logger.Debug(message);
+                }
+            }
+            
             _syncPeersReport.Write();
             _syncRequested.Set();
         }

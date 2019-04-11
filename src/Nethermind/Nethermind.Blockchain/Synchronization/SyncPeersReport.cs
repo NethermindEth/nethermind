@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (syncPeerAllocation.Current != null)
                     {
-                        if (_logger.IsInfo) _logger.Info($"  sync in progress with {syncPeerAllocation.Current}");
+                        if (_logger.IsInfo) _logger.Info($" * {syncPeerAllocation.Current}");
                     }
                 }
             }

@@ -80,9 +80,7 @@ namespace Nethermind.Runner
                 if (!string.IsNullOrWhiteSpace(pathDbPath))
                 {
                     var newDbPath = Path.Combine(pathDbPath, initConfig.BaseDbPath);
-                    if (Logger.IsInfo)
-                        Logger.Info(
-                            $"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
+                    if (Logger.IsDebug) Logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
                     initConfig.BaseDbPath = newDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
                 }
 
@@ -91,7 +89,7 @@ namespace Nethermind.Runner
 
                 var serializer = new UnforgivingJsonSerializer();
                 if (Logger.IsInfo)
-                    Logger.Info($"Running Nethermind Runner, parameters:\n{serializer.Serialize(initConfig, true)}\n");
+                    Logger.Info($"Nethermind config:\n{serializer.Serialize(initConfig, true)}\n");
 
                 _cancelKeySource = new TaskCompletionSource<object>();
 

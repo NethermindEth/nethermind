@@ -214,7 +214,7 @@ namespace Nethermind.Network.Test
             public Context VerifySyncPeersRemoved()
             {
                 _txPool.Received().RemovePeer(Arg.Any<PublicKey>());
-                _syncPeerPool.Received().RemovePeer(Arg.Any<ISyncPeer>());
+                _syncPeerPool.Received().RemovePeer(Arg.Any<ISyncPeer>(), EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
                 return this;
             }
 

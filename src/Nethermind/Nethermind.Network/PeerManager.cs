@@ -318,7 +318,7 @@ namespace Nethermind.Network
                         _peerUpdateRequested.Set();
                     }
                 }
-                catch (Exception e) when (!(e is OperationCanceledException))
+                catch (Exception e) when (!(e is TaskCanceledException))
                 {
                     if (_logger.IsError) _logger.Error($"Peer update loop failure {e}");
                     break;

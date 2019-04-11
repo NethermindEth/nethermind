@@ -68,7 +68,7 @@ namespace Nethermind.Runner.Runners
 
         public Task Start()
         {
-            _logger.Info("Initializing Ethereum");
+            _logger.Info("Ethereum");
             var initConfig = _configurationProvider.GetConfig<IHiveConfig>();
             _blockchainProcessor.Start();
             InitializeKeys(initConfig.KeysDir);
