@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Synchronization
             int ancestorLookupLevel = 0;
             int emptyHeadersListCounter = 0;
 
-            long currentNumber = Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1);
+            long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             while (bestPeer.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
             {
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_logger.IsTrace) _logger.Trace($"Actual batch size was {nonEmptyHeadersCount + 1}/{_syncBatchSize.Current}");
                 if (nonEmptyHeadersCount == 0)
                 {
-                    if (++emptyHeadersListCounter >= 10)
+                    if (++emptyHeadersListCounter >= 3)
                     {
                         if (_logger.IsInfo) _logger.Info($"Received no blocks from {bestPeer} in response to {headersToRequest} blocks requested. Cancelling.");
                         throw new EthSynchronizationException("Peer sent an empty header list");
@@ -174,7 +174,7 @@ namespace Nethermind.Blockchain.Synchronization
             int ancestorLookupLevel = 0;
             int emptyBlockListCounter = 0;
 
-            long currentNumber = Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1);
+            long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             while (bestPeer.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
@@ -228,6 +228,7 @@ namespace Nethermind.Blockchain.Synchronization
                         if (bodiesTask.Exception?.InnerExceptions.Any(x => x.InnerException is TimeoutException) ?? false)
                         {
                             if (_logger.IsTrace) _logger.Error("Failed to retrieve bodies when synchronizing (Timeout)", bodiesTask.Exception);
+                            _syncBatchSize.Shrink();
                         }
                         else
                         {
@@ -245,9 +246,9 @@ namespace Nethermind.Blockchain.Synchronization
                     if (_logger.IsDebug) _logger.Debug($"{bestPeer} does not have block body for {hashes[0]}");
                 }
 
-                if (blocks.Length == 0 && ++emptyBlockListCounter >= 10)
+                if (blocks.Length == 0)
                 {
-                    if (++emptyBlockListCounter >= 10)
+                    if (++emptyBlockListCounter >= 3)
                     {
                         if (_logger.IsInfo) _logger.Info($"Received no blocks from {bestPeer} in response to {blocksToRequest} blocks requested. Cancelling.");
                         throw new EthSynchronizationException("Peer sent an empty block list");
@@ -270,7 +271,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 _sinceLastTimeout++;
-                if (_sinceLastTimeout > 8)
+                if (_sinceLastTimeout > 2)
                 {
                     _syncBatchSize.Expand();
                 }
@@ -308,9 +309,12 @@ namespace Nethermind.Blockchain.Synchronization
                         continue;
                     }
 
-                    HandleAddResult(blocks[i].Header, i == 0, _blockTree.SuggestBlock(blocks[i]));
+                    if (HandleAddResult(blocks[i].Header, i == 0, _blockTree.SuggestBlock(blocks[i])))
+                    {
+                        blocksSynced++;
+                    }
 
-                    currentNumber = currentNumber + i;
+                    currentNumber = currentNumber + 1;
                 }
 
                 _syncStats.Report(_blockTree.BestSuggested?.Number ?? 0, bestPeer.HeadNumber);

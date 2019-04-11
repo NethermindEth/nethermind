@@ -17,10 +17,12 @@
  */
 
 using System;
+using System.Diagnostics;
 using Nethermind.Core.Logging;
 
 namespace Nethermind.Blockchain.Synchronization
 {
+    [DebuggerDisplay("{Current}")]
     internal struct SyncBatchSize
     {
         private ILogger _logger;
