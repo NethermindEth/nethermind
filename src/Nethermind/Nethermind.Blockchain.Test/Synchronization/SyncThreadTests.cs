@@ -229,8 +229,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
 
-            var logManager = NoErrorLimboLogs.Instance;
-//            var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, "PEER " + index));
+//            var logManager = NoErrorLimboLogs.Instance;
+            var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, "PEER " + index + " "));
             var specProvider = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, MainNetSpecProvider.Instance.ChainId);
 
             MemDb traceDb = new MemDb();
@@ -270,7 +270,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true, true);
 
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
-            var syncPeerPool = new EthSyncPeerPool(tree, nodeStatsManager, new SyncConfig(), logManager);
+            
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.FastSync = _synchronizerType == SynchronizerType.Fast;
+            var syncPeerPool = new EthSyncPeerPool(tree, nodeStatsManager, syncConfig, logManager);
 
             StateProvider devState = new StateProvider(stateDb, codeDb, logManager);
             StorageProvider devStorage = new StorageProvider(stateDb, devState, logManager);
@@ -279,13 +282,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, traceDb, devState, devStorage, txPool, receiptStorage, logManager);
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false, false);
             var producer = new DevBlockProducer(txPool, devChainProcessor, tree, new Timestamp(), logManager);
-
+                
             NodeDataDownloader downloader = new NodeDataDownloader(codeDb, stateDb, logManager);
             Synchronizer synchronizer = new Synchronizer(
                 tree,
                 blockValidator,
                 sealValidator,
-                syncPeerPool, new SyncConfig(), downloader, logManager);
+                syncPeerPool, syncConfig, downloader, logManager);
             var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, logManager);
 
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();

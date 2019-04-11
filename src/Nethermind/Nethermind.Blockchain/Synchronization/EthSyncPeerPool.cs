@@ -352,10 +352,6 @@ namespace Nethermind.Blockchain.Synchronization
             (PeerInfo Info, long Latency) bestPeer = (null, 100000);
             foreach ((_, PeerInfo info) in _peers)
             {
-                if (_sleepingPeers.Any())
-                {
-                }
-
                 if (_sleepingPeers.TryGetValue(info, out DateTime sleepingSince))
                 {
                     if (DateTime.UtcNow - sleepingSince < _timeBeforeWakingPeerUp)
@@ -373,14 +369,10 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                // TODO: add when we deploy fast sync enabled Neth
-                if (info.SyncPeer.ClientId.Contains("Nethermind"))
-                {
-                    continue;
-                }
-
                 long latency = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000;
 
+                
+                
                 if (latency <= bestPeer.Latency)
                 {
                     bestPeer = (info, latency);
@@ -395,7 +387,6 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_logger.IsDebug) _logger.Debug($"[{reason}] Best ETH sync peer: {bestPeer.Info} | BlockHeaderAvLatency: {bestPeer.Latency}");
             }
-
 
             return bestPeer.Info;
         }

@@ -50,6 +50,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _receiptStorage = Substitute.For<IReceiptStorage>();
             SyncConfig quickConfig = new SyncConfig();
             quickConfig.SyncTimerInterval = 100;
+            quickConfig.FastSync = false;
 
             ISealValidator sealValidator = Build.A.SealValidator.ThatAlwaysReturnsTrue.TestObject;
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;

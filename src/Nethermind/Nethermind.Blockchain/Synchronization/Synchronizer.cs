@@ -147,7 +147,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void StartSyncTimer()
         {
-            if (_logger.IsDebug) _logger.Debug($"Starting fast sync timer with interval of {_syncConfig.SyncTimerInterval}ms");
+            if (_logger.IsDebug) _logger.Debug($"Starting sync timer with interval of {_syncConfig.SyncTimerInterval}ms");
             _syncTimer = new System.Timers.Timer(_syncConfig.SyncTimerInterval);
             _syncTimer.Elapsed += SyncTimerOnElapsed;
             _syncTimer.Start();
@@ -157,7 +157,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             try
             {
-                if (_logger.IsDebug) _logger.Debug("Stopping fast sync timer");
+                if (_logger.IsDebug) _logger.Debug("Stopping sync timer");
                 _syncTimer?.Stop();
             }
             catch (Exception e)
@@ -202,7 +202,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (!_blockTree.CanAcceptNewBlocks) continue;
 
                 UInt256 ourTotalDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? 0;
-                _syncPeerPool.EnsureBest(_allocation, (_blockTree.BestSuggested?.TotalDifficulty - 1) ?? 0);
+                _syncPeerPool.EnsureBest(_allocation, _blockTree.BestSuggested?.TotalDifficulty ?? 0);
                 PeerInfo bestPeer = _allocation.Current; 
                 if (bestPeer == null)
                 {
@@ -212,7 +212,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (bestPeer.TotalDifficulty <= ourTotalDifficulty)
                 {
-                    if (_logger.IsDebug) _logger.Debug("Skipping fast sync - no peer with better chain.");
+                    if (_logger.IsDebug) _logger.Debug("Skipping sync - no peer with better chain.");
                     continue;
                 }
                 
