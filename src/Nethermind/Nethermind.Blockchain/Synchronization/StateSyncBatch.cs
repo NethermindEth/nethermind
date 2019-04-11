@@ -16,25 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface INodeDataDownloader
+    public class StateSyncBatch
     {
-        Task<int> SyncNodeData(CancellationToken cancellationToken, params (Keccak Hash, NodeDataType NodeDataType)[] initialNodes);
-
-        // here now to pass the reference easily for the current implementation
-        void SetExecutor(INodeDataRequestExecutor executor);
-    }
-    
-    public static class NodeDataDownloaderExtensions
-    {
-        public static Task SyncNodeData(this INodeDataDownloader @this, CancellationToken token, Keccak rootHash)
-        {
-            return @this.SyncNodeData(token, (rootHash, NodeDataType.State));
-        }
+        public StateSyncItem[] StateSyncs { get; set; }
+        public byte[][] Responses { get; set; }
     }
 }

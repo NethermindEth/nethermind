@@ -46,7 +46,8 @@ namespace Nethermind.Clique.Test
     {
         private class On
         {
-            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            private ILogManager _logManager = LimboLogs.Instance;
+//            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
             private ILogger _logger;
             private static Timestamp _timestamp = new Timestamp();
             private CliqueConfig _cliqueConfig;
@@ -76,7 +77,8 @@ namespace Nethermind.Clique.Test
             public On CreateNode(PrivateKey privateKey, bool withGenesisAlreadyProcessed = false)
             {
                 if (_logger.IsInfo) _logger.Info($"CREATING NODE {privateKey.Address}");
-                _logManagers[privateKey] = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, $"{privateKey.Address} "));
+                _logManagers[privateKey] = LimboLogs.Instance;
+//                _logManagers[privateKey] = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, $"{privateKey.Address} "));
                 var nodeLogManager = _logManagers[privateKey]; 
                 
                 AutoResetEvent newHeadBlockEvent = new AutoResetEvent(false);

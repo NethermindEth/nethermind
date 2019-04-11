@@ -16,13 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
+using System;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class NodeDataRequest
+    internal class SyncStats
     {
-        public RequestItem[] Request { get; set; }
-        public byte[][] Response { get; set; }
+        private DateTime _lastSyncNotificationTime = DateTime.MinValue;
+        
+        private ILogger _logger;
+        
+        public SyncStats(ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+
+        public void Report(long current, long total)
+        {
+            // create sync stats like processing stats?
+            if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1))
+            {
+                if (_logger.IsInfo) _logger.Info($"Block download progress {current}/{total}");
+                _lastSyncNotificationTime = DateTime.UtcNow;
+            }
+        }
     }
 }

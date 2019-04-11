@@ -1,10 +1,28 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class RequestItem
+    public class StateSyncItem
     {
-        public RequestItem(Keccak hash, NodeDataType nodeType, int level, int priority)
+        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level, int priority)
         {
             Hash = hash;
             NodeDataType = nodeType;
@@ -12,12 +30,12 @@ namespace Nethermind.Blockchain.Synchronization
             Priority = priority;
         }
             
-        public Keccak Hash { get; set; }
+        public Keccak Hash { get; }
             
-        public NodeDataType NodeDataType { get; set; }
+        public NodeDataType NodeDataType { get; }
             
-        public int Level { get; set; }
+        public int Level { get; }
             
-        public int Priority { get; set; }
+        public int Priority { get; }
     }
 }

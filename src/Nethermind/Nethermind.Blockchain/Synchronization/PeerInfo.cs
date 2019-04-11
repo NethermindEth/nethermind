@@ -16,9 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
+[assembly:InternalsVisibleTo("Nethermind.Blockchain.Test")]
 namespace Nethermind.Blockchain.Synchronization
 {
     public class PeerInfo
@@ -37,17 +39,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public override string ToString()
         {
-            return ToString(true);
-        }
-
-        private string ToString(bool fullFormat)
-        {
-            if (fullFormat)
-            {
-                return $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}]";
-            }
-
-            return $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}]";
+            return $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}]";
         }
     }
 }

@@ -18,10 +18,14 @@
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public enum SynchronizationMode
+    public enum SyncTriggerType
     {
-        Blocks,
-        NodeData,
-        Full
+        SyncTimer,
+        SyncModeChange,
+        PeerChange,
+        NewDistantBlock,
+        Reorganization,
+        NewNearBlock,
+        PeerRfresh
     }
 }

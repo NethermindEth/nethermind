@@ -16,25 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Logging;
+using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Blockchain.Test.Synchronization
 {
-    public interface INodeDataDownloader
+    [TestFixture]
+    public class SyncStatsTests
     {
-        Task<int> SyncNodeData(CancellationToken cancellationToken, params (Keccak Hash, NodeDataType NodeDataType)[] initialNodes);
-
-        // here now to pass the reference easily for the current implementation
-        void SetExecutor(INodeDataRequestExecutor executor);
-    }
-    
-    public static class NodeDataDownloaderExtensions
-    {
-        public static Task SyncNodeData(this INodeDataDownloader @this, CancellationToken token, Keccak rootHash)
+        [Test]
+        public void Can_keep_going()
         {
-            return @this.SyncNodeData(token, (rootHash, NodeDataType.State));
+            SyncStats stats = new SyncStats(NoErrorLimboLogs.Instance);
+            stats.Report(0, 1024);
+            stats.Report(256, 1024);
+            stats.Report(512, 1024);
+            stats.Report(1024, 1024);
         }
     }
 }

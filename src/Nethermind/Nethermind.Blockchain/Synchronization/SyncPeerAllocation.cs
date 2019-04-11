@@ -40,6 +40,14 @@ namespace Nethermind.Blockchain.Synchronization
             Replaced?.Invoke(this, args);
          
         }
+
+        public void Refresh()
+        {
+            if (Current != null)
+            {
+                Refreshed?.Invoke(this, EventArgs.Empty);
+            }
+        }
         
         public void Cancel()
         {
@@ -51,6 +59,8 @@ namespace Nethermind.Blockchain.Synchronization
         public event EventHandler<AllocationChangeEventArgs> Replaced;
 
         public event EventHandler<AllocationChangeEventArgs> Cancelled;
+        
+        public event EventHandler Refreshed;
 
         public override string ToString()
         {

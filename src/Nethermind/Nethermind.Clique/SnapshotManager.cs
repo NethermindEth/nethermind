@@ -119,8 +119,9 @@ namespace Nethermind.Clique
                     if (header.Hash == null) throw new InvalidOperationException("Block tree block without hash set");
 
                     Keccak parentHash = header.ParentHash;
-                    if (number == 0 || IsEpochTransition(number) && _blockTree.FindHeader(parentHash) == null)
+                    if (number == 0 || IsEpochTransition(number))
                     {
+                        if(_logger.IsInfo) _logger.Info($"Creating epoch transition snapshot for {number}");
                         int signersCount = CalculateSignersCount(header);
                         var signers = new SortedList<Address, long>(signersCount, CliqueAddressComparer.Instance);
                         for (int i = 0; i < signersCount; i++)

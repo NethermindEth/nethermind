@@ -16,12 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Blockchain.Synchronization
 {
     public interface INodeDataRequestExecutor
     {
-        Task<NodeDataRequest> ExecuteRequest(NodeDataRequest request);
+        Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch);
     }
 }

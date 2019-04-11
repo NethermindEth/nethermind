@@ -18,7 +18,7 @@
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public enum SyncStatus
+    public enum SyncEvent
     {
         InitFailed,
         InitCancelled,

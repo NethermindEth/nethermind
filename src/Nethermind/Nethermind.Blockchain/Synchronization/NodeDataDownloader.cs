@@ -58,15 +58,20 @@ namespace Nethermind.Blockchain.Synchronization
             SetExecutor(executor);
         }
 
-        private async Task KeepSyncing()
+        private async Task KeepSyncing(CancellationToken token)
         {
-            NodeDataRequest[] dataRequests;
+            StateSyncBatch[] dataBatches;
             do
             {
-                dataRequests = PrepareRequests();
-                for (int i = 0; i < dataRequests.Length; i++)
+                if (token.IsCancellationRequested)
                 {
-                    await _executor.ExecuteRequest(dataRequests[i]).ContinueWith(t =>
+                    return;
+                }
+                
+                dataBatches = PrepareRequests();
+                for (int i = 0; i < dataBatches.Length; i++)
+                {
+                    await _executor.ExecuteRequest(token, dataBatches[i]).ContinueWith(t =>
                     {
                         if (t.IsCompleted)
                         {
@@ -74,20 +79,20 @@ namespace Nethermind.Blockchain.Synchronization
                         }
                     });
                 }
-            } while (dataRequests.Length != 0);
+            } while (dataBatches.Length != 0);
 
+            
             if (_logger.IsInfo) _logger.Info($"Finished downloading node data (downloaded {_downloadedNodesCount})");
         }
 
-        
 
-        private void AddNode(RequestItem requestItem)
-        {   
+        private void AddNode(StateSyncItem stateSyncItem)
+        {
             lock (_stateDb)
             {
-                if (requestItem.NodeDataType == NodeDataType.State && _stateDb.Get(requestItem.Hash) != null
-                    || requestItem.NodeDataType == NodeDataType.Storage && _stateDb.Get(requestItem.Hash) != null
-                    || requestItem.NodeDataType == NodeDataType.Code && _codeDb.Get(requestItem.Hash) != null)
+                if (stateSyncItem.NodeDataType == NodeDataType.State && _stateDb.Get(stateSyncItem.Hash) != null
+                    || stateSyncItem.NodeDataType == NodeDataType.Storage && _stateDb.Get(stateSyncItem.Hash) != null
+                    || stateSyncItem.NodeDataType == NodeDataType.Code && _codeDb.Get(stateSyncItem.Hash) != null)
                 {
                     // TODO: this will cause no finalized sync (if we do not store pending requests)
                     // pending requests should have a state root block marked...?
@@ -95,12 +100,12 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
-            ConcurrentBag<RequestItem> selectedStream;
-            if (requestItem.Priority == 0 && _stream0.Count < _maxStream0Count)
+            ConcurrentQueue<StateSyncItem> selectedStream;
+            if (stateSyncItem.Priority == 0 && _stream0.Count < _maxStream0Count)
             {
                 selectedStream = _stream0;
             }
-            else if (requestItem.Priority <= 1 && _stream1.Count < _maxStream1Count)
+            else if (stateSyncItem.Priority <= 1 && _stream1.Count < _maxStream1Count)
             {
                 selectedStream = _stream1;
             }
@@ -108,72 +113,76 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 selectedStream = _stream2;
             }
-            
-            selectedStream.Add(requestItem);
+
+            selectedStream.Enqueue(stateSyncItem);
         }
 
         private int _maxStream0Count = 4096;
         private int _maxStream1Count = 2048;
-        
-        private void HandleResponse(NodeDataRequest request)
+
+        private void HandleResponse(StateSyncBatch batch)
         {
+            Interlocked.Add(ref _pendingRequests, -1);
+            
             if (_downloadedNodesCount > _lastDownloadedNodesCount + 10000)
             {
                 _lastDownloadedNodesCount = _downloadedNodesCount;
-                if (_logger.IsInfo) _logger.Info($"Downloading nodes (downloaded {_downloadedNodesCount})");
+                if (_logger.IsInfo) _logger.Info($"Downloading nodes (downloaded {_downloadedNodesCount}) - pending requests {_pendingRequests}");
             }
 
-            if (request.Request == null)
+            if (batch.StateSyncs == null)
             {
                 throw new EthSynchronizationException("Received a response with a missing request.");
             }
 
-            if (request.Response == null)
+            if (batch.Responses == null)
             {
                 throw new EthSynchronizationException("Node sent an empty response");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Received node data - {request.Response.Length} items in response to {request.Request.Length}");
+            if (_logger.IsTrace) _logger.Trace($"Received node data - {batch.Responses.Length} items in response to {batch.StateSyncs.Length}");
 
             int missing = 0;
             int added = 0;
 
-            for (int i = 0; i < request.Request.Length; i++)
+            for (int i = 0; i < batch.StateSyncs.Length; i++)
             {
-                RequestItem currentRequestItem = request.Request[i];
-                byte[] currentResponseItem = request.Response[i];
-                if (request.Response.Length < i + 1)
+                StateSyncItem currentStateSyncItem = batch.StateSyncs[i];
+                byte[] currentResponseItem = batch.Responses[i];
+                if (batch.Responses.Length < i + 1)
                 {
                     missing++;
-                    AddNode(currentRequestItem);
+                    AddNode(currentStateSyncItem);
                     continue;
                 }
 
-                if (Keccak.Compute(currentResponseItem) != currentRequestItem.Hash)
+                if (Keccak.Compute(currentResponseItem) != currentStateSyncItem.Hash)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {request.Response[i]?.Length} of type {request.Request[i].NodeDataType} at level {request.Request[i].Level} Keccak({request.Response[i].ToHexString()}) != {request.Request[i].Hash}");
+                    if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {batch.Responses[i]?.Length} of type {batch.StateSyncs[i].NodeDataType} at level {batch.StateSyncs[i].Level} Keccak({batch.Responses[i].ToHexString()}) != {batch.StateSyncs[i].Hash}");
                     throw new EthSynchronizationException("Node sent invalid data");
                 }
 
                 if (currentResponseItem == null)
                 {
                     missing++;
-                    AddNode(request.Request[i]);
+                    AddNode(batch.StateSyncs[i]);
                 }
                 else
                 {
                     added++;
 
-                    NodeDataType nodeDataType = currentRequestItem.NodeDataType;
+                    NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
                     if (nodeDataType == NodeDataType.Code)
                     {
-                        _codeDb[currentRequestItem.Hash.Bytes] = currentResponseItem;
+                        // save only on return
+                        _codeDb[currentStateSyncItem.Hash.Bytes] = currentResponseItem;
                         continue;
                     }
 
                     lock (_responseLock)
                     {
-                        _stateDb[currentRequestItem.Hash.Bytes] = currentResponseItem;
+                        // save only on return
+                        _stateDb[currentStateSyncItem.Hash.Bytes] = currentResponseItem;
                     }
 
                     TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(currentResponseItem));
@@ -189,7 +198,7 @@ namespace Nethermind.Blockchain.Synchronization
                                 Keccak child = trieNode.GetChildHash(j);
                                 if (child != null)
                                 {
-                                    AddNode(new RequestItem(child, nodeDataType, currentRequestItem.Level + 1, Math.Max(currentRequestItem.Priority, (int)Math.Sqrt(j)/2)));
+                                    AddNode(new StateSyncItem(child, nodeDataType, currentStateSyncItem.Level + 1, Math.Max(currentStateSyncItem.Priority, (int) Math.Sqrt(j) / 2)));
                                 }
                             }
 
@@ -198,7 +207,7 @@ namespace Nethermind.Blockchain.Synchronization
                             Keccak next = trieNode[0].Keccak;
                             if (next != null)
                             {
-                                AddNode(new RequestItem(next, nodeDataType, currentRequestItem.Level + 1, currentRequestItem.Priority));
+                                AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Priority));
                             }
 
                             break;
@@ -209,13 +218,13 @@ namespace Nethermind.Blockchain.Synchronization
                                 if (account.CodeHash != Keccak.OfAnEmptyString)
                                 {
                                     // always add code with priority 0
-                                    AddNode(new RequestItem(account.CodeHash, NodeDataType.Code, 0, 0));
+                                    AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, 0));
                                 }
 
                                 if (account.StorageRoot != Keccak.EmptyTreeHash)
                                 {
                                     // add storage wth priority 0? let us try
-                                    AddNode(new RequestItem(account.StorageRoot, NodeDataType.Storage, 0, 0));
+                                    AddNode(new StateSyncItem(account.StorageRoot, NodeDataType.Storage, 0, 0));
                                 }
                             }
 
@@ -233,23 +242,24 @@ namespace Nethermind.Blockchain.Synchronization
 
             Interlocked.Add(ref _downloadedNodesCount, added);
 
-            if (_logger.IsTrace) _logger.Trace($"Received node data: requested {request.Request.Length}, missing {missing}, added {added}");
+            if (_logger.IsTrace) _logger.Trace($"Received node data: requested {batch.StateSyncs.Length}, missing {missing}, added {added}");
+            if (_logger.IsTrace) _logger.Trace($"Handled responses - now {TotalCount} at ({_stream0.Count}|{_stream1.Count}|{_stream2.Count}) nodes");
         }
 
-        private ConcurrentBag<RequestItem>[] _nodes = new ConcurrentBag<RequestItem>[3];
-        private ConcurrentBag<RequestItem> _stream0 => _nodes[0];
-        private ConcurrentBag<RequestItem> _stream1 => _nodes[1];
-        private ConcurrentBag<RequestItem> _stream2 => _nodes[2];
+        private ConcurrentQueue<StateSyncItem>[] _nodes = new ConcurrentQueue<StateSyncItem>[3];
+        private ConcurrentQueue<StateSyncItem> _stream0 => _nodes[0];
+        private ConcurrentQueue<StateSyncItem> _stream1 => _nodes[1];
+        private ConcurrentQueue<StateSyncItem> _stream2 => _nodes[2];
 
         private int TotalCount => _stream0.Count + _stream1.Count + _stream2.Count;
 
-        private bool TryTake(out RequestItem node)
+        private bool TryTake(out StateSyncItem node)
         {
-            if (!_stream0.TryTake(out node))
+            if (!_stream0.TryDequeue(out node))
             {
-                if (!_stream1.TryTake(out node))
+                if (!_stream1.TryDequeue(out node))
                 {
-                    if (!_stream2.TryTake(out node))
+                    if (!_stream2.TryDequeue(out node))
                     {
                         return false;
                     }
@@ -257,12 +267,15 @@ namespace Nethermind.Blockchain.Synchronization
                     return true;
                 }
             }
-            
+
             return true;
         }
 
+        private int _pendingRequests;
+        private const int MaxPendingRequestsCount = 1;
+        
         // TODO: depth first
-        private NodeDataRequest[] PrepareRequests()
+        private StateSyncBatch[] PrepareRequests()
         {
             /* IDEA1: store all path with both hashes and values for all the nodes on the path to the leaf */
             /* store separately unresolved storage? */
@@ -271,17 +284,19 @@ namespace Nethermind.Blockchain.Synchronization
             /* create 16 streams and take from the left? does it work together with the above?*/
             /* was it enough to hold parent info? */
             /* display confirmation on the number of synced accounts, code, storage bits */
-            
-            List<NodeDataRequest> requests = new List<NodeDataRequest>();
-            while (TotalCount != 0)
+
+            List<StateSyncBatch> requests = new List<StateSyncBatch>();
+            if (_logger.IsTrace) _logger.Trace($"Preparing requests from ({_stream0.Count}|{_stream1.Count}|{_stream2.Count}) nodes  - pending requests {_pendingRequests}");
+
+            while (TotalCount != 0 && _pendingRequests + requests.Count < MaxPendingRequestsCount)
             {
-                NodeDataRequest request = new NodeDataRequest();
-                List<RequestItem> requestHashes = new List<RequestItem>();
+                StateSyncBatch batch = new StateSyncBatch();
+                List<StateSyncItem> requestHashes = new List<StateSyncItem>();
                 for (int i = 0; i < MaxRequestSize; i++)
                 {
                     lock (_stateDb)
                     {
-                        if (TryTake(out RequestItem result))
+                        if (TryTake(out StateSyncItem result))
                         {
                             requestHashes.Add(result);
                         }
@@ -292,8 +307,8 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
 
-                request.Request = requestHashes.ToArray();
-                requests.Add(request);
+                batch.StateSyncs = requestHashes.ToArray();
+                requests.Add(batch);
 
                 if (_logger.IsTrace) _logger.Trace($"Preparing a request with {requestHashes.Count} hashes");
             }
@@ -302,25 +317,25 @@ namespace Nethermind.Blockchain.Synchronization
             var requestsArray = requests.ToArray();
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Prepared {requestsArray.Length} requests");
                 for (int i = 0; i < requestsArray.Length; i++)
                 {
-                    _logger.Trace($"Request[{i}] - {requestsArray[i].Request.Length} nodes requested starting from {requestsArray[i].Request[0].Hash}");
+                    _logger.Trace($"Request[{i}] - {requestsArray[i].StateSyncs.Length} nodes requested starting from {requestsArray[i].StateSyncs[0].Hash}");
                 }
             }
 
+            Interlocked.Add(ref _pendingRequests, requestsArray.Length);
             return requestsArray;
         }
 
-        public async Task SyncNodeData((Keccak Hash, NodeDataType NodeDataType)[] initialNodes)
+        public async Task<int> SyncNodeData(CancellationToken token, (Keccak Hash, NodeDataType NodeDataType)[] initialNodes)
         {
             if (_stream0 == null)
             {
-                _nodes[0] = new ConcurrentBag<RequestItem>();
-                _nodes[1] = new ConcurrentBag<RequestItem>();
-                _nodes[2] = new ConcurrentBag<RequestItem>();
+                _nodes[0] = new ConcurrentQueue<StateSyncItem>();
+                _nodes[1] = new ConcurrentQueue<StateSyncItem>();
+                _nodes[2] = new ConcurrentQueue<StateSyncItem>();
             }
-            
+
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Syncing node data");
@@ -332,15 +347,16 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (initialNodes.Length == 0 || (initialNodes.Length == 1 && initialNodes[0].Hash == Keccak.EmptyTreeHash))
             {
-                return;
+                return _downloadedNodesCount;
             }
 
             for (int i = 0; i < initialNodes.Length; i++)
             {
-                AddNode(new RequestItem(initialNodes[i].Hash, initialNodes[i].NodeDataType, 0, 0));
+                AddNode(new StateSyncItem(initialNodes[i].Hash, initialNodes[i].NodeDataType, 0, 0));
             }
 
-            await KeepSyncing();
+            await KeepSyncing(token);
+            return _downloadedNodesCount;
         }
 
         public void SetExecutor(INodeDataRequestExecutor executor)

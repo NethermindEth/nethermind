@@ -24,12 +24,12 @@ namespace Nethermind.Blockchain.Synchronization
     public class SyncEventArgs : EventArgs
     {
         public ISyncPeer Peer { get; }
-        public SyncStatus SyncStatus { get; }
+        public SyncEvent SyncEvent { get; }
 
-        public SyncEventArgs(ISyncPeer peer, SyncStatus status)
+        public SyncEventArgs(ISyncPeer peer, SyncEvent @event)
         {
             Peer = peer;
-            SyncStatus = status;
+            SyncEvent = @event;
         }
     }
 }
