@@ -66,7 +66,6 @@ namespace Nethermind.Blockchain.Synchronization
 
             int headersSynced = 0;
             int ancestorLookupLevel = 0;
-            int emptyHeadersListCounter = 0;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             while (bestPeer.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
@@ -97,43 +96,13 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                int nonEmptyHeadersCount = 0;
-                for (int i = 1; i < headers.Length; i++)
-                {
-                    if (headers[i] != null)
-                    {
-                        nonEmptyHeadersCount++;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"Actual batch size was {nonEmptyHeadersCount + 1}/{_syncBatchSize.Current}");
-                if (nonEmptyHeadersCount == 0)
-                {
-                    if (++emptyHeadersListCounter >= 3)
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Received no blocks from {bestPeer} in response to {headersToRequest} blocks requested. Cancelling.");
-                        throw new EthSynchronizationException("Peer sent an empty header list");
-                    }
-
-                    if (_logger.IsInfo) _logger.Info($"Received no blocks from {bestPeer} in response to {headersToRequest} blocks requested.");
-                    continue;
-                }
-
-
-                if (_logger.IsTrace) _logger.Trace($"Non-empty headers length is {nonEmptyHeadersCount}, counter is {emptyHeadersListCounter}");
-                emptyHeadersListCounter = 0;
                 _sinceLastTimeout++;
                 if (_sinceLastTimeout >= 2)
                 {
                     _syncBatchSize.Expand();
                 }
 
-
-                for (int i = 1; i < nonEmptyHeadersCount + 1; i++)
+                for (int i = 1; i < headers.Length; i++)
                 {
                     if (cancellation.IsCancellationRequested)
                     {
@@ -141,6 +110,16 @@ namespace Nethermind.Blockchain.Synchronization
                     }
 
                     BlockHeader currentHeader = headers[i];
+                    if (currentHeader == null)
+                    {
+                        if (headersSynced > 0)
+                        {
+                            break;
+                        }
+
+                        return 0;
+                    }
+
                     if (_logger.IsTrace) _logger.Trace($"Received {currentHeader} from {bestPeer:s}");
                     if (!_blockValidator.ValidateHeader(currentHeader, false))
                     {
@@ -175,7 +154,6 @@ namespace Nethermind.Blockchain.Synchronization
 
             int blocksSynced = 0;
             int ancestorLookupLevel = 0;
-            int emptyBlockListCounter = 0;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             while (bestPeer.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
@@ -210,18 +188,6 @@ namespace Nethermind.Blockchain.Synchronization
                     headersByHash[headers[i].Hash] = headers[i];
                 }
 
-                if (hashes.Count == 0)
-                {
-                    if (headers.Length == 1)
-                    {
-                        // for some reasons we take current number as peerInfo.HeadNumber - 1 (I do not remember why)
-                        // and also there may be a race in total difficulty measurement
-                        break;
-                    }
-
-                    throw new EthSynchronizationException("Peer sent an empty header list");
-                }
-
                 Task<Block[]> bodiesTask = bestPeer.SyncPeer.GetBlocks(hashes.ToArray(), cancellation);
                 await bodiesTask.ContinueWith(t =>
                 {
@@ -243,35 +209,6 @@ namespace Nethermind.Blockchain.Synchronization
                 });
 
                 Block[] blocks = bodiesTask.Result;
-
-                if (blocks.Length == 0 && blocksLeft == 1)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"{bestPeer} does not have block body for {hashes[0]}");
-                }
-
-                if (blocks.Length == 0)
-                {
-                    if (++emptyBlockListCounter >= 3)
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Received no blocks from {bestPeer} in response to {blocksToRequest} blocks requested. Cancelling.");
-                        throw new EthSynchronizationException("Peer sent an empty block list");
-                    }
-
-                    if (_logger.IsInfo) _logger.Info($"Received no blocks from {bestPeer} in response to {blocksToRequest} blocks requested.");
-                    continue;
-                }
-
-
-                if (blocks.Length != 0)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Blocks length is {blocks.Length}, counter is {emptyBlockListCounter}");
-                    emptyBlockListCounter = 0;
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Blocks length is 0, counter is {emptyBlockListCounter}");
-                    continue;
-                }
 
                 _sinceLastTimeout++;
                 if (_sinceLastTimeout > 2)
