@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 try
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Running refresh peer info for {peerInfo}.");
+                    if (_logger.IsDebug) _logger.Debug($"Running refresh peer info for {peerInfo}.");
                     var initCancelSource = _refreshCancelTokens[peerInfo.SyncPeer.Node.Id] = new CancellationTokenSource();
                     var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
                     await RefreshPeerInfo(peerInfo, linkedSource.Token).ContinueWith(t =>
@@ -100,6 +100,8 @@ namespace Nethermind.Blockchain.Synchronization
                             }
                         }
 
+                        if (_logger.IsDebug) _logger.Debug($"Refreshed peer info for {peerInfo}.");
+                        
                         initCancelSource.Dispose();
                         linkedSource.Dispose();
                     });
@@ -245,6 +247,13 @@ namespace Nethermind.Blockchain.Synchronization
                         }
 
                         peerInfo.IsInitialized = true;
+                        foreach ((SyncPeerAllocation allocation, object _) in _allocations)
+                        {
+                            if (allocation.Current == peerInfo)
+                            {
+                                allocation.Refresh();
+                            }
+                        }
                     }
                 }, token);
         }

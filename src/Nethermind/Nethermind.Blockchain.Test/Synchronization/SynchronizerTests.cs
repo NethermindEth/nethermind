@@ -291,9 +291,14 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 SyncPeerPool.Start();
 
                 Synchronizer.Start();
-                Synchronizer.SyncEvent += (sender, args) => TestContext.WriteLine(args.SyncEvent);
+                Synchronizer.SyncEvent +=SynchronizerOnSyncEvent;
                 
                 AllInstances.Add(this);
+            }
+
+            private void SynchronizerOnSyncEvent(object sender, SyncEventArgs e)
+            {
+                TestContext.WriteLine(e.SyncEvent);
             }
 
             public SyncingContext BestKnownNumberIs(long number)
@@ -423,11 +428,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext Stop()
             {
+                Synchronizer.SyncEvent -= SynchronizerOnSyncEvent;
                 var task = new Task(async () =>
                 {
                     await Synchronizer.StopAsync();
                     await SyncPeerPool.StopAsync();
                 });
+                
                 task.RunSynchronously();
                 return this;
             }
@@ -582,7 +589,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .After(() => peerA.AddBlocksUpTo(8))
                 .AfterNewBlockMessage(peerA.HeadBlock, peerA)
                 .Wait()
-                .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
+                .BestSuggested.HeaderIs(peerA.HeadHeader).Wait().Stop();
+            
+            Console.WriteLine("why?");
         }
 
         [Test]

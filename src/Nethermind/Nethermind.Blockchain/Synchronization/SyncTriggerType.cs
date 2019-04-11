@@ -25,6 +25,7 @@ namespace Nethermind.Blockchain.Synchronization
         PeerChange,
         NewDistantBlock,
         Reorganization,
-        NewNearBlock
+        NewNearBlock,
+        PeerRfresh
     }
 }

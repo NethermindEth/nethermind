@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
@@ -56,6 +57,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
         private SyncModeSelector _syncMode;
         private SyncPeersReport _syncPeersReport;
+        private long _bestSuggestedNumber => _blockTree.BestSuggested?.Number ?? 0;
 
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs> SyncEvent;
@@ -181,7 +183,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _syncTimer.Enabled = true;
             }
         }
-
+        
         private async Task RunSyncLoop()
         {
             while (true)
@@ -217,20 +219,38 @@ namespace Nethermind.Blockchain.Synchronization
                 _peerSyncCancellation = new CancellationTokenSource();
                 var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_peerSyncCancellation.Token, _syncLoopCancellation.Token);
                 SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
-                if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer.HeadNumber} {bestPeer.TotalDifficulty} | ours {_blockTree.BestSuggested?.Number ?? 0} {_blockTree.BestSuggested?.TotalDifficulty ?? 0}");
+                if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer.HeadNumber} {bestPeer.TotalDifficulty} | ours {_bestSuggestedNumber} {_blockTree.BestSuggested?.TotalDifficulty ?? 0}");
+                Task<int> syncProgressTask;
                 switch (_syncMode.Current)
                 {
                     case SyncMode.Headers:
-                        await _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                        syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                         break;
                     case SyncMode.StateNodes:
-                        await DownloadStateNodes(bestPeer, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                        syncProgressTask = DownloadStateNodes(bestPeer, linkedCancellation.Token);
                         break;
                     case SyncMode.Full:
-                        await _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                        syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
+                }
+
+                await syncProgressTask.ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                if (syncProgressTask.IsCompletedSuccessfully)
+                {
+                    int progress = syncProgressTask.Result;
+                    if (progress != 0 && _syncMode.Current == SyncMode.StateNodes) // hack (use some status of fully synced)
+                    {
+                        _bestFullState = _bestSuggestedNumber;
+                    }
+
+                    SyncMode beforeUpdate = _syncMode.Current;
+                    _syncMode.Update(_bestSuggestedNumber, Math.Max(_bestFullState, _blockTree.Head?.Number ?? 0));
+                    if (_syncMode.Current == beforeUpdate && progress == 0)
+                    {
+                        _syncPeerPool.ReportNoSyncProgress(_allocation); // not very fair here - allocation may have changed
+                    }   
                 }
                 
                 linkedCancellation.Dispose();
@@ -240,6 +260,8 @@ namespace Nethermind.Blockchain.Synchronization
                 _allocation.FinishSync();
             }
         }
+
+        private long _bestFullState = 0;
 
         private void HandleSyncRequestResult(Task task, PeerInfo peerInfo)
         {
@@ -288,6 +310,12 @@ namespace Nethermind.Blockchain.Synchronization
             if (_logger.IsDebug) _logger.Debug("Fast sync loop allocated.");
             _allocation.Replaced += AllocationOnReplaced;
             _allocation.Cancelled += AllocationOnCancelled;
+            _allocation.Refreshed += AllocationOnRefreshed;
+        }
+
+        private void AllocationOnRefreshed(object sender, EventArgs e)
+        {
+            RequestSynchronization(SyncTriggerType.PeerRfresh);
         }
 
         private void AllocationOnCancelled(object sender, AllocationChangeEventArgs e)
@@ -321,7 +349,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
         
-        private async Task DownloadStateNodes(PeerInfo bestPeer, CancellationToken cancellation)
+        private async Task<int> DownloadStateNodes(PeerInfo bestPeer, CancellationToken cancellation)
         {
             if (bestPeer == null)
             {
@@ -331,10 +359,19 @@ namespace Nethermind.Blockchain.Synchronization
             BlockHeader bestSuggested = _blockTree.BestSuggested;
             if (bestSuggested == null)
             {
-                return;
+                return 0;
             }
 
-            await _nodeDataDownloader.SyncNodeData(cancellation, (bestSuggested.StateRoot, NodeDataType.State));
+           Task<int> task = _nodeDataDownloader.SyncNodeData(cancellation, (bestSuggested.StateRoot, NodeDataType.State));
+           int result = await task;
+           if (task.IsCompletedSuccessfully)
+           {
+               if(_logger.IsInfo) _logger.Info($"Suggesting sync transition block {bestSuggested.ToString(BlockHeader.Format.Short)}");
+//               _blockTree.SuggestBlock(_blockTree.FindBlock(bestSuggested.Hash, false));
+               return Math.Max(1, result); // hack
+           }
+           
+           return result;
         }
 
         public async Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch)
@@ -358,6 +395,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 _allocation.Cancelled -= AllocationOnCancelled;
                 _allocation.Replaced -= AllocationOnReplaced;
+                _allocation.Refreshed -= AllocationOnRefreshed;
             }
 
             _syncTimer?.Dispose();

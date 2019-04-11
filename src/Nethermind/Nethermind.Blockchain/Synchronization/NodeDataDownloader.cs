@@ -327,7 +327,7 @@ namespace Nethermind.Blockchain.Synchronization
             return requestsArray;
         }
 
-        public async Task SyncNodeData(CancellationToken token, (Keccak Hash, NodeDataType NodeDataType)[] initialNodes)
+        public async Task<int> SyncNodeData(CancellationToken token, (Keccak Hash, NodeDataType NodeDataType)[] initialNodes)
         {
             if (_stream0 == null)
             {
@@ -347,7 +347,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (initialNodes.Length == 0 || (initialNodes.Length == 1 && initialNodes[0].Hash == Keccak.EmptyTreeHash))
             {
-                return;
+                return _downloadedNodesCount;
             }
 
             for (int i = 0; i < initialNodes.Length; i++)
@@ -356,6 +356,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             await KeepSyncing(token);
+            return _downloadedNodesCount;
         }
 
         public void SetExecutor(INodeDataRequestExecutor executor)

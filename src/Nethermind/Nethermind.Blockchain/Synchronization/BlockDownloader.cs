@@ -157,7 +157,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 _syncStats.Report(_blockTree.BestSuggested?.Number ?? 0, bestPeer.HeadNumber);
             }
-
+            
             return headersSynced;
         }
 
