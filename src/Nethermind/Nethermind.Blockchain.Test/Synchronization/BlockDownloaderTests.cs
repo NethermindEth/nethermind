@@ -187,6 +187,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(async ci => await _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.TimeoutOnFullBatch));
+            
+            syncPeer.GetBlocks(Arg.Any<Keccak[]>(), Arg.Any<CancellationToken>())
+                .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<Keccak[]>(0), Response.AllCorrect | Response.TimeoutOnFullBatch));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
             peerInfo.TotalDifficulty = UInt256.MaxValue;
@@ -194,8 +197,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             await blockDownloader.DownloadHeaders(peerInfo, SyncModeSelector.FullSyncThreshold, CancellationToken.None).ContinueWith(t => { });
             await blockDownloader.DownloadHeaders(peerInfo, SyncModeSelector.FullSyncThreshold, CancellationToken.None);
-
             Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber - SyncModeSelector.FullSyncThreshold), _blockTree.BestSuggested.Number);
+            
+            peerInfo.HeadNumber *= 2;
+            await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None).ContinueWith(t => { });
+            await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None);
+            Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber), _blockTree.BestSuggested.Number);
         }
 
         [Test]
@@ -206,12 +213,19 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.AllKnown));
+            
+            syncPeer.GetBlocks(Arg.Any<Keccak[]>(), Arg.Any<CancellationToken>())
+                .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<Keccak[]>(0), Response.AllCorrect | Response.AllKnown));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
             peerInfo.TotalDifficulty = UInt256.MaxValue;
             peerInfo.HeadNumber = 64;
 
             await blockDownloader.DownloadHeaders(peerInfo, SyncModeSelector.FullSyncThreshold, CancellationToken.None)
+                .ContinueWith(t => Assert.True(t.IsCompletedSuccessfully));
+            
+            peerInfo.HeadNumber = 128;
+            await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None)
                 .ContinueWith(t => Assert.True(t.IsCompletedSuccessfully));
         }
 
@@ -223,13 +237,36 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.JustFirstHeader));
+                .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.JustFirstHeader | Response.AllCorrect));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
             peerInfo.TotalDifficulty = UInt256.MaxValue;
             peerInfo.HeadNumber = headNumber;
 
             Task task = blockDownloader.DownloadHeaders(peerInfo, SyncModeSelector.FullSyncThreshold, CancellationToken.None);
+            await task.ContinueWith(t => Assert.True(t.IsFaulted));
+
+            Assert.AreEqual(0, _blockTree.BestSuggested.Number);
+        }
+        
+        [TestCase(33L)]
+        [TestCase(65L)]
+        public async Task Peer_sends_just_one_item_when_advertising_more_blocks(long headNumber)
+        {
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, LimboLogs.Instance);
+
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+                    
+            syncPeer.GetBlocks(Arg.Any<Keccak[]>(), Arg.Any<CancellationToken>())
+                .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<Keccak[]>(0), Response.AllCorrect | Response.JustFirstHeader));
+            
+            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            peerInfo.TotalDifficulty = UInt256.MaxValue;
+            peerInfo.HeadNumber = headNumber;
+
+            Task task = blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None);
             await task.ContinueWith(t => Assert.True(t.IsFaulted));
 
             Assert.AreEqual(0, _blockTree.BestSuggested.Number);
@@ -332,7 +369,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
-        [Test, MaxTime(3000)]
+        [Test, MaxTime(7000)]
         public async Task Can_cancel_seal_validation()
         {
             BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, new SlowSealValidator(), LimboLogs.Instance);
@@ -341,6 +378,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
+            syncPeer.GetBlocks(Arg.Any<Keccak[]>(), Arg.Any<CancellationToken>())
+                .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<Keccak[]>(0), Response.AllCorrect));
+            
             PeerInfo peerInfo = new PeerInfo(syncPeer);
             peerInfo.TotalDifficulty = UInt256.MaxValue;
             peerInfo.HeadNumber = 1000;
@@ -348,10 +388,16 @@ namespace Nethermind.Blockchain.Test.Synchronization
             CancellationTokenSource cancellation = new CancellationTokenSource();
             cancellation.CancelAfter(1000);
             Task task = blockDownloader.DownloadHeaders(peerInfo, SyncModeSelector.FullSyncThreshold, cancellation.Token);
-            await task.ContinueWith(t => Assert.True(t.IsCanceled));
+            await task.ContinueWith(t => Assert.True(t.IsCanceled, $"headers {t.Status}"));
+            
+            peerInfo.HeadNumber = 2000;
+            cancellation = new CancellationTokenSource();
+            cancellation.CancelAfter(1000);
+            task = blockDownloader.DownloadBlocks(peerInfo, cancellation.Token);
+            await task.ContinueWith(t => Assert.True(t.IsCanceled, $"blocks {t.Status}"));
         }
 
-        [Test, MaxTime(3000)]
+        [Test, MaxTime(7000)]
         public async Task Can_cancel_adding_headers()
         {
             BlockDownloader blockDownloader = new BlockDownloader(_blockTree, new SlowHeaderValidator(), TestSealValidator.AlwaysValid, LimboLogs.Instance);
@@ -359,6 +405,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+            
+            syncPeer.GetBlocks(Arg.Any<Keccak[]>(), Arg.Any<CancellationToken>())
+                .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<Keccak[]>(0), Response.AllCorrect));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
             peerInfo.TotalDifficulty = UInt256.MaxValue;
@@ -367,7 +416,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
             CancellationTokenSource cancellation = new CancellationTokenSource();
             cancellation.CancelAfter(1000);
             Task task = blockDownloader.DownloadHeaders(peerInfo, SyncModeSelector.FullSyncThreshold, cancellation.Token);
-            await task.ContinueWith(t => Assert.True(t.IsCanceled));
+            await task.ContinueWith(t => Assert.True(t.IsCanceled, "headers"));
+            
+            peerInfo.HeadNumber *= 2;
+            cancellation = new CancellationTokenSource();
+            cancellation.CancelAfter(1000);
+            task = blockDownloader.DownloadHeaders(peerInfo, SyncModeSelector.FullSyncThreshold, cancellation.Token);
+            await task.ContinueWith(t => Assert.True(t.IsCanceled, "blocks"));
         }
 
         private class ThrowingPeer : ISyncPeer

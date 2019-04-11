@@ -297,7 +297,7 @@ namespace Nethermind.Blockchain.Synchronization
                     if (cancellation.IsCancellationRequested)
                     {
                         if (_logger.IsTrace) _logger.Trace("Peer sync cancelled");
-                        return blocksSynced;
+                        break;
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Received {blocks[i]} from {bestPeer}");
@@ -305,8 +305,7 @@ namespace Nethermind.Blockchain.Synchronization
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(blocks[i]))
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Block {blocks[i].Number} skipped (validation failed)");
-                        continue;
+                        throw new EthSynchronizationException($"{bestPeer} sent an invalid block {blocks[i].ToString(Block.Format.Short)}.");
                     }
 
                     if (HandleAddResult(blocks[i].Header, i == 0, _blockTree.SuggestBlock(blocks[i])))

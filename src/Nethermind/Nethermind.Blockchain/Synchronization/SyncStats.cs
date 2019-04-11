@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Synchronization
             // create sync stats like processing stats?
             if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1))
             {
-                if (_logger.IsInfo) _logger.Info($"Downloading headers {current}/{total}");
+                if (_logger.IsInfo) _logger.Info($"Block download progress {current}/{total}");
                 _lastSyncNotificationTime = DateTime.UtcNow;
             }
         }
