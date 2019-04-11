@@ -60,7 +60,10 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_logger.IsInfo) _logger.Info($"Sync peers {initializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
                 foreach (SyncPeerAllocation syncPeerAllocation in _peerPool.Allocations)
                 {
-                    if (_logger.IsInfo) _logger.Info($"  sync in progress with {syncPeerAllocation.Current}");
+                    if (syncPeerAllocation.Current != null)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"  sync in progress with {syncPeerAllocation.Current}");
+                    }
                 }
             }
             else if (initializedPeerCount == 0)
