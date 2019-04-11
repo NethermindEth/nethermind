@@ -449,7 +449,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void ReportNoSyncProgress(SyncPeerAllocation allocation)
         {
-            if (_logger.IsInfo) _logger.Info($"No sync progress reported with {allocation.Current}");
+            // this is generally with the strange Parity nodes behaviour
+            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {allocation.Current}");
             _sleepingPeers.TryAdd(allocation.Current, DateTime.UtcNow);
         }
 
