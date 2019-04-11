@@ -239,7 +239,14 @@ namespace Nethermind.Network.Discovery
                 InitializeDiscoveryPersistenceTimer();
                 InitializeDiscoveryTimer();
 
-                await RunDiscoveryAsync(cancellationToken);
+                await RunDiscoveryAsync(cancellationToken).ContinueWith(
+                    t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            _logger.Error("Discovery error", t.Exception);            
+                        }
+                    });
             }
             catch (Exception e)
             {
