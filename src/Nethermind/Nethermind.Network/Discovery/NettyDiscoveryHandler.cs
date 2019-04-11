@@ -106,6 +106,7 @@ namespace Nethermind.Network.Discovery
             if (msg.Length < 98)
             {
                 _logger.Error($"Incorrect message, length: {msg.Length}, sender: {address}");
+                ctx.DisconnectAsync();
                 return;
             }
             
@@ -113,6 +114,7 @@ namespace Nethermind.Network.Discovery
             if (!Enum.IsDefined(typeof(MessageType), (int)typeRaw))
             {
                 if(_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msg.ToHexString()}");
+                ctx.DisconnectAsync();
                 return;
             }
             
