@@ -208,6 +208,11 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 });
 
+                if (bodiesTask.IsCanceled)
+                {
+                    return blocksSynced;
+                }
+                
                 Block[] blocks = bodiesTask.Result;
 
                 _sinceLastTimeout++;
