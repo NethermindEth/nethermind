@@ -155,13 +155,13 @@ namespace Nethermind.Blockchain.Synchronization
                     currentNumber = currentNumber + 1;
                 }
 
-                _syncStats.Report(_blockTree.BestSuggested?.Number ?? 0, bestPeer.HeadNumber);
+                if (headersSynced > 0)
+                {
+                    _syncStats.Report(_blockTree.BestSuggested?.Number ?? 0, bestPeer.HeadNumber);
+                }
             }
 
-            if (headersSynced > 0)
-            {
-                return headersSynced;
-            }
+            return headersSynced;
         }
 
         public async Task<int> DownloadBlocks(PeerInfo bestPeer, CancellationToken cancellation)
@@ -241,7 +241,7 @@ namespace Nethermind.Blockchain.Synchronization
                         throw new EthSynchronizationException("Bodies task faulted.", bodiesTask.Exception);
                     }
                 });
-                
+
                 Block[] blocks = bodiesTask.Result;
 
                 if (blocks.Length == 0 && blocksLeft == 1)
@@ -256,11 +256,11 @@ namespace Nethermind.Blockchain.Synchronization
                         if (_logger.IsInfo) _logger.Info($"Received no blocks from {bestPeer} in response to {blocksToRequest} blocks requested. Cancelling.");
                         throw new EthSynchronizationException("Peer sent an empty block list");
                     }
-                    
+
                     if (_logger.IsInfo) _logger.Info($"Received no blocks from {bestPeer} in response to {blocksToRequest} blocks requested.");
                     continue;
                 }
-                
+
 
                 if (blocks.Length != 0)
                 {
