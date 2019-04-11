@@ -376,6 +376,14 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
+                if (info.TotalDifficulty - totalDifficultyThreshold == 1 && info.SyncPeer.ClientId.Contains("Parity"))
+                {
+                    // Parity advertises a better block but never sends it back and then it disconnects after a few conversations like this
+                    // Geth responds all fine here
+                    // note this is only 1 difficulty difference which means that is just for the POA / Clique chains
+                    continue;
+                }
+
                 long latency = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000;
 
                 
