@@ -37,7 +37,9 @@ namespace Nethermind.Blockchain.Test
     {
         private class ProcessingTestContext
         {
-            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            private ILogManager _logManager = LimboLogs.Instance;
+
+//            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
             
             private class BlockProcessorMock : IBlockProcessor
             {

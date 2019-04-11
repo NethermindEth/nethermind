@@ -261,7 +261,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private long _bestFullState = 0;
+        private long _bestFullState;
 
         private void HandleSyncRequestResult(Task task, PeerInfo peerInfo)
         {
