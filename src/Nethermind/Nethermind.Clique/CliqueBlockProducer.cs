@@ -46,6 +46,7 @@ namespace Nethermind.Clique
         private readonly ITimestamp _timestamp;
         private readonly ILogger _logger;
         private readonly ICryptoRandom _cryptoRandom;
+        private readonly WiggleRandomizer _wiggle;
 
         private readonly IBlockchainProcessor _processor;
         private readonly ITxPool _txPool;
@@ -81,6 +82,7 @@ namespace Nethermind.Clique
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _address = address ?? throw new ArgumentNullException(nameof(address));
+            _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
 
             _timer.AutoReset = false;
             _timer.Elapsed += TimerOnElapsed;
@@ -91,7 +93,6 @@ namespace Nethermind.Clique
         private readonly BlockingCollection<Block> _signalsQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
 
         private Block _scheduledBlock;
-        private ulong? _extraDelayMilliseconds = 0;
 
         public void CastVote(Address signer, bool vote)
         {
@@ -137,25 +138,13 @@ namespace Nethermind.Clique
                 }
 
                 string turnDescription = _scheduledBlock.Difficulty == Clique.DifficultyInTurn ? "IN TURN " : "OUT OF TURN ";
-                if (_extraDelayMilliseconds == null)
-                {
-                    if (_scheduledBlock.Difficulty == Clique.DifficultyNoTurn)
-                    {
-                        int wiggle = (_snapshotManager.GetOrCreateSnapshot(_scheduledBlock.Header.Number - 1, _scheduledBlock.Header.ParentHash).Signers.Count / 2 + 1) * Clique.WiggleTime;
-                        _extraDelayMilliseconds = Math.Min(250UL, (ulong) _cryptoRandom.NextInt(wiggle));
-                        if (_logger.IsInfo) _logger.Info($"Setting extra delay for own {turnDescription}block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} to {_extraDelayMilliseconds}");
-                    }
-                    else
-                    {
-                        _extraDelayMilliseconds = 0;
-                    }
-                }
-
-                if (_scheduledBlock.Timestamp * 1000 + _extraDelayMilliseconds < _timestamp.EpochMilliseconds)
+                
+                int wiggle = _wiggle.WiggleFor(_scheduledBlock.Header);
+                if (_scheduledBlock.Timestamp * 1000 + (UInt256)wiggle < _timestamp.EpochMilliseconds)
                 {
                     if (_scheduledBlock.TotalDifficulty > _blockTree.Head.TotalDifficulty)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription}block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} after the delay of {_extraDelayMilliseconds}");
+                        if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription}block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} after the delay of {wiggle}");
                         _blockTree.SuggestBlock(_scheduledBlock);
                     }
                     else
@@ -164,7 +153,6 @@ namespace Nethermind.Clique
                     }
 
                     _scheduledBlock = null;
-                    _extraDelayMilliseconds = null;
                 }
                 else
                 {
