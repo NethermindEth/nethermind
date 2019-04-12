@@ -215,7 +215,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (firstToComplete.IsFaulted || firstToComplete == delayTask)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"InitPeerInfo failed for node: {syncPeer.Node:s}{Environment.NewLine}{t.Exception}");
+                        if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:s}{Environment.NewLine}{t.Exception}");
                         RemovePeer(syncPeer, PeerRemoveReason.SyncFault);
                         SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Failed : Synchronization.SyncEvent.InitFailed));
                     }
