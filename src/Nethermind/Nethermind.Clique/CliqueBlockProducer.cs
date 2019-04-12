@@ -28,6 +28,7 @@ using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.TxPools;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -125,8 +126,9 @@ namespace Nethermind.Clique
                     _timer.Enabled = true;
                     return;
                 }
-
-                if (_scheduledBlock == null)
+                
+                Block scheduledBlock = _scheduledBlock;
+                if (scheduledBlock == null)
                 {
                     if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamp.EpochSeconds)
                     {
@@ -137,26 +139,37 @@ namespace Nethermind.Clique
                     return;
                 }
 
-                string turnDescription = _scheduledBlock.Difficulty == Clique.DifficultyInTurn ? "IN TURN " : "OUT OF TURN ";
+                string turnDescription = scheduledBlock.IsInTurn() ? "IN TURN" : "OUT OF TURN";
                 
                 int wiggle = _wiggle.WiggleFor(_scheduledBlock.Header);
-                if (_scheduledBlock.Timestamp * 1000 + (UInt256)wiggle < _timestamp.EpochMilliseconds)
+                if (scheduledBlock.Timestamp * 1000 + (UInt256)wiggle < _timestamp.EpochMilliseconds)
                 {
-                    if (_scheduledBlock.TotalDifficulty > _blockTree.Head.TotalDifficulty)
+                    if (scheduledBlock.TotalDifficulty > _blockTree.Head.TotalDifficulty)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription}block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} after the delay of {wiggle}");
-                        _blockTree.SuggestBlock(_scheduledBlock);
+                        if(ReferenceEquals(scheduledBlock, _scheduledBlock))
+                        {
+                            _blockTree.SuggestBlock(scheduledBlock);
+                            BlockHeader parent = _blockTree.FindParentHeader(scheduledBlock.Header);
+                            Address parentSigner = _snapshotManager.GetBlockSealer(parent);
+                            string parentTurnDescription = parent.IsInTurn() ? "IN TURN" : "OUT OF TURN";
+                            string parentDetails = $"{parentTurnDescription} {parent.ToString(BlockHeader.Format.Short)} sealed by {KnownAddresses.GetDescription(parentSigner)}";
+                            
+                            if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription} {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} based on {parentDetails} after the delay of {wiggle}");
+                        }
                     }
                     else
                     {
-                        if (_logger.IsInfo) _logger.Info($"Dropping a losing block {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
+                        if (_logger.IsInfo) _logger.Info($"Dropping a losing block {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
                     }
 
-                    _scheduledBlock = null;
+                    if (ReferenceEquals(scheduledBlock, _scheduledBlock))
+                    {
+                        _scheduledBlock = null;
+                    }
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Not yet {_scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
+                    if (_logger.IsTrace) _logger.Trace($"Not yet {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
                 }
 
                 _timer.Enabled = true;

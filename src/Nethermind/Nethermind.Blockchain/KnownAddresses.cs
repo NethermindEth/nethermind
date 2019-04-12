@@ -23,6 +23,21 @@ namespace Nethermind.Blockchain
 {
     public static class KnownAddresses
     {
+        public static string GetDescription(Address address)
+        {
+            if (GoerliValidators.ContainsKey(address))
+            {
+                return GoerliValidators[address];
+            }
+            
+            if (RinkebyValidators.ContainsKey(address))
+            {
+                return RinkebyValidators[address];
+            }
+
+            return "?";
+        }
+        
         public static Dictionary<Address, string> GoerliValidators = new Dictionary<Address, string>
         {
             {new Address("0xa6DD2974B96e959F2c8930024451a30aFEC24203"), "Ethereum Foundation"},
@@ -38,12 +53,13 @@ namespace Nethermind.Blockchain
         
         public static Dictionary<Address, string> RinkebyValidators = new Dictionary<Address, string>
         {
-            {new Address("0x42eb768f2244c8811c63729a21a3569731535f06"), "Ethereum Foundation"},
-            {new Address("0x6635f83421bf059cd8111f180f0727128685bae4"), "POA"},
-            {new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"), "Yucong Sun"},
-            {new Address("0xb279182d99e65703f0076e4812653aab85fca0f0"), "Prysm Labs"},
-            {new Address("0xd6ae8250b8348c94847280928c79fb3b63ca453e"), "Dapowerplay"},
-            {new Address("0xfc18cbc391de84dbd87db83b20935d3e89f5dd91"), "Infura"},
+            // Oraclize, AKASHA, Foundation x3, Infura, Augur, Cotton Candy?
+            {new Address("0x42eb768f2244c8811c63729a21a3569731535f06"), "?"},
+            {new Address("0x6635f83421bf059cd8111f180f0727128685bae4"), "?"},
+            {new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"), "?"},
+            {new Address("0xb279182d99e65703f0076e4812653aab85fca0f0"), "?"},
+            {new Address("0xd6ae8250b8348c94847280928c79fb3b63ca453e"), "?"},
+            {new Address("0xfc18cbc391de84dbd87db83b20935d3e89f5dd91"), "?"},
         };
         
 //        Signer 0: 0x42eb768f2244c8811c63729a21a3569731535f06
