@@ -24,9 +24,16 @@ namespace Nethermind.Cli.Modules
     public class ParityCliModule : CliModuleBase
     {
         [CliFunction("trace", "replayTransaction")]
-        public ParityLikeTxTrace GetSnapshot(string txHash, string[] traceTypes)
+        public ParityLikeTxTrace ReplayTransaction(string txHash, string[] traceTypes)
         {
             ParityLikeTxTrace parityLikeTxTrace = NodeManager.Post<ParityLikeTxTrace>("trace_replayTransaction", txHash, traceTypes).Result;
+            return parityLikeTxTrace;
+        }
+        
+        [CliFunction("trace", "replayBlockTransactions")]
+        public ParityLikeTxTrace ReplayBlockTransactions(string blockNumber, string[] traceTypes)
+        {
+            ParityLikeTxTrace parityLikeTxTrace = NodeManager.Post<ParityLikeTxTrace>("trace_replayBlockTransactions", blockNumber, traceTypes).Result;
             return parityLikeTxTrace;
         }
 
