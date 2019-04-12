@@ -156,9 +156,9 @@ namespace Nethermind.Clique
                             Address parentSigner = _snapshotManager.GetBlockSealer(parent);
                             DateTimeOffset parentDate = DateTimeOffset.FromUnixTimeSeconds((long)parent.Timestamp);
                             string parentTurnDescription = parent.IsInTurn() ? "IN TURN" : "OUT OF TURN";
-                            string parentDetails = $"{parentTurnDescription} {parentDate.DateTime:HH:ss} {parent.ToString(BlockHeader.Format.Short)} sealed by {KnownAddresses.GetDescription(parentSigner)}";
+                            string parentDetails = $"{parentTurnDescription} {parentDate.DateTime:HH:mm:ss} {parent.ToString(BlockHeader.Format.Short)} sealed by {KnownAddresses.GetDescription(parentSigner)}";
                             
-                            if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription} {ownDate.DateTime:HH:ss} {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} based on {parentDetails} after the delay of {wiggle}");
+                            if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription} {ownDate.DateTime:HH:mm:ss} {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} based on {parentDetails} after the delay of {wiggle}");
                         }
                     }
                     else
