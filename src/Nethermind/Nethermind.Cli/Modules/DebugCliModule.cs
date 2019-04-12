@@ -22,11 +22,35 @@ namespace Nethermind.Cli.Modules
     public class DebugCliModule : CliModuleBase
     {
         [CliFunction("debug", "traceBlock")]
-        public string TraceBlock(string rlp)
+        public string TraceBlock(string hash)
         {
-            return NodeManager.Post("debug_traceBlock", rlp).Result;
+            return NodeManager.Post("debug_traceBlock", hash).Result;
         }
-        
+
+        [CliFunction("debug", "traceBlockByNumber")]
+        public string TraceBlockByNumber(string number)
+        {
+            return NodeManager.Post("debug_traceBlockByNumber", number).Result;
+        }
+
+        [CliFunction("debug", "traceBlockByHash")]
+        public string TraceBlockByHash(string hash)
+        {
+            return NodeManager.Post("debug_traceBlockByHash", hash).Result;
+        }
+
+        [CliFunction("debug", "traceTransactionByBlockAndIndex")]
+        public string TraceTransactionByBlockAndIndex(string hash)
+        {
+            return NodeManager.Post("debug_traceTransactionByBlockAndIndex", hash).Result;
+        }
+
+        [CliFunction("debug", "traceTransactionByBlockhashAndIndex")]
+        public string TraceTransactionByBlockhashAndIndex(string hash)
+        {
+            return NodeManager.Post("debug_traceTransactionByBlockhashAndIndex", hash).Result;
+        }
+
         [CliFunction("debug", "config")]
         public string GetConfigValue(string category, string name)
         {

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,22 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Newtonsoft.Json;
-using NLog;
+using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Core
+namespace Nethermind.Cli.Modules
 {
-    public interface IJsonSerializer
+    [CliModule]
+    public class ParityCliModule : CliModuleBase
     {
-        [Todo(Improve.Refactor, "Move this method to a IRpcJsonSerializer")]
-        T DeserializeAnonymousType<T>(string json, T definition);
-        
-        [Todo(Improve.Refactor, "Move this method to a IRpcJsonSerializer")]
-        (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json);
-        
-        T Deserialize<T>(string json);
-        string Serialize<T>(T value, bool indented = false); // TODO: support serializing to stream
-        void RegisterConverter(JsonConverter converter);
+        [CliFunction("trace", "replayTransaction")]
+        public ParityLikeTxTrace GetSnapshot(string txHash, string[] traceTypes)
+        {
+            ParityLikeTxTrace parityLikeTxTrace = NodeManager.Post<ParityLikeTxTrace>("trace_replayTransaction", txHash, traceTypes).Result;
+            return parityLikeTxTrace;
+        }
+
+        public ParityCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
+        {
+        }
     }
 }

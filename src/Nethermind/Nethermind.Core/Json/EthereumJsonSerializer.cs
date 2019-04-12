@@ -25,7 +25,7 @@ namespace Nethermind.Core.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
-        public static IList<JsonConverter> BasicConverters { get; } = new JsonConverter[]
+        public static IList<JsonConverter> BasicConverters { get; } = new List<JsonConverter>
         {
             new AddressConverter(),
             new KeccakConverter(),
@@ -38,7 +38,7 @@ namespace Nethermind.Core.Json
             new NullableBigIntegerConverter()
         };
         
-        private static IList<JsonConverter> ReadableConverters { get; } = new JsonConverter[]
+        private static IList<JsonConverter> ReadableConverters { get; } = new List<JsonConverter>
         {
             new AddressConverter(),
             new KeccakConverter(),
@@ -83,6 +83,26 @@ namespace Nethermind.Core.Json
         public string Serialize<T>(T value, bool indented = false)
         {
             return JsonConvert.SerializeObject(value, indented ? _readableSettings : _settings);
+        }
+
+        public void RegisterConverter(JsonConverter converter)
+        {
+            BasicConverters.Add(converter);
+            ReadableConverters.Add(converter);
+            
+            _readableSettings = new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                Formatting = Formatting.Indented,
+                Converters = ReadableConverters
+            };
+            
+            _settings = new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                Formatting = Formatting.None,
+                Converters = BasicConverters
+            };
         }
     }
 }

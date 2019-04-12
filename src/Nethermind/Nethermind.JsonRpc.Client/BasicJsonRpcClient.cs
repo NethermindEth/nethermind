@@ -62,16 +62,20 @@ namespace Nethermind.JsonRpc.Client
         
         public async Task<T> Post<T>(string method, params object[] parameters)
         {
+            string responseString = string.Empty;
             try
             {
                 string request = GetJsonRequest(method, parameters);
                 HttpResponseMessage response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
-                string responseString = await response.Content.ReadAsStringAsync();
+                responseString = await response.Content.ReadAsStringAsync();
+                _logger.Trace(responseString);
                 return _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString).Result;
             }
             catch (Exception e)
             {
                 _logger.Error($"Error during execution of {method}", e);
+                _logger.Warn($"Response:");
+                _logger.Warn(responseString);
                 return default(T);
             }
         }

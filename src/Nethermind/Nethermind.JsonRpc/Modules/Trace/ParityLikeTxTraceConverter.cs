@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public override ParityLikeTxTrace ReadJson(JsonReader reader, Type objectType, ParityLikeTxTrace existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            throw new NotSupportedException();
+            throw new NotImplementedException();
         }
     }
 }

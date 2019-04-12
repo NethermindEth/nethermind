@@ -63,10 +63,10 @@ namespace Nethermind.Evm.Tracing
                 return CurrentTxTracer;
             }
             
-            if(!_isTracingEntireBlock && _txHash != txHash)
-            {
-                throw new InvalidOperationException($"Unexpected tx trace started - awaiting {_txHash}, received {txHash}");
-            }
+//            if(!_isTracingEntireBlock && _txHash != txHash)
+//            {
+//                throw new InvalidOperationException($"Unexpected tx trace started - awaiting {_txHash}, received {txHash}");
+//            }
             
             return NullTxTracer.Instance;
         }
@@ -75,7 +75,7 @@ namespace Nethermind.Evm.Tracing
         {
             if (CurrentTxTracer == null)
             {
-                throw new InvalidOperationException("Cannot end tx trace that has not been started");
+                return;
             }
                 
             TxTraces.Add(OnEnd(CurrentTxTracer));

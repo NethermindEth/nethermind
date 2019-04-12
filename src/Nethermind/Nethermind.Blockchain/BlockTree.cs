@@ -1038,7 +1038,7 @@ namespace Nethermind.Blockchain
                 header.TotalDifficulty = blockInfo.TotalDifficulty;
             }
 
-            return (block: header, blockInfo, level);
+            return (header, blockInfo, level);
         }
 
         /// <summary>

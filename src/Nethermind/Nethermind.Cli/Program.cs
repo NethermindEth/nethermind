@@ -23,6 +23,7 @@ using System.Numerics;
 using System.Threading.Tasks;
 using Jint;
 using Jint.Native;
+using Jint.Runtime.Interop;
 using Nethermind.Cli.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,6 +35,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Trace;
 
 namespace Nethermind.Cli
 {   
@@ -52,6 +54,8 @@ namespace Nethermind.Cli
             Setup();
             LoadModules();
             RunEvalLoop();
+            
+            
         }
 
         private static void RunEvalLoop()
@@ -76,6 +80,8 @@ namespace Nethermind.Cli
                     }
 
                     JsValue result = _engine.Execute(statement);
+                    Console.WriteLine(_serializer.Serialize(result.ToObject(), true)); 
+                    
                     bool isNull = result.IsNull();
                     Console.WriteLine(isNull ? "null" : result);
                 }
@@ -91,7 +97,12 @@ namespace Nethermind.Cli
 
         private static void Setup()
         {
-            _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            _serializer.RegisterConverter(new ParityLikeTxTraceConverter());
+            _serializer.RegisterConverter(new ParityAccountStateChangeConverter());
+            _serializer.RegisterConverter(new ParityTraceActionConverter());
+            _serializer.RegisterConverter(new ParityTraceResultConverter());
+            
+            _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace));
             _nodeManager = new NodeManager(_serializer, _logManager);
             _nodeManager.SwitchUri(new Uri("http://localhost:8545"));
             _engine = new CliEngine();
@@ -107,6 +118,7 @@ namespace Nethermind.Cli
             ModuleLoader.LoadModule(typeof(NodeCliModule));
             ModuleLoader.LoadModule(typeof(CliqueCliModule));
             ModuleLoader.LoadModule(typeof(DebugCliModule));
+            ModuleLoader.LoadModule(typeof(ParityCliModule));
         }
     }
 }

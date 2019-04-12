@@ -99,5 +99,10 @@ namespace Nethermind.Core.Json
                 Formatting = indented ? Formatting.Indented : Formatting.None
             });
         }
+
+        public void RegisterConverter(JsonConverter converter)
+        {
+            throw new NotImplementedException();
+        }
     }
 }
