@@ -150,11 +150,15 @@ namespace Nethermind.Clique
                         {
                             _blockTree.SuggestBlock(scheduledBlock);
                             BlockHeader parent = _blockTree.FindParentHeader(scheduledBlock.Header);
-                            Address parentSigner = _snapshotManager.GetBlockSealer(parent);
-                            string parentTurnDescription = parent.IsInTurn() ? "IN TURN" : "OUT OF TURN";
-                            string parentDetails = $"{parentTurnDescription} {parent.ToString(BlockHeader.Format.Short)} sealed by {KnownAddresses.GetDescription(parentSigner)}";
                             
-                            if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription} {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} based on {parentDetails} after the delay of {wiggle}");
+                            DateTimeOffset ownDate = DateTimeOffset.FromUnixTimeSeconds((long)_scheduledBlock.Timestamp);
+                            
+                            Address parentSigner = _snapshotManager.GetBlockSealer(parent);
+                            DateTimeOffset parentDate = DateTimeOffset.FromUnixTimeSeconds((long)parent.Timestamp);
+                            string parentTurnDescription = parent.IsInTurn() ? "IN TURN" : "OUT OF TURN";
+                            string parentDetails = $"{parentTurnDescription} {parentDate.DateTime:HH:ss} {parent.ToString(BlockHeader.Format.Short)} sealed by {KnownAddresses.GetDescription(parentSigner)}";
+                            
+                            if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription} {ownDate.DateTime:HH:ss} {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} based on {parentDetails} after the delay of {wiggle}");
                         }
                     }
                     else
