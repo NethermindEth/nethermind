@@ -430,7 +430,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Staying with current peer {allocation.Current} (ignoring {peerInfo}) - latency {currentLatency} vs {newLatency}");
+                if (_logger.IsTrace) _logger.Trace($"Staying with current peer {allocation.Current} (ignoring {peerInfo}) - latency {currentLatency} vs {newLatency}");
             }
         }
 
