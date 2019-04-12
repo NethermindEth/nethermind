@@ -135,6 +135,7 @@ namespace Nethermind.Blockchain.Synchronization
         /// <param name="syncTriggerType">Reason for the synchronization request for logging</param>
         public void RequestSynchronization(SyncTriggerType syncTriggerType)
         {
+            _syncPeersReport.Write();
             if (!_blockTree.CanAcceptNewBlocks)
             {
                 return;
@@ -153,7 +154,6 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
             
-            _syncPeersReport.Write();
             _syncRequested.Set();
         }
 
