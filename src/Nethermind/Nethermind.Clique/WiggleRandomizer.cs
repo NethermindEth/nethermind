@@ -49,12 +49,9 @@ namespace Nethermind.Clique
             
             if (header.Number != _lastWiggleAtNumber)
             {
-                int signersCount = _snapshotManager.GetOrCreateSnapshot(header.Number - 1, header.ParentHash).Signers.Count;
-                
-                /* protocol does not describe the minimal value but it seems that Parity nodes disconnect us
-                 * if we send the block too early */
-                int randomPart = _cryptoRandom.NextInt(signersCount * Clique.WiggleTime);
-                _lastWiggle = Math.Max(Clique.WiggleTime, randomPart);
+                int multiplier = _snapshotManager.GetOrCreateSnapshot(header.Number - 1, header.ParentHash).Signers.Count / 2 + 1;
+                int randomPart = _cryptoRandom.NextInt(multiplier * Clique.WiggleTime);
+                _lastWiggle = randomPart;
                 _lastWiggleAtNumber = header.Number;
             }
 

@@ -48,12 +48,12 @@ namespace Nethermind.Clique.Test
             BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).TestObject;
             for (int i = 0; i < 5; i++)
             {
-                Assert.AreEqual(Clique.WiggleTime, randomizer.WiggleFor(header1));
+                Assert.AreEqual(100, randomizer.WiggleFor(header1));
             }
         }
 
         [Test]
-        public void Wiggle_has_min_value()
+        public void Wiggle_has_no_min_value()
         {
             Queue<int> randoms = new Queue<int>(new List<int> {Clique.WiggleTime / 2, Clique.WiggleTime, Clique.WiggleTime * 2, Clique.WiggleTime * 3});
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
@@ -75,7 +75,7 @@ namespace Nethermind.Clique.Test
             BlockHeader header2 = Build.A.BlockHeader.WithNumber(2).TestObject;
             BlockHeader header3 = Build.A.BlockHeader.WithNumber(3).TestObject;
             int wiggle = randomizer.WiggleFor(header1);
-            Assert.AreEqual(Clique.WiggleTime, wiggle);
+            Assert.AreEqual(Clique.WiggleTime / 2, wiggle);
             
             wiggle = randomizer.WiggleFor(header2);
             Assert.AreEqual(Clique.WiggleTime, wiggle);
