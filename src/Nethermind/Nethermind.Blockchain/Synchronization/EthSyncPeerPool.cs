@@ -464,7 +464,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void ReportNoSyncProgress(SyncPeerAllocation allocation)
         {
-            PeerInfo peer = allocation.Current;
+            PeerInfo peer = allocation?.Current;
             if (peer == null)
             {
                 return;

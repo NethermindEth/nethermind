@@ -38,14 +38,6 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Throws_when_recording_unexpected_trace()
-        {
-            Keccak txHash = TestItem.KeccakA;
-            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(txHash);
-            Assert.Throws<InvalidOperationException>(() => ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakB));
-        }
-
-        [Test]
         public void Number_of_tx_traces_equals_number_of_txs_in_a_block()
         {
             Block block = Build.A.Block.TestObject;

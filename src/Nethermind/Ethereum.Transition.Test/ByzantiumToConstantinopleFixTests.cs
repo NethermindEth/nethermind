@@ -23,9 +23,9 @@ using NUnit.Framework;
 namespace Ethereum.Transition.Test
 {
     [TestFixture]
-    public class ByzantiumToConstantinopleTests : BlockchainTestBase
+    public class ByzantiumToConstantinopleFixTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcByzantiumToConstantinople"  })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "bcByzantiumToConstantinopleFix"  })]
         public async Task Test(BlockchainTest test)
         {    
             await RunTest(test);
