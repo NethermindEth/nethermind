@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -149,6 +150,8 @@ namespace Nethermind.Core
             set => Header.Timestamp = value;
         }
 
+        public DateTime TimestampDate => Header.TimestampDate;
+
         public long Number
         {
             get => Header.Number;
@@ -218,7 +221,7 @@ namespace Nethermind.Core
                     }
                     else
                     {
-                        return $"{Number} ({Hash?.ToShortString()}), tx count: {Transactions.Length}";
+                        return $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Transactions.Length}";
                     }
                 case Format.HashNumberDiffAndTx:
                     if (Hash == null)

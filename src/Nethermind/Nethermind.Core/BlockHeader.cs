@@ -62,6 +62,7 @@ namespace Nethermind.Core
         public long GasUsed { get; set; }
         public long GasLimit { get; internal set; }
         public UInt256 Timestamp { get; set; }
+        public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).DateTime;
         public byte[] ExtraData { get; set; }
         public Keccak MixHash { get; set; }
         public ulong Nonce { get; set; }
@@ -70,7 +71,7 @@ namespace Nethermind.Core
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
 
         private static ThreadLocal<byte[]> _rlpBuffer = new ThreadLocal<byte[]>(() => new byte[1024]);
-        
+
         public static Keccak CalculateHash(BlockHeader header)
         {
             using (MemoryStream stream = Rlp.BorrowStream())
@@ -78,12 +79,12 @@ namespace Nethermind.Core
                 Rlp.Encode(stream, header);
                 byte[] buffer = _rlpBuffer.Value;
                 stream.Seek(0, SeekOrigin.Begin);
-                stream.Read(buffer, 0, (int)stream.Length);
-                Keccak newOne = Keccak.Compute(buffer.AsSpan().Slice(0, (int)stream.Length));
+                stream.Read(buffer, 0, (int) stream.Length);
+                Keccak newOne = Keccak.Compute(buffer.AsSpan().Slice(0, (int) stream.Length));
                 return newOne;
             }
         }
-        
+
         public static Keccak CalculateHash(Block block)
         {
             return CalculateHash(block.Header);

@@ -148,17 +148,14 @@ namespace Nethermind.Clique
                     {
                         if(ReferenceEquals(scheduledBlock, _scheduledBlock))
                         {
-                            _blockTree.SuggestBlock(scheduledBlock);
                             BlockHeader parent = _blockTree.FindParentHeader(scheduledBlock.Header);
-                            
-                            DateTimeOffset ownDate = DateTimeOffset.FromUnixTimeSeconds((long)_scheduledBlock.Timestamp);
-                            
                             Address parentSigner = _snapshotManager.GetBlockSealer(parent);
-                            DateTimeOffset parentDate = DateTimeOffset.FromUnixTimeSeconds((long)parent.Timestamp);
-                            string parentTurnDescription = parent.IsInTurn() ? "IN TURN" : "OUT OF TURN";
-                            string parentDetails = $"{parentTurnDescription} {parentDate.DateTime:HH:mm:ss} {parent.ToString(BlockHeader.Format.Short)} sealed by {KnownAddresses.GetDescription(parentSigner)}";
                             
-                            if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription} {ownDate.DateTime:HH:mm:ss} {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} based on {parentDetails} after the delay of {wiggle}");
+                            string parentTurnDescription = parent.IsInTurn() ? "IN TURN" : "OUT OF TURN";
+                            string parentDetails = $"{parentTurnDescription} {parent.TimestampDate:HH:mm:ss} {parent.ToString(BlockHeader.Format.Short)} sealed by {KnownAddresses.GetDescription(parentSigner)}";
+                            
+                            if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription} {_scheduledBlock.TimestampDate:HH:mm:ss} {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} based on {parentDetails} after the delay of {wiggle}");
+                            _blockTree.SuggestBlock(scheduledBlock);
                         }
                     }
                     else
@@ -303,7 +300,7 @@ namespace Nethermind.Clique
 
             if (!_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
             {
-                if (_logger.IsInfo) _logger.Info($"Not allowed to sign block ({parentBlock.Number + 1})");
+                if (_logger.IsTrace) _logger.Trace($"Not allowed to sign block ({parentBlock.Number + 1})");
                 _recentNotAllowedParent = parentHeader.Hash;
                 return null;
             }
