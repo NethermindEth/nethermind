@@ -344,7 +344,7 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode(int value)
         {
-            return Encode((long) value);
+            return value < 0 ? Encode(new BigInteger(value), 4) : Encode((long) value);
         }
 
         /// <summary>
@@ -1082,13 +1082,13 @@ namespace Nethermind.Core.Encoding
 
             public UInt256 DecodeUInt256()
             {
-                Span<byte> bytes = DecodeByteArraySpan();
-                if (bytes.Length > 32)
+                Span<byte> byteSpan = DecodeByteArraySpan();
+                if (byteSpan.Length > 32)
                 {
                     throw new ArgumentException();
                 }
 
-                UInt256.CreateFromBigEndian(out UInt256 result, bytes);
+                UInt256.CreateFromBigEndian(out UInt256 result, byteSpan);
                 return result;
             }
 
@@ -1228,8 +1228,34 @@ namespace Nethermind.Core.Encoding
 
             public int DecodeInt()
             {
-                byte[] bytes = DecodeByteArray();
-                return bytes.Length == 0 ? 0 : bytes.ToInt32();
+                int prefix = ReadByte();
+                if (prefix < 128)
+                {
+                    return prefix;
+                }
+
+                if (prefix == 128)
+                {
+                    return 0;
+                }
+
+                int length = prefix - 128;
+                if (length > 4)
+                {
+                    throw new RlpException($"Unexpected length of int value: {length}");
+                }
+
+                int result = 0;
+                for (int i = 4; i > 0; i--)
+                {
+                    result = result << 8;
+                    if (i <= length)
+                    {
+                        result = result | Data[Position + length - i];
+                    }
+                }
+
+                return result;
             }
 
             public uint DecodeUInt()

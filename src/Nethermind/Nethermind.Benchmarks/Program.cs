@@ -65,7 +65,8 @@ namespace Nethermind.Benchmarks
 //            BenchmarkRunner.Run<RlpEncodeHeader>();
 //            BenchmarkRunner.Run<RlpEncodeTransaction>();
 //              BenchmarkRunner.Run<RlpEncodeLong>();
-              BenchmarkRunner.Run<RlpDecodeLong>();
+//              BenchmarkRunner.Run<RlpDecodeLong>();
+              BenchmarkRunner.Run<RlpDecodeInt>();
 
 //              BenchmarkRunner.Run<PatriciaTree>();
 //            
