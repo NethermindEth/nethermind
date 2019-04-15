@@ -339,6 +339,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 _codeDb = codeDb;
             }
 
+            private Keccak[] _filter;
+
+            public void SetFilter(Keccak[] availableHashes)
+            {
+                _filter = availableHashes;
+            }
+
             public Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch)
             {
                 batch.Responses = new byte[batch.StateSyncs.Length][];
@@ -346,6 +353,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 int i = 0;
                 foreach (StateSyncItem item in batch.StateSyncs)
                 {
+                    if (_filter != null && !_filter.Contains(item.Hash))
+                    {
+                        continue;
+                    }
+
                     batch.Responses[i++] = _stateDb[item.Hash.Bytes] ?? _codeDb[item.Hash.Bytes];
                 }
 
@@ -367,9 +379,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
                 return Task.FromResult(request);
             };
-            
+
             public static Func<StateSyncBatch, Task<StateSyncBatch>> MissingResponse = Task.FromResult;
-            
+
             public static Func<StateSyncBatch, Task<StateSyncBatch>> MissingRequest = request =>
             {
                 request.Responses = new byte[request.StateSyncs.Length][];
@@ -384,7 +396,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
                 return Task.FromResult(request);
             };
-            
+
             public static Func<StateSyncBatch, Task<StateSyncBatch>> EmptyArraysInResponses = request =>
             {
                 request.Responses = new byte[request.StateSyncs.Length][];
@@ -449,6 +461,28 @@ namespace Nethermind.Blockchain.Test.Synchronization
             CompareDbs();
         }
 
+        private int _timeoutLength = 1000000;
+
+        [Test, TestCaseSource("Scenarios")]
+        public async Task Can_download_in_multiple_connections((string Name, Action<StateTree, StateDb, MemDb> SetupTree) testCase)
+        {
+            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
+            _remoteStateDb.Commit();
+
+            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            mock.SetFilter(new[] {_remoteStateTree.RootHash});
+            
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            _localStateDb.Commit();
+            
+            mock.SetFilter(null);
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            _localStateDb.Commit();
+
+            CompareDbs();
+        }
+
         [Test, TestCaseSource("Scenarios")]
         public async Task Can_download_a_full_state((string Name, Action<StateTree, StateDb, MemDb> SetupTree) testCase)
         {
@@ -469,14 +503,14 @@ namespace Nethermind.Blockchain.Test.Synchronization
             MaliciousExecutorMock mock = new MaliciousExecutorMock(MaliciousExecutorMock.NotPreimage);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(20000000)).Unwrap()
-            .ContinueWith(t =>
-            {
-                Assert.True(t.IsFaulted);
-                Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
-                Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
-            });
+                .ContinueWith(t =>
+                {
+                    Assert.True(t.IsFaulted);
+                    Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
+                    Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
+                });
         }
-        
+
         [Test]
         public async Task Throws_when_peer_sends_null_response()
         {
@@ -484,13 +518,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
                 .ContinueWith(t =>
-            {
-                Assert.True(t.IsFaulted);
-                Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
-                Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
-            });
+                {
+                    Assert.True(t.IsFaulted);
+                    Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
+                    Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
+                });
         }
-        
+
         [Test]
         public async Task Throws_when_peer_sends_null_request()
         {
@@ -498,13 +532,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
                 .ContinueWith(t =>
-            {
-                Assert.True(t.IsFaulted);
-                Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
-                Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
-            });
+                {
+                    Assert.True(t.IsFaulted);
+                    Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
+                    Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
+                });
         }
-        
+
         [Test]
         public async Task Throws_when_peer_sends_empty_byte_arrays()
         {
@@ -512,11 +546,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(300)).Unwrap()
                 .ContinueWith(t =>
-            {
-                Assert.True(t.IsFaulted);
-                Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
-                Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
-            });
+                {
+                    Assert.True(t.IsFaulted);
+                    Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
+                    Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
+                });
         }
 
         private void CompareDbs()

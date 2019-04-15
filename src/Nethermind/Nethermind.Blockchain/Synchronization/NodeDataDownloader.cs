@@ -156,12 +156,6 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                if (Keccak.Compute(currentResponseItem) != currentStateSyncItem.Hash)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {batch.Responses[i]?.Length} of type {batch.StateSyncs[i].NodeDataType} at level {batch.StateSyncs[i].Level} Keccak({batch.Responses[i].ToHexString()}) != {batch.StateSyncs[i].Hash}");
-                    throw new EthSynchronizationException("Node sent invalid data");
-                }
-
                 if (currentResponseItem == null)
                 {
                     missing++;
@@ -169,6 +163,12 @@ namespace Nethermind.Blockchain.Synchronization
                 }
                 else
                 {
+                    if (Keccak.Compute(currentResponseItem) != currentStateSyncItem.Hash)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {batch.Responses[i]?.Length} of type {batch.StateSyncs[i].NodeDataType} at level {batch.StateSyncs[i].Level} Keccak({batch.Responses[i].ToHexString()}) != {batch.StateSyncs[i].Hash}");
+                        throw new EthSynchronizationException("Node sent invalid data");
+                    }
+                    
                     added++;
 
                     NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
@@ -241,6 +241,12 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             Interlocked.Add(ref _downloadedNodesCount, added);
+
+            if (added == 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Peer sent no data in response to a request of length {batch.StateSyncs.Length}");
+                throw new EthSynchronizationException("Node sent no data");
+            }
 
             if (_logger.IsTrace) _logger.Trace($"Received node data: requested {batch.StateSyncs.Length}, missing {missing}, added {added}");
             if (_logger.IsTrace) _logger.Trace($"Handled responses - now {TotalCount} at ({_stream0.Count}|{_stream1.Count}|{_stream2.Count}) nodes");

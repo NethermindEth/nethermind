@@ -206,7 +206,10 @@ namespace Nethermind.Core.Encoding
             return Encode(transaction, false);
         }
 
-        public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false,
+        public static Rlp Encode(
+            Transaction transaction,
+            bool forSigning,
+            bool isEip155Enabled = false,
             int chainId = 0)
         {
             Rlp[] sequence = new Rlp[forSigning && !(isEip155Enabled && chainId != 0) ? 6 : 9];
@@ -302,7 +305,7 @@ namespace Nethermind.Core.Encoding
                 return OfEmptyByteArray;
             }
 
-            byte[] bytes = new byte[32];
+            Span<byte> bytes = stackalloc byte[32];
             value.ToBigEndian(bytes);
             return Encode(bytes.WithoutLeadingZeros());
         }
@@ -1404,11 +1407,6 @@ namespace Nethermind.Core.Encoding
             item.ToBigEndian(bytes);
             int length = bytes.WithoutLeadingZeros().Length;
             return length + 1;
-        }
-
-        public static int LengthOf(BigInteger item)
-        {
-            return Encode(item).Length;
         }
 
         public static int LengthOf(ulong _)
