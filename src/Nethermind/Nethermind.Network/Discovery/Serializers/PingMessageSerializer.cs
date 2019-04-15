@@ -18,6 +18,7 @@
 
 using System;
 using System.Linq;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -43,13 +44,18 @@ namespace Nethermind.Network.Discovery.Serializers
             {
                 message.Topics = new Topic[1] { new Topic("foo") };
             }
+            Rlp[] topics = new Rlp[message.Topics.Length]; 
+            for (var i = 0; i < message.Topics.Length; i++)
+            {
+                topics[i] = SerializeTopic(message.Topics[i]);
+            }
             byte[] data = Rlp.Encode(
                 Rlp.Encode(message.Version),
                 source,
                 destination,
                 //verify if encoding is correct
                 Rlp.Encode(message.ExpirationTime),
-                Rlp.Encode(Array.ConvertAll(message.Topics, t => t.ToString()))
+                Rlp.Encode(topics)
             ).Bytes;
 
             byte[] serializedMsg = Serialize(typeBytes, data);
@@ -89,6 +95,15 @@ namespace Nethermind.Network.Discovery.Serializers
             message.Topics = topics;
 
             return message;
+        }
+
+        private Topic[] DeserializeTopics(Rlp.DecoderContext context)
+        {
+            return context.DecodeArray(ctx =>
+            {
+                byte[] topicString = ctx.DecodeByteArray();
+                return new Topic(Encoding.ASCII.GetString(topicString));
+            });
         }
     }
 }

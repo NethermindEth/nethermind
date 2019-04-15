@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 using System;
+using System.Linq;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Messages
@@ -34,7 +35,7 @@ namespace Nethermind.Network.Discovery.Messages
 
         public override string ToString()
         {
-            return base.ToString() + $", PingMdc: {PingMdc?.ToHexString() ?? "empty"}, ExpirationTime {ExpirationTime}, TopicHash {TopicHash?.ToHexString() ?? "empty"}, TicketSerial {TicketSerial}, WaitPeriods {String.Join(", ", Array.ConvertAll(WaitPeriods, x => x.ToString()))}";
+            return base.ToString() + $", PingMdc: {PingMdc?.ToHexString() ?? "empty"}, ExpirationTime {ExpirationTime}, TopicHash {TopicHash?.ToHexString() ?? "empty"}, TicketSerial {(TicketSerial > 0 ? TicketSerial.ToString() : "empty")}, WaitPeriods {(WaitPeriods != null && WaitPeriods.Any() ? String.Join(", ", Array.ConvertAll(WaitPeriods, x => x.ToString())) : "empty")}";
         }
 
         public override MessageType MessageType => MessageType.Pong;

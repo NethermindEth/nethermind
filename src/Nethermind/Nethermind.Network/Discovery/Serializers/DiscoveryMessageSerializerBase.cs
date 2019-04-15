@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats;
 
 namespace Nethermind.Network.Discovery.Serializers
@@ -101,6 +102,11 @@ namespace Nethermind.Network.Discovery.Serializers
                 Rlp.Encode(address.Port),
                 Rlp.Encode(id)
             );
+        }
+
+        protected Rlp SerializeTopic(Topic t)
+        {
+            return Rlp.Encode(t.ToString());
         }
 
         protected IPEndPoint GetAddress(byte[] ip, int port)

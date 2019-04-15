@@ -123,7 +123,10 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address2,
                 PingMdc = new byte[] {1,2,3},
                 ExpirationTime = 100,
-                FarPublicKey = _privateKey2.PublicKey
+                FarPublicKey = _privateKey2.PublicKey,
+                TopicHash = new byte[] { 1, 2, 3 },
+                TicketSerial = 1,
+                WaitPeriods = new uint[] { 1 }
             };
             _discoveryHandlers[0].SendMessage(msg);
             Thread.Sleep(200);
@@ -134,7 +137,10 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address,
                 PingMdc = new byte[] { 1, 2, 3 },
                 ExpirationTime = 100,
-                FarPublicKey = _privateKey.PublicKey
+                FarPublicKey = _privateKey.PublicKey,
+                TopicHash = new byte[] { 1, 2, 3 },
+                TicketSerial = 1,
+                WaitPeriods = new uint[] { 1 }
             };
             _discoveryHandlers[1].SendMessage(msg2);
             Thread.Sleep(200);

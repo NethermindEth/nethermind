@@ -34,13 +34,19 @@ namespace Nethermind.Network.Discovery.Serializers
         public byte[] Serialize(PongMessage message)
         {
             byte[] typeBytes = { (byte)message.MessageType };
+            Rlp[] waitPeriods = new Rlp[message.WaitPeriods.Length];
+            for (var i = 0; i < message.WaitPeriods.Length; i++)
+            {
+                waitPeriods[i] = Rlp.Encode(message.WaitPeriods[i]);
+            }
+            
             byte[] data = Rlp.Encode(
                 Encode(message.FarAddress),
                 Rlp.Encode(message.PingMdc),
                 Rlp.Encode(message.ExpirationTime),
                 Rlp.Encode(message.TopicHash),
                 Rlp.Encode(message.TicketSerial),
-                Rlp.Encode(message.WaitPeriods)
+                Rlp.Encode(waitPeriods)
             ).Bytes;
 
             byte[] serializedMsg = Serialize(typeBytes, data);
