@@ -148,7 +148,7 @@ namespace Nethermind.Blockchain.Synchronization
             for (int i = 0; i < batch.StateSyncs.Length; i++)
             {
                 StateSyncItem currentStateSyncItem = batch.StateSyncs[i];
-                byte[] currentResponseItem = batch.Responses[i];
+                
                 if (batch.Responses.Length < i + 1)
                 {
                     missing++;
@@ -156,6 +156,7 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
+                byte[] currentResponseItem = batch.Responses[i];
                 if (currentResponseItem == null)
                 {
                     missing++;

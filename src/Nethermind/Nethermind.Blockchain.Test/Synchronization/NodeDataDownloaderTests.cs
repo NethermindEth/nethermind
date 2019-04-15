@@ -340,6 +340,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
 
             private Keccak[] _filter;
+            public int MaxResponseLength { get; set; } = int.MaxValue;
 
             public void SetFilter(Keccak[] availableHashes)
             {
@@ -348,11 +349,16 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch)
             {
-                batch.Responses = new byte[batch.StateSyncs.Length][];
+                batch.Responses = new byte[Math.Min(MaxResponseLength, batch.StateSyncs.Length)][];
 
                 int i = 0;
                 foreach (StateSyncItem item in batch.StateSyncs)
                 {
+                    if (i >= MaxResponseLength)
+                    {
+                        break;
+                    }
+                    
                     if (_filter != null && !_filter.Contains(item.Hash))
                     {
                         continue;
@@ -477,6 +483,22 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _localStateDb.Commit();
             
             mock.SetFilter(null);
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            _localStateDb.Commit();
+
+            CompareDbs();
+        }
+        
+        [Test, TestCaseSource("Scenarios")]
+        public async Task Can_download_when_executor_sends_shorter_responses((string Name, Action<StateTree, StateDb, MemDb> SetupTree) testCase)
+        {
+            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
+            _remoteStateDb.Commit();
+
+            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            mock.MaxResponseLength = 1;
+            
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
 
