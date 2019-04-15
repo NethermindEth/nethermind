@@ -92,6 +92,7 @@ namespace Nethermind.Network.Test.Discovery
                 SourceAddress = _address,
                 DestinationAddress = _address2,
                 Version = Encoding.ASCII.GetBytes("temporary discovery v5"),
+                Topics = new Topic[] { new Topic("foo") },
                 ExpirationTime = 100,
                 FarPublicKey = _privateKey2.PublicKey
             };
@@ -105,6 +106,7 @@ namespace Nethermind.Network.Test.Discovery
                 SourceAddress = _address2,
                 DestinationAddress = _address,
                 Version = Encoding.ASCII.GetBytes("temporary discovery v5"),
+                Topics = new Topic[] { new Topic("foo") },
                 ExpirationTime = 100,
                 FarPublicKey = _privateKey.PublicKey
             };

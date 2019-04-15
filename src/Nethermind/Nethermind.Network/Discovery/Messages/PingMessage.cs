@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Linq;
 using System.Net;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -38,7 +39,7 @@ namespace Nethermind.Network.Discovery.Messages
 
         public override string ToString()
         {
-            return base.ToString() + $", SourceAddress: {SourceAddress?.ToString() ?? "empty"}, DestinationAddress: {DestinationAddress?.ToString() ?? "empty"}, Version: {Version}, Topics: {String.Join(", ", Array.ConvertAll(Topics, (t => t.ToString())))}, ExpirationTime: {ExpirationTime}, Mdc: {Mdc?.ToHexString() ?? "empty"}";
+            return base.ToString() + $", SourceAddress: {SourceAddress?.ToString() ?? "empty"}, DestinationAddress: {DestinationAddress?.ToString() ?? "empty"}, Version: {Version}, Topics: {(Topics != null && Topics.Any() ? string.Join(",", Topics.Select(x => x.ToString())) : "empty")}, ExpirationTime: {ExpirationTime}, Mdc: {Mdc?.ToHexString() ?? "empty"}";
         }
 
         public override MessageType MessageType => MessageType.Ping;

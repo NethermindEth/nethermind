@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -38,6 +39,10 @@ namespace Nethermind.Network.Discovery.Serializers
             byte[] typeBytes = { (byte)message.MessageType };
             Rlp source = Encode(message.SourceAddress);
             Rlp destination = Encode(message.DestinationAddress);
+            if(message.Topics == null || !message.Topics.Any())
+            {
+                message.Topics = new Topic[1] { new Topic("foo") };
+            }
             byte[] data = Rlp.Encode(
                 Rlp.Encode(message.Version),
                 source,
