@@ -297,6 +297,7 @@ namespace Nethermind.Core.Test
         [TestCase(257L)]
         [TestCase(Int64.MaxValue / 256 / 256)]
         [TestCase(Int64.MaxValue)]
+        [TestCase(1555318864136L)]
         public void Long_and_big_integer_encoded_the_same(long value)
         {
             Rlp rlpLong = Rlp.Encode(value);
