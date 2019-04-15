@@ -1,0 +1,85 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+using System;
+using System.Linq;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
+using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Stats;
+
+namespace Nethermind.Network.Discovery.Serializers
+{
+    public class TopicRegisterMessageSerializer : DiscoveryMessageSerializerBase, IMessageSerializer<TopicRegisterMessage>
+    {
+        public TopicRegisterMessageSerializer(IEcdsa ecdsa, IPrivateKeyGenerator privateKeyGenerator, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver) : base(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver)
+        {
+        }
+
+        public byte[] Serialize(TopicRegisterMessage message)
+        {
+            byte[] typeBytes = { (byte)message.MessageType };
+            byte[] data = Rlp.Encode(
+                Rlp.Encode<string>(message.Topics.Select(c => c.ToString()).ToArray()),
+                Rlp.Encode(message.Idx),
+                Rlp.Encode(message.Pong.FarAddress), //TODO: Convert to use PongMessageSerializer
+                Rlp.Encode(message.Pong.PingMdc),
+                Rlp.Encode(message.Pong.ExpirationTime),
+                Rlp.Encode(message.Pong.TopicHash),
+                Rlp.Encode(message.Pong.TicketSerial),
+                Rlp.Encode(message.Pong.WaitPeriods)
+            ).Bytes;
+
+            byte[] serializedMsg = Serialize(typeBytes, data);
+            return serializedMsg;
+        }
+
+        public TopicRegisterMessage Deserialize(byte[] msg)
+        {
+            var results = PrepareForDeserialization<TopicRegisterMessage>(msg);
+
+            Rlp.DecoderContext rlp = results.Data.AsRlpContext();
+
+            rlp.ReadSequenceLength();
+            rlp.ReadSequenceLength();
+
+            string[] array = Rlp.DecodeArray<string>(rlp);
+            var topics = Array.ConvertAll(array, t => new Topic(t));
+            var idx = rlp.DecodeUInt256();
+            var pongFarAddress = rlp.DecodeByteArray();
+            var pongFarAddressPort = rlp.DecodeInt();
+
+            var pongFarAddressUDPPort = rlp.DecodeInt();
+            var pingMdc = rlp.DecodeByteArray();
+            var pongExpirationTime = rlp.DecodeLong();
+            var pongWaitPeriods = rlp.DecodeArray(ctx => ctx.DecodeUInt256());
+
+            var message = results.Message;
+            message.Topics = topics;
+            message.Idx = (short)idx;
+            message.Pong = MessageFactory.CreateIncomingMessage<PongMessage>(message.FarPublicKey);
+            message.Pong.PingMdc = pingMdc;
+            message.Pong.ExpirationTime = pongExpirationTime;
+            message.Pong.WaitPeriods = Array.ConvertAll(pongWaitPeriods, wp => (uint)wp);
+
+            return message;
+        }
+    }
+}

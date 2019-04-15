@@ -23,6 +23,11 @@ namespace Nethermind.Network.Discovery.Messages
         Ping = 1,
         Pong = 2,
         FindNode = 3,
-        Neighbors = 4
+        Neighbors = 4,
+        FindNodeHash = 5,
+        TopicRegister = 6,
+        TopicQuery = 7,
+        TopicNodes = 8
+
     }
 }

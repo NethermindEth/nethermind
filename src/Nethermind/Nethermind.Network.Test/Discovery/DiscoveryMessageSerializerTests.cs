@@ -24,6 +24,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -41,6 +42,7 @@ namespace Nethermind.Network.Test.Discovery
         private IPEndPoint _farAddress;
         private IPEndPoint _nearAddress;
         private INetworkConfig _config;
+        private PongMessage _samplePong;
         private IMessageSerializationService _messageSerializationService;
         private ITimestamp _timestamp;
 
@@ -64,7 +66,10 @@ namespace Nethermind.Network.Test.Discovery
                 SourceAddress = _farAddress,
                 Version = _config.PingMessageVersion,
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long) _timestamp.EpochMilliseconds
+                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long) _timestamp.EpochMilliseconds,
+
+                Topics = new Topic[1] { new Topic("foo") }
+
             };
 
             var data = _messageSerializationService.Serialize(message);
@@ -79,7 +84,11 @@ namespace Nethermind.Network.Test.Discovery
             Assert.AreEqual(message.SourceAddress, deserializedMessage.SourceAddress);
             Assert.AreEqual(message.Version, deserializedMessage.Version);
             Assert.IsNotNull(deserializedMessage.Mdc);
+
+            Assert.AreEqual(message.Topics[0].Name, "foo");
         }
+
+        
 
         [Test]
         public void PongMessageTest()
@@ -89,8 +98,12 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _farAddress,
                 PingMdc = new byte[] {1, 2, 3},
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long) _timestamp.EpochMilliseconds
+                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long) _timestamp.EpochMilliseconds,
+                TopicHash = new byte[] {1, 2, 3},
+                TicketSerial = 1,
+                WaitPeriods = new uint[] { 1 }
             };
+            _samplePong = message;
 
             var data = _messageSerializationService.Serialize(message);
             var deserializedMessage = _messageSerializationService.Deserialize<PongMessage>(data);
@@ -100,6 +113,10 @@ namespace Nethermind.Network.Test.Discovery
             Assert.AreEqual(message.ExpirationTime, deserializedMessage.ExpirationTime);
 
             Assert.AreEqual(message.PingMdc, deserializedMessage.PingMdc);
+
+            Assert.AreEqual(message.TopicHash, deserializedMessage.TopicHash);
+            Assert.AreEqual(message.TicketSerial, deserializedMessage.TicketSerial);
+            Assert.AreEqual(message.WaitPeriods, deserializedMessage.WaitPeriods);
         }
 
         [Test]
@@ -133,6 +150,27 @@ namespace Nethermind.Network.Test.Discovery
             Assert.AreEqual(message.SearchedNodeId, deserializedMessage.SearchedNodeId);
         }
 
+        public void FindNodeHashMessageTest()
+        {
+            var message = new FindNodeHashMessage
+            {
+                FarAddress = _farAddress,
+                SearchedNodeIdHash = new byte[] { 1, 2, 3 },
+                FarPublicKey = _privateKey.PublicKey,
+                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long)_timestamp.EpochMilliseconds
+            };
+
+            var data = _messageSerializationService.Serialize(message);
+            var deserializedMessage = _messageSerializationService.Deserialize<FindNodeHashMessage>(data);
+
+
+            Assert.AreEqual(message.MessageType, deserializedMessage.MessageType);
+            Assert.AreEqual(message.FarPublicKey, deserializedMessage.FarPublicKey);
+            Assert.AreEqual(message.ExpirationTime, deserializedMessage.ExpirationTime);
+
+            Assert.AreEqual(message.SearchedNodeIdHash, deserializedMessage.SearchedNodeIdHash);
+        }
+
         [Test]
         public void NeighborsMessageTest()
         {
@@ -163,6 +201,84 @@ namespace Nethermind.Network.Test.Discovery
                 Assert.AreEqual(message.Nodes[i].IdHash, deserializedMessage.Nodes[i].IdHash);
                 Assert.AreEqual(message.Nodes[i], deserializedMessage.Nodes[i]);
             }
+        }
+
+        public void TopicRegisterMessageTest()
+        {
+            var message = new TopicRegisterMessage
+            {
+                FarAddress = _farAddress,
+                Topics = new[]
+                {
+                    new Topic("foo")
+                },
+                Idx = 1,
+                Pong = _samplePong,
+                FarPublicKey = _privateKey.PublicKey
+
+            };
+
+            var data = _messageSerializationService.Serialize(message);
+            var deserializedMessage = _messageSerializationService.Deserialize<TopicRegisterMessage>(data);
+
+            Assert.AreEqual(message.MessageType, deserializedMessage.MessageType);
+            Assert.AreEqual(message.FarPublicKey, deserializedMessage.FarPublicKey);
+
+            Assert.AreEqual(message.Idx, deserializedMessage.Idx);
+            Assert.AreEqual(message.Pong, deserializedMessage.Pong);
+        }
+
+        public void TopicQueryMessageTest()
+        {
+            var message = new TopicQueryMessage
+            {
+                FarAddress = _farAddress,
+                Topic = new Topic("foo"),
+                FarPublicKey = _privateKey.PublicKey,
+                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long)_timestamp.EpochMilliseconds
+            };
+
+            var data = _messageSerializationService.Serialize(message);
+            var deserializedMessage = _messageSerializationService.Deserialize<TopicQueryMessage>(data);
+
+            Assert.AreEqual(message.MessageType, deserializedMessage.MessageType);
+            Assert.AreEqual(message.FarPublicKey, deserializedMessage.FarPublicKey);
+            Assert.AreEqual(message.ExpirationTime, deserializedMessage.ExpirationTime);
+
+            Assert.AreEqual(message.Topic, deserializedMessage.Topic);
+        }
+
+        public void TopicNodesMessageTest()
+        {
+            var message = new TopicNodesMessage
+            {
+                FarAddress = _farAddress,
+                TopicQueryMdc = new byte[] { 1, 2, 3 },
+                Nodes = new[]
+                {
+                    new Node("192.168.1.2", 1),
+                    new Node("192.168.1.3", 2),
+                    new Node("192.168.1.4", 3)
+                },
+                FarPublicKey = _privateKey.PublicKey
+            };
+
+            var data = _messageSerializationService.Serialize(message);
+            var deserializedMessage = _messageSerializationService.Deserialize<TopicNodesMessage>(data);
+
+            Assert.AreEqual(message.MessageType, deserializedMessage.MessageType);
+            Assert.AreEqual(message.FarPublicKey, deserializedMessage.FarPublicKey);
+
+            Assert.AreEqual(message.TopicQueryMdc, deserializedMessage.TopicQueryMdc);
+
+            for (var i = 0; i < message.Nodes.Length; i++)
+            {
+                Assert.AreEqual(message.Nodes[i].Host, deserializedMessage.Nodes[i].Host);
+                Assert.AreEqual(message.Nodes[i].Port, deserializedMessage.Nodes[i].Port);
+                Assert.AreEqual(message.Nodes[i].IdHash, deserializedMessage.Nodes[i].IdHash);
+                Assert.AreEqual(message.Nodes[i], deserializedMessage.Nodes[i]);
+            }
+
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,31 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Net;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Network.Discovery.Messages
 {
-    public class PingMessage : DiscoveryMessage
+    public class TopicQueryMessage : DiscoveryMessage
     {
-        public IPEndPoint SourceAddress { get; set; }
-        public IPEndPoint DestinationAddress { get; set; }
-
-        public byte[] Version { get; set; }
-
-        public Topic[] Topics { get; set; }
+        public Topic Topic { get; set; }
 
         public long ExpirationTime { get; set; }
 
-        public byte[] Mdc { get; set; }
-
         public override string ToString()
         {
-            return base.ToString() + $", SourceAddress: {SourceAddress?.ToString() ?? "empty"}, DestinationAddress: {DestinationAddress?.ToString() ?? "empty"}, Version: {Version}, Topics: {String.Join(", ", Array.ConvertAll(Topics, (t => t.ToString())))}, ExpirationTime: {ExpirationTime}, Mdc: {Mdc?.ToHexString() ?? "empty"}";
+            return base.ToString() + $", TopicQueryName: {(Topic != null ? Topic.ToString() : "empty")}, Expiration: {ExpirationTime}";
         }
 
-        public override MessageType MessageType => MessageType.Ping;
+        public override MessageType MessageType => MessageType.TopicQuery;
     }
 }

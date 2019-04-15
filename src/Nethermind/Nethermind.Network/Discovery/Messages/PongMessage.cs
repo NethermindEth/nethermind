@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
-
+using System;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Messages
@@ -24,9 +24,17 @@ namespace Nethermind.Network.Discovery.Messages
     {
         public byte[] PingMdc { get; set; }
 
+        public long ExpirationTime { get; set; }
+
+        public byte[] TopicHash { get; set; } //TODO: Should be Keccak?
+
+        public uint TicketSerial { get; set; }
+
+        public uint[] WaitPeriods { get; set; }
+
         public override string ToString()
         {
-            return base.ToString() + $", PingMdc: {PingMdc?.ToHexString() ?? "empty"}";
+            return base.ToString() + $", PingMdc: {PingMdc?.ToHexString() ?? "empty"}, ExpirationTime {ExpirationTime}, TopicHash {TopicHash?.ToHexString() ?? "empty"}, TicketSerial {TicketSerial}, WaitPeriods {String.Join(", ", Array.ConvertAll(WaitPeriods, x => x.ToString()))}";
         }
 
         public override MessageType MessageType => MessageType.Pong;

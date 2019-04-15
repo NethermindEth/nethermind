@@ -24,6 +24,9 @@ namespace Nethermind.Network.Discovery.Messages
     {
         public byte[] SearchedNodeId { get; set; }
 
+
+        public long ExpirationTime { get; set; }
+
         public override string ToString()
         {
             return base.ToString() + $", SearchedNodeId: {(SearchedNodeId != null ? SearchedNodeId.ToHexString() : "empty")}";

@@ -15,8 +15,8 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
-
 using System.IO;
+using System.Text;
 
 namespace Nethermind.Network.Config
 {
@@ -46,7 +46,7 @@ namespace Nethermind.Network.Config
 
         public string KeyPass { get; set; } = "TestPass";
         public int UdpChannelCloseTimeout { get; set; } = 1000 * 5;
-        public int PingMessageVersion { get; set; } = 4;
+        public byte[] PingMessageVersion { get; set; } = Encoding.ASCII.GetBytes("temporary discovery v5");
         public int DiscoveryMsgExpiryTime { get; set; } = 60 * 90;
         public int MaxNodeLifecycleManagersCount { get; set; } = 2000;
         public int NodeLifecycleManagersCleanupCount { get; set; } = 200;

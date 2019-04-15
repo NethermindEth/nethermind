@@ -19,6 +19,8 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core;
+
 using Nethermind.Core.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
@@ -39,6 +41,9 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         private bool _isPongExpected;
         private bool _isNeighborsExpected;
+
+        private readonly ITimestamp _timestamp;
+
 
         public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, INetworkConfig networkConfig, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats)
         {
@@ -130,6 +135,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         public void SendPong(PingMessage discoveryMessage)
         {
             var msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
+            msg.ExpirationTime = _networkConfig.DiscoveryMsgExpiryTime + (long)_timestamp.EpochMilliseconds;
             msg.PingMdc = discoveryMessage.Mdc;
             _discoveryManager.SendMessage(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
@@ -201,7 +207,8 @@ namespace Nethermind.Network.Discovery.Lifecycle
         {
             try
             {
-                var msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);         
+                var msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);
+                msg.ExpirationTime = _networkConfig.DiscoveryMsgExpiryTime + (long)_timestamp.EpochMilliseconds;
                 msg.Version = _networkConfig.PingMessageVersion;
                 msg.SourceAddress = _nodeTable.MasterNode.Address;
                 msg.DestinationAddress = msg.FarAddress;

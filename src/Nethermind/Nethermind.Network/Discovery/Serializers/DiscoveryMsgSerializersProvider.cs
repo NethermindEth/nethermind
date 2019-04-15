@@ -29,7 +29,11 @@ namespace Nethermind.Network.Discovery.Serializers
         private readonly PingMessageSerializer _pingMessageSerializer;
         private readonly PongMessageSerializer _pongMessageSerializer;
         private readonly FindNodeMessageSerializer _findNodeMessageSerializer;
+        private readonly FindNodeHashMessageSerializer _findNodeHashMessageSerializer;
         private readonly NeighborsMessageSerializer _neighborsMessageSerializer;
+        private readonly TopicRegisterMessageSerializer _topicRegisterMessageSerializer;
+        private readonly TopicQueryMessageSerializer _topicQueryMessageSerializer;
+        private readonly TopicNodesMessageSerializer _topicNodesMessageSerializer;
 
         public DiscoveryMsgSerializersProvider(
             IMessageSerializationService messageSerializationService,
@@ -41,13 +45,21 @@ namespace Nethermind.Network.Discovery.Serializers
             var pingSerializer = new PingMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
             var pongSerializer = new PongMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
             var findNodeSerializer = new FindNodeMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
+            var findNodeHashSerializer = new FindNodeHashMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
             var neighborsSerializer = new NeighborsMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
+            var topicRegisterSerializer = new TopicRegisterMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
+            var topicQuerySerializer = new TopicQueryMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
+            var topicNodesSerializer = new TopicNodesMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
 
             _messageSerializationService = messageSerializationService;
             _pingMessageSerializer = pingSerializer;
             _pongMessageSerializer = pongSerializer;
             _findNodeMessageSerializer = findNodeSerializer;
+            _findNodeHashMessageSerializer = findNodeHashSerializer;
             _neighborsMessageSerializer = neighborsSerializer;
+            _topicRegisterMessageSerializer = topicRegisterSerializer;
+            _topicQueryMessageSerializer = topicQuerySerializer;
+            _topicNodesMessageSerializer = topicNodesSerializer;
         }
 
         public void RegisterDiscoverySerializers()
@@ -55,7 +67,11 @@ namespace Nethermind.Network.Discovery.Serializers
             _messageSerializationService.Register(_pingMessageSerializer);
             _messageSerializationService.Register(_pongMessageSerializer);
             _messageSerializationService.Register(_findNodeMessageSerializer);
+            _messageSerializationService.Register(_findNodeHashMessageSerializer);
             _messageSerializationService.Register(_neighborsMessageSerializer);
+            _messageSerializationService.Register(_topicRegisterMessageSerializer);
+            _messageSerializationService.Register(_topicQueryMessageSerializer);
+            _messageSerializationService.Register(_topicNodesMessageSerializer);
         }
     }
 }

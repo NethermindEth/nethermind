@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -15,32 +15,24 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
-
 using System;
-using System.Net;
 using Nethermind.Core.Extensions;
-using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Messages
 {
-    public class PingMessage : DiscoveryMessage
+    public class FindNodeHashMessage : DiscoveryMessage
     {
-        public IPEndPoint SourceAddress { get; set; }
-        public IPEndPoint DestinationAddress { get; set; }
-
-        public byte[] Version { get; set; }
-
-        public Topic[] Topics { get; set; }
-
-        public long ExpirationTime { get; set; }
-
-        public byte[] Mdc { get; set; }
+        public byte[] SearchedNodeIdHash { get; set; }
+        
+        //time in seconds x seconds from now
+        public long ExpirationTime { get; set; } 
 
         public override string ToString()
         {
-            return base.ToString() + $", SourceAddress: {SourceAddress?.ToString() ?? "empty"}, DestinationAddress: {DestinationAddress?.ToString() ?? "empty"}, Version: {Version}, Topics: {String.Join(", ", Array.ConvertAll(Topics, (t => t.ToString())))}, ExpirationTime: {ExpirationTime}, Mdc: {Mdc?.ToHexString() ?? "empty"}";
+            return base.ToString() + $", SearchedNodeHash: {(SearchedNodeIdHash != null ? SearchedNodeIdHash.ToHexString() : "empty")}";
         }
 
-        public override MessageType MessageType => MessageType.Ping;
+        public override MessageType MessageType => MessageType.FindNodeHash;
     }
 }

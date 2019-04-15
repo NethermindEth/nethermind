@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Handlers.Logging;
@@ -90,7 +91,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address2,
                 SourceAddress = _address,
                 DestinationAddress = _address2,
-                Version = 4,
+                Version = Encoding.ASCII.GetBytes("temporary discovery v5"),
                 ExpirationTime = 100,
                 FarPublicKey = _privateKey2.PublicKey
             };
@@ -103,7 +104,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address,
                 SourceAddress = _address2,
                 DestinationAddress = _address,
-                Version = 4,
+                Version = Encoding.ASCII.GetBytes("temporary discovery v5"),
                 ExpirationTime = 100,
                 FarPublicKey = _privateKey.PublicKey
             };

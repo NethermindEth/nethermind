@@ -26,6 +26,7 @@ namespace Nethermind.Network.Discovery.Messages
     {
         public Node[] Nodes { get; set; }
 
+        public long ExpirationTime { get; set; }
         public override string ToString()
         {
             return base.ToString() + $", Nodes: {(Nodes != null && Nodes.Any() ? string.Join(",", Nodes.Select(x => x.ToString())) : "empty")}";

@@ -26,13 +26,11 @@ namespace Nethermind.Network.Discovery.Messages
         //public byte[] Payload { get; set; } = Bytes.Empty;
         //public Signature Signature { get; set; }
         public IPEndPoint FarAddress { get; set; }
-        public PublicKey FarPublicKey { get; set; }
-        //time in seconds x seconds from now
-        public long ExpirationTime { get; set; }     
+        public PublicKey FarPublicKey { get; set; }    
 
         public override string ToString()
         {
-            return $"Type: {MessageType}, FarAddress: {FarAddress?.ToString() ?? "empty"}, FarPublicKey: {FarPublicKey?.ToString() ?? "empty"}, ExpirationTime: {ExpirationTime}";
+            return $"Type: {MessageType}, FarAddress: {FarAddress?.ToString() ?? "empty"}, FarPublicKey: {FarPublicKey?.ToString() ?? "empty"}";
         }
 
         public abstract MessageType MessageType { get; }
