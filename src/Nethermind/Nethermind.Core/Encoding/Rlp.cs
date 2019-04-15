@@ -39,7 +39,7 @@ namespace Nethermind.Core.Encoding
         public const int LengthOfBloomRlp = 259;
         public const int LengthOfEmptyArrayRlp = 1;
         public const int LengthOfEmptySequenceRlp = 1;
-        
+
         private const int DebugMessageContentLength = 2048;
 
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
@@ -161,7 +161,7 @@ namespace Nethermind.Core.Encoding
         {
             if (item is Rlp rlp)
             {
-                stream.Write(Encode(new[] {rlp}).Bytes);                
+                stream.Write(Encode(new[] {rlp}).Bytes);
             }
 
             if (Decoders.ContainsKey(typeof(T)))
@@ -331,22 +331,22 @@ namespace Nethermind.Core.Encoding
         {
             return Encode((long) value);
         }
-        
+
         public static Rlp Encode(short value)
         {
             return Encode((long) value);
         }
-        
+
         public static Rlp Encode(uint value)
         {
             return Encode((long) value);
         }
-        
+
         public static Rlp Encode(int value)
         {
             return Encode((long) value);
         }
-        
+
         /// <summary>
         /// Special case for nonce
         /// </summary>
@@ -356,24 +356,24 @@ namespace Nethermind.Core.Encoding
         {
             return Encode(value.ToBigEndianByteArray());
         }
-        
+
         public static Rlp Encode(long value)
         {
             if (value == 0L)
             {
                 return OfEmptyByteArray;
             }
-            
+
             if (value > 0)
             {
-                byte byte6 = (byte)(value >> 8);
-                byte byte5 = (byte)(value >> 16);
-                byte byte4 = (byte)(value >> 24);
-                byte byte3 = (byte)(value >> 32);
-                byte byte2 = (byte)(value >> 40);
-                byte byte1 = (byte)(value >> 48);
-                byte byte0 = (byte)(value >> 56);
-                
+                byte byte6 = (byte) (value >> 8);
+                byte byte5 = (byte) (value >> 16);
+                byte byte4 = (byte) (value >> 24);
+                byte byte3 = (byte) (value >> 32);
+                byte byte2 = (byte) (value >> 40);
+                byte byte1 = (byte) (value >> 48);
+                byte byte0 = (byte) (value >> 56);
+
                 if (value < 256L * 256L * 256L * 256L * 256L * 256L * 256L)
                 {
                     if (value < 256L * 256L * 256L * 256L * 256L * 256L)
@@ -387,29 +387,29 @@ namespace Nethermind.Core.Encoding
                                     if (value < 256 * 256)
                                     {
                                         if (value < 128)
-                                        {   
-                                            return new Rlp((byte)value);
+                                        {
+                                            return new Rlp((byte) value);
                                         }
-                                    
-                                        return value < 256 ? new Rlp(new byte[]{129, (byte)value}) : new Rlp(new byte[]{130, byte6, (byte)value});
+
+                                        return value < 256 ? new Rlp(new byte[] {129, (byte) value}) : new Rlp(new byte[] {130, byte6, (byte) value});
                                     }
 
-                                    return new Rlp(new byte[] {131, byte5, byte6, (byte)value});
+                                    return new Rlp(new byte[] {131, byte5, byte6, (byte) value});
                                 }
 
-                                return new Rlp(new byte[] {132, byte4, byte5, byte6, (byte)value});
+                                return new Rlp(new byte[] {132, byte4, byte5, byte6, (byte) value});
                             }
 
-                            return new Rlp(new byte[] {133, byte3, byte4, byte5, byte6, (byte)value});
+                            return new Rlp(new byte[] {133, byte3, byte4, byte5, byte6, (byte) value});
                         }
 
-                        return new Rlp(new byte[] {134, byte2, byte3, byte4, byte5, byte6, (byte)value});
+                        return new Rlp(new byte[] {134, byte2, byte3, byte4, byte5, byte6, (byte) value});
                     }
 
-                    return new Rlp(new byte[] {135, byte1, byte2, byte3, byte4, byte5, byte6, (byte)value});
+                    return new Rlp(new byte[] {135, byte1, byte2, byte3, byte4, byte5, byte6, (byte) value});
                 }
 
-                return new Rlp(new byte[] {136, byte0, byte1, byte2, byte3, byte4, byte5, byte6, (byte)value});
+                return new Rlp(new byte[] {136, byte0, byte1, byte2, byte3, byte4, byte5, byte6, (byte) value});
             }
 
             return Encode(new BigInteger(value), 8);
@@ -1214,7 +1214,7 @@ namespace Nethermind.Core.Encoding
                 Span<byte> bytes = DecodeByteArraySpan();
                 return System.Text.Encoding.UTF8.GetString(bytes);
             }
-            
+
             public byte DecodeNibble()
             {
                 return ReadByte();
@@ -1240,8 +1240,34 @@ namespace Nethermind.Core.Encoding
 
             public long DecodeLong()
             {
-                byte[] bytes = DecodeByteArray();
-                return bytes.Length == 0 ? 0L : bytes.ToInt64();
+                int prefix = ReadByte();
+                if (prefix < 128)
+                {
+                    return prefix;
+                }
+
+                if (prefix == 128)
+                {
+                    return 0;
+                }
+
+                int length = prefix - 128;
+                if (length > 8)
+                {
+                    throw new RlpException($"Unexpected length of long value: {length}");
+                }
+
+                long result = 0;
+                for (int i = 8; i > 0; i--)
+                {
+                    result = result << 8;
+                    if (i <= length)
+                    {
+                        result = result | Data[Position + length - i];
+                    }
+                }
+
+                return result;
             }
 
             public byte[] DecodeByteArray()
@@ -1367,7 +1393,7 @@ namespace Nethermind.Core.Encoding
             {
                 return 9;
             }
-            
+
             if (value < 256L * 256L * 256L * 256L * 256L * 256L * 256L)
             {
                 if (value < 256L * 256L * 256L * 256L * 256L * 256L)
@@ -1384,7 +1410,7 @@ namespace Nethermind.Core.Encoding
                                     {
                                         return 1;
                                     }
-                                    
+
                                     return value < 256 ? 2 : 3;
                                 }
 
@@ -1413,7 +1439,7 @@ namespace Nethermind.Core.Encoding
             {
                 return 9; // we cast it to long now
             }
-            
+
             if (value < 256 * 256 * 256)
             {
                 if (value < 256 * 256)
@@ -1422,7 +1448,7 @@ namespace Nethermind.Core.Encoding
                     {
                         return 1;
                     }
-                                    
+
                     return value < 256 ? 2 : 3;
                 }
 
