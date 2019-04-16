@@ -528,8 +528,17 @@ namespace Nethermind.Store
         }
 
         internal void DumpState(DumpStateContext ctx, PatriciaTree tree)
-        {   
-            ResolveNode(tree);
+        {
+            try
+            {
+                ResolveNode(tree);
+            }
+            catch (StateException e)
+            {
+                ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix}{Keccak} {NodeType} [MISSING]");
+                return;
+            }
+            
             AccountDecoder decoder
                  = new AccountDecoder();
             
