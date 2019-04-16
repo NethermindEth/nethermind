@@ -42,7 +42,7 @@ namespace Nethermind.Network.Discovery.Serializers
                 Rlp.Encode(message.Pong.FarAddress), //TODO: Convert to use PongMessageSerializer
                 Rlp.Encode(message.Pong.PingMdc),
                 Rlp.Encode(message.Pong.ExpirationTime),
-                Rlp.Encode(message.Pong.TopicHash),
+                Rlp.Encode(message.Pong.TopicMdc),
                 Rlp.Encode(message.Pong.TicketSerial),
                 Rlp.Encode(message.Pong.WaitPeriods)
             ).Bytes;

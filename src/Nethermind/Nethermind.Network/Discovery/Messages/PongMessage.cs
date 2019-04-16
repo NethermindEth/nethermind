@@ -18,6 +18,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core.Extensions;
+using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Network.Discovery.Messages
 {
@@ -27,7 +28,9 @@ namespace Nethermind.Network.Discovery.Messages
 
         public long ExpirationTime { get; set; }
 
-        public byte[] TopicHash { get; set; } //TODO: Should be Keccak?
+        public Topic[] Topics { get; set; }
+
+        public byte[] TopicMdc { get; set; }
 
         public uint TicketSerial { get; set; }
 
@@ -35,7 +38,7 @@ namespace Nethermind.Network.Discovery.Messages
 
         public override string ToString()
         {
-            return base.ToString() + $", PingMdc: {PingMdc?.ToHexString() ?? "empty"}, ExpirationTime {ExpirationTime}, TopicHash {TopicHash?.ToHexString() ?? "empty"}, TicketSerial {(TicketSerial > 0 ? TicketSerial.ToString() : "empty")}, WaitPeriods {(WaitPeriods != null && WaitPeriods.Any() ? String.Join(", ", Array.ConvertAll(WaitPeriods, x => x.ToString())) : "empty")}";
+            return base.ToString() + $", PingMdc: {PingMdc?.ToHexString() ?? "empty"}, ExpirationTime {ExpirationTime}, Topics: {(Topics != null && Topics.Any() ? string.Join(",", Topics.Select(x => x.ToString())) : "empty")}, TicketSerial {(TicketSerial > 0 ? TicketSerial.ToString() : "empty")}, WaitPeriods {(WaitPeriods != null && WaitPeriods.Any() ? String.Join(", ", Array.ConvertAll(WaitPeriods, x => x.ToString())) : "empty")}";
         }
 
         public override MessageType MessageType => MessageType.Pong;

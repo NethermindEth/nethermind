@@ -86,6 +86,12 @@ namespace Nethermind.Network.Discovery.Serializers
                 return new Topic(ctx.DecodeString());
             });
 
+            var topicsBytes = new Rlp[topics.Count()];
+            for (int i = 0; i < topics.Count(); i++)
+            {
+                topicsBytes[i] = SerializeTopic(topics[i]);
+            }
+
             var message = results.Message;
             message.SourceAddress = source;
             message.DestinationAddress = destination;
@@ -93,17 +99,9 @@ namespace Nethermind.Network.Discovery.Serializers
             message.Version = version;
             message.ExpirationTime = expireTime;
             message.Topics = topics;
+            message.TopicsMdc = Keccak.Compute(Rlp.Encode(topicsBytes).Bytes).Bytes;
 
             return message;
-        }
-
-        private Topic[] DeserializeTopics(Rlp.DecoderContext context)
-        {
-            return context.DecodeArray(ctx =>
-            {
-                byte[] topicString = ctx.DecodeByteArray();
-                return new Topic(Encoding.ASCII.GetString(topicString));
-            });
         }
     }
 }

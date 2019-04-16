@@ -17,7 +17,9 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
 
@@ -27,6 +29,7 @@ using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Lifecycle
 {
@@ -43,6 +46,8 @@ namespace Nethermind.Network.Discovery.Lifecycle
         private bool _isNeighborsExpected;
 
         private readonly ITimestamp _timestamp;
+
+        private readonly Topic[] _topicsHash;
 
 
         public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, INetworkConfig networkConfig, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats)
@@ -233,5 +238,33 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 _logger.Error("Error during sending ping message", e);
             }
         }
+
+        /*
+        private Ticket pongToTicket(long localTime, List<Topic> topics, Node node, PongMessage pong)
+        {
+            List<uint> wps = new List<uint>(pong.WaitPeriods);
+            if (topics.Count() != wps.Count())
+            {
+                throw new Exception($"bad wait period list; got {wps.Count()} values want {topics.Count()}");
+            }
+            string[] topicStrings = new string[topics.Count()];
+            for (int i = 0; i < topics.Count(); i++)
+            {
+                topicStrings[i] = topics[i].ToString();
+            }
+            if (new Keccak(_rlp.Encode(topicStrings)) != pong.TopicHash)
+            {
+                throw new Exception("bad topic hash");
+            }
+            List<long> regTime = new List<long>();
+            for (int i = 0; i < wps.Count(); i++)
+            {
+                wp = wps[i];
+                regTime[i] = localTime + (new TimeSpan(0, 0, 1)).Ticks * wp;
+            }
+            Ticket t = new Ticket(localTime, node, topics, pong, regTime);
+            return t;
+        }
+        */
     }
 }

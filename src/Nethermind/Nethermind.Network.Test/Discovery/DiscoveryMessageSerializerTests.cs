@@ -99,7 +99,8 @@ namespace Nethermind.Network.Test.Discovery
                 PingMdc = new byte[] {1, 2, 3},
                 FarPublicKey = _privateKey.PublicKey,
                 ExpirationTime = _config.DiscoveryMsgExpiryTime + (long) _timestamp.EpochMilliseconds,
-                TopicHash = new byte[] {1, 2, 3},
+                TopicMdc = new byte[] {1, 2, 3},
+                Topics = new Topic[1] { new Topic("foo") },
                 TicketSerial = 1,
                 WaitPeriods = new uint[] { 1 }
             };
@@ -114,7 +115,7 @@ namespace Nethermind.Network.Test.Discovery
 
             Assert.AreEqual(message.PingMdc, deserializedMessage.PingMdc);
 
-            Assert.AreEqual(message.TopicHash, deserializedMessage.TopicHash);
+            ///Assert.AreEqual(Keccak.Compute(topics, deserializedMessage.TopicMdc);
             Assert.AreEqual(message.TicketSerial, deserializedMessage.TicketSerial);
             Assert.AreEqual(message.WaitPeriods, deserializedMessage.WaitPeriods);
         }

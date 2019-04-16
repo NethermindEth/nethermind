@@ -33,6 +33,8 @@ namespace Nethermind.Network.Discovery.Messages
 
         public Topic[] Topics { get; set; }
 
+        public byte[] TopicsMdc { get; set; }
+
         public long ExpirationTime { get; set; }
 
         public byte[] Mdc { get; set; }

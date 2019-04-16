@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -34,6 +35,12 @@ namespace Nethermind.Network.Discovery.Serializers
         public byte[] Serialize(PongMessage message)
         {
             byte[] typeBytes = { (byte)message.MessageType };
+
+            var topicsBytes = new Rlp[message.Topics.Count()];
+            for (int i = 0; i < message.Topics.Count(); i++)
+            {
+                topicsBytes[i] = SerializeTopic(message.Topics[i]);
+            }
             Rlp[] waitPeriods = new Rlp[message.WaitPeriods.Length];
             for (var i = 0; i < message.WaitPeriods.Length; i++)
             {
@@ -44,7 +51,7 @@ namespace Nethermind.Network.Discovery.Serializers
                 Encode(message.FarAddress),
                 Rlp.Encode(message.PingMdc),
                 Rlp.Encode(message.ExpirationTime),
-                Rlp.Encode(message.TopicHash),
+                Rlp.Encode(Keccak.Compute(Rlp.Encode(topicsBytes).Bytes).Bytes),
                 Rlp.Encode(message.TicketSerial),
                 Rlp.Encode(waitPeriods)
             ).Bytes;
@@ -70,14 +77,14 @@ namespace Nethermind.Network.Discovery.Serializers
             var token = rlp.DecodeByteArray();
             var expirationTime = rlp.DecodeLong();
 
-            var topicHash = rlp.DecodeByteArray();
+            var topicMdc = rlp.DecodeByteArray();
             var ticketSerial = rlp.DecodeUInt256();
             var waitPeriods = rlp.DecodeArray(ctx => (uint)ctx.DecodeUInt256());
 
             var message = results.Message;
             message.PingMdc = token;
             message.ExpirationTime = expirationTime;
-            message.TopicHash = topicHash;
+            message.TopicMdc = topicMdc;
             message.TicketSerial = (uint)ticketSerial;
             message.WaitPeriods = waitPeriods;
 

@@ -124,7 +124,8 @@ namespace Nethermind.Network.Test.Discovery
                 PingMdc = new byte[] {1,2,3},
                 ExpirationTime = 100,
                 FarPublicKey = _privateKey2.PublicKey,
-                TopicHash = new byte[] { 1, 2, 3 },
+                TopicMdc = new byte[] { 1, 2, 3 },
+                Topics = new Topic[] { new Topic("foo") },
                 TicketSerial = 1,
                 WaitPeriods = new uint[] { 1 }
             };
@@ -138,7 +139,8 @@ namespace Nethermind.Network.Test.Discovery
                 PingMdc = new byte[] { 1, 2, 3 },
                 ExpirationTime = 100,
                 FarPublicKey = _privateKey.PublicKey,
-                TopicHash = new byte[] { 1, 2, 3 },
+                TopicMdc = new byte[] { 1, 2, 3 },
+                Topics = new Topic[] { new Topic("foo") },
                 TicketSerial = 1,
                 WaitPeriods = new uint[] { 1 }
             };
