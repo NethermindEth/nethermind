@@ -19,6 +19,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
@@ -28,7 +29,7 @@ namespace Nethermind.Store
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
         
-        private readonly ConcurrentDictionary<byte[], byte[]> _db;
+        internal readonly ConcurrentDictionary<byte[], byte[]> _db;
         
         public byte[] this[byte[] key]
         {

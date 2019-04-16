@@ -373,7 +373,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return 0;
             }
 
-           Task<int> task = _nodeDataDownloader.SyncNodeData(cancellation, (bestSuggested.StateRoot, NodeDataType.State));
+           Task<int> task = _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);
            int result = await task;
            if (task.IsCompletedSuccessfully)
            {

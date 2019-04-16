@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
@@ -61,6 +62,10 @@ namespace Nethermind.Core
             IsTotallyEmpty = isTotallyEmpty;
         }
 
+        public bool HasCode => CodeHash.Bytes.Equals(Keccak.OfAnEmptyString.Bytes);
+        
+        public bool HasStorage => StorageRoot.Bytes.Equals(Keccak.EmptyTreeHash);
+        
         public UInt256 Nonce { get; }
         public UInt256 Balance { get; }
         public Keccak StorageRoot { get; }

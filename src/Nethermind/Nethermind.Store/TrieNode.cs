@@ -528,8 +528,17 @@ namespace Nethermind.Store
         }
 
         internal void DumpState(DumpStateContext ctx, PatriciaTree tree)
-        {   
-            ResolveNode(tree);
+        {
+            try
+            {
+                ResolveNode(tree);
+            }
+            catch (StateException e)
+            {
+                ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix}{Keccak} {NodeType} [MISSING]");
+                return;
+            }
+            
             AccountDecoder decoder
                  = new AccountDecoder();
             
@@ -567,6 +576,16 @@ namespace Nethermind.Store
                     ctx.Indent += "++";
                     Account account = decoder.Decode(Value.AsRlpContext());
                     ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix} N{account.Nonce} B{account.Balance}");
+                    if (account.HasCode)
+                    {
+                        ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix} CODE {account.CodeHash}");
+                    }
+
+                    if (account.HasStorage)
+                    {
+                        ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix} STORAGE {account.StorageRoot}");
+                    }
+                    
                     break;
                 }
                 default:

@@ -165,21 +165,6 @@ namespace Nethermind.Core.Test
         }
         
         [Test]
-        public void Length_of_bigint()
-        {
-            Assert.AreEqual(1, Rlp.LengthOf(BigInteger.Zero));
-            Assert.AreEqual(1, Rlp.LengthOf((BigInteger)127));
-            Assert.AreEqual(2, Rlp.LengthOf((BigInteger)128));
-            
-            BigInteger item = 255;
-            for (int i = 0; i < 32; i++)
-            {
-                Assert.AreEqual(i + 2, Rlp.LengthOf(item));
-                item *= 256;
-            }
-        }
-        
-        [Test]
         public void Long_negative()
         {
             Rlp output = Rlp.Encode(-1L);

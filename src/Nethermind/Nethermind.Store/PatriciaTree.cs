@@ -33,7 +33,7 @@ namespace Nethermind.Store
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
-        private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(64 * 1024);
+        private readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(64 * 1024);
 //        private static readonly LruCache<byte[], byte[]> ValueCache = new LruCache<byte[], byte[]>(128 * 1024);
 
         /// <summary>
@@ -684,6 +684,12 @@ namespace Nethermind.Store
         public string DumpState()
         {
             DumpStateContext context = new DumpStateContext();
+
+            if (RootRef == null)
+            {
+                return "[EMPTY TREE]";
+            }
+            
             RootRef.DumpState(context, this);
 
             return context.Builder.ToString();

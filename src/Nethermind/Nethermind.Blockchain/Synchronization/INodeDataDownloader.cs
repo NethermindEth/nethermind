@@ -24,17 +24,9 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public interface INodeDataDownloader
     {
-        Task<int> SyncNodeData(CancellationToken cancellationToken, params (Keccak Hash, NodeDataType NodeDataType)[] initialNodes);
+        Task<int> SyncNodeData(CancellationToken cancellationToken, Keccak rootNode);
 
         // here now to pass the reference easily for the current implementation
         void SetExecutor(INodeDataRequestExecutor executor);
-    }
-    
-    public static class NodeDataDownloaderExtensions
-    {
-        public static Task SyncNodeData(this INodeDataDownloader @this, CancellationToken token, Keccak rootHash)
-        {
-            return @this.SyncNodeData(token, (rootHash, NodeDataType.State));
-        }
     }
 }

@@ -29,15 +29,36 @@ namespace Nethermind.Core.Logging
         private readonly string _prefix;
         private readonly BlockingCollection<string> _queuedEntries = new BlockingCollection<string>(new ConcurrentQueue<string>());
 
+        public void Flush()
+        {
+            _queuedEntries.CompleteAdding();
+            _task.Wait();
+        }
+
+        private Task _task;
+        
         public ConsoleAsyncLogger(LogLevel logLevel, string prefix = null)
         {
             _logLevel = logLevel;
             _prefix = prefix;
-            Task.Factory.StartNew(() =>
+            _task = Task.Factory.StartNew(() =>
                 {
-                    foreach (string logEntry in _queuedEntries.GetConsumingEnumerable())
+                    try
                     {
-                        Console.WriteLine(logEntry);
+                        foreach (string logEntry in _queuedEntries.GetConsumingEnumerable())
+                        {
+                            Console.WriteLine(logEntry);
+
+                            if (_queuedEntries.IsAddingCompleted)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e);
+                        throw;
                     }
                 },
                 TaskCreationOptions.LongRunning);
@@ -47,7 +68,7 @@ namespace Nethermind.Core.Logging
         {
             _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Thread.CurrentThread.ManagedThreadId}] {_prefix}{text}");
         }
-        
+
         public void Info(string text)
         {
             Log(text);
@@ -73,10 +94,10 @@ namespace Nethermind.Core.Logging
             Log(ex != null ? $"{text}, Exception: {ex}" : text);
         }
 
-        public bool IsInfo => (int)_logLevel >= 2;
-        public bool IsWarn => (int)_logLevel >= 1;
-        public bool IsDebug => (int)_logLevel >= 3;
-        public bool IsTrace => (int)_logLevel >= 4;
+        public bool IsInfo => (int) _logLevel >= 2;
+        public bool IsWarn => (int) _logLevel >= 1;
+        public bool IsDebug => (int) _logLevel >= 3;
+        public bool IsTrace => (int) _logLevel >= 4;
         public bool IsError => true;
     }
 }
