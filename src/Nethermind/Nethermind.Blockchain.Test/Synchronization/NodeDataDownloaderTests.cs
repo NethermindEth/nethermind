@@ -17,12 +17,9 @@
  */
 
 using System;
-using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -536,10 +533,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             CompareTrees("AFTER FIRST SYNC");
             
             _localStateTree.RootHash = _remoteStateTree.RootHash;
-            _remoteStateTree.Set(TestItem.AddressA, Account0.WithChangedBalance(123.Ether()));
-            _remoteStateTree.Set(TestItem.AddressB, Account0.WithChangedBalance(123.Ether()));
-            _remoteStateTree.Set(TestItem.AddressC, Account0.WithChangedBalance(123.Ether()));
-            _remoteStateTree.Set(TestItem.AddressD, Account0.WithChangedBalance(123.Ether()));
+            _remoteStateTree.Set(TestItem.AddressA, AccountJustState0.WithChangedBalance(123.Ether()));
+            _remoteStateTree.Set(TestItem.AddressB, AccountJustState1.WithChangedBalance(123.Ether()));
+            _remoteStateTree.Set(TestItem.AddressC, AccountJustState2.WithChangedBalance(123.Ether()));
             
             CompareTrees("BEFORE ROOT HASH UPDATE");
             
