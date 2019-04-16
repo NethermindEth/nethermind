@@ -382,7 +382,6 @@ namespace Nethermind.Blockchain.Synchronization
                return Math.Max(1, result); // hack
            }
            
-           Thread.Sleep(5000);
            return result;
         }
 

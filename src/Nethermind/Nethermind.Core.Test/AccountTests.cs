@@ -22,5 +22,23 @@ namespace Nethermind.Core.Test
             Assert.False(account.IsTotallyEmpty, "totally empty");
             Assert.True(account.IsEmpty, "empty");
         }
+        
+        [Test]
+        public void Test_has_code()
+        {
+            Account account = Account.TotallyEmpty;
+            Assert.False(account.HasCode);
+            account = account.WithChangedCodeHash(TestItem.KeccakA);
+            Assert.True(account.HasCode);
+        }
+        
+        [Test]
+        public void Test_has_storage()
+        {
+            Account account = Account.TotallyEmpty;
+            Assert.False(account.HasStorage);
+            account = account.WithChangedStorageRoot(TestItem.KeccakA);
+            Assert.True(account.HasStorage);
+        }
     }
 }
