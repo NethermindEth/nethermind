@@ -34,8 +34,8 @@ namespace Nethermind.Blockchain.Synchronization
     {
         private static AccountDecoder accountDecoder = new AccountDecoder();
 
-        private const int MaxRequestSize = 1024;
-        private int _lastDownloadedNodesCount = 0;
+        private const int MaxRequestSize = 384;
+        private int _lastDownloadedNodesCount;
         private int _downloadedNodesCount;
         private int _savedStorageCount;
         private int _savedStateCount;
@@ -78,17 +78,28 @@ namespace Nethermind.Blockchain.Synchronization
                 dataBatches = PrepareRequests();
                 for (int i = 0; i < dataBatches.Length; i++)
                 {
+                    if(_logger.IsDebug) _logger.Debug($"Sending requests for {dataBatches[i].StateSyncs.Length} nodes");
                     await _executor.ExecuteRequest(token, dataBatches[i]).ContinueWith(t =>
                     {
                         if (t.IsCompleted)
                         {
                             HandleResponse(t.Result);
                         }
+                        
+                        if (t.IsCanceled)
+                        {
+                            throw new EthSynchronizationException("Canceled");
+                        }
+                        
+                        if (t.IsFaulted)
+                        {
+                            throw t.Exception;
+                        }
                     });
                 }
             } while (dataBatches.Length != 0);
 
-
+            await Task.Delay(2000);
             if (_logger.IsInfo) _logger.Info($"Finished downloading node data (downloaded {_downloadedNodesCount})");
         }
 
@@ -99,27 +110,34 @@ namespace Nethermind.Blockchain.Synchronization
             Added
         }
 
+        private LruCache<Keccak, object> _alreadySaved = new LruCache<Keccak, object>(1024 * 16);        
         private AddNodeResult AddNode(StateSyncItem stateSyncItem, string reason, bool missing = false)
         {
             if (_logger.IsTrace) _logger.Trace($"Trying to add a node {stateSyncItem.Hash} - {reason}");
             if (!missing)
             {
-                lock (_stateDb)
+                if (_alreadySaved.Get(stateSyncItem.Hash) != null)
                 {
-                    if (stateSyncItem.NodeDataType == NodeDataType.State && _stateDb.Get(stateSyncItem.Hash) != null
-                        || stateSyncItem.NodeDataType == NodeDataType.Storage && _stateDb.Get(stateSyncItem.Hash) != null
-                        || stateSyncItem.NodeDataType == NodeDataType.Code && _codeDb.Get(stateSyncItem.Hash) != null)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Trying to add a node {stateSyncItem.Hash} - node already in the DB");
-                        return AddNodeResult.AlreadySaved;
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Trying to add a node {stateSyncItem.Hash} - node already in the DB");
+                    return AddNodeResult.AlreadySaved;
                 }
-
+                
                 // same items can have same hashes and we only need them once
                 if (_dependencies.ContainsKey(stateSyncItem.Hash))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Trying to add a node {stateSyncItem.Hash} - node already included in the dependencies");
                     return AddNodeResult.AlreadyRequested;
+                }
+                
+                lock (_stateDb)
+                {
+                    if (stateSyncItem.NodeDataType != NodeDataType.Code && _stateDb.Get(stateSyncItem.Hash) != null
+                        || stateSyncItem.NodeDataType == NodeDataType.Code && _codeDb.Get(stateSyncItem.Hash) != null)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Trying to add a node {stateSyncItem.Hash} - node already in the DB");
+                        _alreadySaved.Set(stateSyncItem.Hash, new object());
+                        return AddNodeResult.AlreadySaved;
+                    }
                 }
             }
 
@@ -237,7 +255,7 @@ namespace Nethermind.Blockchain.Synchronization
                 throw new EthSynchronizationException("Node sent an empty response");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Received node data - {batch.Responses.Length} items in response to {batch.StateSyncs.Length}");
+            if (_logger.IsDebug) _logger.Debug($"Received node data - {batch.Responses.Length} items in response to {batch.StateSyncs.Length}");
 
             int missing = 0;
             int added = 0;
@@ -264,7 +282,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (Keccak.Compute(currentResponseItem) != currentStateSyncItem.Hash)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {batch.Responses[i]?.Length} of type {batch.StateSyncs[i].NodeDataType} at level {batch.StateSyncs[i].Level} Keccak({batch.Responses[i].ToHexString()}) != {batch.StateSyncs[i].Hash}");
+                        if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {batch.Responses[i]?.Length} of type {batch.StateSyncs[i].NodeDataType} at level {batch.StateSyncs[i].Level} of type {batch.StateSyncs[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.StateSyncs[i].Hash}");
                         throw new EthSynchronizationException("Node sent invalid data");
                     }
 
@@ -495,7 +513,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public async Task<int> SyncNodeData(CancellationToken token, Keccak rootNode)
         {
-            if (_rootNode != rootNode)
+            if (_rootNode != rootNode || _pendingRequests == 1)
             {
                 _logger.Info($"Changing the sync root node to {rootNode}");
                 _rootNode = rootNode;
@@ -503,6 +521,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _stream0?.Clear();
                 _stream1?.Clear();
                 _stream2?.Clear();
+                _pendingRequests = 0;
             }
 
             if (_stream0 == null)

@@ -16,7 +16,7 @@
     },
     "Rinkeby": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\rinkeby.cfg --baseDbPath C:\\nethermind_db",
+      "commandLineArgs": "--config rinkeby --baseDbPath D:\\rinkeby_fast --SyncConfig.FastSync true",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
