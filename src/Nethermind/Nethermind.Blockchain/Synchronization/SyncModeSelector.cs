@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (newSyncMode != Current)
             {
-                if (_logger.IsWarn) _logger.Warn($"Switching sync mode from {Current} to {newSyncMode} {bestHeader}|{bestFullState}|{maxBlockNumberAmongPeers}.");
+                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {bestHeader}|{bestFullState}|{maxBlockNumberAmongPeers}.");
                 Current = newSyncMode;
                 Changed?.Invoke(this, EventArgs.Empty);
             }
