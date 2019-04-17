@@ -67,8 +67,6 @@ namespace Nethermind.Network.Rlpx
             LocalPort = localPort;
         }
 
-        private Bootstrap _clientBootstrap;
-
         public async Task Init()
         {
             if (_isInitialized)
@@ -112,23 +110,6 @@ namespace Nethermind.Network.Rlpx
                 {
                     throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}", NetworkExceptionType.Other);
                 }
-
-                _clientBootstrap = new Bootstrap();
-                _clientBootstrap.Group(_workerGroup);
-                _clientBootstrap.Channel<TcpSocketChannel>();
-                _clientBootstrap.Option(ChannelOption.TcpNodelay, true);
-                _clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
-                _clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
-                _clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
-                {
-                    if (!_waitingNodes.TryRemove((IPEndPoint) ch.RemoteAddress, out Node node))
-                    {
-                        throw new NetworkingException($"Could not find the node object for {ch.RemoteAddress}.", NetworkExceptionType.Other);
-                    }
-
-                    Session session = new Session(LocalPort, _logManager, ch, node);
-                    InitializeChannel(ch, session);
-                }));
             }
             catch (Exception ex)
             {
@@ -138,14 +119,22 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private ConcurrentDictionary<IPEndPoint, Node> _waitingNodes = new ConcurrentDictionary<IPEndPoint, Node>();
-
         public async Task ConnectAsync(Node node)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
 
-            _waitingNodes.TryAdd(node.Address, node);
-            var connectTask = _clientBootstrap.ConnectAsync(node.Address);
+            Bootstrap clientBootstrap = new Bootstrap();
+            clientBootstrap.Group(_workerGroup);
+            clientBootstrap.Channel<TcpSocketChannel>();
+            clientBootstrap.Option(ChannelOption.TcpNodelay, true);
+            clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
+            clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
+            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
+            {
+                Session session = new Session(LocalPort, _logManager, ch, node);
+                InitializeChannel(ch, session);
+            }));
+            var connectTask = clientBootstrap.ConnectAsync(node.Address);
             var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10))));
             if (firstTask != connectTask)
             {
@@ -155,7 +144,6 @@ namespace Nethermind.Network.Rlpx
 
             if (connectTask.IsFaulted)
             {
-                _waitingNodes.TryRemove(node.Address, out _);
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {connectTask.Exception}");
@@ -187,7 +175,7 @@ namespace Nethermind.Network.Rlpx
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, session.RemoteNodeId, _logManager, _group);
+            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, _logManager, _group);
 
             IChannelPipeline pipeline = channel.Pipeline;
             // pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));

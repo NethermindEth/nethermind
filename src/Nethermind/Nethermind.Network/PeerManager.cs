@@ -318,14 +318,14 @@ namespace Nethermind.Network
                         _peerUpdateRequested.Set();
                     }
                 }
-                catch (Exception e) when (!(e is TaskCanceledException) && !(e is OperationCanceledException))
+                catch (AggregateException e) when (e.InnerExceptions.Any(inner => inner is OperationCanceledException))
                 {
-                    if (_logger.IsError) _logger.Error($"Peer update loop failure {e}");
+                    if (_logger.IsInfo) _logger.Info("Peer update loop canceled.");
                     break;
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsInfo) _logger.Error($"Exiting peer update loop {e.GetType().Name.Replace("Exception", string.Empty)}");
+                    if (_logger.IsError) _logger.Error("Peer update loop failure", e);
                     break;
                 }
             }
