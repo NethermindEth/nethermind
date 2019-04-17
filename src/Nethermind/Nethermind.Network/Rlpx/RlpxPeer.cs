@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -128,14 +129,12 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Option(ChannelOption.TcpNodelay, true);
             clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
             clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
-            clientBootstrap.RemoteAddress(node.Host, node.Port);
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
             {
                 Session session = new Session(LocalPort, _logManager, ch, node);
                 InitializeChannel(ch, session);
             }));
-
-            var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(node.Host), node.Port));
+            var connectTask = clientBootstrap.ConnectAsync(node.Address);
             var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10))));
             if (firstTask != connectTask)
             {
@@ -176,7 +175,7 @@ namespace Nethermind.Network.Rlpx
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, session.RemoteNodeId, _logManager, _group);
+            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, _logManager, _group);
 
             IChannelPipeline pipeline = channel.Pipeline;
             // pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));

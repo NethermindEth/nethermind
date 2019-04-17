@@ -29,9 +29,7 @@ namespace Nethermind.Network.Test
         [Test]
         public void Can_parse_ipv6_prefixed_ip()
         {
-            Node node = new Node(TestItem.PublicKeyA, "127.0.0.1", 1234);
-//            node.InitializeAddress("::ffff:73.224.122.50", 197379);
-            node.InitializeAddress("::ffff:73.224.122.50", 65535);
+            Node node = new Node(TestItem.PublicKeyA, "::ffff:73.224.122.50", 65535);
             Assert.AreEqual(65535, node.Port);
             Assert.AreEqual("73.224.122.50", node.Address.Address.MapToIPv4().ToString());
         }

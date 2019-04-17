@@ -42,7 +42,7 @@ namespace Nethermind.Network.Rlpx
 
         private readonly IEncryptionHandshakeService _service;
         private readonly ISession _session;
-        private PublicKey _remoteId;
+        private PublicKey RemoteId => _session.RemoteNodeId;
         private readonly TaskCompletionSource<object> _initCompletionSource;
         private IChannel _channel;
 
@@ -50,13 +50,10 @@ namespace Nethermind.Network.Rlpx
             IEncryptionHandshakeService service,
             ISession session,
             HandshakeRole role,
-            PublicKey remoteId,
             ILogManager logManager,
             IEventExecutorGroup group)
         {
-            _handshake.RemoteNodeId = remoteId;
             _role = role;
-            _remoteId = remoteId;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(NettyHandshakeHandler));
             _group = @group;
             _logger = logManager.GetClassLogger<NettyHandshakeHandler>();
@@ -71,9 +68,9 @@ namespace Nethermind.Network.Rlpx
 
             if (_role == HandshakeRole.Initiator)
             {
-                Packet auth = _service.Auth(_remoteId, _handshake);
+                Packet auth = _service.Auth(RemoteId, _handshake);
 
-                if (_logger.IsTrace) _logger.Trace($"Sending AUTH to {_remoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Sending AUTH to {RemoteId} @ {context.Channel.RemoteAddress}");
                 _buffer.WriteBytes(auth.Data);
                 context.WriteAndFlushAsync(_buffer);
             }
@@ -149,39 +146,38 @@ namespace Nethermind.Network.Rlpx
                     Packet ack = _service.Ack(_handshake, new Packet(authData));
 
                     //_p2PSession.RemoteNodeId = _remoteId;
-                    if (_logger.IsTrace) _logger.Trace($"Sending ACK to {_remoteId} @ {context.Channel.RemoteAddress}");
+                    if (_logger.IsTrace) _logger.Trace($"Sending ACK to {RemoteId} @ {context.Channel.RemoteAddress}");
                     _buffer.WriteBytes(ack.Data);
                     context.WriteAndFlushAsync(_buffer);
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Received ACK from {_remoteId} @ {context.Channel.RemoteAddress}");
+                    if (_logger.IsTrace) _logger.Trace($"Received ACK from {RemoteId} @ {context.Channel.RemoteAddress}");
                     byte[] ackData = new byte[byteBuffer.ReadableBytes];
                     byteBuffer.ReadBytes(ackData);
                     _service.Agree(_handshake, new Packet(ackData));
                 }
 
-                _remoteId = _handshake.RemoteNodeId;
                 _initCompletionSource?.SetResult(message);
                 _session.Handshake(_handshake.RemoteNodeId);
 
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
 
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameDecoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logger));
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameEncoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameEncoder(frameCipher, macProcessor, _logger));
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameMerger)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameMerger(_logger));
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyPacketSplitter)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
                 PacketSender packetSender = new PacketSender(_logManager);
                 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(packetSender);
 
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyP2PHandler)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyP2PHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 NettyP2PHandler handler = new NettyP2PHandler(_session, _logger);
                 context.Channel.Pipeline.AddLast(_group, handler);
 
@@ -200,7 +196,7 @@ namespace Nethermind.Network.Rlpx
 
         public override void HandlerRemoved(IChannelHandlerContext context)
         {
-            if (_logger.IsTrace) _logger.Trace($"Handshake with {_remoteId} @ {context.Channel.RemoteAddress} finished. Removing {nameof(NettyHandshakeHandler)} from the pipeline");
+            if (_logger.IsTrace) _logger.Trace($"Handshake with {RemoteId} @ {context.Channel.RemoteAddress} finished. Removing {nameof(NettyHandshakeHandler)} from the pipeline");
         }
 
         private async Task CheckHandshakeInitTimeout()

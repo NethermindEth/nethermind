@@ -75,14 +75,14 @@ namespace Nethermind.Stats.Model
             InitializeAddress(host, port);
         }
 
-        public void InitializeAddress(IPEndPoint address)
+        private void InitializeAddress(IPEndPoint address)
         {
             Host = address.Address.ToString();
             Port = address.Port;
             Address = address;
         }
 
-        public void InitializeAddress(string host, int port)
+        private void InitializeAddress(string host, int port)
         {
             Host = host;
             Port = port;

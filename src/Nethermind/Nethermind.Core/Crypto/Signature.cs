@@ -50,23 +50,13 @@ namespace Nethermind.Core.Crypto
 
         public Signature(Span<byte> r, Span<byte> s, int v)
         {
-            if (r.Length != 32)
-            {
-                throw new ArgumentException(nameof(r));
-            }
-
-            if (s.Length != 32)
-            {
-                throw new ArgumentException(nameof(s));
-            }
-
             if (v < 27)
             {
                 throw new ArgumentException(nameof(v));
             }
 
-            r.CopyTo(Bytes.AsSpan().Slice(0, 32));
-            s.CopyTo(Bytes.AsSpan().Slice(32, 32));
+            r.CopyTo(Bytes.AsSpan().Slice(32 - r.Length, r.Length));
+            s.CopyTo(Bytes.AsSpan().Slice(64 - s.Length, s.Length));
             V = v;
         }
 
