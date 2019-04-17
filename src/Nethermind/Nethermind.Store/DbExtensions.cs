@@ -42,6 +42,18 @@ namespace Nethermind.Store
             return db[key.Bytes];
         }
         
+        public static bool KeyExists(this IDb db, Keccak key)
+        {
+#if DEBUG
+            if (key == Keccak.OfAnEmptyString)
+            {
+                throw new InvalidOperationException();
+            }
+#endif
+            
+            return db.KeyExists(key.Bytes);
+        }
+        
         public static void Delete(this IDb db, Keccak key)
         {
             db.Remove(key.Bytes);

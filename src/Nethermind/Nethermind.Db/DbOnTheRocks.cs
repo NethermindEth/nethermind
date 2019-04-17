@@ -131,7 +131,7 @@ namespace Nethermind.Db
 
             DbOptions options = new DbOptions();
             options.SetCreateIfMissing(true);
-
+            options.SetAdviseRandomOnOpen(true);
             options.OptimizeForPointLookup(blockCacheSize); // I guess this should be the one option controlled by the DB size property - bind it to LRU cache size
             //options.SetCompression(CompressionTypeEnum.rocksdb_snappy_compression);
             //options.SetLevelCompactionDynamicLevelBytes(true);
@@ -276,6 +276,13 @@ namespace Nethermind.Db
             return values.ToArray();
         }
 
+        private byte[] _keyExistBuffer = new byte[1];
+        
+        public bool KeyExists(byte[] key)
+        {
+            return _db.Get(key, 32, _keyExistBuffer, 0, 0, null, null) != -1;
+        }
+        
         public void StartBatch()
         {
             _currentBatch = new WriteBatch();

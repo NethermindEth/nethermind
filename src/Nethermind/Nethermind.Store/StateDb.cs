@@ -70,6 +70,11 @@ namespace Nethermind.Store
         {
         }
 
+        public bool KeyExists(byte[] key)
+        {
+            return _pendingChanges.ContainsKey(key) || _db.KeyExists(key);
+        }
+
         public void Restore(int snapshot)
         {
             if (snapshot > _currentPosition) throw new InvalidOperationException($"Trying to restore snapshot beyond current positions at {nameof(StateDb)}");
@@ -114,7 +119,7 @@ namespace Nethermind.Store
 
         private byte[] Get(byte[] key)
         {
-            if (_pendingChanges.TryGetValue(key, out int pendingCHangeIndex)) return _changes[pendingCHangeIndex].Value;
+            if (_pendingChanges.TryGetValue(key, out int pendingChangeIndex)) return _changes[pendingChangeIndex].Value;
             return _db[key];
         }
 

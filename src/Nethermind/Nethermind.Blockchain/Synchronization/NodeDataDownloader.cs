@@ -145,8 +145,8 @@ namespace Nethermind.Blockchain.Synchronization
                         if (stateSyncItem.NodeDataType != NodeDataType.Code)
                         {
                             _dbChecks++;
-                            byte[] data = _stateDb.Get(stateSyncItem.Hash);
-                            if (data != null)
+                            bool keyExists = _stateDb.KeyExists(stateSyncItem.Hash);
+                            if (keyExists)
                             {
                                 if (_logger.IsTrace) _logger.Trace($"Trying to add a state node {stateSyncItem.Hash} - node already in the DB");
                                 _alreadySaved.Set(stateSyncItem.Hash, new object());
