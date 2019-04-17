@@ -582,14 +582,17 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash).ContinueWith(
-                t =>
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+            
+            Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
+            if (first == syncNode)
+            {
+                if (syncNode.IsFaulted)
                 {
-                    if (t.IsFaulted)
-                    {
-                        throw t.Exception;
-                    }
-                }), Task.Delay(_timeoutLength));
+                    throw syncNode.Exception;
+                }
+            }
+            
             _localStateDb.Commit();
 
             CompareTrees("END");
