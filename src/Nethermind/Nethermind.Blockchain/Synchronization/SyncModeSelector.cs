@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Synchronization
             SyncMode newSyncMode;
             if (maxBlockNumberAmongPeers - bestFullState <= FullSyncThreshold)
             {
-                newSyncMode = SyncMode.StateNodes;
+                newSyncMode = SyncMode.Full;
             }
             else if (maxBlockNumberAmongPeers - bestHeader <= FullSyncThreshold)
             {
