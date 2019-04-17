@@ -93,7 +93,6 @@ namespace Nethermind.Blockchain.Synchronization
                         if (t.IsCompleted)
                         {
                             _networkWatch.Stop();
-                            _logger.Info($"Network: {_networkWatch.ElapsedMilliseconds}");
                             HandleResponse(t.Result);
                         }
 
@@ -290,9 +289,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 _lastDownloadedNodesCount = _consumedNodesCount;
                 if (_logger.IsInfo) _logger.Info($"Nodes requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, saved {_savedNodesCount} nodes, {_savedAccounts} accounts, {_savedCode} bytecodes, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage) - pending requests {_pendingRequests}, queued nodes {_stream0.Count}|{_stream1.Count}|{_stream2.Count}, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDeps})");
-                if (_logger.IsInfo) _logger.Info($"Consume ratio    : {(decimal)_consumedNodesCount/_requestedNodesCount:p2})");
-                if (_logger.IsInfo) _logger.Info($"Save ratio       : {(decimal)_savedNodesCount/_requestedNodesCount:p2})");
-                if (_logger.IsInfo) _logger.Info($"DB checks ratio  : {(decimal)_dbChecks/_requestedNodesCount:p2})");
+                if (_logger.IsInfo) _logger.Info($"Consume : {(decimal)_consumedNodesCount/_requestedNodesCount:p2}), Save : {(decimal)_savedNodesCount/_requestedNodesCount:p2}), DB Reads : {(decimal)_dbChecks/_requestedNodesCount:p2})");
             }
 
             if (batch.StateSyncs == null)
@@ -466,7 +463,8 @@ namespace Nethermind.Blockchain.Synchronization
             if (_logger.IsTrace) _logger.Trace($"Handled responses - now {TotalCount} at ({_stream0.Count}|{_stream1.Count}|{_stream2.Count}) nodes");
             
             _handleWatch.Stop();
-            _logger.Info($"Handle {_handleWatch.ElapsedMilliseconds}");
+            long total = _prepareWatch.ElapsedMilliseconds + _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
+            _logger.Info($"Prepare {_prepareWatch.ElapsedMilliseconds} ({(decimal)_prepareWatch.ElapsedMilliseconds/total:P0}) - Request {_networkWatch.ElapsedMilliseconds} ({(decimal)_networkWatch.ElapsedMilliseconds/total:P0}) - Handle {_handleWatch.ElapsedMilliseconds} ({(decimal)_handleWatch.ElapsedMilliseconds/total:P0})");
         }
 
         private void AddDependency(Keccak dependency, DependentItem dependentItem)
@@ -566,7 +564,6 @@ namespace Nethermind.Blockchain.Synchronization
             Interlocked.Add(ref _pendingRequests, requestsArray.Length);
             
             _prepareWatch.Stop();
-            _logger.Info($"Prepare {_prepareWatch.ElapsedMilliseconds}");
             return requestsArray;
         }
 
