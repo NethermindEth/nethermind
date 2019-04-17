@@ -36,12 +36,14 @@ namespace Nethermind.Blockchain.Synchronization
 
         private const int MaxRequestSize = 384;
         private int _lastDownloadedNodesCount;
-        private int _downloadedNodesCount;
+        private int _consumedNodesCount;
         private int _savedStorageCount;
         private int _savedStateCount;
         private int _savedNodesCount;
         private int _savedAccounts;
         private int _savedCode;
+        private int _requestedNodesCount;
+        private int _dbChecks;
         private int _checkWasCached;
         private int _checkWasInDeps;
         private int _stateWasThere;
@@ -83,6 +85,7 @@ namespace Nethermind.Blockchain.Synchronization
                 for (int i = 0; i < dataBatches.Length; i++)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Sending requests for {dataBatches[i].StateSyncs.Length} nodes");
+                    _requestedNodesCount += dataBatches[i].StateSyncs.Length;
                     await _executor.ExecuteRequest(token, dataBatches[i]).ContinueWith(t =>
                     {
                         if (t.IsCompleted)
@@ -103,7 +106,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             } while (dataBatches.Length != 0);
 
-            if (_logger.IsInfo) _logger.Info($"Finished downloading node data (downloaded {_downloadedNodesCount})");
+            if (_logger.IsInfo) _logger.Info($"Finished downloading node data (downloaded {_consumedNodesCount})");
         }
 
         private enum AddNodeResult
@@ -141,6 +144,7 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         if (stateSyncItem.NodeDataType != NodeDataType.Code)
                         {
+                            _dbChecks++;
                             byte[] data = _stateDb.Get(stateSyncItem.Hash);
                             if (data != null)
                             {
@@ -276,10 +280,13 @@ namespace Nethermind.Blockchain.Synchronization
         {
             Interlocked.Add(ref _pendingRequests, -1);
 
-            if (_downloadedNodesCount > _lastDownloadedNodesCount + 1000)
+            if (_consumedNodesCount > _lastDownloadedNodesCount + 1000)
             {
-                _lastDownloadedNodesCount = _downloadedNodesCount;
-                if (_logger.IsInfo) _logger.Info($"Downloading nodes (downloaded {_downloadedNodesCount} nodes,  saved {_savedNodesCount} nodes, {_savedAccounts} accounts, {_savedCode} bytecodes, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage) - pending requests {_pendingRequests}, queued nodes {_stream0.Count}|{_stream1.Count}|{_stream2.Count}, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDeps})");
+                _lastDownloadedNodesCount = _consumedNodesCount;
+                if (_logger.IsInfo) _logger.Info($"Nodes requested {_requestedNodesCount}, consumed {_consumedNodesCount}, saved {_savedNodesCount} nodes, {_savedAccounts} accounts, {_savedCode} bytecodes, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage) - pending requests {_pendingRequests}, queued nodes {_stream0.Count}|{_stream1.Count}|{_stream2.Count}, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDeps})");
+                if (_logger.IsInfo) _logger.Info($"Consume ratio    : {(decimal)_consumedNodesCount/_requestedNodesCount:p2})");
+                if (_logger.IsInfo) _logger.Info($"Save ratio       : {(decimal)_savedNodesCount/_requestedNodesCount:p2})");
+                if (_logger.IsInfo) _logger.Info($"DB checks ratio  : {(decimal)_dbChecks/_requestedNodesCount:p2})");
             }
 
             if (batch.StateSyncs == null)
@@ -441,7 +448,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _stateDb.Commit();
             }
 
-            Interlocked.Add(ref _downloadedNodesCount, added);
+            Interlocked.Add(ref _consumedNodesCount, added);
 
             if (added == 0)
             {
@@ -570,13 +577,13 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (rootNode == Keccak.EmptyTreeHash)
             {
-                return _downloadedNodesCount;
+                return _consumedNodesCount;
             }
 
             AddNode(new StateSyncItem(rootNode, NodeDataType.State, 0, 1), "initial");
 
             await KeepSyncing(token);
-            return _downloadedNodesCount;
+            return _consumedNodesCount;
         }
 
         public void SetExecutor(INodeDataRequestExecutor executor)
