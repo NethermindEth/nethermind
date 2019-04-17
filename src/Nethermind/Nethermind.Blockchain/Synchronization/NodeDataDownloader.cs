@@ -283,7 +283,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (_consumedNodesCount > _lastDownloadedNodesCount + 1000)
             {
                 _lastDownloadedNodesCount = _consumedNodesCount;
-                if (_logger.IsInfo) _logger.Info($"Nodes requested {_requestedNodesCount}, consumed {_consumedNodesCount}, saved {_savedNodesCount} nodes, {_savedAccounts} accounts, {_savedCode} bytecodes, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage) - pending requests {_pendingRequests}, queued nodes {_stream0.Count}|{_stream1.Count}|{_stream2.Count}, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDeps})");
+                if (_logger.IsInfo) _logger.Info($"Nodes requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, saved {_savedNodesCount} nodes, {_savedAccounts} accounts, {_savedCode} bytecodes, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage) - pending requests {_pendingRequests}, queued nodes {_stream0.Count}|{_stream1.Count}|{_stream2.Count}, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDeps})");
                 if (_logger.IsInfo) _logger.Info($"Consume ratio    : {(decimal)_consumedNodesCount/_requestedNodesCount:p2})");
                 if (_logger.IsInfo) _logger.Info($"Save ratio       : {(decimal)_savedNodesCount/_requestedNodesCount:p2})");
                 if (_logger.IsInfo) _logger.Info($"DB checks ratio  : {(decimal)_dbChecks/_requestedNodesCount:p2})");
