@@ -16,13 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Synchronization
 {
     public class StateSyncItem
     {
-        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level, int priority)
+        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level, float priority)
         {
             Hash = hash;
             NodeDataType = nodeType;
@@ -36,6 +37,8 @@ namespace Nethermind.Blockchain.Synchronization
             
         public int Level { get; }
             
-        public int Priority { get; }
+        public float Priority { get; }
+        
+        public bool Skip { get; }
     }
 }

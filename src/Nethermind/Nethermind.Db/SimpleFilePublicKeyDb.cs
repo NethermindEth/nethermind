@@ -34,7 +34,7 @@ namespace Nethermind.Db
     {
         private readonly ILogger _logger;
         private readonly IPerfService _perfService;
-        private ConcurrentDictionary<PublicKey, byte[]> _cache;
+        private ConcurrentDictionary<byte[], byte[]> _cache;
         private const string DbName = "SimpleFileDb.db";
         private readonly string _dbPath;
         private readonly string _dbLastDirName;
@@ -55,17 +55,22 @@ namespace Nethermind.Db
 
         public byte[] this[byte[] key]
         {
-            get => _cache[new PublicKey(key)];
+            get => _cache[key];
             set
             {
-                _cache.AddOrUpdate(new PublicKey(key), newValue => Add(value), (x, oldValue) => Update(oldValue, value));
+                _cache.AddOrUpdate(key, newValue => Add(value), (x, oldValue) => Update(oldValue, value));
             }
         }
 
         public void Remove(byte[] key)
         {
             _anyPendingChanges = true;
-            _cache.TryRemove(new PublicKey(key), out _);
+            _cache.TryRemove(key, out _);
+        }
+
+        public bool KeyExists(byte[] key)
+        {
+            return _cache.ContainsKey(key);
         }
 
         public byte[][] GetAll() => _cache.Values.Select(v => v).ToArray();
@@ -93,7 +98,7 @@ namespace Nethermind.Db
             {
                 foreach (var keyValuePair in snapshot)
                 {
-                    streamWriter.WriteLine(string.Concat(keyValuePair.Key, ",", keyValuePair.Value.ToHexString()));
+                    streamWriter.WriteLine(string.Concat(keyValuePair.Key.ToHexString(), ",", keyValuePair.Value.ToHexString()));
                 }
             }
 
@@ -138,14 +143,14 @@ namespace Nethermind.Db
             }
         }
 
-        public ICollection<byte[]> Keys => _cache.Keys.Select(x => x.Bytes).ToArray();
+        public ICollection<byte[]> Keys => _cache.Keys.ToArray();
         public ICollection<byte[]> Values => _cache.Values;
 
         private void LoadData()
         {
             var key = _perfService.StartPerfCalc();
 
-            _cache = new ConcurrentDictionary<PublicKey, byte[]>();
+            _cache = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
 
             if (!File.Exists(_dbPath))
             {
@@ -162,7 +167,7 @@ namespace Nethermind.Db
                     continue;
                 }
 
-                _cache[new PublicKey(values[0])] = Bytes.FromHexString(values[1]);
+                _cache[Bytes.FromHexString(values[0])] = Bytes.FromHexString(values[1]);
             }
 
             _perfService.EndPerfCalc(key, $"Db load ({_dbLastDirName}), items count: {lines.Length}");

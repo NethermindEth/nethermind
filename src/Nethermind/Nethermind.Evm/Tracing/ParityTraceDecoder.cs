@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Tracing
             trace.BlockHash = context.DecodeKeccak();
             trace.BlockNumber = (long)context.DecodeUInt256();
             trace.TransactionHash = context.DecodeKeccak();
-            byte[] txPosBytes = context.DecodeByteArray();
+            Span<byte> txPosBytes = context.DecodeByteArraySpan();
             trace.TransactionPosition = txPosBytes.Length == 0 ? (int?) null : txPosBytes.ToInt32();
             context.ReadSequenceLength();
             trace.Action = DecodeAction(context);

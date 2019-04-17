@@ -50,6 +50,11 @@ namespace Nethermind.Store
             _db.TryRemove(key, out _);
         }
 
+        public bool KeyExists(byte[] key)
+        {
+            return _db.ContainsKey(key);
+        }
+
         public byte[][] GetAll() => Values.Select(v => v).ToArray();
 
         public void StartBatch()

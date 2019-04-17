@@ -42,6 +42,11 @@ namespace Nethermind.Store
             throw new System.NotSupportedException();
         }
 
+        public bool KeyExists(byte[] key)
+        {
+            return false;
+        }
+
         public byte[][] GetAll()
         {
             throw new System.NotImplementedException();

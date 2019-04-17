@@ -20,6 +20,7 @@ using System;
 using System.Numerics;
 using System.Reflection.Metadata.Ecma335;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Crypto
 {
@@ -47,7 +48,7 @@ namespace Nethermind.Core.Crypto
             V = bytes[64];
         }
 
-        public Signature(byte[] r, byte[] s, int v)
+        public Signature(Span<byte> r, Span<byte> s, int v)
         {
             if (r.Length != 32)
             {
@@ -64,23 +65,21 @@ namespace Nethermind.Core.Crypto
                 throw new ArgumentException(nameof(v));
             }
 
-            Buffer.BlockCopy(r, 0, Bytes, 0, 32);
-            Buffer.BlockCopy(s, 0, Bytes, 32, 32);
+            r.CopyTo(Bytes.AsSpan().Slice(0, 32));
+            s.CopyTo(Bytes.AsSpan().Slice(32, 32));
             V = v;
         }
 
-        public Signature(BigInteger r, BigInteger s, int v)
+        public Signature(UInt256 r, UInt256 s, int v)
         {
             if (v < 27)
             {
                 throw new ArgumentException(nameof(v));
             }
 
-            byte[] rBytes = r.ToBigEndianByteArray();
-            byte[] sBytes = s.ToBigEndianByteArray();
+            r.ToBigEndian(Bytes.AsSpan().Slice(0, 32));
+            s.ToBigEndian(Bytes.AsSpan().Slice(32, 32));
 
-            Buffer.BlockCopy(rBytes.PadLeft(32), 0, Bytes, 0, 32);
-            Buffer.BlockCopy(sBytes.PadLeft(32), 0, Bytes, 32, 32);
             V = v;
         }
 
@@ -92,18 +91,18 @@ namespace Nethermind.Core.Crypto
         public byte[] Bytes { get; } = new byte[64];
         public int V { get; set; }
 
-        public int? GetChainId => V < 35 ? null : (int?)(V + (V % 2) - 36) / 2;  
-        
+        public int? GetChainId => V < 35 ? null : (int?) (V + (V % 2) - 36) / 2;
+
         public byte RecoveryId
         {
             get
             {
                 if (V <= 28)
                 {
-                    return (byte)(V - 27);
+                    return (byte) (V - 27);
                 }
 
-                return (byte)(1 - V % 2);
+                return (byte) (1 - V % 2);
             }
         }
 
@@ -112,7 +111,7 @@ namespace Nethermind.Core.Crypto
 
         public override string ToString()
         {
-            string vString = V.ToString("X").ToLower();            
+            string vString = V.ToString("X").ToLower();
             return string.Concat(Bytes.ToHexString(true), vString.Length % 2 == 0 ? vString : string.Concat("0", vString));
         }
 
@@ -128,7 +127,7 @@ namespace Nethermind.Core.Crypto
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
-            return Equals((Signature)obj);
+            return Equals((Signature) obj);
         }
 
         public override int GetHashCode()

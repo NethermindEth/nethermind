@@ -375,7 +375,7 @@ namespace Nethermind.Blockchain.Synchronization
 
            Task<int> task = _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);
            int result = await task;
-           if (task.IsCompletedSuccessfully)
+           if (task.IsCompletedSuccessfully && !cancellation.IsCancellationRequested)
            {
                if(_logger.IsInfo) _logger.Info($"Suggesting sync transition block {bestSuggested.ToString(BlockHeader.Format.Short)}");
 //               _blockTree.SuggestBlock(_blockTree.FindBlock(bestSuggested.Hash, false));

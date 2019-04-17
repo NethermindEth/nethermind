@@ -65,6 +65,11 @@ namespace Nethermind.Store
         {
         }
 
+        public bool KeyExists(byte[] key)
+        {
+            return _memDb.KeyExists(key) || _wrappedDb.KeyExists(key);
+        }
+
         public void ClearTempChanges()
         {
             _memDb = new MemDb();

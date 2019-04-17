@@ -12,18 +12,4 @@
       <Name>Nethermind.Store</Name>
     </ProjectReference>
   </ItemGroup>
-  <ItemGroup>
-    <None Include="./External/Mac/librocksdb-5.15.10.dylib" Link="librocksdb-5.15.10.dylib">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="./External/Posix/librocksdb-5.15.10.so" Link="librocksdb-5.15.10.so">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="./External/Win64/rocksdb.dll" Link="rocksdb.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="External\Win64" />
-  </ItemGroup>
 </Project>

@@ -37,7 +37,7 @@ namespace Nethermind.Network
 
             var publicKey = new PublicKey(context.DecodeByteArray());
             var ip = System.Text.Encoding.UTF8.GetString(context.DecodeByteArray());
-            var port = context.DecodeByteArray().ToInt32();
+            var port = context.DecodeByteArraySpan().ToInt32();
             System.Text.Encoding.UTF8.GetString(context.DecodeByteArray());
             var reputation = context.DecodeByteArray().ToInt64();
 

@@ -27,5 +27,6 @@ namespace Nethermind.Store
         void StartBatch();
         void CommitBatch();
         void Remove(byte[] key);
+        bool KeyExists(byte[] key);
     }
 }

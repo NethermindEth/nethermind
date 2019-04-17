@@ -323,6 +323,11 @@ namespace Nethermind.Network
                     if (_logger.IsError) _logger.Error($"Peer update loop failure {e}");
                     break;
                 }
+                catch (Exception e)
+                {
+                    if (_logger.IsInfo) _logger.Error($"Exiting peer update loop {e.GetType().Name.Replace("Exception", string.Empty)}");
+                    break;
+                }
             }
 
             if (_logger.IsWarn) _logger.Warn("Exiting peer update loop");
