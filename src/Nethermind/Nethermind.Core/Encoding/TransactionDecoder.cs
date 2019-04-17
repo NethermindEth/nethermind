@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
@@ -48,9 +49,9 @@ namespace Nethermind.Core.Encoding
 
             if (context.Position < lastCheck)
             {
-                byte[] vBytes = context.DecodeByteArray();
-                byte[] rBytes = context.DecodeByteArray();
-                byte[] sBytes = context.DecodeByteArray();
+                Span<byte> vBytes = context.DecodeByteArraySpan();
+                Span<byte> rBytes = context.DecodeByteArraySpan();
+                Span<byte> sBytes = context.DecodeByteArraySpan();
 
                 if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
                 {
@@ -63,15 +64,13 @@ namespace Nethermind.Core.Encoding
                 }
 
                 int v = vBytes.ToInt32();
-                BigInteger r = rBytes.ToUnsignedBigInteger();
-                BigInteger s = sBytes.ToUnsignedBigInteger();
 
-                if (s.IsZero && r.IsZero)
+                if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
                 {
                     throw new RlpException("Both 'r' and 's' are zero when decoding a transaction.");
                 }
 
-                Signature signature = new Signature(r, s, v);
+                Signature signature = new Signature(rBytes, sBytes, v);
                 transaction.Signature = signature;
                 transaction.Hash = Keccak.Compute(transactionSequence);
             }

@@ -303,12 +303,12 @@ namespace Nethermind.Core.Extensions
         }
 
         /// <summary>
-        /// Not tested, possibly broken
+        /// Fix, so no allocations are made
         /// </summary>
         /// <param name="bytes"></param>
         /// <param name="endianness"></param>
         /// <returns></returns>
-        public static int ToInt32(this byte[] bytes, Endianness endianness = Endianness.Big)
+        public static int ToInt32(this Span<byte> bytes, Endianness endianness = Endianness.Big)
         {
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big ||
                 !BitConverter.IsLittleEndian && endianness == Endianness.Little)
@@ -322,7 +322,7 @@ namespace Nethermind.Core.Extensions
                 return BitConverter.ToInt32(reverted.PadRight(4), 0);
             }
 
-            return BitConverter.ToInt32(bytes.PadLeft(4), 0);
+            return BitConverter.ToInt32(bytes.ToArray().PadLeft(4), 0);
         }
 
         /// <summary>

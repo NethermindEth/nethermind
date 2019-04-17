@@ -1308,7 +1308,7 @@ namespace Nethermind.Core.Encoding
                 return DecodeByteArraySpan().ToArray();
             }
 
-            private Span<byte> DecodeByteArraySpan()
+            public Span<byte> DecodeByteArraySpan()
             {
                 int prefix = ReadByte();
                 if (prefix == 0)
