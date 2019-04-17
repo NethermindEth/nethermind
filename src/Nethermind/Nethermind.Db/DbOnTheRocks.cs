@@ -276,11 +276,11 @@ namespace Nethermind.Db
             return values.ToArray();
         }
 
-        private byte[] _keyExistBuffer = new byte[1];
+        private byte[] _keyExistsBuffer = new byte[1];
         
         public bool KeyExists(byte[] key)
         {
-            return _db.Get(key, 32, _keyExistBuffer, 0, 0, null, null) != -1;
+            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
         }
         
         public void StartBatch()

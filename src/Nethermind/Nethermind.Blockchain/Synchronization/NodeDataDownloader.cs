@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -86,10 +87,13 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (_logger.IsDebug) _logger.Debug($"Sending requests for {dataBatches[i].StateSyncs.Length} nodes");
                     _requestedNodesCount += dataBatches[i].StateSyncs.Length;
+                    _networkWatch.Restart();
                     await _executor.ExecuteRequest(token, dataBatches[i]).ContinueWith(t =>
                     {
                         if (t.IsCompleted)
                         {
+                            _networkWatch.Stop();
+                            _logger.Info($"Network: {_networkWatch.ElapsedMilliseconds}");
                             HandleResponse(t.Result);
                         }
 
@@ -278,6 +282,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void HandleResponse(StateSyncBatch batch)
         {
+            _handleWatch.Restart();
+            
             Interlocked.Add(ref _pendingRequests, -1);
 
             if (_consumedNodesCount > _lastDownloadedNodesCount + 1000)
@@ -458,6 +464,9 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_logger.IsTrace) _logger.Trace($"Received node data: requested {batch.StateSyncs.Length}, missing {missing}, added {added}");
             if (_logger.IsTrace) _logger.Trace($"Handled responses - now {TotalCount} at ({_stream0.Count}|{_stream1.Count}|{_stream2.Count}) nodes");
+            
+            _handleWatch.Stop();
+            _logger.Info($"Handle {_handleWatch.ElapsedMilliseconds}");
         }
 
         private void AddDependency(Keccak dependency, DependentItem dependentItem)
@@ -499,9 +508,14 @@ namespace Nethermind.Blockchain.Synchronization
         private int _pendingRequests;
         private const int MaxPendingRequestsCount = 1;
 
+        private Stopwatch _prepareWatch = new Stopwatch();
+        private Stopwatch _networkWatch = new Stopwatch();
+        private Stopwatch _handleWatch = new Stopwatch();
+        
         // TODO: depth first
         private StateSyncBatch[] PrepareRequests()
         {
+            _prepareWatch.Reset();
             /* IDEA1: store all path with both hashes and values for all the nodes on the path to the leaf */
             /* store separately unresolved storage? */
             /* only save to the DB when everything is resolved below */
@@ -550,6 +564,9 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             Interlocked.Add(ref _pendingRequests, requestsArray.Length);
+            
+            _prepareWatch.Stop();
+            _logger.Info($"Prepare {_prepareWatch.ElapsedMilliseconds}");
             return requestsArray;
         }
 

@@ -98,7 +98,7 @@ namespace Nethermind.Db
             {
                 foreach (var keyValuePair in snapshot)
                 {
-                    streamWriter.WriteLine(string.Concat(keyValuePair.Key, ",", keyValuePair.Value.ToHexString()));
+                    streamWriter.WriteLine(string.Concat(keyValuePair.Key.ToHexString(), ",", keyValuePair.Value.ToHexString()));
                 }
             }
 
