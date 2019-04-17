@@ -326,6 +326,7 @@ namespace Nethermind.Network
                 catch (Exception e)
                 {
                     if (_logger.IsInfo) _logger.Error($"Exiting peer update loop {e.GetType().Name.Replace("Exception", string.Empty)}");
+                    break;
                 }
             }
 
