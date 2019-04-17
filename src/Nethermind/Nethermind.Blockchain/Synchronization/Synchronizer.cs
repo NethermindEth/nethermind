@@ -216,15 +216,9 @@ namespace Nethermind.Blockchain.Synchronization
                 UInt256 ourTotalDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? 0;
                 _syncPeerPool.EnsureBest(_allocation, _blockTree.BestSuggested?.TotalDifficulty ?? 0);
                 PeerInfo bestPeer = _allocation.Current; 
-                if (bestPeer == null)
+                if (bestPeer == null || bestPeer.TotalDifficulty <= ourTotalDifficulty)
                 {
-                    if (_logger.IsDebug) _logger.Debug("Skipping sync - no peers to sync with.");
-                    continue;
-                }
-
-                if (bestPeer.TotalDifficulty <= ourTotalDifficulty)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Skipping sync - no peer with better chain.");
+                    if (_logger.IsTrace) _logger.Trace("Skipping sync - no peer with better chain.");
                     continue;
                 }
                 
