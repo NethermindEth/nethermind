@@ -193,6 +193,7 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
+            _logger.Warn("Collecting trie stats:");
             TrieStats stats = _stateProvider.CollectStats();
             _logger.Warn(stats.ToString());
             

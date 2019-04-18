@@ -43,6 +43,7 @@ namespace Nethermind.Store
         private readonly List<Change> _keptInCache = new List<Change>();
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
+        private readonly ILogManager _logManager;
 
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
@@ -51,8 +52,10 @@ namespace Nethermind.Store
         public StateProvider(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
         {
             if (stateDb == null) throw new ArgumentNullException(nameof(stateDb));
+            if (logManager == null) throw new ArgumentNullException(nameof(logManager));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _logManager = logManager;
             _tree = new StateTree(stateDb);
         }
 
@@ -66,7 +69,7 @@ namespace Nethermind.Store
         
         public TrieStats CollectStats()
         {
-            TrieStatsCollector collector = new TrieStatsCollector();
+            TrieStatsCollector collector = new TrieStatsCollector(_logManager);
             _tree.Accept(collector);
             return collector.Stats;
         }

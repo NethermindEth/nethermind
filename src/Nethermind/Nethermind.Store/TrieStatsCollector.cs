@@ -16,13 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Store
 {
     public class TrieStatsCollector : ITreeVisitor
     {
+        private int _lastAccountNodeCount = 0;
+        
+        private readonly ILogger _logger;
+
+        public TrieStatsCollector(ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger();
+        }
+        
         public TrieStats Stats { get; } = new TrieStats();
         
         public void VisitTree(Keccak rootHash, VisitContext context)
@@ -60,6 +69,12 @@ namespace Nethermind.Store
         
         public void VisitLeaf(Keccak nodeHash, VisitContext context)
         {
+            if (Stats.NodesCount - _lastAccountNodeCount > 10000)
+            {
+                _lastAccountNodeCount = Stats.NodesCount;
+                _logger.Warn($"Collected info from {Stats.NodesCount} nodes");
+            }
+            
             if (context.IsStorage)
             {
                 Stats.StorageLeafCount++;
