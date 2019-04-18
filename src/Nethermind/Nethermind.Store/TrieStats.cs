@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Text;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Store
@@ -25,24 +26,36 @@ namespace Nethermind.Store
     {
         public int StateBranchCount { get; internal set; }
 
-        public int StateExtensionCount { get; internal set;}
-        
-        public int AccountCount { get; internal set;}
-        
-        public int StorageBranchCount { get; internal set;}    
-                                                
-        public int StorageExtensionCount { get; internal set;} 
-                                                
-        public int StorageLeafCount { get; internal set;}   
+        public int StateExtensionCount { get; internal set; }
 
-        public int CodeCount { get; internal set;}
+        public int AccountCount { get; internal set; }
+
+        public int StorageBranchCount { get; internal set; }
+
+        public int StorageExtensionCount { get; internal set; }
+
+        public int StorageLeafCount { get; internal set; }
+
+        public int CodeCount { get; internal set; }
 
         public int StorageCount => StorageLeafCount + StorageExtensionCount + StorageBranchCount;
-        
+
         public int StateCount => AccountCount + StateExtensionCount + StateBranchCount;
-        
+
         public int NodesCount => StorageCount + StateCount + CodeCount;
 
         public List<string> MissingNodes { get; set; } = new List<string>();
+
+        public override string ToString()
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("TRIE STATS");
+            builder.AppendLine($"  ALL NODES {NodesCount} ({StateBranchCount + StorageBranchCount}|{StateExtensionCount + StorageExtensionCount}|{AccountCount + StorageLeafCount})");
+            builder.AppendLine($"  STATE NODES {StateCount} ({StateBranchCount}|{StateExtensionCount}|{AccountCount})");
+            builder.AppendLine($"  STORAGE NODES {StorageCount} ({StorageBranchCount}|{StorageExtensionCount}|{StorageLeafCount})");
+            builder.AppendLine($"  ACCOUNTS {AccountCount} OF WHICH ({CodeCount}) ARE CONTRACTS");
+            builder.AppendLine($"  MISSING NODES {MissingNodes.Count}");
+            return builder.ToString();
+        }
     }
 }
