@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private Keccak _rootNode;
 
-        private IDb _codeDb;
+        private ISnapshotableDb _codeDb;
         private ILogger _logger;
         private ISnapshotableDb _stateDb;
         private INodeDataRequestExecutor _executor;
@@ -79,14 +79,14 @@ namespace Nethermind.Blockchain.Synchronization
 
         private LruCache<Keccak, object> _alreadySaved = new LruCache<Keccak, object>(1024 * 64);
 
-        public NodeDataDownloader(IDb codeDb, ISnapshotableDb stateDb, ILogManager logManager)
+        public NodeDataDownloader(ISnapshotableDb codeDb, ISnapshotableDb stateDb, ILogManager logManager)
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public NodeDataDownloader(IDb codeDb, ISnapshotableDb stateDb, INodeDataRequestExecutor executor, ILogManager logManager)
+        public NodeDataDownloader(ISnapshotableDb codeDb, ISnapshotableDb stateDb, INodeDataRequestExecutor executor, ILogManager logManager)
             : this(codeDb, stateDb, logManager)
         {
             SetExecutor(executor);
@@ -453,7 +453,11 @@ namespace Nethermind.Blockchain.Synchronization
 
             lock (_stateDbLock)
             {
-                _stateDb.Commit();
+                lock (_codeDbLock)
+                {
+                    _codeDb.Commit();
+                    _stateDb.Commit();
+                }
             }
 
             Interlocked.Add(ref _consumedNodesCount, added);
