@@ -53,20 +53,27 @@ namespace Nethermind.Store
             if (stateDb == null) throw new ArgumentNullException(nameof(stateDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _state = new StateTree(stateDb);
+            _tree = new StateTree(stateDb);
+        }
+
+        public TrieStats CollectStats()
+        {
+            TrieStatsCollector collector = new TrieStatsCollector();
+            _tree.Accept(collector);
+            return collector.Stats;
         }
 
         public Keccak StateRoot
         {
             get
             {
-                _state.UpdateRootHash();
-                return _state.RootHash;
+                _tree.UpdateRootHash();
+                return _tree.RootHash;
             }
-            set => _state.RootHash = value;
+            set => _tree.RootHash = value;
         }
 
-        private readonly StateTree _state;
+        private readonly StateTree _tree;
 
         public bool AccountExists(Address address)
         {
@@ -250,7 +257,9 @@ namespace Nethermind.Store
 
         public string DumpState()
         {
-            return _state.DumpState();
+            TreeDumper dumper = new TreeDumper();
+            _tree.Accept(dumper);
+            return dumper.ToString();
         }
 
         public void Restore(int snapshot)
@@ -529,7 +538,7 @@ namespace Nethermind.Store
             //}
 
             Metrics.StateTreeReads++;
-            Account account = _state.Get(address);
+            Account account = _tree.Get(address);
             //_longTermCache.Set(address, account);
             return account;
         }
@@ -538,7 +547,7 @@ namespace Nethermind.Store
         {
             //_longTermCache.Set(address, account);
             Metrics.StateTreeWrites++;
-            _state.Set(address, account);
+            _tree.Set(address, account);
         }
 
         private Account GetAndAddToCache(Address address)
@@ -651,7 +660,7 @@ namespace Nethermind.Store
 
         public void CommitTree()
         {
-            _state.Commit();
+            _tree.Commit();
         }
     }
 }

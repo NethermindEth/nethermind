@@ -660,15 +660,22 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _localStateTree.RootHash = _remoteStateTree.RootHash;
             
             _logger.Info($"-------------------- REMOTE --------------------");
-            string remote = _remoteStateTree.DumpState();
-            _logger.Info(remote);
-            _logger.Info($"-------------------- LOCAL --------------------");
-            string local = _localStateTree.DumpState();
+            TreeDumper dumper = new TreeDumper();
+            _remoteStateTree.Accept(dumper);
+            string local = dumper.ToString();
             _logger.Info(local);
+            _logger.Info($"-------------------- LOCAL --------------------");
+            dumper.Reset();
+            _localStateTree.Accept(dumper);
+            string remote = dumper.ToString();
+            _logger.Info(remote);
 
             if (stage == "END")
             {
                 Assert.AreEqual(remote, local);
+                TrieStatsCollector collector = new TrieStatsCollector();
+                _localStateTree.Accept(collector);
+                Assert.AreEqual(0, collector.Stats.MissingNodes.Count);
             }
 
 //            Assert.AreEqual(_remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");

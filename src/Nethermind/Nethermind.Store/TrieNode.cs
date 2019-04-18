@@ -394,13 +394,13 @@ namespace Nethermind.Store
             if (context == null)
             {
                 return null;
-            } 
-            
+            }
+
             if (NodeType == NodeType.Extension)
             {
                 return context.DecodeKeccak();
             }
-            
+
             context.Position = _lookupTable[i * 2];
             int prefix = context.ReadByte();
             if (prefix == 160)
@@ -473,7 +473,7 @@ namespace Nethermind.Store
             return totalLength;
         }
 
-        public void WriteChildrenRlp(Span<byte> destination)
+        private void WriteChildrenRlp(Span<byte> destination)
         {
             int position = 0;
             Rlp.DecoderContext context = DecoderContext;
@@ -526,8 +526,10 @@ namespace Nethermind.Store
             int index = IsExtension ? i + 1 : i;
             _data[index] = node ?? NullNode;
         }
-
-        internal void DumpState(DumpStateContext ctx, PatriciaTree tree)
+        
+        private static AccountDecoder _decoder = new AccountDecoder();
+        
+        internal void Accept(ITreeVisitor visitor, PatriciaTree tree, VisitContext context)
         {
             try
             {
@@ -535,55 +537,64 @@ namespace Nethermind.Store
             }
             catch (StateException)
             {
-                ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix}{Keccak} {NodeType} [MISSING]");
+                visitor.VisitMissingNode(Keccak, context);
                 return;
             }
-            
-            AccountDecoder decoder
-                 = new AccountDecoder();
-            
-            ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix}{Keccak} {NodeType}");
-            ctx.Prefix = string.Empty;
+
             switch (NodeType)
             {
                 case NodeType.Unknown:
+                    throw new NotImplementedException();
                     break;
                 case NodeType.Branch:
                 {
-                    string indent = ctx.Indent + "++";
+                    visitor.VisitBranch(Keccak, context);
+                    context.Level++;
                     for (int i = 0; i < 16; i++)
                     {
-                        ctx.Indent = indent;
                         TrieNode child = GetChild(i);
-                        if (child != null)
-                        {
-                            ctx.Prefix = $"[{i:00}]";
-                            child.DumpState(ctx, tree);
-                        }
+                        context.BranchChildIndex = i;
+                        child?.Accept(visitor, tree, context);
                     }
                     
+                    context.Level--;
+                    context.BranchChildIndex = null;
                     break;
                 }
                 case NodeType.Extension:
                 {
-                    ctx.Indent += "++";
+                    visitor.VisitExtension(Keccak, context);
+                    context.Level++;
                     TrieNode child = GetChild(0);
-                    child?.DumpState(ctx, tree);
+                    context.BranchChildIndex = null;
+                    child?.Accept(visitor, tree, context);
+                    context.Level--;
                     break;
                 }
                 case NodeType.Leaf:
                 {
-                    ctx.Indent += "++";
-                    Account account = decoder.Decode(Value.AsRlpContext());
-                    ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix} N{account.Nonce} B{account.Balance}");
-                    if (account.HasCode)
+                    visitor.VisitLeaf(Keccak, context);
+                    if (!context.IsStorage)
                     {
-                        ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix} CODE {account.CodeHash}");
-                    }
+                        Account account = _decoder.Decode(Value.AsRlpContext());
+                        if (account.HasCode)
+                        {
+                            context.Level++;
+                            context.BranchChildIndex = null;
+                            visitor.VisitCode(account.CodeHash, context);
+                            context.Level--;
+                        }
 
-                    if (account.HasStorage)
-                    {
-                        ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix} STORAGE {account.StorageRoot}");
+                        if (account.HasStorage)
+                        {
+                            context.IsStorage = true;
+                            TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);
+                            context.Level++;
+                            context.BranchChildIndex = null;
+                            storageRoot.Accept(visitor, tree, context);
+                            context.Level--;
+                            context.IsStorage = false;
+                        }
                     }
                     
                     break;
