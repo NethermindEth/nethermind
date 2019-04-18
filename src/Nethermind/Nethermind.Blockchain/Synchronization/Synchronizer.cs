@@ -226,7 +226,7 @@ namespace Nethermind.Blockchain.Synchronization
                 var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_peerSyncCancellation.Token, _syncLoopCancellation.Token);
                 SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
                 if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer.HeadNumber} {bestPeer.TotalDifficulty} | ours {_bestSuggestedNumber} {_blockTree.BestSuggested?.TotalDifficulty ?? 0}");
-                Task<int> syncProgressTask;
+                Task<long> syncProgressTask;
                 switch (_syncMode.Current)
                 {
                     case SyncMode.Headers:
@@ -245,8 +245,8 @@ namespace Nethermind.Blockchain.Synchronization
                 await syncProgressTask.ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
                 if (syncProgressTask.IsCompletedSuccessfully)
                 {
-                    int progress = syncProgressTask.Result;
-                    if (progress != 0 && _syncMode.Current == SyncMode.StateNodes) // hack (use some status of fully synced)
+                    long progress = syncProgressTask.Result;
+                    if (progress != 0L && _syncMode.Current == SyncMode.StateNodes) // hack (use some status of fully synced)
                     {
                         _bestFullState = _bestSuggestedNumber;
                     }
@@ -354,7 +354,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
         
-        private async Task<int> DownloadStateNodes(PeerInfo bestPeer, CancellationToken cancellation)
+        private async Task<long> DownloadStateNodes(PeerInfo bestPeer, CancellationToken cancellation)
         {
             if (bestPeer == null)
             {
@@ -367,14 +367,14 @@ namespace Nethermind.Blockchain.Synchronization
                 return 0;
             }
 
-           Task<int> task = _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);
+           Task<long> task = _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);
            
-           int result = await task;
+           long result = await task;
            if (task.IsCompletedSuccessfully && !cancellation.IsCancellationRequested)
            {
                if(_logger.IsInfo) _logger.Info($"Suggesting sync transition block {bestSuggested.ToString(BlockHeader.Format.Short)}");
 //               _blockTree.SuggestBlock(_blockTree.FindBlock(bestSuggested.Hash, false));
-               return Math.Max(1, result); // hack
+               return Math.Max(1L, result); // hack
            }
            
            return result;
