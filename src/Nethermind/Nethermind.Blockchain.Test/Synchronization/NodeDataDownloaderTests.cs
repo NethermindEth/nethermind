@@ -582,14 +582,17 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
             NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash).ContinueWith(
-                t =>
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+            
+            Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
+            if (first == syncNode)
+            {
+                if (syncNode.IsFaulted)
                 {
-                    if (t.IsFaulted)
-                    {
-                        throw t.Exception;
-                    }
-                }), Task.Delay(_timeoutLength));
+                    throw syncNode.Exception;
+                }
+            }
+            
             _localStateDb.Commit();
 
             CompareTrees("END");
@@ -657,15 +660,22 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _localStateTree.RootHash = _remoteStateTree.RootHash;
             
             _logger.Info($"-------------------- REMOTE --------------------");
-            string remote = _remoteStateTree.DumpState();
-            _logger.Info(remote);
-            _logger.Info($"-------------------- LOCAL --------------------");
-            string local = _localStateTree.DumpState();
+            TreeDumper dumper = new TreeDumper();
+            _remoteStateTree.Accept(dumper);
+            string local = dumper.ToString();
             _logger.Info(local);
+            _logger.Info($"-------------------- LOCAL --------------------");
+            dumper.Reset();
+            _localStateTree.Accept(dumper);
+            string remote = dumper.ToString();
+            _logger.Info(remote);
 
             if (stage == "END")
             {
                 Assert.AreEqual(remote, local);
+                TrieStatsCollector collector = new TrieStatsCollector();
+                _localStateTree.Accept(collector);
+                Assert.AreEqual(0, collector.Stats.MissingNodes.Count);
             }
 
 //            Assert.AreEqual(_remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");

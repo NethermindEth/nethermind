@@ -263,6 +263,7 @@ namespace Nethermind.Blockchain.Synchronization
                 var source = _peerSyncCancellation;
                 _peerSyncCancellation = null;
                 source?.Dispose();
+                
                 _allocation.FinishSync();
             }
         }
@@ -282,11 +283,10 @@ namespace Nethermind.Blockchain.Synchronization
                         }
                         else
                         {
-                            _logger.Error($"{_syncMode.Current} sync with {peerInfo} failed.", t.Exception);
+                            _logger.Debug($"{_syncMode.Current} sync with {peerInfo} failed. {t.Exception}");
                         }
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"{_syncMode.Current} sync with {peerInfo} failed. Removing node from sync peers.");
                     _syncPeerPool.RemovePeer(peerInfo.SyncPeer, EthSyncPeerPool.PeerRemoveReason.SyncFault);
                     SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Failed));
                     break;
@@ -368,6 +368,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
            Task<int> task = _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);
+           
            int result = await task;
            if (task.IsCompletedSuccessfully && !cancellation.IsCancellationRequested)
            {

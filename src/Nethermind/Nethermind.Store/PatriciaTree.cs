@@ -20,7 +20,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -92,13 +91,13 @@ namespace Nethermind.Store
             if (RootRef.IsDirty)
             {
                 Commit(RootRef, true);
-                while(!CurrentCommit.IsEmpty)
+                while (!CurrentCommit.IsEmpty)
                 {
                     if (!CurrentCommit.TryDequeue(out TrieNode node))
                     {
                         throw new ArgumentNullException($"Threading issue at {nameof(CurrentCommit)} - should not happen unless we use static objects somewhere here.");
                     }
-                    
+
                     _db.Set(node.Keccak, node.FullRlp.Bytes);
                 }
 
@@ -111,7 +110,7 @@ namespace Nethermind.Store
         private readonly ConcurrentQueue<TrieNode> CurrentCommit = new ConcurrentQueue<TrieNode>();
 
         private void Commit(TrieNode node, bool isRoot)
-        {            
+        {
             if (node.IsBranch)
             {
                 // idea from EthereumJ - testing parallel branches
@@ -347,19 +346,19 @@ namespace Nethermind.Store
                             childNode.ResolveNode(this);
                             if (childNode.IsBranch)
                             {
-                                TrieNode extensionFromBranch = TreeNodeFactory.CreateExtension(new HexPrefix(false, (byte)childNodeIndex), childNode);
+                                TrieNode extensionFromBranch = TreeNodeFactory.CreateExtension(new HexPrefix(false, (byte) childNodeIndex), childNode);
                                 extensionFromBranch.IsDirty = true;
                                 nextNode = extensionFromBranch;
                             }
                             else if (childNode.IsExtension)
                             {
-                                childNode.Key = new HexPrefix(false, Bytes.Concat((byte)childNodeIndex, childNode.Path));
+                                childNode.Key = new HexPrefix(false, Bytes.Concat((byte) childNodeIndex, childNode.Path));
                                 childNode.IsDirty = true;
                                 nextNode = childNode;
                             }
                             else if (childNode.IsLeaf)
                             {
-                                childNode.Key = new HexPrefix(true, Bytes.Concat((byte)childNodeIndex, childNode.Path));
+                                childNode.Key = new HexPrefix(true, Bytes.Concat((byte) childNodeIndex, childNode.Path));
                                 childNode.IsDirty = true;
                                 nextNode = childNode;
                             }
@@ -681,32 +680,11 @@ namespace Nethermind.Store
             public int PathIndex { get; }
         }
 
-        public string DumpState()
+        public void Accept(ITreeVisitor visitor)
         {
-            DumpStateContext context = new DumpStateContext();
-
-            if (RootRef == null)
-            {
-                return "[EMPTY TREE]";
-            }
-            
-            RootRef.DumpState(context, this);
-
-            return context.Builder.ToString();
+            VisitContext context = new VisitContext();
+            visitor.VisitTree(RootHash, context);
+            RootRef?.Accept(visitor, this, context);
         }
-    }
-    
-    internal class DumpStateContext
-    {
-        public DumpStateContext()
-        {
-            Builder.AppendLine();
-        }
-        
-        public StringBuilder Builder { get; } = new StringBuilder();
-            
-        public string Indent { get; set; } = string.Empty;
-
-        public string Prefix { get; set; } = string.Empty;
     }
 }

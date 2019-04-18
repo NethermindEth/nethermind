@@ -76,5 +76,7 @@ namespace Nethermind.Store
         int TakeSnapshot();
         
         string DumpState();
+        
+        TrieStats CollectStats();
     }
 }
