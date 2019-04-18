@@ -79,7 +79,7 @@ namespace Nethermind.Store
             if (Stats.NodesCount - _lastAccountNodeCount > 100000)
             {
                 _lastAccountNodeCount = Stats.NodesCount;
-                _logger.Warn($"Collected info from {Stats.NodesCount} nodes");
+                _logger.Warn($"Collected info from {Stats.NodesCount} nodes. Missing CODE {Stats.MissingCode} STATE {Stats.MissingState} STORAGE {Stats.MissingStorage}");
             }
             
             if (context.IsStorage)
