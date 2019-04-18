@@ -545,7 +545,6 @@ namespace Nethermind.Store
             {
                 case NodeType.Unknown:
                     throw new NotImplementedException();
-                    break;
                 case NodeType.Branch:
                 {
                     visitor.VisitBranch(Keccak, context);
