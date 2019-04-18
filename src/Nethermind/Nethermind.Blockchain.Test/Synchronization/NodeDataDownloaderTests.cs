@@ -661,21 +661,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             _logger.Info($"-------------------- REMOTE --------------------");
             TreeDumper dumper = new TreeDumper();
-            _remoteStateTree.Accept(dumper);
+            _remoteStateTree.Accept(dumper, _remoteCodeDb);
             string local = dumper.ToString();
             _logger.Info(local);
             _logger.Info($"-------------------- LOCAL --------------------");
             dumper.Reset();
-            _localStateTree.Accept(dumper);
+            _localStateTree.Accept(dumper, _localCodeDb);
             string remote = dumper.ToString();
             _logger.Info(remote);
 
             if (stage == "END")
             {
                 Assert.AreEqual(remote, local);
-                TrieStatsCollector collector = new TrieStatsCollector();
-                _localStateTree.Accept(collector);
-                Assert.AreEqual(0, collector.Stats.MissingNodes.Count);
+                TrieStatsCollector collector = new TrieStatsCollector(_logManager);
+                _localStateTree.Accept(collector, _localCodeDb);
+                Assert.AreEqual(0, collector.Stats.MissingCode);
             }
 
 //            Assert.AreEqual(_remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");

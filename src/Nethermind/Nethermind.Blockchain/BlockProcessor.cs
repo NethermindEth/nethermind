@@ -195,7 +195,14 @@ namespace Nethermind.Blockchain
         {
             _logger.Warn("Collecting trie stats:");
             TrieStats stats = _stateProvider.CollectStats();
-            _logger.Warn(stats.ToString());
+            if (stats.MissingNodes > 0)
+            {
+                _logger.Error(stats.ToString());    
+            }
+            else
+            {
+                _logger.Warn(stats.ToString());
+            }
             
             if (suggestedBlock.IsGenesis) return suggestedBlock;
 

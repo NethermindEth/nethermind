@@ -529,7 +529,7 @@ namespace Nethermind.Store
         
         private static AccountDecoder _decoder = new AccountDecoder();
         
-        internal void Accept(ITreeVisitor visitor, PatriciaTree tree, VisitContext context)
+        internal void Accept(ITreeVisitor visitor, PatriciaTree tree, IDb codeDb, VisitContext context)
         {
             try
             {
@@ -554,7 +554,7 @@ namespace Nethermind.Store
                     {
                         TrieNode child = GetChild(i);
                         context.BranchChildIndex = i;
-                        child?.Accept(visitor, tree, context);
+                        child?.Accept(visitor, tree, codeDb, context);
                     }
                     
                     context.Level--;
@@ -567,7 +567,7 @@ namespace Nethermind.Store
                     context.Level++;
                     TrieNode child = GetChild(0);
                     context.BranchChildIndex = null;
-                    child?.Accept(visitor, tree, context);
+                    child?.Accept(visitor, tree, codeDb, context);
                     context.Level--;
                     break;
                 }
@@ -581,7 +581,7 @@ namespace Nethermind.Store
                         {
                             context.Level++;
                             context.BranchChildIndex = null;
-                            visitor.VisitCode(account.CodeHash, context);
+                            visitor.VisitCode(account.CodeHash, codeDb.Get(account.CodeHash), context);
                             context.Level--;
                         }
 
@@ -591,7 +591,7 @@ namespace Nethermind.Store
                             TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);
                             context.Level++;
                             context.BranchChildIndex = null;
-                            storageRoot.Accept(visitor, tree, context);
+                            storageRoot.Accept(visitor, tree, codeDb, context);
                             context.Level--;
                             context.IsStorage = false;
                         }

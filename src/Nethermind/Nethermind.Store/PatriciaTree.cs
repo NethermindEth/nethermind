@@ -680,11 +680,11 @@ namespace Nethermind.Store
             public int PathIndex { get; }
         }
 
-        public void Accept(ITreeVisitor visitor)
+        public void Accept(ITreeVisitor visitor, IDb codeDb)
         {
             VisitContext context = new VisitContext();
             visitor.VisitTree(RootHash, context);
-            RootRef?.Accept(visitor, this, context);
+            RootRef?.Accept(visitor, this, codeDb, context);
         }
     }
 }

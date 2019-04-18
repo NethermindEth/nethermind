@@ -62,7 +62,7 @@ namespace Nethermind.Store
         public string DumpState()
         {
             TreeDumper dumper = new TreeDumper();
-            _tree.Accept(dumper);
+            _tree.Accept(dumper, _codeDb);
             return dumper.ToString();
         }
 
@@ -70,7 +70,7 @@ namespace Nethermind.Store
         public TrieStats CollectStats()
         {
             TrieStatsCollector collector = new TrieStatsCollector(_logManager);
-            _tree.Accept(collector);
+            _tree.Accept(collector, _codeDb);
             return collector.Stats;
         }
 

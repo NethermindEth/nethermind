@@ -37,6 +37,14 @@ namespace Nethermind.Store
         public int StorageLeafCount { get; internal set; }
 
         public int CodeCount { get; internal set; }
+        
+        public int MissingState { get; internal set; }
+        
+        public int MissingCode { get; internal set; }
+        
+        public int MissingStorage { get; internal set; }
+
+        public int MissingNodes => MissingCode + MissingState + MissingStorage;
 
         public int StorageCount => StorageLeafCount + StorageExtensionCount + StorageBranchCount;
 
@@ -44,7 +52,7 @@ namespace Nethermind.Store
 
         public int NodesCount => StorageCount + StateCount + CodeCount;
 
-        public List<string> MissingNodes { get; set; } = new List<string>();
+//        public List<string> MissingNodes { get; set; } = new List<string>();
 
         public override string ToString()
         {
@@ -54,7 +62,7 @@ namespace Nethermind.Store
             builder.AppendLine($"  STATE NODES {StateCount} ({StateBranchCount}|{StateExtensionCount}|{AccountCount})");
             builder.AppendLine($"  STORAGE NODES {StorageCount} ({StorageBranchCount}|{StorageExtensionCount}|{StorageLeafCount})");
             builder.AppendLine($"  ACCOUNTS {AccountCount} OF WHICH ({CodeCount}) ARE CONTRACTS");
-            builder.AppendLine($"  MISSING NODES {MissingNodes.Count}");
+            builder.AppendLine($"  MISSING STATE {MissingState}, CODE {MissingCode}, STORAGE {MissingStorage}");
             return builder.ToString();
         }
     }
