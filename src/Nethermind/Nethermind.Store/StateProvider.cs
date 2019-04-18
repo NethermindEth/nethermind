@@ -56,6 +56,14 @@ namespace Nethermind.Store
             _tree = new StateTree(stateDb);
         }
 
+        public string DumpState()
+        {
+            TreeDumper dumper = new TreeDumper();
+            _tree.Accept(dumper);
+            return dumper.ToString();
+        }
+
+        
         public TrieStats CollectStats()
         {
             TrieStatsCollector collector = new TrieStatsCollector();
@@ -254,14 +262,7 @@ namespace Nethermind.Store
             if (_logger.IsTrace) _logger.Trace($"State snapshot {_currentPosition}");
             return _currentPosition;
         }
-
-        public string DumpState()
-        {
-            TreeDumper dumper = new TreeDumper();
-            _tree.Accept(dumper);
-            return dumper.ToString();
-        }
-
+        
         public void Restore(int snapshot)
         {
             if (snapshot > _currentPosition)
