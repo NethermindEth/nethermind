@@ -329,9 +329,6 @@ namespace Nethermind.Network
                     break;
                 }
             }
-
-            if (_logger.IsWarn) _logger.Warn("Exiting peer update loop");
-            await Task.CompletedTask;
         }
 
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]

@@ -533,7 +533,7 @@ namespace Nethermind.Store
             {
                 ResolveNode(tree);
             }
-            catch (StateException e)
+            catch (StateException)
             {
                 ctx.Builder.AppendLine($"{ctx.Indent}{ctx.Prefix}{Keccak} {NodeType} [MISSING]");
                 return;

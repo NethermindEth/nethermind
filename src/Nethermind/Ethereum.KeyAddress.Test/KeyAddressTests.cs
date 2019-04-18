@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -55,8 +56,8 @@ namespace Ethereum.KeyAddress.Test
                 testJson.Seed,
                 testJson.Key,
                 testJson.Addr,
-                BigInteger.Parse(testJson.Signature.R),
-                BigInteger.Parse(testJson.Signature.S),
+                UInt256.Parse(testJson.Signature.R),
+                UInt256.Parse(testJson.Signature.S),
                 byte.Parse(testJson.Signature.V));
         }
 
@@ -120,7 +121,7 @@ namespace Ethereum.KeyAddress.Test
 
         public class KeyAddressTest
         {
-            public KeyAddressTest(string seed, string key, string address, BigInteger r, BigInteger s, byte v)
+            public KeyAddressTest(string seed, string key, string address, UInt256 r, UInt256 s, byte v)
             {
                 Seed = seed;
                 Key = key;
@@ -135,8 +136,8 @@ namespace Ethereum.KeyAddress.Test
             public string Address { get; }
             public byte V { get; }
 
-            public BigInteger R { get; }
-            public BigInteger S { get; }
+            public UInt256 R { get; }
+            public UInt256 S { get; }
 
             public override string ToString()
             {
