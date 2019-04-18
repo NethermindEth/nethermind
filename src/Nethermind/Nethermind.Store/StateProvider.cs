@@ -236,12 +236,7 @@ namespace Nethermind.Store
 
         public byte[] GetCode(Keccak codeHash)
         {
-            if (codeHash == Keccak.OfAnEmptyString)
-            {
-                return new byte[0];
-            }
-
-            return _codeDb[codeHash.Bytes];
+            return codeHash == Keccak.OfAnEmptyString ? new byte[0] : _codeDb[codeHash.Bytes];
         }
 
         public byte[] GetCode(Address address)
