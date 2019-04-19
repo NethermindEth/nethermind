@@ -499,6 +499,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return headers;
         }
 
+        public void Disconnect(DisconnectReason reason, string details)
+        {
+            Session.InitiateDisconnect(reason, details);
+        }
+
         async Task<Block[]> ISyncPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
             var bodiesMsg = new GetBlockBodiesMessage(blockHashes);

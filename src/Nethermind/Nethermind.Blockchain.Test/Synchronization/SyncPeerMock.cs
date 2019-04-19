@@ -76,6 +76,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public string ClientId => Node.ClientId;
         public UInt256 TotalDifficultyOnSessionStart => _remoteTree.Head.TotalDifficulty ?? 0;
 
+        public void Disconnect(DisconnectReason reason, string details)
+        {
+        }
+
         public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
             Block[] result = new Block[blockHashes.Length];

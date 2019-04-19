@@ -54,6 +54,6 @@ namespace Nethermind.Blockchain.Synchronization
         
         Task StopAsync();
         
-        void EnsureBest(SyncPeerAllocation allocation, UInt256 difficultyThreshold);
+        void EnsureBest(SyncPeerAllocation allocation);
     }
 }

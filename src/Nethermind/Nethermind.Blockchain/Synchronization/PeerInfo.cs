@@ -31,6 +31,7 @@ namespace Nethermind.Blockchain.Synchronization
             TotalDifficulty = syncPeer.TotalDifficultyOnSessionStart;
         }
 
+        public bool IsAllocated { get; set; }
         public bool IsInitialized { get; set; }
         public ISyncPeer SyncPeer { get; }
         public UInt256 TotalDifficulty { get; set; }
