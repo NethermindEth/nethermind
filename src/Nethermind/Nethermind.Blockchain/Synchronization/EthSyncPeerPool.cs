@@ -194,9 +194,8 @@ namespace Nethermind.Blockchain.Synchronization
             await (_refreshLoopTask ?? Task.CompletedTask);
         }
 
-        public void EnsureBest(SyncPeerAllocation allocation)
+        public void EnsureBest()
         {
-            // only for this allocation (but now we have only one allocation at the time)
             UpdateAllocations("ENSURE BEST");
         }
 

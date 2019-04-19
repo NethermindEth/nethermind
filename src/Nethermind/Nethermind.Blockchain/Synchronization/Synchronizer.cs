@@ -226,19 +226,24 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (!_blockTree.CanAcceptNewBlocks) continue;
 
-                UInt256 ourTotalDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? 0;
-                _syncPeerPool.EnsureBest(_blocksSyncAllocation);
-                PeerInfo bestPeer = _blocksSyncAllocation.Current;
-                if (bestPeer == null || bestPeer.TotalDifficulty <= ourTotalDifficulty)
+                PeerInfo bestPeer = null;
+                if (_syncMode.Current != SyncMode.StateNodes)
                 {
-                    if (_logger.IsTrace) _logger.Trace("Skipping sync - no peer with better chain.");
-                    continue;
+                    UInt256 ourTotalDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? 0;
+                    _syncPeerPool.EnsureBest();
+                    bestPeer = _blocksSyncAllocation.Current;
+                    if (bestPeer == null || bestPeer.TotalDifficulty <= ourTotalDifficulty)
+                    {
+                        if (_logger.IsTrace) _logger.Trace("Skipping sync - no peer with better chain.");
+                        continue;
+                    }
+                    
+                    SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
+                    if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer.HeadNumber} {bestPeer.TotalDifficulty} | ours {_bestSuggestedNumber} {_blockTree.BestSuggested?.TotalDifficulty ?? 0}");
                 }
 
                 _peerSyncCancellation = new CancellationTokenSource();
                 var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_peerSyncCancellation.Token, _syncLoopCancellation.Token);
-                SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
-                if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer.HeadNumber} {bestPeer.TotalDifficulty} | ours {_bestSuggestedNumber} {_blockTree.BestSuggested?.TotalDifficulty ?? 0}");
                 Task<long> syncProgressTask;
                 switch (_syncMode.Current)
                 {
@@ -246,7 +251,7 @@ namespace Nethermind.Blockchain.Synchronization
                         syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                         break;
                     case SyncMode.StateNodes:
-                        syncProgressTask = DownloadStateNodes(bestPeer, linkedCancellation.Token);
+                        syncProgressTask = DownloadStateNodes(_syncLoopCancellation.Token);
                         break;
                     case SyncMode.Full:
                         syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token);
@@ -370,13 +375,8 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private async Task<long> DownloadStateNodes(PeerInfo bestPeer, CancellationToken cancellation)
+        private async Task<long> DownloadStateNodes(CancellationToken cancellation)
         {
-            if (bestPeer == null)
-            {
-                throw new ArgumentNullException($"Not expecting {nameof(bestPeer)} to ever be null");
-            }
-
             BlockHeader bestSuggested = _blockTree.BestSuggested;
             if (bestSuggested == null)
             {
