@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
             PublicKeys = new PublicKey[256];
             Addresses = new Address[256];
 
-            for (byte i = 1; i > 0; i++)
+            for (byte i = 1; i > 0; i++) // this will wrap around
             {
                 byte[] bytes = new byte[32];
                 bytes[31] = i;

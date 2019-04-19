@@ -329,6 +329,18 @@ namespace Nethermind.Blockchain.Test.Synchronization
             remoteStorageTree.Commit();
             return remoteStorageTree;
         }
+        
+        private static StorageTree SetStorage(IDb db, byte i)
+        {
+            StorageTree remoteStorageTree = new StorageTree(db);
+            for (int j = 0; j < i; j++)
+            {
+                remoteStorageTree.Set((UInt256) j, new byte[] {(byte)j, (byte)i});    
+            }
+
+            remoteStorageTree.Commit();
+            return remoteStorageTree;
+        }
 
         [SetUp]
         public void Setup()
@@ -384,12 +396,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
                         break;
                     }
 
-                    if (_filter != null && !_filter.Contains(item.Hash))
+                    if (_filter == null || _filter.Contains(item.Hash))
                     {
-                        continue;
+                        batch.Responses[i] = _stateDb[item.Hash.Bytes] ?? _codeDb[item.Hash.Bytes];
                     }
 
-                    batch.Responses[i++] = _stateDb[item.Hash.Bytes] ?? _codeDb[item.Hash.Bytes];
+                    i++;
                 }
 
                 return Task.FromResult(batch);
@@ -553,6 +565,68 @@ namespace Nethermind.Blockchain.Test.Synchronization
             CompareTrees("END");
             CompareCodeDbs();
         }
+        
+        [Test, TestCaseSource("Scenarios")]
+        public async Task Big_test((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
+        {   
+            _remoteCodeDb[Keccak.Compute(Code0).Bytes] = Code0;
+            _remoteCodeDb[Keccak.Compute(Code1).Bytes] = Code1;
+            _remoteCodeDb[Keccak.Compute(Code2).Bytes] = Code2;
+            _remoteCodeDb[Keccak.Compute(Code3).Bytes] = Code3;
+            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
+            _remoteStateDb.Commit();
+
+            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            mock.SetFilter(((MemDb) _remoteStateDb._db).Keys.Take(((MemDb) _remoteStateDb._db).Keys.Count - 4).Select(k => new Keccak(k)).ToArray());
+
+            CompareTrees("BEFORE FIRST SYNC", true);
+            
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            _localStateDb.Commit();
+
+            CompareTrees("AFTER FIRST SYNC", true);
+            
+            _localStateTree.RootHash = _remoteStateTree.RootHash;
+            for (byte i = 0; i < 255; i++)
+            {
+                _remoteStateTree
+                    .Set(TestItem.Addresses[i], AccountJustState0.WithChangedBalance(i)
+                        .WithChangedNonce(1)
+                        .WithChangedCodeHash(Keccak.Compute(Code3))
+                        .WithChangedStorageRoot(SetStorage(_remoteStateDb, i).RootHash));
+            }
+            
+            _remoteStateTree.UpdateRootHash();
+            _remoteStateTree.Commit();
+            _remoteStateDb.Commit();
+
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            _localStateDb.Commit();
+            
+            CompareTrees("AFTER SECOND SYNC", true);
+
+            _localStateTree.RootHash = _remoteStateTree.RootHash;
+            for (byte i = 0; i < 255; i++)
+            {
+                _remoteStateTree
+                    .Set(TestItem.Addresses[i], AccountJustState0.WithChangedBalance(i)
+                        .WithChangedNonce(2)
+                        .WithChangedCodeHash(Keccak.Compute(Code3))
+                        .WithChangedStorageRoot(SetStorage(_remoteStateDb, (byte)(i % 7)).RootHash));
+            }
+            
+            _remoteStateTree.UpdateRootHash();
+            _remoteStateTree.Commit();
+            _remoteStateDb.Commit();
+            
+            mock.SetFilter(null);
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            _localStateDb.Commit();
+            
+            CompareTrees("END");
+            CompareCodeDbs();
+        }
 
         [Test, TestCaseSource("Scenarios")]
         public async Task Can_download_when_executor_sends_shorter_responses((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
@@ -654,21 +728,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 });
         }
 
-        private void CompareTrees(string stage)
+        private void CompareTrees(string stage, bool skipLogs = false)
         {
-            _logger.Info($"==================== {stage} ====================");
+            if(!skipLogs) _logger.Info($"==================== {stage} ====================");
             _localStateTree.RootHash = _remoteStateTree.RootHash;
             
-            _logger.Info($"-------------------- REMOTE --------------------");
+            if(!skipLogs) _logger.Info($"-------------------- REMOTE --------------------");
             TreeDumper dumper = new TreeDumper();
             _remoteStateTree.Accept(dumper, _remoteCodeDb);
             string local = dumper.ToString();
-            _logger.Info(local);
-            _logger.Info($"-------------------- LOCAL --------------------");
+            if(!skipLogs)_logger.Info(local);
+            if(!skipLogs)_logger.Info($"-------------------- LOCAL --------------------");
             dumper.Reset();
             _localStateTree.Accept(dumper, _localCodeDb);
             string remote = dumper.ToString();
-            _logger.Info(remote);
+            if(!skipLogs)_logger.Info(remote);
 
             if (stage == "END")
             {
