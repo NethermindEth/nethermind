@@ -193,16 +193,17 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            _logger.Warn("Collecting trie stats:");
-            TrieStats stats = _stateProvider.CollectStats();
-            if (stats.MissingNodes > 0)
-            {
-                _logger.Error(stats.ToString());    
-            }
-            else
-            {
-                _logger.Warn(stats.ToString());
-            }
+            // create a config switch for this one
+//            _logger.Warn("Collecting trie stats:");
+//            TrieStats stats = _stateProvider.CollectStats();
+//            if (stats.MissingNodes > 0)
+//            {
+//                _logger.Error(stats.ToString());    
+//            }
+//            else
+//            {
+//                _logger.Warn(stats.ToString());
+//            }
             
             if (suggestedBlock.IsGenesis) return suggestedBlock;
 
