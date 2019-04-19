@@ -384,12 +384,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
                         break;
                     }
 
-                    if (_filter != null && !_filter.Contains(item.Hash))
+                    if (_filter == null || _filter.Contains(item.Hash))
                     {
-                        continue;
+                        batch.Responses[i] = _stateDb[item.Hash.Bytes] ?? _codeDb[item.Hash.Bytes];
                     }
 
-                    batch.Responses[i++] = _stateDb[item.Hash.Bytes] ?? _codeDb[item.Hash.Bytes];
+                    i++;
                 }
 
                 return Task.FromResult(batch);
