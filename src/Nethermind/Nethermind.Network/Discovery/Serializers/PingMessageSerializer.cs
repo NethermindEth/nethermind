@@ -40,15 +40,22 @@ namespace Nethermind.Network.Discovery.Serializers
             byte[] typeBytes = { (byte)message.MessageType };
             Rlp source = Encode(message.SourceAddress);
             Rlp destination = Encode(message.DestinationAddress);
-            if(message.Topics == null || !message.Topics.Any())
+
+            Rlp[] topics;
+            if (message.Topics == null || !message.Topics.Any())
             {
-                message.Topics = new Topic[1] { new Topic("foo") };
+                // default value of topics is Rlp.OfEmptySequence ASCII (192, 0x0c)
+                // should branch to Rlp.Encode<t>(t[] item, ...) with t[0]/t = Rlp.OfAnEmptySequence
+                topics = new Rlp[Rlp.LengthOfEmptyArrayRlp];
+                topics[0] = null;
+            } else {
+                topics = new Rlp[message.Topics.Count()];
+                for (var i = 0; i < message.Topics.Length; i++)
+                {
+                    topics[i] = SerializeTopic(message.Topics[i]);
+                }
             }
-            Rlp[] topics = new Rlp[message.Topics.Length]; 
-            for (var i = 0; i < message.Topics.Length; i++)
-            {
-                topics[i] = SerializeTopic(message.Topics[i]);
-            }
+
             byte[] data = Rlp.Encode(
                 Rlp.Encode(message.Version),
                 source,
@@ -87,9 +94,15 @@ namespace Nethermind.Network.Discovery.Serializers
             });
 
             var topicsBytes = new Rlp[topics.Count()];
-            for (int i = 0; i < topics.Count(); i++)
-            {
-                topicsBytes[i] = SerializeTopic(topics[i]);
+            byte[] topicsMdc;
+            if (topicsBytes.Any()) {
+                for (int i = 0; i < topics.Count(); i++)
+                {
+                    topicsBytes[i] = SerializeTopic(topics[i]);
+                }
+                topicsMdc = Keccak.Compute(Rlp.Encode(topicsBytes).Bytes).Bytes;
+            } else {
+                topicsMdc = Keccak.OfAnEmptySequenceRlp.Bytes;
             }
 
             var message = results.Message;
@@ -99,7 +112,7 @@ namespace Nethermind.Network.Discovery.Serializers
             message.Version = version;
             message.ExpirationTime = expireTime;
             message.Topics = topics;
-            message.TopicsMdc = Keccak.Compute(Rlp.Encode(topicsBytes).Bytes).Bytes;
+            message.TopicsMdc = topicsMdc;
 
             return message;
         }

@@ -28,6 +28,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Network;
@@ -47,16 +48,17 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         public int refCnt { get; set; } // tracks number of topics that will be registered using this ticket
 
-        public byte[] pong { get; private set; } // encoded pong packet signed by the registrar
+        public PongMessage pong { get; private set; } // encoded pong packet signed by the registrar
 
-        public Ticket(long _issueTime, List<Topic> _topics, int _serial, List<long> _regTime)
+        public Ticket(long _issueTime, Node _node, List<Topic> _topics, PongMessage _pong, List<long> _regTime)
         {
             //_logger.Trace($"New Ticket issue time { _issueTime } topics {_topics.Count } ");
 
             issueTime = _issueTime;
             topics = _topics;
-            serial = _serial;
+            node = _node;
             regTime = _regTime;
+            pong = _pong;
         }
 
         public Ticket(long _issueTime, List<Topic> _topics, int _serial) {

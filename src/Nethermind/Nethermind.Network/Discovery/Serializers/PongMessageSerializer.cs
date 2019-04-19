@@ -37,21 +37,38 @@ namespace Nethermind.Network.Discovery.Serializers
             byte[] typeBytes = { (byte)message.MessageType };
 
             var topicsBytes = new Rlp[message.Topics.Count()];
-            for (int i = 0; i < message.Topics.Count(); i++)
+            Keccak topicsMdc;
+            if (topicsBytes.Any())
             {
-                topicsBytes[i] = SerializeTopic(message.Topics[i]);
+                for (int i = 0; i < message.Topics.Count(); i++)
+                {
+                    topicsBytes[i] = SerializeTopic(message.Topics[i]);
+                }
+                topicsMdc = Keccak.Compute(Rlp.Encode(topicsBytes).Bytes);
+            } else {
+                topicsMdc = Keccak.OfAnEmptySequenceRlp;
             }
-            Rlp[] waitPeriods = new Rlp[message.WaitPeriods.Length];
-            for (var i = 0; i < message.WaitPeriods.Length; i++)
+
+            Rlp[] waitPeriods;
+            if (message.WaitPeriods == null || !message.WaitPeriods.Any())
             {
-                waitPeriods[i] = Rlp.Encode(message.WaitPeriods[i]);
+                // default value of topics is Rlp.OfEmptySequence ASCII (192, 0x0c)
+                // should branch to Rlp.Encode<t>(t[] item, ...) with t[0]/t = Rlp.OfAnEmptySequence
+                waitPeriods = new Rlp[Rlp.LengthOfEmptyArrayRlp];
+                waitPeriods[0] = null;
+            } else {
+                waitPeriods = new Rlp[message.WaitPeriods.Length];
+                for (var i = 0; i < message.WaitPeriods.Length; i++)
+                {
+                    waitPeriods[i] = Rlp.Encode(message.WaitPeriods[i]);
+                }
             }
-            
+
             byte[] data = Rlp.Encode(
                 Encode(message.FarAddress),
                 Rlp.Encode(message.PingMdc),
                 Rlp.Encode(message.ExpirationTime),
-                Rlp.Encode(Keccak.Compute(Rlp.Encode(topicsBytes).Bytes).Bytes),
+                Rlp.Encode(topicsMdc),
                 Rlp.Encode(message.TicketSerial),
                 Rlp.Encode(waitPeriods)
             ).Bytes;

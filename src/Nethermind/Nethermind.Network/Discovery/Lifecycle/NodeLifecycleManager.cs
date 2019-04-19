@@ -47,7 +47,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         private readonly ITimestamp _timestamp;
 
-        private readonly Topic[] _topicsHash;
+        private byte[] _topicsHash;
 
 
         public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, INetworkConfig networkConfig, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats)
@@ -71,6 +71,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessPingMessage(PingMessage discoveryMessage)
         {
+            _topicsHash = discoveryMessage.TopicsMdc;
             SendPong(discoveryMessage);
 
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
@@ -239,7 +240,6 @@ namespace Nethermind.Network.Discovery.Lifecycle
             }
         }
 
-        /*
         private Ticket pongToTicket(long localTime, List<Topic> topics, Node node, PongMessage pong)
         {
             List<uint> wps = new List<uint>(pong.WaitPeriods);
@@ -247,24 +247,21 @@ namespace Nethermind.Network.Discovery.Lifecycle
             {
                 throw new Exception($"bad wait period list; got {wps.Count()} values want {topics.Count()}");
             }
-            string[] topicStrings = new string[topics.Count()];
-            for (int i = 0; i < topics.Count(); i++)
-            {
-                topicStrings[i] = topics[i].ToString();
-            }
-            if (new Keccak(_rlp.Encode(topicStrings)) != pong.TopicHash)
+            
+            if (_topicsHash != pong.TopicMdc)
             {
                 throw new Exception("bad topic hash");
             }
+
             List<long> regTime = new List<long>();
             for (int i = 0; i < wps.Count(); i++)
             {
-                wp = wps[i];
-                regTime[i] = localTime + (new TimeSpan(0, 0, 1)).Ticks * wp;
+                uint wp = wps[i];
+                regTime[i] = (long)((double)localTime + (new TimeSpan(0, 0, 1)).TotalMilliseconds * 1000000 * (double)wp);
             }
             Ticket t = new Ticket(localTime, node, topics, pong, regTime);
             return t;
         }
-        */
+        
     }
 }

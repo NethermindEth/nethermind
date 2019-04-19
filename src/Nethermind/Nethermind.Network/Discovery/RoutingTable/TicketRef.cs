@@ -28,23 +28,34 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Network;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
-    public interface ITicket
+    public class TicketRef : ITicketRef
     {
-        List<Topic> topics { get; }
-        List<long> regTime { get; } // Per-topic local absolute time when the ticet can be used.
+        public ITicket t;
+        public int idx { get; private set;} // Per-topic local absolute time when the ticet can be used.
 
-        int serial { get; } //The serial number that was issued by the server
-        long issueTime { get; } // // Used by registrar, tracks absolute time when the ticket was created.
-        Node node { get; }
-        int refCnt { get; set; } // tracks number of topics that will be registered using this ticket
-        PongMessage pong { get; } // encoded pong packet signed by the registrar
-        int findIdx(Topic topic);
+        public TicketRef(ITicket ticketRef, int idx)
+        {
+            //_logger.Trace($"^N %010x\n { sha }");
+
+            t = ticketRef;
+    
+            
+        }
+
+        public Topic topic() {
+            return t.topics[idx];
+        }
+        public long topicRegTime() {
+            return t.regTime[idx];
+        }
+        public long waitTime() {
+            return t.regTime[idx] - t.issueTime;
+        }
     }
 }

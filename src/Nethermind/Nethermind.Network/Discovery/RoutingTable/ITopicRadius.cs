@@ -24,27 +24,44 @@ using System.Security;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Network;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
-    public interface ITicket
-    {
-        List<Topic> topics { get; }
-        List<long> regTime { get; } // Per-topic local absolute time when the ticet can be used.
+     public interface ITopicRadius
+        {
+            Topic topic { get; }
+            byte[] topicHashPrefix { get; }
 
-        int serial { get; } //The serial number that was issued by the server
-        long issueTime { get; } // // Used by registrar, tracks absolute time when the ticket was created.
-        Node node { get; }
-        int refCnt { get; set; } // tracks number of topics that will be registered using this ticket
-        PongMessage pong { get; } // encoded pong packet signed by the registrar
-        int findIdx(Topic topic);
-    }
-}
+            ulong radius { get; set; }
+
+            TopicRadiusBucket[] buckets { get; set; }
+
+            bool converged { get; }
+
+            int radiusLookupCnt { get; set; }
+
+            int getBucketIdx(Keccak addrHash);
+            
+            Keccak targetForBucket(int bucket);
+
+            bool isInRadius(Keccak addrHash);
+
+            int chooseLookupBucket(int a, int b);
+
+            bool needMoreLookups(int a, int b, double maxValue);
+            (ulong, int) recalcRadius();
+            LookupInfo nextTarget(bool forceRegular);
+
+            void adjustWithTicket(long now, Keccak targetHash, in TicketRef t);
+
+            void adjust(long now, Keccak targetHash, Keccak addrHash, double inside);
+
+        }}

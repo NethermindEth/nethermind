@@ -115,7 +115,7 @@ namespace Nethermind.Network.Test.Discovery
 
             Assert.AreEqual(message.PingMdc, deserializedMessage.PingMdc);
 
-            ///Assert.AreEqual(Keccak.Compute(topics, deserializedMessage.TopicMdc);
+            Assert.IsNotNull(deserializedMessage.TopicMdc);
             Assert.AreEqual(message.TicketSerial, deserializedMessage.TicketSerial);
             Assert.AreEqual(message.WaitPeriods, deserializedMessage.WaitPeriods);
         }

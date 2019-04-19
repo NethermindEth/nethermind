@@ -1,4 +1,4 @@
-    /*
+   /*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -28,23 +28,26 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Network;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
-    public interface ITicket
+    public struct LookupInfo
     {
-        List<Topic> topics { get; }
-        List<long> regTime { get; } // Per-topic local absolute time when the ticet can be used.
+        public Keccak target;
 
-        int serial { get; } //The serial number that was issued by the server
-        long issueTime { get; } // // Used by registrar, tracks absolute time when the ticket was created.
-        Node node { get; }
-        int refCnt { get; set; } // tracks number of topics that will be registered using this ticket
-        PongMessage pong { get; } // encoded pong packet signed by the registrar
-        int findIdx(Topic topic);
+        public Topic topic;
+
+        public bool radiusLookup;
+
+        public LookupInfo(Keccak _target, Topic _topic, bool _radiusLookup) 
+        {
+            target = _target;
+            topic = _topic;
+            radiusLookup = _radiusLookup;
+        }
     }
 }
+

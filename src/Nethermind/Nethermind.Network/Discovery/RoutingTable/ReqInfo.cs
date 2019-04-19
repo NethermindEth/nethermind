@@ -1,4 +1,4 @@
-    /*
+   /*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -28,23 +28,28 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Network;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
-    public interface ITicket
+    public struct ReqInfo
     {
-        List<Topic> topics { get; }
-        List<long> regTime { get; } // Per-topic local absolute time when the ticet can be used.
+        // radius detector and target address generator
+	    // exists for both searched and registered topics
+        public byte[] pingHash;
 
-        int serial { get; } //The serial number that was issued by the server
-        long issueTime { get; } // // Used by registrar, tracks absolute time when the ticket was created.
-        Node node { get; }
-        int refCnt { get; set; } // tracks number of topics that will be registered using this ticket
-        PongMessage pong { get; } // encoded pong packet signed by the registrar
-        int findIdx(Topic topic);
+        public LookupInfo lookup;
+
+        public long time;
+
+        public ReqInfo(byte[] _pingHash, LookupInfo _lookup, long _time)
+        {
+            pingHash = _pingHash;
+            lookup = _lookup;
+            time = _time;
+
+        }
     }
 }
