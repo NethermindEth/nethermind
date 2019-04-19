@@ -278,7 +278,7 @@ namespace Nethermind.Blockchain.Synchronization
                             _syncPeerPool.ReportNoSyncProgress(_blocksSyncAllocation); // not very fair here - allocation may have changed
                         }
                         
-                        _blocksSyncAllocation.FinishSync();
+                        _blocksSyncAllocation?.FinishSync();
                     }
                 }
 
