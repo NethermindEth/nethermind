@@ -271,9 +271,14 @@ namespace Nethermind.Blockchain.Synchronization
 
                     SyncMode beforeUpdate = _syncMode.Current;
                     _syncMode.Update(_bestSuggestedNumber, Math.Max(_bestFullState, _blockTree.Head?.Number ?? 0));
-                    if (_syncMode.Current == beforeUpdate && progress == 0)
+                    if (beforeUpdate != SyncMode.StateNodes)
                     {
-                        _syncPeerPool.ReportNoSyncProgress(_blocksSyncAllocation); // not very fair here - allocation may have changed
+                        if (_syncMode.Current == beforeUpdate && progress == 0)
+                        {
+                            _syncPeerPool.ReportNoSyncProgress(_blocksSyncAllocation); // not very fair here - allocation may have changed
+                        }
+                        
+                        _blocksSyncAllocation.FinishSync();
                     }
                 }
 
@@ -281,8 +286,6 @@ namespace Nethermind.Blockchain.Synchronization
                 var source = _peerSyncCancellation;
                 _peerSyncCancellation = null;
                 source?.Dispose();
-
-                _blocksSyncAllocation.FinishSync();
             }
         }
 
