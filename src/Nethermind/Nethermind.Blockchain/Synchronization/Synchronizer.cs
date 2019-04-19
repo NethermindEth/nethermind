@@ -77,6 +77,18 @@ namespace Nethermind.Blockchain.Synchronization
             _syncPeersReport = new SyncPeersReport(_syncPeerPool, logManager);
             _syncMode = new SyncModeSelector(_syncPeerPool, _syncConfig, logManager);
             _syncMode.Changed += (s, e) => RequestSynchronization(SyncTriggerType.SyncModeChange);
+            _syncMode.Changed += (s, e) =>
+            {
+                if (_blocksSyncAllocation == null && _syncMode.Current != SyncMode.StateNodes)
+                {
+                    AllocateBlocksSync();
+                }
+
+                if (_syncMode.Current == SyncMode.StateNodes)
+                {
+                    FreeBlocksSyncAllocation();
+                }
+            };
 
             // make ctor parameter?
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
@@ -86,7 +98,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void Start()
         {
-            AllocateSyncPeerPool();
+            AllocateBlocksSync();
 
             // Task.Run may cause trouble - make sure to test it well if planning to uncomment 
             // _syncLoopTask = Task.Run(RunSyncLoop, _syncLoopCancelTokenSource.Token) 
@@ -310,13 +322,16 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private void AllocateSyncPeerPool()
+        private void AllocateBlocksSync()
         {
-            if (_logger.IsDebug) _logger.Debug("Initializing synchronizer loop.");
-            _blocksSyncAllocation = _syncPeerPool.Allocate("synchronizer");
-            _blocksSyncAllocation.Replaced += AllocationOnReplaced;
-            _blocksSyncAllocation.Cancelled += AllocationOnCancelled;
-            _blocksSyncAllocation.Refreshed += AllocationOnRefreshed;
+            if (_blocksSyncAllocation == null)
+            {
+                if (_logger.IsDebug) _logger.Debug("Allocating block sync.");
+                _blocksSyncAllocation = _syncPeerPool.Allocate("synchronizer");
+                _blocksSyncAllocation.Replaced += AllocationOnReplaced;
+                _blocksSyncAllocation.Cancelled += AllocationOnCancelled;
+                _blocksSyncAllocation.Refreshed += AllocationOnRefreshed;
+            }
         }
 
         private void AllocationOnRefreshed(object sender, EventArgs e)
@@ -399,18 +414,25 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void Dispose()
         {
-            if (_blocksSyncAllocation != null)
-            {
-                _blocksSyncAllocation.Cancelled -= AllocationOnCancelled;
-                _blocksSyncAllocation.Replaced -= AllocationOnReplaced;
-                _blocksSyncAllocation.Refreshed -= AllocationOnRefreshed;
-            }
+            FreeBlocksSyncAllocation();
 
             _syncTimer?.Dispose();
             _syncLoopTask?.Dispose();
             _syncLoopCancellation?.Dispose();
             _peerSyncCancellation?.Dispose();
             _syncRequested?.Dispose();
+        }
+
+        private void FreeBlocksSyncAllocation()
+        {
+            if (_blocksSyncAllocation != null)
+            {
+                _blocksSyncAllocation.Cancelled -= AllocationOnCancelled;
+                _blocksSyncAllocation.Replaced -= AllocationOnReplaced;
+                _blocksSyncAllocation.Refreshed -= AllocationOnRefreshed;
+                _syncPeerPool.Free(_blocksSyncAllocation);
+                _blocksSyncAllocation = null;
+            }
         }
     }
 }
