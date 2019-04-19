@@ -49,6 +49,8 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         private byte[] _topicsHash;
 
+        private ITopicTable _topicTable;
+
 
         public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, INetworkConfig networkConfig, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats)
         {
@@ -61,6 +63,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             NodeStats = nodeStats;
             ManagedNode = node;
             UpdateState(NodeLifecycleState.New);
+
         }
 
         public Node ManagedNode { get; }
@@ -122,7 +125,32 @@ namespace Nethermind.Network.Discovery.Lifecycle
             var nodes = _nodeTable.GetClosestNodes(discoveryMessage.SearchedNodeId);
             SendNeighbors(nodes);
         }
+        public void ProcessTopicRegisterMessage(TopicRegisterMessage discoveryMessage)
+        {
+            _logger.Trace("got TopicRegisterPacket");
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryTopicRegisterIn);
+            RefreshNodeContactTime();
 
+            try
+            {
+                ValidateTopicRegister(discoveryMessage); //TODO: ValidateTopicRegister
+            }
+            catch (Exception e)
+            {
+                _logger.Trace($"Bad waiting ticket: { e.ToString() }");
+            }
+            finally
+            {
+                _topicTable.useTicket(ManagedNode,
+                                      discoveryMessage.Pong.TicketSerial,
+                                      discoveryMessage.Topics,
+                                      (int)idx,
+                                      discoveryMessage.Pong.ExpirationTime,
+                                      discoveryMessage.Pong.WaitPeriods
+                            );
+            }
+            // TODO: Change Node state appropriately    
+        }
         public void SendFindNode(byte[] searchedNodeId)
         {
             var msg = _discoveryMessageFactory.CreateOutgoingMessage<FindNodeMessage>(ManagedNode);
