@@ -77,18 +77,18 @@ namespace Nethermind.Blockchain.Synchronization
             _syncPeersReport = new SyncPeersReport(_syncPeerPool, logManager);
             _syncMode = new SyncModeSelector(_syncPeerPool, _syncConfig, logManager);
             _syncMode.Changed += (s, e) => RequestSynchronization(SyncTriggerType.SyncModeChange);
-            _syncMode.Changed += (s, e) =>
-            {
-                if (_blocksSyncAllocation == null && _syncMode.Current != SyncMode.StateNodes)
-                {
-                    AllocateBlocksSync();
-                }
-
-                if (_syncMode.Current == SyncMode.StateNodes)
-                {
-                    FreeBlocksSyncAllocation();
-                }
-            };
+//            _syncMode.Changed += (s, e) =>
+//            {
+//                if (_blocksSyncAllocation == null && _syncMode.Current != SyncMode.StateNodes)
+//                {
+//                    AllocateBlocksSync();
+//                }
+//
+//                if (_syncMode.Current == SyncMode.StateNodes)
+//                {
+//                    FreeBlocksSyncAllocation();
+//                }
+//            };
 
             // make ctor parameter?
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
@@ -227,20 +227,17 @@ namespace Nethermind.Blockchain.Synchronization
                 if (!_blockTree.CanAcceptNewBlocks) continue;
 
                 PeerInfo bestPeer = null;
-                if (_syncMode.Current != SyncMode.StateNodes)
+                UInt256 ourTotalDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? 0;
+                _syncPeerPool.EnsureBest();
+                bestPeer = _blocksSyncAllocation.Current;
+                if (bestPeer == null || bestPeer.TotalDifficulty <= ourTotalDifficulty)
                 {
-                    UInt256 ourTotalDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? 0;
-                    _syncPeerPool.EnsureBest();
-                    bestPeer = _blocksSyncAllocation.Current;
-                    if (bestPeer == null || bestPeer.TotalDifficulty <= ourTotalDifficulty)
-                    {
-                        if (_logger.IsTrace) _logger.Trace("Skipping sync - no peer with better chain.");
-                        continue;
-                    }
-                    
-                    SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
-                    if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer.HeadNumber} {bestPeer.TotalDifficulty} | ours {_bestSuggestedNumber} {_blockTree.BestSuggested?.TotalDifficulty ?? 0}");
+                    if (_logger.IsTrace) _logger.Trace("Skipping sync - no peer with better chain.");
+                    continue;
                 }
+
+                SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
+                if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer.HeadNumber} {bestPeer.TotalDifficulty} | ours {_bestSuggestedNumber} {_blockTree.BestSuggested?.TotalDifficulty ?? 0}");
 
                 _peerSyncCancellation = new CancellationTokenSource();
                 var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_peerSyncCancellation.Token, _syncLoopCancellation.Token);
@@ -271,16 +268,13 @@ namespace Nethermind.Blockchain.Synchronization
 
                     SyncMode beforeUpdate = _syncMode.Current;
                     _syncMode.Update(_bestSuggestedNumber, Math.Max(_bestFullState, _blockTree.Head?.Number ?? 0));
-                    if (beforeUpdate != SyncMode.StateNodes)
+                    if (_syncMode.Current == beforeUpdate && progress == 0)
                     {
-                        if (_syncMode.Current == beforeUpdate && progress == 0)
-                        {
-                            _syncPeerPool.ReportNoSyncProgress(_blocksSyncAllocation); // not very fair here - allocation may have changed
-                        }
-                        
-                        _blocksSyncAllocation?.FinishSync();
+                        _syncPeerPool.ReportNoSyncProgress(_blocksSyncAllocation); // not very fair here - allocation may have changed
                     }
                 }
+                
+                _blocksSyncAllocation.FinishSync();
 
                 linkedCancellation.Dispose();
                 var source = _peerSyncCancellation;
@@ -299,12 +293,12 @@ namespace Nethermind.Blockchain.Synchronization
                     string reason;
                     if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
                     {
-                        if(_logger.IsDebug) _logger.Debug($"{_syncMode.Current} sync with {peerInfo} timed out. {t.Exception?.Message}");
+                        if (_logger.IsDebug) _logger.Debug($"{_syncMode.Current} sync with {peerInfo} timed out. {t.Exception?.Message}");
                         reason = "timeout";
                     }
                     else
                     {
-                        if(_logger.IsDebug) _logger.Debug($"{_syncMode.Current} sync with {peerInfo} failed. {t.Exception}");
+                        if (_logger.IsDebug) _logger.Debug($"{_syncMode.Current} sync with {peerInfo} failed. {t.Exception}");
                         reason = "sync fault";
                     }
 
@@ -401,8 +395,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         public async Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
-            var fastSyncAllocation = _syncPeerPool.Allocate("fast sync");
-            ISyncPeer peer = fastSyncAllocation.Current?.SyncPeer;
+//            var fastSyncAllocation = _syncPeerPool.Allocate("fast sync");
+            ISyncPeer peer = _blocksSyncAllocation.Current?.SyncPeer;
             if (peer == null)
             {
                 await Task.Delay(50);
@@ -411,7 +405,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             var hashes = batch.StateSyncs.Select(r => r.Hash).ToArray();
             batch.Responses = await peer.GetNodeData(hashes, token);
-            _syncPeerPool.Free(fastSyncAllocation);
+//            _syncPeerPool.Free(fastSyncAllocation);
             return batch;
         }
 
