@@ -46,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private bool _statusReceived;
         private Keccak _remoteHeadBlockHash;
-        private IPerfService _perfService;
+        protected IPerfService _perfService;
         private readonly ITxPool _txPool;
         private readonly ITimestamp _timestamp;
 
@@ -436,6 +436,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return task.Result;
             }
 
+            _perfService.EndPerfCalc(perfCalcId);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers");
         }
 
@@ -497,6 +498,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers;
+        }
+
+        public void Disconnect(DisconnectReason reason, string details)
+        {
+            Session.InitiateDisconnect(reason, details);
         }
 
         async Task<Block[]> ISyncPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)

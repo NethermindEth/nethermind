@@ -84,6 +84,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 (UInt256)((Blocks?.LastOrDefault()?.Difficulty ?? UInt256.Zero) * (BigInteger)((UInt256)(Blocks?.Count ?? 0)- UInt256.One)
                 + _genesisBlock.Difficulty);
 
+            public void Disconnect(DisconnectReason reason, string details)
+            {
+                Disconnected?.Invoke(this, EventArgs.Empty);
+            }
+
             public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
             {
                 if (_causeTimeoutOnBlocks)
@@ -202,7 +207,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
 
             public Stack<Block> ReceivedBlocks { get; set; } = new Stack<Block>();
-            
+            public event EventHandler Disconnected;
+
             public void SendNewTransaction(Transaction transaction)
             {
             }
@@ -387,6 +393,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext AfterPeerIsAdded(ISyncPeer syncPeer)
             {
+                ((SyncPeerMock) syncPeer).Disconnected += (s, e) => SyncPeerPool.RemovePeer(syncPeer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
+                
                 _logger.Info($"PEER ADDED {syncPeer.ClientId}");
                 _peers.TryAdd(syncPeer.ClientId, syncPeer);
                 SyncPeerPool.AddPeer(syncPeer);

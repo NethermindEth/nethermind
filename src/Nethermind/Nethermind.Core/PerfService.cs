@@ -37,9 +37,7 @@ namespace Nethermind.Core
         public Guid StartPerfCalc()
         {
             var id = Guid.NewGuid();
-            var stopwatch = new Stopwatch();
-            stopwatch.Start();
-            _stopwatches[id] = stopwatch;
+            _stopwatches[id] = Stopwatch.StartNew();
             return id;
         }
 

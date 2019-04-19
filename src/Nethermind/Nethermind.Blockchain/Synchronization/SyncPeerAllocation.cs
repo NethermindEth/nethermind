@@ -24,21 +24,57 @@ namespace Nethermind.Blockchain.Synchronization
     public class SyncPeerAllocation
     {
         public string Description { get; set; }
-        
+
         public PeerInfo Current { get; private set; }
+
+        private static object _allocationLock = new object();
 
         public SyncPeerAllocation(PeerInfo initialPeer, string description)
         {
-            Current = initialPeer;
+            lock (_allocationLock)
+            {
+                if (!initialPeer.IsAllocated)
+                {
+                    initialPeer.IsAllocated = true;
+                    Current = initialPeer;
+                }
+            }
+
+            Description = description;
+        }
+
+        public SyncPeerAllocation(string description)
+        {
             Description = description;
         }
 
         public void ReplaceCurrent(PeerInfo betterPeer)
         {
-            AllocationChangeEventArgs args = new AllocationChangeEventArgs(Current, betterPeer);
-            Current = betterPeer;
+            if (betterPeer == null)
+            {
+                throw new ArgumentNullException(nameof(betterPeer));
+            }
+
+            AllocationChangeEventArgs args;
+            lock (_allocationLock)
+            {
+                PeerInfo current = Current;
+                if (betterPeer.IsAllocated)
+                {
+                    return;
+                }
+
+                betterPeer.IsAllocated = true;
+                if (current != null)
+                {
+                    current.IsAllocated = false;
+                }
+
+                args = new AllocationChangeEventArgs(current, betterPeer);
+                Current = betterPeer;
+            }
+
             Replaced?.Invoke(this, args);
-         
         }
 
         public void Refresh()
@@ -48,18 +84,29 @@ namespace Nethermind.Blockchain.Synchronization
                 Refreshed?.Invoke(this, EventArgs.Empty);
             }
         }
-        
+
         public void Cancel()
         {
-            AllocationChangeEventArgs args = new AllocationChangeEventArgs(Current, null);
-            Current = null;
+            PeerInfo current = Current;
+            if (current == null)
+            {
+                return;
+            }
+            
+            lock (_allocationLock)
+            {
+                current.IsAllocated = false;
+                Current = null;
+            }
+
+            AllocationChangeEventArgs args = new AllocationChangeEventArgs(current, null);
             Cancelled?.Invoke(this, args);
         }
 
         public event EventHandler<AllocationChangeEventArgs> Replaced;
 
         public event EventHandler<AllocationChangeEventArgs> Cancelled;
-        
+
         public event EventHandler Refreshed;
 
         public override string ToString()
@@ -69,7 +116,17 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void FinishSync()
         {
-            Current = null;
+            PeerInfo current = Current;
+            if (current == null)
+            {
+                return;
+            }
+            
+            lock (_allocationLock)
+            {
+                current.IsAllocated = false;
+                Current = null;
+            }
         }
     }
 }

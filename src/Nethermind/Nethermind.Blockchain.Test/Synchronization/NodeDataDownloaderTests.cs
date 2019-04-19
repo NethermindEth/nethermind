@@ -48,11 +48,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
         private static Account Account2;
         private static Account Account3;
 
-        public static (string Name, Action<StateTree, StateDb, MemDb> Action)[] Scenarios = InitScenarios();
+        public static (string Name, Action<StateTree, StateDb, StateDb> Action)[] Scenarios = InitScenarios();
 
-        private static (string Name, Action<StateTree, StateDb, MemDb> Action)[] InitScenarios()
+        private static (string Name, Action<StateTree, StateDb, StateDb> Action)[] InitScenarios()
         {
-            return new (string, Action<StateTree, StateDb, MemDb>)[]
+            return new (string, Action<StateTree, StateDb, StateDb>)[]
             {
                 ("set_3_via_address", (tree, stateDb, codeDb) =>
                 {
@@ -288,8 +288,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
-        private MemDb _remoteCodeDb;
-        private MemDb _localCodeDb;
+        private StateDb _remoteCodeDb;
+        private StateDb _localCodeDb;
         private MemDb _remoteDb;
         private MemDb _localDb;
         private StateDb _remoteStateDb;
@@ -340,8 +340,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _localDb = new MemDb();
             _remoteStateDb = new StateDb(_remoteDb);
             _localStateDb = new StateDb(_localDb);
-            _localCodeDb = new MemDb();
-            _remoteCodeDb = new MemDb();
+            _localCodeDb = new StateDb(_localDb);
+            _remoteCodeDb = new StateDb(_remoteDb);
 
             _remoteStateTree = new StateTree(_remoteStateDb);
             _localStateTree = new StateTree(_localStateDb);
@@ -356,9 +356,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
         private class ExecutorMock : INodeDataRequestExecutor
         {
             private readonly StateDb _stateDb;
-            private readonly MemDb _codeDb;
+            private readonly StateDb _codeDb;
 
-            public ExecutorMock(StateDb stateDb, MemDb codeDb)
+            public ExecutorMock(StateDb stateDb, StateDb codeDb)
             {
                 _stateDb = stateDb;
                 _codeDb = codeDb;
@@ -496,7 +496,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         private int _timeoutLength = 1000000;
 
         [Test, TestCaseSource("Scenarios")]
-        public async Task Can_download_in_multiple_connections((string Name, Action<StateTree, StateDb, MemDb> SetupTree) testCase)
+        public async Task Can_download_in_multiple_connections((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
             _remoteStateDb.Commit();
@@ -516,7 +516,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test, TestCaseSource("Scenarios")]
-        public async Task Can_download_with_moving_target((string Name, Action<StateTree, StateDb, MemDb> SetupTree) testCase)
+        public async Task Can_download_with_moving_target((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
             _remoteStateDb.Commit();
@@ -555,7 +555,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test, TestCaseSource("Scenarios")]
-        public async Task Can_download_when_executor_sends_shorter_responses((string Name, Action<StateTree, StateDb, MemDb> SetupTree) testCase)
+        public async Task Can_download_when_executor_sends_shorter_responses((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
             _remoteStateDb.Commit();
@@ -573,7 +573,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test, TestCaseSource("Scenarios")]
-        public async Task Can_download_a_full_state((string Name, Action<StateTree, StateDb, MemDb> SetupTree) testCase)
+        public async Task Can_download_a_full_state((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
             _remoteStateDb.Commit();
@@ -661,21 +661,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             _logger.Info($"-------------------- REMOTE --------------------");
             TreeDumper dumper = new TreeDumper();
-            _remoteStateTree.Accept(dumper);
+            _remoteStateTree.Accept(dumper, _remoteCodeDb);
             string local = dumper.ToString();
             _logger.Info(local);
             _logger.Info($"-------------------- LOCAL --------------------");
             dumper.Reset();
-            _localStateTree.Accept(dumper);
+            _localStateTree.Accept(dumper, _localCodeDb);
             string remote = dumper.ToString();
             _logger.Info(remote);
 
             if (stage == "END")
             {
                 Assert.AreEqual(remote, local);
-                TrieStatsCollector collector = new TrieStatsCollector();
-                _localStateTree.Accept(collector);
-                Assert.AreEqual(0, collector.Stats.MissingNodes.Count);
+                TrieStatsCollector collector = new TrieStatsCollector(_logManager);
+                _localStateTree.Accept(collector, _localCodeDb);
+                Assert.AreEqual(0, collector.Stats.MissingCode);
             }
 
 //            Assert.AreEqual(_remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");

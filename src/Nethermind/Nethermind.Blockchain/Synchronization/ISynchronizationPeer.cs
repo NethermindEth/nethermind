@@ -33,6 +33,8 @@ namespace Nethermind.Blockchain.Synchronization
         Node Node { get; }
         string ClientId { get; }
         UInt256 TotalDifficultyOnSessionStart { get; }
+
+        void Disconnect(DisconnectReason reason, string details);
         
         Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token);

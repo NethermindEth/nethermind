@@ -228,26 +228,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None)
                 .ContinueWith(t => Assert.True(t.IsCompletedSuccessfully));
         }
-
-        [TestCase(33L)]
-        [TestCase(65L)]
-        public async Task Peer_sends_just_one_item_when_advertising_more(long headNumber)
-        {
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, LimboLogs.Instance);
-
-            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.JustFirstHeader | Response.AllCorrect));
-
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = headNumber;
-
-            Task task = blockDownloader.DownloadHeaders(peerInfo, SyncModeSelector.FullSyncThreshold, CancellationToken.None);
-            await task.ContinueWith(t => Assert.True(t.IsFaulted));
-
-            Assert.AreEqual(0, _blockTree.BestSuggested.Number);
-        }
         
         [TestCase(33L)]
         [TestCase(65L)]
@@ -433,6 +413,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
             public string ClientId => "EX peer";
             public UInt256 TotalDifficultyOnSessionStart => UInt256.MaxValue;
 
+            public void Disconnect(DisconnectReason reason, string details)
+            {
+                throw new NotImplementedException();
+            }
+
             public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
             {
                 throw new NotImplementedException();
@@ -443,10 +428,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 throw new NotImplementedException();
             }
 
-            public async Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new Exception();
-                return await Task.FromResult(new BlockHeader[2]);
             }
 
             public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)

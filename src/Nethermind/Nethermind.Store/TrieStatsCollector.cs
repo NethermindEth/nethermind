@@ -16,13 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Store
 {
     public class TrieStatsCollector : ITreeVisitor
     {
+        private int _lastAccountNodeCount = 0;
+        
+        private readonly ILogger _logger;
+
+        public TrieStatsCollector(ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger();
+        }
+        
         public TrieStats Stats { get; } = new TrieStats();
         
         public void VisitTree(Keccak rootHash, VisitContext context)
@@ -31,7 +40,14 @@ namespace Nethermind.Store
 
         public void VisitMissingNode(Keccak nodeHash, VisitContext context)
         {
-            Stats.MissingNodes.Add(context.IsStorage ? $"LEVEL {context.Level} STORAGE {nodeHash}" : $"{context.Level} STATE {nodeHash}");
+            if (context.IsStorage)
+            {
+                Stats.MissingStorage++;
+            }
+            else
+            {
+                Stats.MissingState++;
+            }
         }
 
         public void VisitBranch(Keccak nodeHash, VisitContext context)
@@ -60,6 +76,12 @@ namespace Nethermind.Store
         
         public void VisitLeaf(Keccak nodeHash, VisitContext context)
         {
+            if (Stats.NodesCount - _lastAccountNodeCount > 100000)
+            {
+                _lastAccountNodeCount = Stats.NodesCount;
+                _logger.Warn($"Collected info from {Stats.NodesCount} nodes. Missing CODE {Stats.MissingCode} STATE {Stats.MissingState} STORAGE {Stats.MissingStorage}");
+            }
+            
             if (context.IsStorage)
             {
                 Stats.StorageLeafCount++;
@@ -70,9 +92,16 @@ namespace Nethermind.Store
             }
         }
 
-        public void VisitCode(Keccak codeHash, VisitContext context)
+        public void VisitCode(Keccak codeHash, byte[] code, VisitContext context)
         {
-            Stats.CodeCount++;
+            if (code != null)
+            {
+                Stats.CodeCount++;
+            }
+            else
+            {
+                Stats.MissingCode++;
+            }
         }
     }
 }

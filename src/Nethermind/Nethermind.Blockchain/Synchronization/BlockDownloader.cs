@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Synchronization
             _syncStats = new SyncStats(logManager);
         }
 
-        public async Task<int> DownloadHeaders(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation)
+        public async Task<long> DownloadHeaders(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation)
         {
             if (bestPeer == null)
             {
@@ -143,7 +143,7 @@ namespace Nethermind.Blockchain.Synchronization
             return headersSynced;
         }
 
-        public async Task<int> DownloadBlocks(PeerInfo bestPeer, CancellationToken cancellation)
+        public async Task<long> DownloadBlocks(PeerInfo bestPeer, CancellationToken cancellation)
         {
             if (bestPeer == null)
             {

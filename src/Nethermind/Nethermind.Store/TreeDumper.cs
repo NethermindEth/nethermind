@@ -50,9 +50,9 @@ namespace Nethermind.Store
             _builder.AppendLine($"{GetPrefix(context)}{leafDescription}{nodeHash}");
         }
 
-        public void VisitCode(Keccak codeHash, VisitContext context)
+        public void VisitCode(Keccak codeHash, byte[] code, VisitContext context)
         {
-            _builder.AppendLine($"{GetPrefix(context)}CODE {codeHash}");
+            _builder.AppendLine($"{GetPrefix(context)}CODE {codeHash} LENGTH {code.Length}");
         }
 
         public override string ToString()

@@ -28,6 +28,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
@@ -136,8 +137,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             var request = new Request<GetNodeDataMessage, byte[][]>(message);
             _nodeDataRequests.Add(request, token);
 
-            Send(request.Message);
+            var perfCalcId = _perfService.StartPerfCalc();
 
+            Send(request.Message);
             Task<byte[][]> task = request.CompletionSource.Task;
             var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, token));
             if (firstTask.IsCanceled)
@@ -147,9 +149,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             if (firstTask == task)
             {
+                var latency = _perfService.EndPerfCalc(perfCalcId);
+                if (latency.HasValue)
+                {
+                    // block headers here / ok
+                    StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockHeaders, latency.Value);
+                }
+
                 return task.Result;
             }
 
+            _perfService.EndPerfCalc(perfCalcId);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
         }
         

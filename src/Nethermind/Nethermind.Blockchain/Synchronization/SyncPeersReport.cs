@@ -57,9 +57,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_logger.IsInfo) _logger.Info($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
                 foreach (PeerInfo peerInfo in _peerPool.AllPeers)
                 {
-                    string prefix = _peerPool.Allocations.Any(a => a.Current == peerInfo)
-                        ? " * "
-                        : "   ";
+                    string prefix = peerInfo.IsAllocated ? " * " : "   ";
 
                     if (_logger.IsInfo) _logger.Info($"{prefix}{peerInfo}");
                 }
@@ -67,11 +65,11 @@ namespace Nethermind.Blockchain.Synchronization
             else if (initializedCountChanged)
             {
                 if (_logger.IsInfo) _logger.Info($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
-                foreach (SyncPeerAllocation syncPeerAllocation in _peerPool.Allocations)
+                foreach (PeerInfo peerInfo in _peerPool.AllPeers)
                 {
-                    if (syncPeerAllocation.Current != null)
+                    if (peerInfo.IsAllocated)
                     {
-                        if (_logger.IsInfo) _logger.Info($" * {syncPeerAllocation.Current}");
+                        if (_logger.IsInfo) _logger.Info($" * {peerInfo}");
                     }
                 }
             }

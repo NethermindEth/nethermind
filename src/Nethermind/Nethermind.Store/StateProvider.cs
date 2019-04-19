@@ -43,6 +43,7 @@ namespace Nethermind.Store
         private readonly List<Change> _keptInCache = new List<Change>();
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
+        private readonly ILogManager _logManager;
 
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
@@ -51,23 +52,25 @@ namespace Nethermind.Store
         public StateProvider(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
         {
             if (stateDb == null) throw new ArgumentNullException(nameof(stateDb));
+            if (logManager == null) throw new ArgumentNullException(nameof(logManager));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _logManager = logManager;
             _tree = new StateTree(stateDb);
         }
 
         public string DumpState()
         {
             TreeDumper dumper = new TreeDumper();
-            _tree.Accept(dumper);
+            _tree.Accept(dumper, _codeDb);
             return dumper.ToString();
         }
 
         
         public TrieStats CollectStats()
         {
-            TrieStatsCollector collector = new TrieStatsCollector();
-            _tree.Accept(collector);
+            TrieStatsCollector collector = new TrieStatsCollector(_logManager);
+            _tree.Accept(collector, _codeDb);
             return collector.Stats;
         }
 
@@ -233,12 +236,7 @@ namespace Nethermind.Store
 
         public byte[] GetCode(Keccak codeHash)
         {
-            if (codeHash == Keccak.OfAnEmptyString)
-            {
-                return new byte[0];
-            }
-
-            return _codeDb[codeHash.Bytes];
+            return codeHash == Keccak.OfAnEmptyString ? new byte[0] : _codeDb[codeHash.Bytes];
         }
 
         public byte[] GetCode(Address address)

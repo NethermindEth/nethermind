@@ -316,7 +316,7 @@ namespace Nethermind.Evm
                 byte[] code = _state.GetCode(codeHash);
                 if (code == null)
                 {
-                    return null;
+                    throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
                 }
 
                 cachedCodeInfo = new CodeInfo(code);
