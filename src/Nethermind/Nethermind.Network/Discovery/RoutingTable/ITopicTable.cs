@@ -57,9 +57,9 @@ namespace Nethermind.Network.Discovery.RoutingTable
         //TODO: replace with WaitControlLoop's no RegTimeout(), or make the call shared between the two
         TimeSpan noRegTimeout();
 
-        bool useTicket(Node node, UInt32 serialNo, ICollection<Topic> topics, int idx, long issueTime, ICollection<TimeSpan> waitPeriods);
+        bool useTicket(Node node, UInt32 serialNo, ICollection<Topic> topics, int idx, long issueTime, ICollection<uint> waitPeriods);
 
-        void Initialize();
+        void Initialize(PublicKey masterNodeKey);
 
     }
 }

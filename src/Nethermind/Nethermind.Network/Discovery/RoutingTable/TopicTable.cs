@@ -37,7 +37,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
     public class TopicTable : ITopicTable
     {
-        private INetworkStorage _db;
+        private INetworkConfig _networkConfig;
         public Node MasterNode { get; private set;}
         private  Dictionary<Node, NodeInfo> _nodes;
 
@@ -65,10 +65,10 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         private readonly bool _printTestImgLogs = true;
 
-        public TopicTable(INetworkStorage nodeDb, Node self)
+        public TopicTable(INetworkConfig networkConfig)
         {
             //_logger.Trace($"^N %010x\n { self.Id }");
-            _db = nodeDb;
+            _networkConfig = networkConfig;
         }
         public TopicInfo getOrNewTopic(Topic topic)
         {
@@ -121,13 +121,13 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
             NodeInfo n = _nodes[node];
             if (!_nodes.ContainsKey(node)) {
-                if (_db != null ){
+                //if (_db != null ){
                     //TODO:
                     // NOT IMPLEMENTED
                     //Ticket[] issued = _db.fetchTopicRegTicketsIssued(node.ID); // check if node.ID is nodID, hceck
                     //Ticket[] used = _db.fetchTopicRegTicketsUsed(node.ID);
                     //n = new NodeInfo(issued, used); // possibly sending uninitialized values?
-                }
+                //}
                 return n;
             } else {
                 return n;
@@ -268,14 +268,14 @@ namespace Nethermind.Network.Discovery.RoutingTable
             _globalEntries--;
         }
 
-        //TODO: replace with WaitControlLoop's no RegTimeout(), or make the call shared between the two
+        //TODO: replace with a static WaitControlLoop's noRegTimeout(), or make the call shared between the two
         public TimeSpan noRegTimeout() {
             WaitControlLoop wcl = new WaitControlLoop();
             return wcl.noRegTimeout();
         }
 
 
-        public bool useTicket(Node node, uint serialNo, ICollection<Topic> topics, int idx, long issueTime, ICollection<TimeSpan> waitPeriods) {
+        public bool useTicket(Node node, uint serialNo, ICollection<Topic> topics, int idx, long issueTime, ICollection<uint> waitPeriods) {
             //_logger.Trace($"Using discovery ticket serial { serialNo } topics {topics} waits {waitPeriods}");
             collectGarbage();
 
@@ -297,11 +297,11 @@ namespace Nethermind.Network.Discovery.RoutingTable
             }
 
             TimeSpan currTime = new TimeSpan(tm);
-            TimeSpan regTime = new TimeSpan(issueTime + waitPeriods.ElementAt(idx).Ticks);
+            TimeSpan regTime = new TimeSpan(issueTime + waitPeriods.ElementAt(idx));
             TimeSpan relTime = currTime - regTime;
 
             if (relTime.TotalMilliseconds*1000000 >= -1  // Turn into nanoseconds
-                && relTime <= new TimeSpan(0, 0, (int)(_regTimeWindow.TotalMilliseconds+1)/1000)
+                && relTime <= new TimeSpan(0, 0, (int)(_regTimeWindow.TotalMilliseconds+1)/1000) // Turn Milliseconds back into Seconds for TimeSpan constructor
             ) {
                 if ( !n.entries.ContainsKey(topics.ElementAt(idx)) ) {
                     addEntry(node, topics.ElementAt(idx)); 
@@ -314,8 +314,9 @@ namespace Nethermind.Network.Discovery.RoutingTable
             return false;
         }
 
-        public void Initialize()
+        public void Initialize(PublicKey masterNodeKey)
         {
+            MasterNode = new Node(masterNodeKey, _networkConfig.MasterHost, _networkConfig.MasterPort);
         }
 
         

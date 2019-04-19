@@ -39,7 +39,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         public int fifoHead { get; set; }
             
-        public int fifoTail { get; }
+        public int fifoTail { get; set; }
 
         public TopicRequestQueueItem rqItem { get; set;  }
 
@@ -54,9 +54,10 @@ namespace Nethermind.Network.Discovery.RoutingTable
         }
 
         public TopicEntry getFifoTail() {
-            var lastItemIdx = entries.Count() - 1;
+            var lastItemIdx = entries.Keys.Max();
             TopicEntry lastItem = entries[lastItemIdx];
             entries.Remove(lastItemIdx);
+            fifoTail = entries.Keys.Max();
             return lastItem;
         }
     }

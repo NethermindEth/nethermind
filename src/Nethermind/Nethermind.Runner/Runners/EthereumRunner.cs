@@ -894,6 +894,8 @@ namespace Nethermind.Runner.Runners
                 networkConfig,
                 _logManager);
 
+            var topicTable = new TopicTable(networkConfig);
+
             var evictionManager = new EvictionManager(
                 nodeTable,
                 _logManager);
@@ -912,6 +914,7 @@ namespace Nethermind.Runner.Runners
                 _logManager,
                 _perfService);
 
+
             var discoveryManager = new DiscoveryManager(
                 nodeLifeCycleFactory,
                 nodeTable,
@@ -929,6 +932,7 @@ namespace Nethermind.Runner.Runners
                 nodesLocator,
                 discoveryManager,
                 nodeTable,
+                topicTable,
                 _messageSerializationService,
                 _cryptoRandom,
                 discoveryStorage,

@@ -49,6 +49,7 @@ namespace Nethermind.Network.Discovery
         private readonly INodesLocator _nodesLocator;
         private readonly IDiscoveryManager _discoveryManager;
         private readonly INodeTable _nodeTable;
+        private readonly ITopicTable _topicTable;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IMessageSerializationService _messageSerializationService;
@@ -69,6 +70,7 @@ namespace Nethermind.Network.Discovery
             INodesLocator nodesLocator,
             IDiscoveryManager discoveryManager,
             INodeTable nodeTable,
+            ITopicTable topicTable,
             IMessageSerializationService messageSerializationService,
             ICryptoRandom cryptoRandom,
             INetworkStorage discoveryStorage,
@@ -82,6 +84,7 @@ namespace Nethermind.Network.Discovery
             _nodesLocator = nodesLocator;
             _discoveryManager = discoveryManager;
             _nodeTable = nodeTable;
+            _topicTable = topicTable;
             _messageSerializationService = messageSerializationService;
             _cryptoRandom = cryptoRandom;
             _discoveryStorage = discoveryStorage;
@@ -94,6 +97,7 @@ namespace Nethermind.Network.Discovery
         {
             _discoveryManager.NodeDiscovered += OnNewNodeDiscovered;
             _nodeTable.Initialize(masterPublicKey);
+            _topicTable.Initialize(masterPublicKey);
             _nodesLocator.Initialize(_nodeTable.MasterNode);
         }
 
