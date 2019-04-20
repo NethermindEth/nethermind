@@ -323,6 +323,11 @@ namespace Nethermind.Network
                     if (_logger.IsInfo) _logger.Info("Peer update loop canceled.");
                     break;
                 }
+                catch (OperationCanceledException)
+                {
+                    if (_logger.IsInfo) _logger.Info("Peer update loop canceled");
+                    break;
+                }
                 catch (Exception e)
                 {
                     if (_logger.IsError) _logger.Error("Peer update loop failure", e);
