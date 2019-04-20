@@ -19,6 +19,8 @@
 using System;
 using System.Linq;
 using Nethermind.Core.Logging;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Synchronization
 {
@@ -29,11 +31,13 @@ namespace Nethermind.Blockchain.Synchronization
         private int _currentInitializedPeerCount;
 
         private readonly IEthSyncPeerPool _peerPool;
+        private readonly INodeStatsManager _stats;
         private readonly ILogger _logger;
 
-        public SyncPeersReport(IEthSyncPeerPool peerPool, ILogManager logManager)
+        public SyncPeersReport(IEthSyncPeerPool peerPool, INodeStatsManager statsManager, ILogManager logManager)
         {
             _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
+            _stats = statsManager ?? throw new ArgumentNullException(nameof(statsManager));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -59,7 +63,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     string prefix = peerInfo.IsAllocated ? " * " : "   ";
 
-                    if (_logger.IsInfo) _logger.Info($"{prefix}{peerInfo}");
+                    if (_logger.IsInfo) _logger.Info($"{prefix}{peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000}]");
                 }
             }
             else if (initializedCountChanged)

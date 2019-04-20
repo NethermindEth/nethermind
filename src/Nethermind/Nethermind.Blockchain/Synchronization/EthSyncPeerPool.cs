@@ -36,6 +36,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly INodeStatsManager _stats;
         private readonly ISyncConfig _syncConfig;
+        private readonly SyncPeersReport _syncPeersReport;
         private readonly ILogger _logger;
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
@@ -59,6 +60,8 @@ namespace Nethermind.Blockchain.Synchronization
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            
+            _syncPeersReport = new SyncPeersReport(this, _stats, logManager);
         }
 
         private async Task RunRefreshPeerLoop()

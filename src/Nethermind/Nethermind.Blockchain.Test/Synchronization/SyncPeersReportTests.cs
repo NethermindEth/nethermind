@@ -19,6 +19,7 @@
 using System.Linq;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Logging;
+using Nethermind.Stats;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -31,7 +32,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_write_no_peers()
         {
             IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
-            SyncPeersReport report = new SyncPeersReport(syncPeerPool, NoErrorLimboLogs.Instance);
+            SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.Write();
             report.Write();
         }
@@ -47,7 +48,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             PeerInfo[] peers = new PeerInfo[] {peer1};
             syncPeerPool.PeerCount.Returns(peers.Length);
 
-            SyncPeersReport report = new SyncPeersReport(syncPeerPool, NoErrorLimboLogs.Instance);
+            SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.Write();
             report.Write();
         }
@@ -66,7 +67,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             PeerInfo[] peers = new PeerInfo[] {peer1, peer2};
             syncPeerPool.PeerCount.Returns(peers.Length);
 
-            SyncPeersReport report = new SyncPeersReport(syncPeerPool, NoErrorLimboLogs.Instance);
+            SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.Write();
             report.Write();
         }
@@ -87,7 +88,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             syncPeerPool.AllPeers.Returns(peers);
 
-            SyncPeersReport report = new SyncPeersReport(syncPeerPool, NoErrorLimboLogs.Instance);
+            SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.Write();
 
             peer1.IsInitialized = true;
@@ -111,7 +112,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncPeerPool.AllPeers.Returns(peers);
             syncPeerPool.Allocations.Returns(peers.Select(p => new SyncPeerAllocation(p, "desc")));
 
-            SyncPeersReport report = new SyncPeersReport(syncPeerPool, NoErrorLimboLogs.Instance);
+            SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.Write();
 
             peer1.IsInitialized = true;

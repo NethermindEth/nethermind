@@ -52,7 +52,6 @@ namespace Nethermind.Blockchain.Synchronization
         private bool _requestedSyncCancelDueToBetterPeer;
         private readonly ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
         private SyncModeSelector _syncMode;
-        private SyncPeersReport _syncPeersReport;
         private long _bestSuggestedNumber => _blockTree.BestSuggested?.Number ?? 0;
 
         /* sync events are used mainly for managing sync peers reputation */
@@ -74,7 +73,6 @@ namespace Nethermind.Blockchain.Synchronization
 
             _nodeDataDownloader.SetExecutor(this);
 
-            _syncPeersReport = new SyncPeersReport(_syncPeerPool, logManager);
             _syncMode = new SyncModeSelector(_syncPeerPool, _syncConfig, logManager);
             _syncMode.Changed += (s, e) => RequestSynchronization(SyncTriggerType.SyncModeChange);
 //            _syncMode.Changed += (s, e) =>
@@ -148,7 +146,6 @@ namespace Nethermind.Blockchain.Synchronization
         /// <param name="syncTriggerType">Reason for the synchronization request for logging</param>
         public void RequestSynchronization(SyncTriggerType syncTriggerType)
         {
-            _syncPeersReport.Write();
             if (!_blockTree.CanAcceptNewBlocks)
             {
                 return;
