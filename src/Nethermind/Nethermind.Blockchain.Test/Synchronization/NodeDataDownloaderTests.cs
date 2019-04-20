@@ -54,6 +54,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             return new (string, Action<StateTree, StateDb, StateDb>)[]
             {
+                ("empty", (tree, stateDb, codeDb) =>
+                {
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Commit();
+                }),
                 ("set_3_via_address", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
@@ -651,6 +656,107 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
             _remoteStateDb.Commit();
+
+            CompareTrees("BEGIN");
+            
+            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+            
+            Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
+            if (first == syncNode)
+            {
+                if (syncNode.IsFaulted)
+                {
+                    throw syncNode.Exception;
+                }
+            }
+            
+            _localStateDb.Commit();
+
+            CompareTrees("END");
+        }
+        
+        [Test, TestCaseSource("Scenarios")]
+        public async Task Scenario_plus_one_storage((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
+        {
+            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
+            _remoteStateDb.Commit();
+            
+            StorageTree remoteStorageTree = new StorageTree(_remoteDb);
+            remoteStorageTree.Set((UInt256) 1, new byte[] {1});
+            remoteStorageTree.Commit();
+           
+            _remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
+            _remoteStateTree.Commit();
+
+            CompareTrees("BEGIN");
+            
+            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+            
+            Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
+            if (first == syncNode)
+            {
+                if (syncNode.IsFaulted)
+                {
+                    throw syncNode.Exception;
+                }
+            }
+            
+            _localStateDb.Commit();
+
+            CompareTrees("END");
+        }
+        
+        [Test, TestCaseSource("Scenarios")]
+        public async Task Scenario_plus_one_code((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
+        {
+            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
+            _remoteStateDb.Commit();
+           
+            _remoteCodeDb.Set(Keccak.Compute(Code0), Code0);
+            _remoteCodeDb.Commit();
+            
+            _remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedCodeHash(Keccak.Compute(Code0)));
+            _remoteStateTree.Commit();
+
+            CompareTrees("BEGIN");
+            
+            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            NodeDataDownloader downloader = new NodeDataDownloader(_localCodeDb, _localStateDb, mock, _logManager);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+            
+            Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
+            if (first == syncNode)
+            {
+                if (syncNode.IsFaulted)
+                {
+                    throw syncNode.Exception;
+                }
+            }
+            
+            _localStateDb.Commit();
+
+            CompareTrees("END");
+        }
+        
+        [Test, TestCaseSource("Scenarios")]
+        public async Task Scenario_plus_one_code_one_storage((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
+        {
+            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
+            _remoteStateDb.Commit();
+           
+            _remoteCodeDb.Set(Keccak.Compute(Code0), Code0);
+            _remoteCodeDb.Commit();
+            
+            StorageTree remoteStorageTree = new StorageTree(_remoteDb);
+            remoteStorageTree.Set((UInt256) 1, new byte[] {1});
+            remoteStorageTree.Commit();
+            
+            _remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedCodeHash(Keccak.Compute(Code0)).WithChangedStorageRoot(remoteStorageTree.RootHash));
+            _remoteStateTree.Commit();
 
             CompareTrees("BEGIN");
             

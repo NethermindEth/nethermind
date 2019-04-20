@@ -151,8 +151,6 @@ namespace Nethermind.Blockchain.Synchronization
                     });
                 }
             } while (dataBatches.Length != 0);
-
-            if (_logger.IsInfo) _logger.Info($"Finished downloading node data (downloaded {_consumedNodesCount})");
         }
 
         private AddNodeResult AddNode(StateSyncItem syncItem, DependentItem dependentItem, string reason, bool missing = false)
@@ -561,6 +559,14 @@ namespace Nethermind.Blockchain.Synchronization
         {
             if (_logger.IsTrace) _logger.Trace($"Setting request executor to {executor.GetType().Name}");
             _executor = executor ?? throw new ArgumentNullException(nameof(executor));
+        }
+
+        public bool IsFullySynced(Keccak bestSuggestedStateRoot)
+        {
+            lock (_stateDbLock)
+            {
+                return _stateDb.Get(bestSuggestedStateRoot) != null;
+            }
         }
 
         private enum AddNodeResult

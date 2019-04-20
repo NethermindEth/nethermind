@@ -28,5 +28,6 @@ namespace Nethermind.Blockchain.Synchronization
 
         // here now to pass the reference easily for the current implementation
         void SetExecutor(INodeDataRequestExecutor executor);
+        bool IsFullySynced(Keccak bestSuggestedStateRoot);
     }
 }

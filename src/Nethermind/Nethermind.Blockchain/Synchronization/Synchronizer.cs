@@ -258,12 +258,9 @@ namespace Nethermind.Blockchain.Synchronization
                 if (syncProgressTask.IsCompletedSuccessfully)
                 {
                     long progress = syncProgressTask.Result;
-                    if (progress != 0L && _syncMode.Current == SyncMode.StateNodes) // hack (use some status of fully synced)
-                    {
-                        _bestFullState = _bestSuggestedNumber;
-                    }
-
                     SyncMode beforeUpdate = _syncMode.Current;
+                    
+                    // TODO: can find best full state 64 nodes back
                     _syncMode.Update(_bestSuggestedNumber, Math.Max(_bestFullState, _blockTree.Head?.Number ?? 0));
                     if (_syncMode.Current == beforeUpdate && progress == 0)
                     {
@@ -378,16 +375,14 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             Task<long> task = _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);
-
-            long result = await task;
-            if (task.IsCompletedSuccessfully && !cancellation.IsCancellationRequested)
+            await task;
+            if (_nodeDataDownloader.IsFullySynced(bestSuggested.StateRoot))
             {
-                if (_logger.IsInfo) _logger.Info($"Suggesting sync transition block {bestSuggested.ToString(BlockHeader.Format.Short)}");
-//               _blockTree.SuggestBlock(_blockTree.FindBlock(bestSuggested.Hash, false));
-                return Math.Max(1L, result); // hack
+                if(_logger.IsWarn) _logger.Warn($"GOOD NEWS: Finished downloading all the states up to {bestSuggested.ToString(BlockHeader.Format.Short)}");
+                _bestFullState = _bestSuggestedNumber;
             }
-
-            return result;
+            
+            return await task;
         }
 
         public async Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch)
