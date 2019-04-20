@@ -532,13 +532,13 @@ namespace Nethermind.Blockchain.Synchronization
                 _logger.Info($"Changing the sync root node to {rootNode}");
                 _rootNode = rootNode;
                 _dependencies.Clear();
-                Stream0?.Clear();
-                Stream1?.Clear();
-                Stream2?.Clear();
+                _nodes[0].Clear();
+                _nodes[1].Clear();
+                _nodes[2].Clear();
                 _pendingRequests = 0;
             }
 
-            if (Stream0 == null)
+            if (_nodes[0] == null)
             {
                 _nodes[0] = new ConcurrentStack<StateSyncItem>();
                 _nodes[1] = new ConcurrentStack<StateSyncItem>();
@@ -550,7 +550,23 @@ namespace Nethermind.Blockchain.Synchronization
                 return _consumedNodesCount;
             }
 
-            AddNode(new StateSyncItem(rootNode, NodeDataType.State, 0, 1), null, "initial");
+            bool hasOnlyRootNode = false;
+            if (TotalCount == 1)
+            {
+                Stream0.TryPeek(out StateSyncItem node0);
+                Stream1.TryPeek(out StateSyncItem node1);
+                Stream2.TryPeek(out StateSyncItem node2);
+                if ((node0 ?? node1 ?? node2).Hash == rootNode)
+                {
+                    hasOnlyRootNode = true;
+                }
+            }
+
+            if (!hasOnlyRootNode)
+            {
+                AddNode(new StateSyncItem(rootNode, NodeDataType.State, 0, 1), null, "initial");
+            }
+
             await KeepSyncing(token);
             return _consumedNodesCount;
         }
