@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Synchronization
         private object _codeDbLock = new object();
         private static object _nullObject = new object();
 
-        private Dictionary<Keccak, List<DependentItem>> _dependencies = new Dictionary<Keccak, List<DependentItem>>();
+        private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
 
         private LruCache<Keccak, object> _alreadySaved = new LruCache<Keccak, object>(1024 * 64);
 
@@ -182,18 +182,19 @@ namespace Nethermind.Blockchain.Synchronization
 
                     _stateWasNotThere++;
                 }
-                
-                bool isAlreadyRequested = _dependencies.ContainsKey(syncItem.Hash); 
+
+                bool isAlreadyRequested = _dependencies.ContainsKey(syncItem.Hash);
                 if (dependentItem != null)
                 {
+                    if (_logger.IsTrace) _logger.Trace($"Adding dependency {syncItem.Hash} -> {dependentItem.SyncItem.Hash}");
                     AddDependency(syncItem.Hash, dependentItem);
                 }
-                
+
                 // same items can have same hashes and we only need them once
                 // there is an issue when we have an item, we add it to dependencies, then we request it and the request times out
                 // and we never request it again because it was already on the dependencies list
                 if (isAlreadyRequested)
-                {   
+                {
                     _checkWasInDependencies++;
                     if (_logger.IsTrace) _logger.Trace($"Node already requested - skipping {syncItem.Hash}");
                     return AddNodeResult.AlreadyRequested;
@@ -230,18 +231,16 @@ namespace Nethermind.Blockchain.Synchronization
         {
             if (_dependencies.ContainsKey(hash))
             {
-                List<DependentItem> dependentItems = _dependencies[hash];
-                
+                HashSet<DependentItem> dependentItems = _dependencies[hash];
+
                 if (_logger.IsTrace)
                 {
                     string nodeNodes = dependentItems.Count == 1 ? "node" : "nodes";
                     _logger.Trace($"{dependentItems.Count} {nodeNodes} dependent on {hash}");
                 }
 
-                for (int i = 0; i < dependentItems.Count; i++)
+                foreach (DependentItem dependentItem in dependentItems)
                 {
-                    DependentItem dependentItem = dependentItems[i];
-
                     dependentItem.Counter--;
                     _dependencies.Remove(hash);
                     if (dependentItem.Counter == 0)
@@ -258,31 +257,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void SaveNode(StateSyncItem syncItem, byte[] data)
         {
-            if(_logger.IsTrace) _logger.Trace($"SAVE {new string('+', syncItem.Level * 2)}{syncItem.NodeDataType.ToString().ToUpperInvariant()} {syncItem.Hash}");
-            foreach (KeyValuePair<Keccak,List<DependentItem>> keyValuePair in _dependencies)
-            {
-                _logger.Warn($"--{keyValuePair.Key} -> {keyValuePair.Value.Count}");
-
-                for (int i = 0; i < keyValuePair.Value.Count; i++)
-                {
-                    for (int j = 0; j < keyValuePair.Value.Count; j++)
-                    {
-                        if (i == j)
-                        {
-                            continue;
-                        }
-                        
-                        if (keyValuePair.Value[i].SyncItem.Hash == keyValuePair.Value[j].SyncItem.Hash)
-                        {
-                            _logger.Error($"SAME SAME SAME {keyValuePair.Key} -> {keyValuePair.Value[j].SyncItem.Hash}");
-                        }
-                    }   
-                    
-                    _logger.Warn($"----{keyValuePair.Key} -> {keyValuePair.Value[i].SyncItem.Hash} {keyValuePair.Value[i].Counter}");
-                }
-                
-            }
-            
+            if (_logger.IsTrace) _logger.Trace($"SAVE {new string('+', syncItem.Level * 2)}{syncItem.NodeDataType.ToString().ToUpperInvariant()} {syncItem.Hash}");
             _savedNodesCount++;
             if (syncItem.NodeDataType == NodeDataType.State)
             {
@@ -323,7 +298,7 @@ namespace Nethermind.Blockchain.Synchronization
                     throw new EthSynchronizationException($"Nodes left after the root node saved - count: {TotalCount}");
                 }
             }
-            
+
             RunChainReaction(syncItem.Hash);
         }
 
@@ -400,9 +375,17 @@ namespace Nethermind.Blockchain.Synchronization
                         case NodeType.Branch:
                             trieNode.BuildLookupTable();
                             DependentItem dependentBranch = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
+                            HashSet<Keccak> alreadyProcessedChildHashes = new HashSet<Keccak>();
                             for (int childIndex = 0; childIndex < 16; childIndex++)
                             {
                                 Keccak child = trieNode.GetChildHash(childIndex);
+                                if (alreadyProcessedChildHashes.Contains(child))
+                                {
+                                    continue;
+                                }
+
+                                alreadyProcessedChildHashes.Add(child);
+
                                 if (child != null)
                                 {
                                     AddNodeResult addChildResult = AddNode(new StateSyncItem(child, nodeDataType, currentStateSyncItem.Level + 1, GetPriority(currentStateSyncItem)), dependentBranch, "branch child");
@@ -517,18 +500,26 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private void AddDependency(Keccak dependency, DependentItem dependentItem)
-        {   
-            if (!_dependencies.ContainsKey(dependency))
+        private class DependentItemComparer : IEqualityComparer<DependentItem>
+        {
+            public bool Equals(DependentItem x, DependentItem y)
             {
-                _dependencies[dependency] = new List<DependentItem>();
+                return x?.SyncItem.Hash == y?.SyncItem.Hash;
             }
 
-            if (_dependencies[dependency].Any(d => d.SyncItem.Hash == dependentItem.SyncItem.Hash))
+            public int GetHashCode(DependentItem obj)
             {
-                
+                return obj?.SyncItem.Hash.GetHashCode() ?? 0;
             }
-            
+        }
+
+        private void AddDependency(Keccak dependency, DependentItem dependentItem)
+        {
+            if (!_dependencies.ContainsKey(dependency))
+            {
+                _dependencies[dependency] = new HashSet<DependentItem>(new DependentItemComparer());
+            }
+
             _dependencies[dependency].Add(dependentItem);
         }
 
@@ -550,7 +541,7 @@ namespace Nethermind.Blockchain.Synchronization
             _prepareWatch.Reset();
             List<StateSyncBatch> requests = new List<StateSyncBatch>();
             if (_logger.IsDebug) _logger.Debug($"Preparing requests from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes  - pending requests {_pendingRequests}");
-            
+
             // re-add the pending request
             if (_lastRequest != null)
             {
