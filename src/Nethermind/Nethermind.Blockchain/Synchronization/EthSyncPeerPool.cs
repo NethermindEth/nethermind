@@ -71,6 +71,7 @@ namespace Nethermind.Blockchain.Synchronization
                 try
                 {
                     if (_logger.IsDebug) _logger.Debug($"Running refresh peer info for {peerInfo}.");
+                    _syncPeersReport.Write();
                     var initCancelSource = _refreshCancelTokens[peerInfo.SyncPeer.Node.Id] = new CancellationTokenSource();
                     var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
                     await RefreshPeerInfo(peerInfo, linkedSource.Token).ContinueWith(t =>
