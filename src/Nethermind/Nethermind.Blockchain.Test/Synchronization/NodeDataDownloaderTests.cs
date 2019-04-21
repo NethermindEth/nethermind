@@ -68,17 +68,27 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     tree.Set(TestItem.AddressC, Account0);
                     tree.Commit();
                 }),
-                ("set_3_via_hash", (tree, stateDb, codeDb) =>
+                ("storage_hash_and_code_hash_same", (tree, stateDb, codeDb) =>
                 {
-                    SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
-                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
+                    Keccak codeHash = Keccak.Compute(Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601"));
+                    StorageTree remoteStorageTree = new StorageTree(stateDb);
+                    remoteStorageTree.Set((UInt256) 1, new byte[] {1});
+                    remoteStorageTree.Commit();
+                    remoteStorageTree.UpdateRootHash();
+                    codeDb[codeHash.Bytes] = Code0;
+                    tree.Set(new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
                     tree.Commit();
                 }),
                 ("branch_with_same_accounts_at_different_addresses", (tree, stateDb, codeDb) =>
                 {
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Set(new Keccak("1baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
+                    tree.Set(new Keccak("2baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
+                    tree.Commit();
+                }),
+                ("branch_with_same_accounts_at_different_addresses", (tree, stateDb, codeDb) =>
+                {
+                    
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     tree.Set(new Keccak("1baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
                     tree.Set(new Keccak("2baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
