@@ -366,6 +366,19 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (Keccak.Compute(currentResponseItem) != currentStateSyncItem.Hash)
                     {
+                        for (int j = 0; j < batch.Responses.Length; j++)
+                        {
+                            if (batch.Responses[j] == null)
+                            {
+                                continue;
+                            }
+
+                            if (Keccak.Compute(batch.Responses[j]) == batch.StateSyncs[i].Hash)
+                            {
+                                if (_logger.IsWarn) _logger.Warn($"Invalid data but response[{j}] matches request[{i}]");        
+                            }
+                        }
+                        
                         if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {batch.Responses[i]?.Length} of type {batch.StateSyncs[i].NodeDataType} at level {batch.StateSyncs[i].Level} of type {batch.StateSyncs[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.StateSyncs[i].Hash}");
                         throw new EthSynchronizationException("Node sent invalid data");
                     }
