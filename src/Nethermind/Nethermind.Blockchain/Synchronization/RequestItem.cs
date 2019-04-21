@@ -39,5 +39,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int Level { get; }
             
         public float Priority { get; }
+
+        public bool IsRoot { get; set; }
     }
 }

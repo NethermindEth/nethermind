@@ -77,6 +77,20 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
                     tree.Commit();
                 }),
+                ("branch_with_same_accounts_at_different_addresses", (tree, stateDb, codeDb) =>
+                {
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Set(new Keccak("1baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
+                    tree.Set(new Keccak("2baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
+                    tree.Commit();
+                }),
+                ("branch_with_same_accounts_at_different_addresses_2", (tree, stateDb, codeDb) =>
+                {
+                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    tree.Set(new Keccak("3baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
+                    tree.Set(new Keccak("4baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
+                    tree.Commit();
+                }),
                 ("set_3_delete_1", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
