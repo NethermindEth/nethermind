@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private Keccak _fastSyncProgressKey = Keccak.Compute("fast_sync_progress");
         private const int MaxRequestSize = 384;
-        private long _lastDownloadedNodesCount;
+        private long _lastRequestedNodesCount;
         private long _consumedNodesCount;
         private long _savedStorageCount;
         private long _savedStateCount;
@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Synchronization
                 dataBatches = PrepareRequests();
                 for (int i = 0; i < dataBatches.Length; i++)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Sending requests for {dataBatches[i].StateSyncs.Length} nodes");
+                    if (_logger.IsTrace) _logger.Trace($"Sending requests for {dataBatches[i].StateSyncs.Length} nodes");
                     _requestedNodesCount += dataBatches[i].StateSyncs.Length;
                     _networkWatch.Restart();
                     _lastRequest = dataBatches[i].StateSyncs;
@@ -516,19 +516,20 @@ namespace Nethermind.Blockchain.Synchronization
                 throw new EthSynchronizationException("Node sent no data");
             }
 
-            if (_consumedNodesCount > _lastDownloadedNodesCount + 1000)
+            if (_requestedNodesCount > _lastRequestedNodesCount + 5000)
             {
-                _lastDownloadedNodesCount = _consumedNodesCount;
-                if (_logger.IsInfo) _logger.Info($"Nodes requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, saved {_savedNodesCount} nodes, {_savedAccounts} accounts, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage - pending requests {_pendingRequests}, queued nodes {Stream0.Count}|{Stream1.Count}|{Stream2.Count}, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
-                if (_logger.IsInfo) _logger.Info($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
+                _lastRequestedNodesCount = _requestedNodesCount;
+                if (_logger.IsInfo) _logger.Info($"Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:p2}), saved accounts {_savedAccounts}, enqueued nodes {Stream0.Count}|{Stream1.Count}|{Stream2.Count}");
+                if (_logger.IsTrace) _logger.Trace($"Requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
+                if (_logger.IsTrace) _logger.Trace($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Pending {TotalCount} ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
             _handleWatch.Stop();
             long total = _prepareWatch.ElapsedMilliseconds + _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
             if (total != 0)
             {
-                _logger.Info($"Prepare {_prepareWatch.ElapsedMilliseconds} ({(decimal) _prepareWatch.ElapsedMilliseconds / total:P0}) - Request {_networkWatch.ElapsedMilliseconds} ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds} ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
+                // calculate averages
+                if(_logger.IsDebug) _logger.Debug($"Prepare {_prepareWatch.ElapsedMilliseconds} ({(decimal) _prepareWatch.ElapsedMilliseconds / total:P0}) - Request {_networkWatch.ElapsedMilliseconds} ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds} ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
             }
         }
 
