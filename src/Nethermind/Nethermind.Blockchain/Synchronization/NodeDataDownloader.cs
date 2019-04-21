@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Synchronization
         private static AccountDecoder accountDecoder = new AccountDecoder();
 
         private Keccak _fastSyncProgressKey = Keccak.Compute("fast_sync_progress");
-        private const int MaxRequestSize = 1024;
+        private const int MaxRequestSize = 384;
         private long _lastDownloadedNodesCount;
         private long _consumedNodesCount;
         private long _savedStorageCount;
