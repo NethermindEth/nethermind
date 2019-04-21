@@ -109,7 +109,10 @@ namespace Nethermind.Network
             {
                 if (_candidatePeers.TryAdd(peer.Node.Id, peer))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Adding a {(peer.Node.IsTrusted ? "trusted" : peer.Node.IsBootnode ? "bootnode" : "stored")} candidate peer {peer.Node:e}");
+                    if (peer.Node.IsBootnode || peer.Node.IsStatic || peer.Node.IsTrusted)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Adding a {(peer.Node.IsTrusted ? "trusted" : peer.Node.IsBootnode ? "bootnode" : "stored")} candidate peer {peer.Node:e}");    
+                    }
                 }
             }
         }
