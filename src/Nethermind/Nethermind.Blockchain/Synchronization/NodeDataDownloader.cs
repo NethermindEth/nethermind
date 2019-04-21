@@ -270,13 +270,23 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (syncItem.NodeDataType == NodeDataType.Storage)
             {
+                if (_codesSameAsNodes.Contains(syncItem.Hash))
+                {
+                    lock (_codeDbLock)
+                    {
+                        _codeDb.Set(syncItem.Hash, data);
+                    }
+
+                    _codesSameAsNodes.Remove(syncItem.Hash);
+                }
+                
                 _savedStorageCount++;
                 lock (_stateDbLock)
                 {
                     _stateDb.Set(syncItem.Hash, data);
                 }
             }
-
+            
             if (syncItem.NodeDataType == NodeDataType.Code)
             {
                 _savedCode++;
@@ -320,6 +330,8 @@ namespace Nethermind.Blockchain.Synchronization
             return Math.Max(1 - (float) parent.Level / maxStateLevel, parent.Priority - (float) parent.Level / maxStateLevel);
         }
 
+        private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
+        
         private void HandleResponse(StateSyncBatch batch)
         {
             _handleWatch.Restart();
@@ -426,8 +438,15 @@ namespace Nethermind.Blockchain.Synchronization
                                 Account account = accountDecoder.Decode(new Rlp.DecoderContext(trieNode.Value));
                                 if (account.CodeHash != Keccak.OfAnEmptyString)
                                 {
-                                    AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, 0), dependentItem, "code");
-                                    if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
+                                    if (account.CodeHash == account.StorageRoot)
+                                    {
+                                        _codesSameAsNodes.Add(account.CodeHash);
+                                    }
+                                    else
+                                    {
+                                        AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, 0), dependentItem, "code");
+                                        if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;    
+                                    }
                                 }
 
                                 if (account.StorageRoot != Keccak.EmptyTreeHash)
@@ -586,6 +605,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _rootNode = rootNode;
                 _dependencies.Clear();
                 _lastRequest = null;
+                _codesSameAsNodes.Clear();
                 _nodes[0]?.Clear();
                 _nodes[1]?.Clear();
                 _nodes[2]?.Clear();

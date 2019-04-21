@@ -70,12 +70,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 }),
                 ("storage_hash_and_code_hash_same", (tree, stateDb, codeDb) =>
                 {
-                    Keccak codeHash = Keccak.Compute(Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601"));
+                    byte[] code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
+                    Keccak codeHash = Keccak.Compute(code);
                     StorageTree remoteStorageTree = new StorageTree(stateDb);
                     remoteStorageTree.Set((UInt256) 1, new byte[] {1});
                     remoteStorageTree.Commit();
                     remoteStorageTree.UpdateRootHash();
-                    codeDb[codeHash.Bytes] = Code0;
+                    codeDb[codeHash.Bytes] = code;
                     tree.Set(new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
                     tree.Commit();
                 }),
