@@ -601,7 +601,6 @@ namespace Nethermind.Blockchain.Synchronization
         {
             if (_rootNode != rootNode || _pendingRequests == 1)
             {
-                _logger.Info($"Changing the sync root node to {rootNode}");
                 _rootNode = rootNode;
                 _dependencies.Clear();
                 _lastRequest = null;

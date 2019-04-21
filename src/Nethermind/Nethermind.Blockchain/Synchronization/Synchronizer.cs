@@ -374,6 +374,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return 0;
             }
 
+            if(_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
             Task<long> task = _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);
             await task;
             if (_nodeDataDownloader.IsFullySynced(bestSuggested.StateRoot))
