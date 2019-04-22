@@ -89,14 +89,14 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         private long _nextTopicQueryCleanup;
 
-        private ConcurrentDictionary<Node, Dictionary<Keccak, SentQuery>> _queriesSent = new ConcurrentDictionary<Node, Dictionary<Keccak, SentQuery>>();
+        public ConcurrentDictionary<Node, Dictionary<Keccak, SentQuery>> QueriesSent { get; set; }
 
         private Random RandomNumberGenerator = new System.Random();
 
-        public TicketProvider(INetworkStorage nodeDb, Node self)
+        public TicketProvider()
         {
             //_logger.Trace($"^N %010x\n { sha }");
-
+            QueriesSent = new ConcurrentDictionary<Node, Dictionary<Keccak, SentQuery>>();
 
         }
 
@@ -136,8 +136,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 foreach (TicketRef refer in list) {
                     refer.t.refCnt--;
                     if (refer.t.refCnt == 0) {
-                        _nodes.Remove(refer.t.node);
-                        _nodeLastReq.Remove(refer.t.node);
+                        _nodes.Remove((Node)refer.t.node);
+                        _nodeLastReq.Remove((Node)refer.t.node);
                     }
                 }
             }
@@ -359,8 +359,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
             }
             ticketRef.t.refCnt--;
             if (ticketRef.t.refCnt == 0) {
-                _nodes.Remove(ticketRef.t.node);
-                _nodeLastReq.Remove(ticketRef.t.node);
+                _nodes.Remove((Node)ticketRef.t.node);
+                _nodeLastReq.Remove((Node)ticketRef.t.node);
             }
         }
 
@@ -416,18 +416,18 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public void addTicket(long localTime, byte[] pingHash, in Ticket ticket) {
             //_logger.Trace($"Adding discovery ticket node {ticket.node.ID} serial {ticket.serial}");
 
-            if(!_nodeLastReq.ContainsKey(ticket.node)) {
-                if (pingHash == _nodeLastReq[ticket.node].pingHash) {
+            if(!_nodeLastReq.ContainsKey((Node)ticket.node)) {
+                if (pingHash == _nodeLastReq[(Node)ticket.node].pingHash) {
                     return;
                 }
             }
-            adjustWithTicket(localTime, _nodeLastReq[ticket.node].lookup.target, ticket);
+            adjustWithTicket(localTime, _nodeLastReq[(Node)ticket.node].lookup.target, ticket);
 
-            if (_nodeLastReq[ticket.node].lookup.radiusLookup || (_nodes.ContainsKey(ticket.node) && _nodes[ticket.node] != null)) {
+            if (_nodeLastReq[(Node)ticket.node].lookup.radiusLookup || (_nodes.ContainsKey((Node)ticket.node) && _nodes[(Node)ticket.node] != null)) {
                 return;
             }
 
-            Topic topic = _nodeLastReq[ticket.node].lookup.topic;
+            Topic topic = _nodeLastReq[(Node)ticket.node].lookup.topic;
             int topicIdx = ticket.findIdx(topic);
             if (topicIdx == -1) {
                 return;
@@ -452,7 +452,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             }
             if (ticket.refCnt > 0) {
                 _nextTicketCached = null;
-                _nodes[ticket.node] = ticket;
+                _nodes[(Node)ticket.node] = ticket;
             }
         }
 
@@ -466,10 +466,10 @@ namespace Nethermind.Network.Discovery.RoutingTable
         }
 
         public bool canQueryTopic(Node node, Topic topic) {
-            if (_queriesSent.ContainsKey(node)) {
+            if (QueriesSent.ContainsKey(node)) {
                 
             
-                Dictionary<Keccak, SentQuery> qq = _queriesSent[node];
+                Dictionary<Keccak, SentQuery> qq = QueriesSent[node];
                 if (qq != null) {
                     long now = Stopwatch.GetTimestamp();
                     foreach (KeyValuePair<Keccak, SentQuery> entry in qq) {
@@ -486,13 +486,13 @@ namespace Nethermind.Network.Discovery.RoutingTable
         // Called by searchLookupDone(...)
         public void addTopicQuery(Keccak hash, Node node, LookupInfo lookup) {
             long now = Stopwatch.GetTimestamp();
-            if (!_queriesSent.ContainsKey(node)) {
-                _queriesSent[node] = null;
+            if (!QueriesSent.ContainsKey(node)) {
+                QueriesSent[node] = null;
             }
-            Dictionary<Keccak, SentQuery> qq = _queriesSent[node];
+            Dictionary<Keccak, SentQuery> qq = QueriesSent[node];
             if (qq == null) {
                 qq = new Dictionary<Keccak, SentQuery>();
-                _queriesSent[node] = qq;
+                QueriesSent[node] = qq;
             }
             qq[hash] = new SentQuery(now, lookup);
             cleanupTopicQueries(now);
@@ -504,8 +504,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 return;
             }
             TimeSpan exp = new TimeSpan(now - _topicQueryResend.Ticks);
-            for (int i = 0; i < _queriesSent.Count; i++) {
-                KeyValuePair<Node, Dictionary<Keccak, SentQuery>> entry = _queriesSent.ElementAt(i);
+            for (int i = 0; i < QueriesSent.Count; i++) {
+                KeyValuePair<Node, Dictionary<Keccak, SentQuery>> entry = QueriesSent.ElementAt(i);
                 Node n = entry.Key;
                 Dictionary<Keccak, SentQuery> qq = entry.Value;
                 for (int j = 0; j < qq.Count; j++) {
@@ -519,7 +519,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 }
                 if (qq.Count == 0) {
                     Dictionary<Keccak, SentQuery> dump;
-                    _queriesSent.TryRemove(n, out dump);
+                    QueriesSent.TryRemove(n, out dump);
                 }
             }
             _nextTopicQueryCleanup = now + _topicQueryTimeout.Ticks;
@@ -529,7 +529,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public async Task gotTopicNodes(Node from, Keccak hash, ICollection<Node> nodes) {
             long now = Stopwatch.GetTimestamp();
             //_logger.Trace($"got {from.Address.ToString()} {hash} {nodes.Count}");
-            Dictionary<Keccak, SentQuery> qq = _queriesSent[from];
+            Dictionary<Keccak, SentQuery> qq = QueriesSent[from];
 
             SentQuery q = qq[hash];
             if ((new TimeSpan(now)) > (new TimeSpan(q.sent + _topicQueryTimeout.Ticks))) {
@@ -567,9 +567,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
             }   
         }
 
-        public void Initialize(PublicKey masterNodeKey = null)
+        public void Initialize()
         {
-        
         }
     }
 }

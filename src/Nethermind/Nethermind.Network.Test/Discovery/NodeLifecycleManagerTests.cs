@@ -50,6 +50,7 @@ namespace Nethermind.Network.Test.Discovery
         private IDiscoveryManager _discoveryManager;
         private IMessageSender _udpClient;
         private INodeTable _nodeTable;
+        private ITopicTable _topicTable;
         private IConfigProvider _configurationProvider;
         private ITimestamp _timestamp;
         private int _port = 1;
@@ -77,11 +78,14 @@ namespace Nethermind.Network.Test.Discovery
 
             _nodeTable = new NodeTable(new FileKeyStore(keyStoreConfig, new EthereumJsonSerializer(), new AesEncrypter(keyStoreConfig, logManager), new CryptoRandom(), logManager), calculator, networkConfig, logManager);
             _nodeTable.Initialize(TestItem.PublicKeyA);
-            
+
+            _topicTable = new TopicTable(networkConfig);
+            _topicTable.Initialize(_nodeTable.MasterNode.Id);
+
             _timestamp = new Timestamp();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(networkConfig, _timestamp), evictionManager, new NodeStatsManager(statsConfig, logManager), networkConfig, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(networkConfig, _timestamp), evictionManager, new NodeStatsManager(statsConfig, logManager), networkConfig, logManager, _topicTable);
 
             _udpClient = Substitute.For<IMessageSender>();
 

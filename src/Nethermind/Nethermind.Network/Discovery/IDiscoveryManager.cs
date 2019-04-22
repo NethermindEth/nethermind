@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery
@@ -30,6 +31,8 @@ namespace Nethermind.Network.Discovery
     {
         IMessageSender MessageSender { set; }
         INodeLifecycleManager GetNodeLifecycleManager(Node node, bool isPersisted = false);
+
+        ITicketProvider GetTicketProvider(bool isPersisted = false);
         void SendMessage(DiscoveryMessage discoveryMessage);
         Task<bool> WasMessageReceived(Keccak senderIdHash, MessageType messageType, int timeout);
         event EventHandler<NodeEventArgs> NodeDiscovered;

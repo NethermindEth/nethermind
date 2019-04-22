@@ -1,4 +1,4 @@
-   /*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -14,40 +14,38 @@
  *
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ *
  */
 
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security;
-using Nethermind.Config;
-using Nethermind.Core;
+using System.Net;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
-using Nethermind.KeyStore;
-using Nethermind.Network.Config;
-using Nethermind.Stats;
-using Nethermind.Stats.Model;
-using Nethermind.Network;
 
-namespace Nethermind.Network.Discovery.RoutingTable
+namespace Nethermind.Stats.Model
 {
-    public struct NodeInfo
+    public interface INode : IFormattable
     {
-        public Dictionary<Topic, TopicEntry> entries;
 
-        public int lastIssuedTicket, lastUsedTicket;
-
-        public ulong noRegUntil;
-
-        public NodeInfo(int _lastIssuedTicket, int _lastUsedTicket) {
-            entries = new Dictionary<Topic, TopicEntry>();
-            lastIssuedTicket = _lastIssuedTicket;
-            lastUsedTicket = _lastUsedTicket;
-            noRegUntil = 0;
+        PublicKey Id
+        {
+            get;
+            set;
         }
+
+        Keccak IdHash { get; }
+        string Host { get; }
+        int Port { get; set; }
+        IPEndPoint Address { get; }
+        bool AddedToDiscovery { get; set; }
+        bool IsBootnode { get; set; }
+        bool IsTrusted { get; set; }
+
+        bool IsStatic { get; set; }
+
+        string ClientId { get; set; }
+
+        void InitializeAddress(IPEndPoint address);
+
+        void InitializeAddress(string host, int port);
     }
 }
-

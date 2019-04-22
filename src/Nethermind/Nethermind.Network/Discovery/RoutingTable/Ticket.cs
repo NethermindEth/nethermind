@@ -44,13 +44,13 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public long issueTime { get; private set; } // // Used by registrar, tracks absolute time when the ticket was created.
 
         // Fields used only by registrants
-        public Node node { get; private set; }
+        public INode node { get; private set; }
 
         public int refCnt { get; set; } // tracks number of topics that will be registered using this ticket
 
         public PongMessage pong { get; private set; } // encoded pong packet signed by the registrar
 
-        public Ticket(long _issueTime, Node _node, List<Topic> _topics, PongMessage _pong, List<long> _regTime)
+        public Ticket(long _issueTime, INode _node, List<Topic> _topics, PongMessage _pong, List<long> _regTime)
         {
             //_logger.Trace($"New Ticket issue time { _issueTime } topics {_topics.Count } ");
 

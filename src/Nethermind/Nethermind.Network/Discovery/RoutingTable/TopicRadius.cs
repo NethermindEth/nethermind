@@ -48,9 +48,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
             private readonly int _lookupWidth = 8;
 
-            private readonly TimeSpan _targetWaitTime = new TimeSpan(0, 10, 0);
-
-            private Stopwatch _timestamp = new Stopwatch();
+            public readonly TimeSpan _targetWaitTime = new TimeSpan(0, 10, 0);
 
             public Topic topic { get; }
             public byte[] topicHashPrefix { get; }
@@ -60,7 +58,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
             public ulong _minRadius {get; set; }
 
-            public TopicRadiusBucket[] buckets { get; set; }
+            public List<TopicRadiusBucket> buckets { get; set; }
 
             public bool converged { get; private set; }
 
@@ -79,6 +77,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 topicHashPrefix = topicHash.Bytes.Slice(0, 8);
                 radius = _maxRadius;
                 _minRadius = _maxRadius;
+                buckets = new List<TopicRadiusBucket>();
             }
 
             public int getBucketIdx(Keccak addrHash) {
@@ -103,7 +102,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 double max = Math.Pow(2, 64-(double)(bucket)/_radiusBucketsPerBit);
                 ulong a = (ulong)(min);
                 
-                ulong b = (ulong)RandomNumberGenerator.Next(0, (int)(max-min));
+                ulong b = (ulong)DiscoveryRandom.NextULong(RandomNumberGenerator, Convert.ToUInt64(max-min), false);
                 var xor = a + b;
                 if (xor < a) {
                     xor = ~(ulong)(0);
@@ -130,13 +129,13 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 }
                 int c = 0;
                 for (int i = a; i <= b; i++) {
-                    if ( i >= buckets.Length || buckets[i].weights[(int)TopicRadiusBucket.TopicRadiusEvent.trNoAdjust] < _maxNoAdjust) {
+                    if ( i >= buckets.Count() || buckets[i].weights[(int)TopicRadiusBucket.TopicRadiusEvent.trNoAdjust] < _maxNoAdjust) {
                         c++;
                     }
                 }
                 uint rnd = (uint)RandomNumberGenerator.Next(0, c);
                 for (int i = a; i <= b; i++) {
-                    if ( i>= buckets.Length || buckets[i].weights[(int)TopicRadiusBucket.TopicRadiusEvent.trNoAdjust] < _maxNoAdjust) {
+                    if ( i>= buckets.Count() || buckets[i].weights[(int)TopicRadiusBucket.TopicRadiusEvent.trNoAdjust] < _maxNoAdjust) {
                         if (rnd == 0) {
                             return i;
                         }
@@ -152,8 +151,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 if (a < 0) {
                     a = 0;
                 }
-                if (b >= buckets.Length) {
-                    b = buckets.Length - 1;
+                if (b >= buckets.Count()) {
+                    b = buckets.Count() - 1;
                     if (buckets[b].value > max) {
                         max = buckets[b].value;
                     }
@@ -176,7 +175,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
                 double v = 0;
 
-                for (int i = 0; i <= buckets.Length; i++) {
+                for (int i = 0; i < buckets.Count(); i++) {
                     buckets[i].update(now);
                     v += buckets[i].weights[(int)TopicRadiusBucket.TopicRadiusEvent.trOutside] - buckets[i].weights[(int)TopicRadiusBucket.TopicRadiusEvent.trInside];
                     buckets[i].value = v;
@@ -184,7 +183,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 //fmt.println();
                 int slopeCross = -1;
                 TopicRadiusBucket b;
-                for (int i = 0; i < buckets.Length; i++) {
+                for (int i = 0; i < buckets.Count(); i++) {
                     b = buckets[i];
                     v = b.value;
                     if (v < (double)(i)*_minSlope) {
@@ -197,7 +196,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
                     }
                 }
 
-                int minRadBucket = buckets.Length;
+                int minRadBucket = buckets.Count();
                 double sum = 0;
                 while (minRadBucket > 0 && sum < _minRightSum) {
                     minRadBucket--;
@@ -211,11 +210,11 @@ namespace Nethermind.Network.Discovery.RoutingTable
                     lookupLeft = chooseLookupBucket(maxBucket - _lookupWidth, maxBucket-1);
                 }
                 int lookupRight = -1;
-                if (slopeCross != maxBucket && (minRadBucket <= maxBucket || needMoreLookups(maxBucket+_lookupWidth, buckets.Length-1, maxValue))) {
-                    while (buckets.Length <= maxBucket + _lookupWidth) {
-                        buckets.Append(new TopicRadiusBucket());
+                if (slopeCross != maxBucket && (minRadBucket <= maxBucket || needMoreLookups(maxBucket+_lookupWidth, buckets.Count()-1, maxValue))) {
+                    while (buckets.Count() <= maxBucket + _lookupWidth) {
+                        buckets.Add(new TopicRadiusBucket());
                     }
-                    lookupRight = chooseLookupBucket(maxBucket, maxBucket+_lookupWidth+1);
+                    lookupRight = chooseLookupBucket(maxBucket, maxBucket+_lookupWidth-1);
                 }
                 int radiusLookup = 0;
                 if (lookupLeft == -1) {
@@ -254,7 +253,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
             public LookupInfo nextTarget(bool forceRegular) {
                 if (!forceRegular) {
-                    int radiusLookup = recalcRadius().Item2;
+                    int radiusLookup = recalcRadius().Item2 - 1;
                     if (radiusLookup != -1) {
                         Keccak targetHash = targetForBucket(radiusLookup);
                         buckets[radiusLookup].lookupSent[targetHash] = Stopwatch.GetTimestamp();
@@ -266,7 +265,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 if (radExt > _maxRadius-radius) {
                     radExt = _maxRadius - radius;
                 }
-                ulong rnd = (ulong)RandomNumberGenerator.Next(0, (int)radius) + (ulong)RandomNumberGenerator.Next(0, (int)((double)2*radExt));
+
+                ulong rnd = DiscoveryRandom.NextULong(RandomNumberGenerator, (radius + DiscoveryRandom.NextULong(RandomNumberGenerator, Convert.ToUInt64(2*radExt))));
                 if (rnd > radExt) {
                     rnd -= (ulong)radExt;
                 } else {
@@ -295,7 +295,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             public void adjust(long now, Keccak targetHash, Keccak addrHash, double inside) {
                 int bucket = getBucketIdx(addrHash);
                 //_logger.Trace($"adjust\n{bucket}\n{buckets.Length}\n{inside}");
-                if (bucket >= buckets.Length) {
+                if (bucket >= buckets.Count()) {
                     return;
                 }
                 buckets[bucket].adjust(now, inside);

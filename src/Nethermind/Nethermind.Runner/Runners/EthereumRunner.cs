@@ -906,7 +906,8 @@ namespace Nethermind.Runner.Runners
                 evictionManager,
                 _nodeStatsManager,
                 networkConfig,
-                _logManager);
+                _logManager,
+                topicTable);
 
             var discoveryStorage = new NetworkStorage(
                 DiscoveryNodesDbPath,

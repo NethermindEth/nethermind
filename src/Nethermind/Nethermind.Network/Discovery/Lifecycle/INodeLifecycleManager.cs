@@ -32,6 +32,10 @@ namespace Nethermind.Network.Discovery.Lifecycle
         void ProcessPongMessage(PongMessage discoveryMessage);
         void ProcessNeighborsMessage(NeighborsMessage discoveryMessage);
         void ProcessFindNodeMessage(FindNodeMessage discoveryMessage);
+        //void ProcessFindNodeHashMessage(FindNodeHashMessage discoveryMessage);
+        void ProcessTopicRegisterMessage(TopicRegisterMessage discoveryMessage);
+        void ProcessTopicQueryMessage(TopicQueryMessage discoveryMessage);
+        void ProcessTopicNodesMessage(TopicNodesMessage topicNodesMessage);
 
         void SendFindNode(byte[] searchedNodeId);
         void SendPing();

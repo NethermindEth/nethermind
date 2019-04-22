@@ -45,7 +45,10 @@ namespace Nethermind.Network.Discovery.RoutingTable
         // that can be used in that minute.
         // This is only set if the topic is being registered.
         Dictionary<Topic, TopicTickets> tickets { get; }
-        
+
+        ConcurrentDictionary<Node, Dictionary<Keccak, SentQuery>> QueriesSent { get; set; }
+
+
         // addTopic starts tracking a topic. If register is true,
         // the local node will register the topic and tickets will be collected.
         void addTopic(Topic topic, bool register);

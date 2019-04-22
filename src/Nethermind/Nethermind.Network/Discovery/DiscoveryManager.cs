@@ -45,6 +45,7 @@ namespace Nethermind.Network.Discovery
         private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
         private readonly ConcurrentDictionary<Keccak, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<Keccak, INodeLifecycleManager>();
         private readonly INodeTable _nodeTable;
+        private readonly ITicketProvider _ticketProvider;
         private readonly INetworkStorage _discoveryStorage;
 
         private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>>();
@@ -62,6 +63,8 @@ namespace Nethermind.Network.Discovery
             _nodeTable = nodeTable;
             _discoveryStorage = discoveryStorage;
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
+
+            _ticketProvider = new TicketProvider();
         }
 
         public IMessageSender MessageSender
@@ -137,6 +140,11 @@ namespace Nethermind.Network.Discovery
                 OnNewNode(manager);
                 return manager;
             });
+        }
+
+        public ITicketProvider GetTicketProvider(bool isPersisted=false)
+        {
+            return _ticketProvider;
         }
 
         public void SendMessage(DiscoveryMessage discoveryMessage)

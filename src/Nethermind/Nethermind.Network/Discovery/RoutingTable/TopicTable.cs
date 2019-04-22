@@ -187,7 +187,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             return tic;
         }
         
-        public ICollection<Node> getEntries(Topic topic) {
+        public List<Node> getEntries(Topic topic) {
             collectGarbage();
             if (!_topics.ContainsKey(topic)) {
                 return null;

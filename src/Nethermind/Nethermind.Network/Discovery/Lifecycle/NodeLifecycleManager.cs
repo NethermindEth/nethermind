@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Linq;
 using Nethermind.Config;
@@ -47,12 +48,13 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         private readonly ITimestamp _timestamp;
 
+        private Topic[] _pingTopics;
         private byte[] _topicsHash;
 
         private ITopicTable _topicTable;
+        private ITicketProvider _ticketProvider;
 
-
-        public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, INetworkConfig networkConfig, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats)
+        public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, INetworkConfig networkConfig, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats, ITopicTable topicTable)
         {
             _discoveryManager = discoveryManager;
             _nodeTable = nodeTable;
@@ -64,6 +66,9 @@ namespace Nethermind.Network.Discovery.Lifecycle
             ManagedNode = node;
             UpdateState(NodeLifecycleState.New);
 
+            _topicTable = topicTable;
+            _ticketProvider = discoveryManager.GetTicketProvider(false); // TODO: persist into NetworkStorage
+
         }
 
         public Node ManagedNode { get; }
@@ -74,6 +79,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessPingMessage(PingMessage discoveryMessage)
         {
+            _pingTopics = discoveryMessage.Topics;
             _topicsHash = discoveryMessage.TopicsMdc;
             SendPong(discoveryMessage);
 
@@ -90,6 +96,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 RefreshNodeContactTime();
 
                 UpdateState(NodeLifecycleState.Active);
+                pongToTicket(Stopwatch.GetTimestamp(), new List<Topic>(_pingTopics), ManagedNode, discoveryMessage);
             }
 
             _isPongExpected = false;
@@ -133,7 +140,9 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
             try
             {
-                ValidateTopicRegister(discoveryMessage); //TODO: ValidateTopicRegister
+                //ValidateTopicRegister(discoveryMessage); //TODO: ValidateTopicRegister
+                ((Action)(() => { }))();
+                
             }
             catch (Exception e)
             {
@@ -144,13 +153,49 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 _topicTable.useTicket(ManagedNode,
                                       discoveryMessage.Pong.TicketSerial,
                                       discoveryMessage.Topics,
-                                      (int)idx,
+                                      (int)discoveryMessage.Idx,
                                       discoveryMessage.Pong.ExpirationTime,
                                       discoveryMessage.Pong.WaitPeriods
                             );
             }
             // TODO: Change Node state appropriately    
         }
+
+        public void ProcessTopicQueryMessage(TopicQueryMessage discoveryMessage)
+        {
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryTopicQueryIn);
+            RefreshNodeContactTime();
+
+            Topic topic = discoveryMessage.Topic;
+
+            List<Node> results = _topicTable.getEntries(topic);
+
+            if (_ticketProvider.tickets.ContainsKey(topic))
+            {
+                results.Append(_nodeTable.MasterNode);
+            }
+            if (results.Count() > 10)
+            {
+                results = results.Take(10).ToList();
+            }
+
+            //_topicTable.
+            //SendTopicNodes(discoveryMessage, results);
+            // TODO: Change Node state appropriately
+        }
+
+        public void ProcessTopicNodesMessage(TopicNodesMessage topicNodesMessage)
+        {
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryTopicNodesIn);
+            RefreshNodeContactTime();
+
+            if (_ticketProvider.QueriesSent.ContainsKey(ManagedNode))
+            {
+                Task.Run(() => _ticketProvider.gotTopicNodes(ManagedNode, new Keccak(topicNodesMessage.TopicQueryMdc), topicNodesMessage.Nodes));
+            }
+            //TODO: Change node state appropriately
+        }
+
         public void SendFindNode(byte[] searchedNodeId)
         {
             var msg = _discoveryMessageFactory.CreateOutgoingMessage<FindNodeMessage>(ManagedNode);
@@ -246,6 +291,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 msg.Version = _networkConfig.PingMessageVersion;
                 msg.SourceAddress = _nodeTable.MasterNode.Address;
                 msg.DestinationAddress = msg.FarAddress;
+                msg.Topics = _ticketProvider.regTopicSet();
                 _discoveryManager.SendMessage(msg);
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
 

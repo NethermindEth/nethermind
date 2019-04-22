@@ -48,7 +48,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         NodeInfo getOrNewNode(Node node);
         Ticket getTicket(Node node, List<Topic> topics);
         
-        ICollection<Node> getEntries(Topic topic);
+        List<Node> getEntries(Topic topic);
         void addEntry(Node node, Topic topic);
         TopicEntry leastRequested();
 

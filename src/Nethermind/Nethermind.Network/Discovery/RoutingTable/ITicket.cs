@@ -42,7 +42,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         int serial { get; } //The serial number that was issued by the server
         long issueTime { get; } // // Used by registrar, tracks absolute time when the ticket was created.
-        Node node { get; }
+        INode node { get; }
         int refCnt { get; set; } // tracks number of topics that will be registered using this ticket
         PongMessage pong { get; } // encoded pong packet signed by the registrar
         int findIdx(Topic topic);

@@ -42,7 +42,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
             ulong radius { get; set; }
 
-            TopicRadiusBucket[] buckets { get; set; }
+            List<TopicRadiusBucket> buckets { get; set; }
 
             bool converged { get; }
 
