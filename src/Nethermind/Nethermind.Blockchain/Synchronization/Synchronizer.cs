@@ -288,7 +288,7 @@ namespace Nethermind.Blockchain.Synchronization
             BlockHeader bestSuggested = _blockTree.BestSuggested;
             BlockHeader head = _blockTree.Head;
             long bestFullState = head?.Number ?? 0;
-            long maxLookup = Math.Min(SyncModeSelector.FullSyncThreshold, bestSuggested?.Number ?? 0L - bestFullState);
+            long maxLookup = Math.Min(SyncModeSelector.FullSyncThreshold * 2, bestSuggested?.Number ?? 0L - bestFullState);
             
             for (int i = 0; i < maxLookup; i++)
             {
@@ -300,7 +300,7 @@ namespace Nethermind.Blockchain.Synchronization
                 Keccak stateRoot = bestSuggested.StateRoot;
                 if (_nodeDataDownloader.IsFullySynced(stateRoot ?? Keccak.EmptyTreeHash))
                 {
-                    bestFullState = _bestSuggestedNumber;
+                    bestFullState = bestSuggested.Number;
                     break;
                 }
 
