@@ -68,13 +68,22 @@ namespace Nethermind.Blockchain.Synchronization
                 for (int i = 0; i < dataBatches.Length; i++)
                 {
                     StateSyncBatch currentBatch = dataBatches[i];
-                    if (_logger.IsTrace) _logger.Trace($"Sending requests for {currentBatch.StateSyncs.Length} nodes");
                     await _executor.ExecuteRequest(token, currentBatch).ContinueWith(t =>
                     {
+                        Interlocked.Decrement(ref _pendingRequests);
                         if (t.IsCompletedSuccessfully)
                         {
-                            int consumed = _nodeDataFeed.HandleResponse(t.Result);
-                            _consumedNodesCount += consumed;
+                            try
+                            {
+                                int consumed = _nodeDataFeed.HandleResponse(t.Result);
+                                _consumedNodesCount += consumed;
+                            }
+                            catch (Exception e)
+                            {
+                                Console.WriteLine(e);
+                                throw;
+                            }
+                            
                             return;
                         }
 
@@ -89,7 +98,7 @@ namespace Nethermind.Blockchain.Synchronization
                             throw t.Exception;
                         }
 
-                        if (_logger.IsDebug) _logger.Debug($"Something else happened with node data request");
+                        if (_logger.IsDebug) _logger.Debug("Something else happened with node data request");
                     });
                 }
             } while (dataBatches.Length != 0);
@@ -116,6 +125,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public async Task<long> SyncNodeData(CancellationToken token, Keccak rootNode)
         {
+            _consumedNodesCount = 0;
             _nodeDataFeed.SetNewStateRoot(rootNode);
             await KeepSyncing(token);
             return _consumedNodesCount;

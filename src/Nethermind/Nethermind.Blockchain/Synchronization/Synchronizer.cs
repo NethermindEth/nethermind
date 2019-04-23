@@ -278,6 +278,13 @@ namespace Nethermind.Blockchain.Synchronization
 
         private long FindBestFullState()
         {
+            /* There is an interesting scenario (unlikely) here where we download more than 'full sync threshold'
+             blocks in full sync but they are not processed immediately so we switch to node sync
+             and the blocks that we downloaded are processed from their respective roots
+             and the next full sync will be after a leap.
+             This scenario is still correct. It may be worth to analyze what happens
+             when it causes a full sync vs node sync race at every block.*/
+            
             BlockHeader bestSuggested = _blockTree.BestSuggested;
             BlockHeader head = _blockTree.Head;
             long bestFullState = head?.Number ?? 0;
