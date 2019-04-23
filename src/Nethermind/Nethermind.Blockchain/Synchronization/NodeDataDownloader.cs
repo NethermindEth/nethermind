@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private Semaphore _parallelNodeSyncs = new Semaphore(0, 25);
+        private Semaphore _parallelNodeSyncs = new Semaphore(0, 50);
 
         private int _lastPeerCount;
 
@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void UpdateParallelism()
         {   
-            int newPeerCount = _syncPeerPool.UsefulPeerCount;
+            int newPeerCount = _syncPeerPool.UsefulPeerCount * 2;
             int difference = newPeerCount - _lastPeerCount;
 
             if (difference == 0)
