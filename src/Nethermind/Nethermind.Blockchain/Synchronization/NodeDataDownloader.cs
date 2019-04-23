@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private Semaphore _parallelNodeSyncs = new Semaphore(0, 25);
+        private Semaphore _parallelNodeSyncs = new Semaphore(0, 50);
 
         private int _lastPeerCount;
 
