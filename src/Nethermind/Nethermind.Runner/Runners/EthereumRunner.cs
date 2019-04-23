@@ -694,7 +694,9 @@ namespace Nethermind.Runner.Runners
             ISealValidator sealValidator,
             TxValidator txValidator)
         {
-            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
+            NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
+            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(feed, _logManager);
+            
             ISyncConfig syncConfig = _configProvider.GetConfig<ISyncConfig>();
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
             _synchronizer = new Synchronizer(_blockTree, _blockValidator, _sealValidator, _syncPeerPool, syncConfig, nodeDataDownloader, _logManager);

@@ -283,7 +283,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false, false);
             var producer = new DevBlockProducer(txPool, devChainProcessor, tree, new Timestamp(), logManager);
                 
-            NodeDataDownloader downloader = new NodeDataDownloader(codeDb, stateDb, logManager);
+            NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, logManager);
+            NodeDataDownloader downloader = new NodeDataDownloader(feed, logManager);
             Synchronizer synchronizer = new Synchronizer(
                 tree,
                 blockValidator,

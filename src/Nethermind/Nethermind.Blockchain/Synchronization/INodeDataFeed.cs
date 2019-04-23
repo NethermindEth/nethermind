@@ -16,18 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface INodeDataDownloader
+    public interface INodeDataFeed
     {
-        Task<long> SyncNodeData(CancellationToken cancellationToken, Keccak rootNode);
-
-        // here now to pass the reference easily for the current implementation
-        void SetExecutor(INodeDataRequestExecutor executor);
+        StateSyncBatch PrepareRequest(int length);
+        
+        void SetNewStateRoot(Keccak stateRoot);
+        
+        int HandleResponse(StateSyncBatch syncBatch);
         
         bool IsFullySynced(Keccak stateRoot);
     }

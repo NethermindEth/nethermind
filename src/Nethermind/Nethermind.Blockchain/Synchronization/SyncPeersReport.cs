@@ -62,7 +62,6 @@ namespace Nethermind.Blockchain.Synchronization
                 foreach (PeerInfo peerInfo in _peerPool.AllPeers)
                 {
                     string prefix = peerInfo.IsAllocated ? " * " : "   ";
-
                     if (_logger.IsInfo) _logger.Info($"{prefix}{peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000}]");
                 }
             }
