@@ -39,6 +39,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private Keccak _fastSyncProgressKey = Keccak.Compute("fast_sync_progress");
         private long _lastRequestedNodesCount;
+        private long _lastSavedNodesCount;
         private long _consumedNodesCount;
         private long _savedStorageCount;
         private long _savedStateCount;
@@ -499,9 +500,11 @@ namespace Nethermind.Blockchain.Synchronization
                 if (DateTime.UtcNow - _lastReportTime > TimeSpan.FromSeconds(1))
                 {
                     decimal nps = 1000m * (_requestedNodesCount - _lastRequestedNodesCount) / (decimal)(DateTime.UtcNow - _lastReportTime).TotalMilliseconds;
+                    decimal snps = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal)(DateTime.UtcNow - _lastReportTime).TotalMilliseconds;
+                    _lastSavedNodesCount = _savedNodesCount;
                     _lastRequestedNodesCount = _requestedNodesCount;
                     _lastReportTime = DateTime.UtcNow;
-                    if (_logger.IsInfo) _logger.Info($"NPS: {nps,6:F0} | Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
+                    if (_logger.IsInfo) _logger.Info($"NPS: {nps,6:F0} | SNPS: {snps,6:F0} | Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
                     if (_logger.IsTrace) _logger.Trace($"Requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
                     if (_logger.IsTrace) _logger.Trace($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
                 }
@@ -602,6 +605,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             _lastReportTime = DateTime.UtcNow;
             _lastRequestedNodesCount = _requestedNodesCount;
+            _lastSavedNodesCount = _savedNodesCount;
             if (_rootNode != stateRoot)
             {
                 _rootNode = stateRoot;

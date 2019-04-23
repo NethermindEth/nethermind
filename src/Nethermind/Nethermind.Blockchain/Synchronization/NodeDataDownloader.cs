@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void UpdateParallelism()
         {   
-            int newPeerCount = _syncPeerPool.UsefulPeerCount * 2;
+            int newPeerCount = _syncPeerPool.UsefulPeerCount;
             int difference = newPeerCount - _lastPeerCount;
 
             if (difference == 0)
