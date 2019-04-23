@@ -116,7 +116,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
             else
             {
-                for (int i = 0; i < difference; i++)
+                for (int i = 0; i < -difference; i++)
                 {
                     _parallelNodeSyncs.WaitOne(10000); // when failing?    
                 }
