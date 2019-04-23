@@ -29,5 +29,7 @@ namespace Nethermind.Blockchain.Synchronization
         int HandleResponse(StateSyncBatch syncBatch);
         
         bool IsFullySynced(Keccak stateRoot);
+        
+        int TotalNodesPending { get; }
     }
 }

@@ -24,5 +24,7 @@ namespace Nethermind.Blockchain.Synchronization
     public interface INodeDataRequestExecutor
     {
         Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch);
+        
+        int HintMaxConcurrentRequests();
     }
 }

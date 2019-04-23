@@ -75,18 +75,18 @@ namespace Nethermind.Blockchain.Synchronization
 
             _syncMode = new SyncModeSelector(_syncPeerPool, _syncConfig, logManager);
             _syncMode.Changed += (s, e) => RequestSynchronization(SyncTriggerType.SyncModeChange);
-//            _syncMode.Changed += (s, e) =>
-//            {
-//                if (_blocksSyncAllocation == null && _syncMode.Current != SyncMode.StateNodes)
-//                {
-//                    AllocateBlocksSync();
-//                }
-//
-//                if (_syncMode.Current == SyncMode.StateNodes)
-//                {
-//                    FreeBlocksSyncAllocation();
-//                }
-//            };
+            _syncMode.Changed += (s, e) =>
+            {
+                if (_blocksSyncAllocation == null && _syncMode.Current != SyncMode.StateNodes)
+                {
+                    AllocateBlocksSync();
+                }
+
+                if (_syncMode.Current == SyncMode.StateNodes)
+                {
+                    FreeBlocksSyncAllocation();
+                }
+            };
 
             // make ctor parameter?
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
@@ -266,7 +266,7 @@ namespace Nethermind.Blockchain.Synchronization
                         _syncPeerPool.ReportNoSyncProgress(_blocksSyncAllocation); // not very fair here - allocation may have changed
                     }
                 }
-                
+
                 _blocksSyncAllocation.FinishSync();
 
                 linkedCancellation.Dispose();
@@ -284,12 +284,12 @@ namespace Nethermind.Blockchain.Synchronization
              and the next full sync will be after a leap.
              This scenario is still correct. It may be worth to analyze what happens
              when it causes a full sync vs node sync race at every block.*/
-            
+
             BlockHeader bestSuggested = _blockTree.BestSuggested;
             BlockHeader head = _blockTree.Head;
             long bestFullState = head?.Number ?? 0;
             long maxLookup = Math.Min(SyncModeSelector.FullSyncThreshold * 2, bestSuggested?.Number ?? 0L - bestFullState);
-            
+
             for (int i = 0; i < maxLookup; i++)
             {
                 if (bestSuggested == null)
@@ -354,7 +354,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (_blocksSyncAllocation == null)
             {
                 if (_logger.IsDebug) _logger.Debug("Allocating block sync.");
-                _blocksSyncAllocation = _syncPeerPool.Allocate("synchronizer");
+                _blocksSyncAllocation = _syncPeerPool.Borrow("synchronizer");
                 _blocksSyncAllocation.Replaced += AllocationOnReplaced;
                 _blocksSyncAllocation.Cancelled += AllocationOnCancelled;
                 _blocksSyncAllocation.Refreshed += AllocationOnRefreshed;
@@ -405,24 +405,44 @@ namespace Nethermind.Blockchain.Synchronization
                 return 0;
             }
 
-            if(_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
-            return await _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);            
+            if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
+            return await _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);
         }
+
+        private Semaphore _requestAllocations = new Semaphore(25, 25);
 
         public async Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
-//            var fastSyncAllocation = _syncPeerPool.Allocate("fast sync");
-            ISyncPeer peer = _blocksSyncAllocation.Current?.SyncPeer;
-            if (peer == null)
+            if(!_requestAllocations.WaitOne(100))
             {
-                await Task.Delay(50);
-                return batch;
+                return batch;   
             }
 
-            var hashes = batch.StateSyncs.Select(r => r.Hash).ToArray();
-            batch.Responses = await peer.GetNodeData(hashes, token);
-//            _syncPeerPool.Free(fastSyncAllocation);
+            try
+            {
+                var syncPeerAllocation = _syncPeerPool.Borrow($"node sync");
+                ISyncPeer peer = syncPeerAllocation.Current?.SyncPeer;
+                if (peer == null)
+                {
+                    await Task.Delay(50);
+                    return batch;
+                }
+
+                var hashes = batch.StateSyncs.Select(r => r.Hash).ToArray();
+                batch.Responses = await peer.GetNodeData(hashes, token);
+                _syncPeerPool.Free(syncPeerAllocation);
+            }
+            finally
+            {
+                _requestAllocations.Release(1);
+            }
+            
             return batch;
+        }
+
+        public int HintMaxConcurrentRequests()
+        {
+            return _syncPeerPool.PeerCount;
         }
 
         public void Dispose()

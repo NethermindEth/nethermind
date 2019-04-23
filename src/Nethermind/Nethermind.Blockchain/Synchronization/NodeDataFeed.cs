@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Synchronization
         private ConcurrentStack<StateSyncItem> Stream1 => _nodes[1];
         private ConcurrentStack<StateSyncItem> Stream2 => _nodes[2];
 
-        private int TotalCount => Stream0.Count + Stream1.Count + Stream2.Count;
+        public int TotalNodesPending => Stream0.Count + Stream1.Count + Stream2.Count;
 
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
 
@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_alreadySaved.Get(syncItem.Hash) != null)
                 {
-                    _checkWasCached++;
+                    Interlocked.Increment(ref _checkWasCached);
                     if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
                     return AddNodeResult.AlreadySaved;
                 }
@@ -116,24 +116,28 @@ namespace Nethermind.Blockchain.Synchronization
                 lock (lockToTake)
                 {
                     ISnapshotableDb dbToCheck = syncItem.NodeDataType == NodeDataType.Code ? _codeDb : _stateDb;
-                    _dbChecks++;
+                    Interlocked.Increment(ref _dbChecks);
                     bool keyExists = dbToCheck.KeyExists(syncItem.Hash);
                     if (keyExists)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
                         _alreadySaved.Set(syncItem.Hash, _nullObject);
-                        _stateWasThere++;
+                        Interlocked.Increment(ref _stateWasThere);
                         return AddNodeResult.AlreadySaved;
                     }
 
-                    _stateWasNotThere++;
+                    Interlocked.Increment(ref _stateWasNotThere);
                 }
 
-                bool isAlreadyRequested = _dependencies.ContainsKey(syncItem.Hash);
-                if (dependentItem != null)
+                bool isAlreadyRequested;
+                lock (_dependencies)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Adding dependency {syncItem.Hash} -> {dependentItem.SyncItem.Hash}");
-                    AddDependency(syncItem.Hash, dependentItem);
+                    isAlreadyRequested = _dependencies.ContainsKey(syncItem.Hash);
+                    if (dependentItem != null)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Adding dependency {syncItem.Hash} -> {dependentItem.SyncItem.Hash}");
+                        AddDependency(syncItem.Hash, dependentItem);
+                    }
                 }
 
                 // same items can have same hashes and we only need them once
@@ -141,7 +145,7 @@ namespace Nethermind.Blockchain.Synchronization
                 // and we never request it again because it was already on the dependencies list
                 if (isAlreadyRequested)
                 {
-                    _checkWasInDependencies++;
+                    Interlocked.Increment(ref _checkWasInDependencies);
                     if (_logger.IsTrace) _logger.Trace($"Node already requested - skipping {syncItem.Hash}");
                     return AddNodeResult.AlreadyRequested;
                 }
@@ -151,8 +155,6 @@ namespace Nethermind.Blockchain.Synchronization
             if (_logger.IsTrace) _logger.Trace($"Added a node {syncItem.Hash} - {reason}");
             return AddNodeResult.Added;
         }
-
-        private StateSyncItem[] _lastRequest;
 
         private void PushToSelectedStream(StateSyncItem stateSyncItem)
         {
@@ -175,70 +177,89 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void RunChainReaction(Keccak hash)
         {
-            if (_dependencies.ContainsKey(hash))
+            List<DependentItem> nodesToSave = new List<DependentItem>();
+            lock (_dependencies)
             {
-                HashSet<DependentItem> dependentItems = _dependencies[hash];
-
-                if (_logger.IsTrace)
+                if (_dependencies.ContainsKey(hash))
                 {
-                    string nodeNodes = dependentItems.Count == 1 ? "node" : "nodes";
-                    _logger.Trace($"{dependentItems.Count} {nodeNodes} dependent on {hash}");
-                }
+                    HashSet<DependentItem> dependentItems = _dependencies[hash];
 
-                foreach (DependentItem dependentItem in dependentItems)
-                {
-                    dependentItem.Counter--;
-                    _dependencies.Remove(hash);
-                    if (dependentItem.Counter == 0)
+                    if (_logger.IsTrace)
                     {
-                        SaveNode(dependentItem.SyncItem, dependentItem.Value);
+                        string nodeNodes = dependentItems.Count == 1 ? "node" : "nodes";
+                        _logger.Trace($"{dependentItems.Count} {nodeNodes} dependent on {hash}");
+                    }
+
+                    foreach (DependentItem dependentItem in dependentItems)
+                    {
+                        dependentItem.Counter--;
+                        _dependencies.Remove(hash);
+                        if (dependentItem.Counter == 0)
+                        {
+                            nodesToSave.Add(dependentItem);
+                        }
                     }
                 }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"No nodes dependent on {hash}");
+                }
             }
-            else
+
+            foreach (DependentItem dependentItem in nodesToSave)
             {
-                if (_logger.IsTrace) _logger.Trace($"No nodes dependent on {hash}");
+                SaveNode(dependentItem.SyncItem, dependentItem.Value);
             }
         }
 
         private void SaveNode(StateSyncItem syncItem, byte[] data)
         {
             if (_logger.IsTrace) _logger.Trace($"SAVE {new string('+', syncItem.Level * 2)}{syncItem.NodeDataType.ToString().ToUpperInvariant()} {syncItem.Hash}");
-            _savedNodesCount++;
-            if (syncItem.NodeDataType == NodeDataType.State)
+            Interlocked.Increment(ref _savedNodesCount);
+            switch (syncItem.NodeDataType)
             {
-                _savedStateCount++;
-                lock (_stateDbLock)
+                case NodeDataType.State:
                 {
-                    _stateDb.Set(syncItem.Hash, data);
-                }
-            }
+                    Interlocked.Increment(ref _savedStateCount);
+                    lock (_stateDbLock)
+                    {
+                        _stateDb.Set(syncItem.Hash, data);
+                    }
 
-            if (syncItem.NodeDataType == NodeDataType.Storage)
-            {
-                if (_codesSameAsNodes.Contains(syncItem.Hash))
+                    break;
+                }
+                case NodeDataType.Storage:
                 {
+                    lock (_codesSameAsNodes)
+                    {
+                        if (_codesSameAsNodes.Contains(syncItem.Hash))
+                        {
+                            lock (_codeDbLock)
+                            {
+                                _codeDb.Set(syncItem.Hash, data);
+                            }
+
+                            _codesSameAsNodes.Remove(syncItem.Hash);
+                        }
+                    }
+
+                    Interlocked.Increment(ref _savedStorageCount);
+                    lock (_stateDbLock)
+                    {
+                        _stateDb.Set(syncItem.Hash, data);
+                    }
+
+                    break;
+                }
+                case NodeDataType.Code:
+                {
+                    Interlocked.Increment(ref _savedCode);
                     lock (_codeDbLock)
                     {
                         _codeDb.Set(syncItem.Hash, data);
                     }
 
-                    _codesSameAsNodes.Remove(syncItem.Hash);
-                }
-
-                _savedStorageCount++;
-                lock (_stateDbLock)
-                {
-                    _stateDb.Set(syncItem.Hash, data);
-                }
-            }
-
-            if (syncItem.NodeDataType == NodeDataType.Code)
-            {
-                _savedCode++;
-                lock (_codeDbLock)
-                {
-                    _codeDb.Set(syncItem.Hash, data);
+                    break;
                 }
             }
 
@@ -246,14 +267,17 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 _logger.Warn($"Saving root {syncItem.Hash} {syncItem.Level}");
 
-                if (_dependencies.Count != 0)
+                lock (_dependencies)
                 {
-                    throw new EthSynchronizationException($"Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First().ToString()}");
+                    if (_dependencies.Count != 0)
+                    {
+                        throw new EthSynchronizationException($"Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First().ToString()}");
+                    }
                 }
 
-                if (TotalCount != 0)
+                if (TotalNodesPending != 0)
                 {
-                    throw new EthSynchronizationException($"Nodes left after the root node saved - count: {TotalCount}");
+                    throw new EthSynchronizationException($"Nodes left after the root node saved - count: {TotalNodesPending}");
                 }
             }
 
@@ -282,206 +306,210 @@ namespace Nethermind.Blockchain.Synchronization
 
         public int HandleResponse(StateSyncBatch batch)
         {
-            _handleWatch.Restart();
-            if (batch.StateSyncs == null)
+            lock (_handleWatch)
             {
-                throw new EthSynchronizationException("Received a response with a missing request.");
-            }
-
-            if (batch.Responses == null)
-            {
-                throw new EthSynchronizationException("Node sent an empty response");
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"Received node data - {batch.Responses.Length} items in response to {batch.StateSyncs.Length}");
-            int nonEmptyResponses = 0;
-            for (int i = 0; i < batch.StateSyncs.Length; i++)
-            {
-                StateSyncItem currentStateSyncItem = batch.StateSyncs[i];
-                if (batch.Responses.Length < i + 1)
+                _handleWatch.Restart();
+                if (batch.StateSyncs == null)
                 {
-                    AddNode(currentStateSyncItem, null, "missing", true);
-                    continue;
+                    throw new EthSynchronizationException("Received a response with a missing request.");
                 }
 
-                byte[] currentResponseItem = batch.Responses[i];
-                if (currentResponseItem == null)
+                if (batch.Responses == null)
                 {
-                    AddNode(batch.StateSyncs[i], null, "missing", true);
+                    throw new EthSynchronizationException("Node sent an empty response");
                 }
-                else
+
+                if (_logger.IsTrace) _logger.Trace($"Received node data - {batch.Responses.Length} items in response to {batch.StateSyncs.Length}");
+                int nonEmptyResponses = 0;
+                for (int i = 0; i < batch.StateSyncs.Length; i++)
                 {
-                    if (Keccak.Compute(currentResponseItem) != currentStateSyncItem.Hash)
+                    StateSyncItem currentStateSyncItem = batch.StateSyncs[i];
+                    if (batch.Responses.Length < i + 1)
                     {
-                        for (int j = 0; j < batch.Responses.Length; j++)
-                        {
-                            if (batch.Responses[j] == null)
-                            {
-                                continue;
-                            }
-
-                            if (Keccak.Compute(batch.Responses[j]) == batch.StateSyncs[i].Hash)
-                            {
-                                if (_logger.IsWarn) _logger.Warn($"Invalid data but response[{j}] matches request[{i}]");
-                            }
-                        }
-
-                        if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data (batch {batch.StateSyncs.Length}->{batch.Responses.Length}) of length {batch.Responses[i]?.Length} of type {batch.StateSyncs[i].NodeDataType} at level {batch.StateSyncs[i].Level} of type {batch.StateSyncs[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.StateSyncs[i].Hash}");
-                        throw new EthSynchronizationException("Node sent invalid data");
-                    }
-
-                    nonEmptyResponses++;
-                    NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
-                    if (nodeDataType == NodeDataType.Code)
-                    {
-                        SaveNode(currentStateSyncItem, currentResponseItem);
+                        AddNode(currentStateSyncItem, null, "missing", true);
                         continue;
                     }
 
-                    TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(currentResponseItem));
-                    trieNode.ResolveNode(null);
-                    switch (trieNode.NodeType)
+                    byte[] currentResponseItem = batch.Responses[i];
+                    if (currentResponseItem == null)
                     {
-                        case NodeType.Unknown:
-                            throw new InvalidOperationException("Unknown node type");
-                        case NodeType.Branch:
-                            trieNode.BuildLookupTable();
-                            DependentItem dependentBranch = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
-                            HashSet<Keccak> alreadyProcessedChildHashes = new HashSet<Keccak>();
-                            for (int childIndex = 0; childIndex < 16; childIndex++)
+                        AddNode(batch.StateSyncs[i], null, "missing", true);
+                    }
+                    else
+                    {
+                        if (Keccak.Compute(currentResponseItem) != currentStateSyncItem.Hash)
+                        {
+                            for (int j = 0; j < batch.Responses.Length; j++)
                             {
-                                Keccak child = trieNode.GetChildHash(childIndex);
-                                if (alreadyProcessedChildHashes.Contains(child))
+                                if (batch.Responses[j] == null)
                                 {
                                     continue;
                                 }
 
-                                alreadyProcessedChildHashes.Add(child);
-
-                                if (child != null)
+                                if (Keccak.Compute(batch.Responses[j]) == batch.StateSyncs[i].Hash)
                                 {
-                                    AddNodeResult addChildResult = AddNode(new StateSyncItem(child, nodeDataType, currentStateSyncItem.Level + 1, GetPriority(currentStateSyncItem)), dependentBranch, "branch child");
-                                    if (addChildResult != AddNodeResult.AlreadySaved)
-                                    {
-                                        dependentBranch.Counter++;
-                                    }
+                                    if (_logger.IsWarn) _logger.Warn($"Invalid data but response[{j}] matches request[{i}]");
                                 }
                             }
 
-                            if (dependentBranch.Counter == 0)
-                            {
-                                SaveNode(currentStateSyncItem, currentResponseItem);
-                            }
+                            if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data (batch {batch.StateSyncs.Length}->{batch.Responses.Length}) of length {batch.Responses[i]?.Length} of type {batch.StateSyncs[i].NodeDataType} at level {batch.StateSyncs[i].Level} of type {batch.StateSyncs[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.StateSyncs[i].Hash}");
+                            throw new EthSynchronizationException("Node sent invalid data");
+                        }
 
-                            break;
-                        case NodeType.Extension:
-                            Keccak next = trieNode[0].Keccak;
-                            if (next != null)
-                            {
-                                DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
-                                AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Priority), dependentItem, "extension child");
-                                if (addResult == AddNodeResult.AlreadySaved)
+                        nonEmptyResponses++;
+                        NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
+                        if (nodeDataType == NodeDataType.Code)
+                        {
+                            SaveNode(currentStateSyncItem, currentResponseItem);
+                            continue;
+                        }
+
+                        TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(currentResponseItem));
+                        trieNode.ResolveNode(null);
+                        switch (trieNode.NodeType)
+                        {
+                            case NodeType.Unknown:
+                                throw new InvalidOperationException("Unknown node type");
+                            case NodeType.Branch:
+                                trieNode.BuildLookupTable();
+                                DependentItem dependentBranch = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
+                                HashSet<Keccak> alreadyProcessedChildHashes = new HashSet<Keccak>();
+                                for (int childIndex = 0; childIndex < 16; childIndex++)
+                                {
+                                    Keccak child = trieNode.GetChildHash(childIndex);
+                                    if (alreadyProcessedChildHashes.Contains(child))
+                                    {
+                                        continue;
+                                    }
+
+                                    alreadyProcessedChildHashes.Add(child);
+
+                                    if (child != null)
+                                    {
+                                        AddNodeResult addChildResult = AddNode(new StateSyncItem(child, nodeDataType, currentStateSyncItem.Level + 1, GetPriority(currentStateSyncItem)), dependentBranch, "branch child");
+                                        if (addChildResult != AddNodeResult.AlreadySaved)
+                                        {
+                                            dependentBranch.Counter++;
+                                        }
+                                    }
+                                }
+
+                                if (dependentBranch.Counter == 0)
                                 {
                                     SaveNode(currentStateSyncItem, currentResponseItem);
                                 }
-                            }
-                            else
-                            {
-                                throw new InvalidOperationException("Not expected Next to be null in the extension");
-                            }
 
-                            break;
-                        case NodeType.Leaf:
-                            if (nodeDataType == NodeDataType.State)
-                            {
-                                DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
-                                Account account = _accountDecoder.Decode(new Rlp.DecoderContext(trieNode.Value));
-                                if (account.CodeHash != Keccak.OfAnEmptyString)
+                                break;
+                            case NodeType.Extension:
+                                Keccak next = trieNode[0].Keccak;
+                                if (next != null)
                                 {
-                                    if (account.CodeHash == account.StorageRoot)
+                                    DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
+                                    AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Priority), dependentItem, "extension child");
+                                    if (addResult == AddNodeResult.AlreadySaved)
                                     {
-                                        _codesSameAsNodes.Add(account.CodeHash);
-                                    }
-                                    else
-                                    {
-                                        AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, 0), dependentItem, "code");
-                                        if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
+                                        SaveNode(currentStateSyncItem, currentResponseItem);
                                     }
                                 }
-
-                                if (account.StorageRoot != Keccak.EmptyTreeHash)
+                                else
                                 {
-                                    AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(account.StorageRoot, NodeDataType.Storage, 0, 0), dependentItem, "storage");
-                                    if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
+                                    throw new InvalidOperationException("Not expected Next to be null in the extension");
                                 }
 
-                                if (dependentItem.Counter == 0)
+                                break;
+                            case NodeType.Leaf:
+                                if (nodeDataType == NodeDataType.State)
                                 {
-                                    _savedAccounts++;
+                                    DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
+                                    Account account = _accountDecoder.Decode(new Rlp.DecoderContext(trieNode.Value));
+                                    if (account.CodeHash != Keccak.OfAnEmptyString)
+                                    {
+                                        if (account.CodeHash == account.StorageRoot)
+                                        {
+                                            lock (_codesSameAsNodes)
+                                            {
+                                                _codesSameAsNodes.Add(account.CodeHash);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, 0), dependentItem, "code");
+                                            if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
+                                        }
+                                    }
+
+                                    if (account.StorageRoot != Keccak.EmptyTreeHash)
+                                    {
+                                        AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(account.StorageRoot, NodeDataType.Storage, 0, 0), dependentItem, "storage");
+                                        if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
+                                    }
+
+                                    if (dependentItem.Counter == 0)
+                                    {
+                                        Interlocked.Increment(ref _savedAccounts);
+                                        SaveNode(currentStateSyncItem, currentResponseItem);
+                                    }
+                                }
+                                else
+                                {
                                     SaveNode(currentStateSyncItem, currentResponseItem);
                                 }
-                            }
-                            else
-                            {
-                                SaveNode(currentStateSyncItem, currentResponseItem);
-                            }
 
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
+                                break;
+                            default:
+                                throw new ArgumentOutOfRangeException();
+                        }
                     }
                 }
-            }
 
-            lock (_stateDbLock)
-            {
-                Rlp rlp = Rlp.Encode(
-                    Rlp.Encode(_consumedNodesCount),
-                    Rlp.Encode(_savedStorageCount),
-                    Rlp.Encode(_savedStateCount),
-                    Rlp.Encode(_savedNodesCount),
-                    Rlp.Encode(_savedAccounts),
-                    Rlp.Encode(_savedCode),
-                    Rlp.Encode(_requestedNodesCount),
-                    Rlp.Encode(_dbChecks),
-                    Rlp.Encode(_stateWasThere),
-                    Rlp.Encode(_stateWasNotThere));
-                lock (_codeDbLock)
+                lock (_stateDbLock)
                 {
-                    _codeDb[_fastSyncProgressKey.Bytes] = rlp.Bytes;
-                    _codeDb.Commit();
-                    _stateDb.Commit();
+                    Rlp rlp = Rlp.Encode(
+                        Rlp.Encode(_consumedNodesCount),
+                        Rlp.Encode(_savedStorageCount),
+                        Rlp.Encode(_savedStateCount),
+                        Rlp.Encode(_savedNodesCount),
+                        Rlp.Encode(_savedAccounts),
+                        Rlp.Encode(_savedCode),
+                        Rlp.Encode(_requestedNodesCount),
+                        Rlp.Encode(_dbChecks),
+                        Rlp.Encode(_stateWasThere),
+                        Rlp.Encode(_stateWasNotThere));
+                    lock (_codeDbLock)
+                    {
+                        _codeDb[_fastSyncProgressKey.Bytes] = rlp.Bytes;
+                        _codeDb.Commit();
+                        _stateDb.Commit();
+                    }
                 }
 
-                _lastRequest = null;
+                Interlocked.Add(ref _consumedNodesCount, nonEmptyResponses);
+                if (nonEmptyResponses == 0)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Peer sent no data in response to a request of length {batch.StateSyncs.Length}");
+                    throw new EthSynchronizationException("Node sent no data");
+                }
+
+                if (_requestedNodesCount > _lastRequestedNodesCount + 5000)
+                {
+                    _lastRequestedNodesCount = _requestedNodesCount;
+                    if (_logger.IsInfo) _logger.Info($"Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
+                    if (_logger.IsTrace) _logger.Trace($"Requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
+                    if (_logger.IsTrace) _logger.Trace($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
+                }
+
+                _handleWatch.Stop();
+                long total = _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
+                if (total != 0)
+                {
+                    // calculate averages
+                    if (_logger.IsTrace) _logger.Trace($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
+                }
+
+                if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.StateSyncs.Length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
+                _pendingRequests.Remove(batch, out _);
+                return nonEmptyResponses;
             }
-
-            Interlocked.Add(ref _consumedNodesCount, nonEmptyResponses);
-            if (nonEmptyResponses == 0)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Peer sent no data in response to a request of length {batch.StateSyncs.Length}");
-                throw new EthSynchronizationException("Node sent no data");
-            }
-
-            if (_requestedNodesCount > _lastRequestedNodesCount + 5000)
-            {
-                _lastRequestedNodesCount = _requestedNodesCount;
-                if (_logger.IsInfo) _logger.Info($"Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
-                if (_logger.IsTrace) _logger.Trace($"Requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
-                if (_logger.IsTrace) _logger.Trace($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
-            }
-
-            _handleWatch.Stop();
-            long total = _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
-            if (total != 0)
-            {
-                // calculate averages
-                if (_logger.IsDebug) _logger.Debug($"Request {_networkWatch.ElapsedMilliseconds} ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds} ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
-            }
-
-
-            if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.StateSyncs.Length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
-            return nonEmptyResponses;
         }
 
         private class DependentItemComparer : IEqualityComparer<DependentItem>
@@ -499,12 +527,15 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void AddDependency(Keccak dependency, DependentItem dependentItem)
         {
-            if (!_dependencies.ContainsKey(dependency))
+            lock (_dependencies)
             {
-                _dependencies[dependency] = new HashSet<DependentItem>(new DependentItemComparer());
-            }
+                if (!_dependencies.ContainsKey(dependency))
+                {
+                    _dependencies[dependency] = new HashSet<DependentItem>(new DependentItemComparer());
+                }
 
-            _dependencies[dependency].Add(dependentItem);
+                _dependencies[dependency].Add(dependentItem);
+            }
         }
 
         private bool TryTake(out StateSyncItem node)
@@ -520,6 +551,8 @@ namespace Nethermind.Blockchain.Synchronization
             return true;
         }
 
+        private ConcurrentDictionary<StateSyncBatch, object> _pendingRequests = new ConcurrentDictionary<StateSyncBatch, object>();
+
         public StateSyncBatch PrepareRequest(int length)
         {
             if (_rootNode == Keccak.EmptyTreeHash)
@@ -529,15 +562,6 @@ namespace Nethermind.Blockchain.Synchronization
 
             StateSyncBatch batch = new StateSyncBatch();
             if (_logger.IsTrace) _logger.Trace($"Preparing a request of length {length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
-
-            // re-add the pending request
-            if (_lastRequest != null)
-            {
-                for (int i = 0; i < _lastRequest.Length; i++)
-                {
-                    AddNode(_lastRequest[i], null, "last request", true);
-                }
-            }
 
             List<StateSyncItem> requestHashes = new List<StateSyncItem>();
             for (int i = 0; i < length; i++)
@@ -556,10 +580,11 @@ namespace Nethermind.Blockchain.Synchronization
             batch.StateSyncs = requestHashes.ToArray();
 
             StateSyncBatch result = batch.StateSyncs == null ? _emptyBatch : batch;
-            _requestedNodesCount += result.StateSyncs.Length;
+            Interlocked.Add(ref _requestedNodesCount, result.StateSyncs.Length);
 
             if (_logger.IsTrace) _logger.Trace($"After preparing a request of {length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
 
+            _pendingRequests.TryAdd(result, _nullObject);
             return result;
         }
 
@@ -568,14 +593,27 @@ namespace Nethermind.Blockchain.Synchronization
             if (_rootNode != stateRoot)
             {
                 _rootNode = stateRoot;
-                _dependencies.Clear();
-                _lastRequest = null;
-                _codesSameAsNodes.Clear();
+                lock (_dependencies) _dependencies.Clear();
+                lock (_codesSameAsNodes) _codesSameAsNodes.Clear();
+
                 _nodes[0]?.Clear();
                 _nodes[1]?.Clear();
                 _nodes[2]?.Clear();
 
                 if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({Stream0?.Count ?? 0}|{Stream1?.Count ?? 0}|{Stream2?.Count ?? 0})");
+            }
+            else
+            {
+                foreach ((StateSyncBatch pendingRequest, _) in _pendingRequests)
+                {
+                    // re-add the pending request
+                    for (int i = 0; i < pendingRequest.StateSyncs.Length; i++)
+                    {
+                        AddNode(pendingRequest.StateSyncs[i], null, "pending request", true);
+                    }
+                }
+
+                _pendingRequests.Clear();
             }
 
             if (_nodes[0] == null)
@@ -586,7 +624,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             bool hasOnlyRootNode = false;
-            if (TotalCount == 1)
+            if (TotalNodesPending == 1)
             {
                 Stream0.TryPeek(out StateSyncItem node0);
                 Stream1.TryPeek(out StateSyncItem node1);
@@ -597,7 +635,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
-            if (!hasOnlyRootNode)
+            if (!hasOnlyRootNode && _rootNode != Keccak.EmptyTreeHash)
             {
                 AddNode(new StateSyncItem(stateRoot, NodeDataType.State, 0, 1) {IsRoot = true}, null, "initial");
             }

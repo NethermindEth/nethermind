@@ -360,8 +360,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [SetUp]
         public void Setup()
         {
-            _logger = new ConsoleAsyncLogger(LogLevel.Trace);
+            _logger = new ConsoleAsyncLogger(LogLevel.Debug);
             _logManager = new OneLoggerLogManager(_logger);
+//            _logManager = LimboLogs.Instance;
 
             _remoteDb = new MemDb();
             _localDb = new MemDb();
@@ -420,6 +421,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 }
 
                 return Task.FromResult(batch);
+            }
+
+            public int HintMaxConcurrentRequests()
+            {
+                return _parallelism;
             }
         }
 
@@ -482,7 +488,14 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 return _executorResultFunction.Invoke(batch);
             }
+
+            public int HintMaxConcurrentRequests()
+            {
+                return _parallelism;
+            }
         }
+
+        private const int _parallelism = 25;
 
         private Address _currentAddress = Address.Zero;
 
@@ -690,8 +703,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
             
             _localStateDb.Commit();
-
-            CompareTrees("END");
+            CompareTrees("END");            
         }
         
         [Test, TestCaseSource("Scenarios")]

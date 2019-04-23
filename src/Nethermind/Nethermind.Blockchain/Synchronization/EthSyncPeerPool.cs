@@ -463,7 +463,7 @@ namespace Nethermind.Blockchain.Synchronization
             return _peers.TryGetValue(nodeId, out peerInfo);
         }
 
-        public SyncPeerAllocation Allocate(string description)
+        public SyncPeerAllocation Borrow(string description)
         {
             SyncPeerAllocation allocation = new SyncPeerAllocation(description);
             PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, "BORROW");

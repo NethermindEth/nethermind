@@ -36,8 +36,8 @@ namespace Nethermind.Blockchain.Synchronization
     {
         private readonly INodeDataFeed _nodeDataFeed;
         private INodeDataRequestExecutor _executor;
-        private const int MaxPendingRequestsCount = 1;
-        private const int MaxRequestSize = 384;
+        private int _maxPendingRequestsCount = 1; // initial value - later adjusted based on the number of peers
+        private const int MaxRequestSize = 3;
         private int _pendingRequests;
         private int _consumedNodesCount;
         private ILogger _logger;
@@ -56,6 +56,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private async Task KeepSyncing(CancellationToken token)
         {
+            HashSet<Task> tasks = new HashSet<Task>();
             StateSyncBatch[] dataBatches;
             do
             {
@@ -64,26 +65,20 @@ namespace Nethermind.Blockchain.Synchronization
                     return;
                 }
 
+                _maxPendingRequestsCount = _executor.HintMaxConcurrentRequests();
                 dataBatches = PrepareRequests();
                 for (int i = 0; i < dataBatches.Length; i++)
                 {
                     StateSyncBatch currentBatch = dataBatches[i];
-                    await _executor.ExecuteRequest(token, currentBatch).ContinueWith(t =>
+                    if (_logger.IsTrace) _logger.Trace($"Creating new task with - {dataBatches[i].StateSyncs.Length}");
+                    Task task = _executor.ExecuteRequest(token, currentBatch).ContinueWith(t =>
                     {
-                        Interlocked.Decrement(ref _pendingRequests);
+                        int afterDecrement = Interlocked.Decrement(ref _pendingRequests);
+                        if (_logger.IsTrace) _logger.Trace($"Decrementing pending requests - now at {afterDecrement}");
                         if (t.IsCompletedSuccessfully)
                         {
-                            try
-                            {
-                                int consumed = _nodeDataFeed.HandleResponse(t.Result);
-                                _consumedNodesCount += consumed;
-                            }
-                            catch (Exception e)
-                            {
-                                Console.WriteLine(e);
-                                throw;
-                            }
-                            
+                            int consumed = _nodeDataFeed.HandleResponse(t.Result);
+                            Interlocked.Add(ref _consumedNodesCount, consumed);
                             return;
                         }
 
@@ -100,8 +95,28 @@ namespace Nethermind.Blockchain.Synchronization
 
                         if (_logger.IsDebug) _logger.Debug("Something else happened with node data request");
                     });
+
+                    tasks.Add(task);
                 }
-            } while (dataBatches.Length != 0);
+
+                if (tasks.Count != 0)
+                {
+                    Task firstComplete = await Task.WhenAny(tasks);
+                    if (_logger.IsTrace) _logger.Trace($"Removing task from the list of {tasks.Count} node sync tasks");
+                    if (!tasks.Remove(firstComplete))
+                    {
+                        if (_logger.IsError) _logger.Error($"Could not remove node sync task - task count {tasks.Count}");
+                    }
+
+                    if (firstComplete.IsFaulted)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Node sync task throwing {firstComplete.Exception?.Message}");
+                        throw ((AggregateException) firstComplete.Exception).InnerExceptions[0];
+                    }
+                }
+            } while (dataBatches.Length + _pendingRequests + tasks.Count != 0 || _nodeDataFeed.TotalNodesPending != 0);
+
+            _logger.Debug($"Finished with {dataBatches.Length} {_pendingRequests} {tasks.Count}");
         }
 
         private StateSyncBatch[] PrepareRequests()
@@ -114,12 +129,13 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     break;
                 }
-                
+
                 requests.Add(currentBatch);
-            } while (_pendingRequests + requests.Count < MaxPendingRequestsCount);
+            } while (_pendingRequests + requests.Count < _maxPendingRequestsCount);
 
             var requestsArray = requests.ToArray();
             Interlocked.Add(ref _pendingRequests, requestsArray.Length);
+            if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             return requestsArray;
         }
 
