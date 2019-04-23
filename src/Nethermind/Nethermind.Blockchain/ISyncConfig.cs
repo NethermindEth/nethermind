@@ -22,6 +22,7 @@ namespace Nethermind.Blockchain
 {
     public interface ISyncConfig : IConfig
     {
+        bool ValidateTree { get; set; }
         bool FastSync { get; set; }
         int SyncTimerInterval { get; }
         int SyncPeersMaxCount { get; }

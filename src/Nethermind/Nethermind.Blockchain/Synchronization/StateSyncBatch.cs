@@ -22,5 +22,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         public StateSyncItem[] StateSyncs { get; set; }
         public byte[][] Responses { get; set; }
+        
+        public SyncPeerAllocation AssignedPeer { get; set; }
     }
 }

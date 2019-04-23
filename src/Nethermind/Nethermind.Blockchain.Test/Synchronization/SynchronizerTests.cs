@@ -287,7 +287,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 var stats = new NodeStatsManager(new StatsConfig(), _logManager);
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, syncConfig, _logManager);
 
-                NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(codeDb, stateDb, _logManager);
+                NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, _logManager);
+                NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(SyncPeerPool, feed, _logManager);
                 Synchronizer = new Synchronizer(BlockTree,
                     TestBlockValidator.AlwaysValid,
                     TestSealValidator.AlwaysValid,

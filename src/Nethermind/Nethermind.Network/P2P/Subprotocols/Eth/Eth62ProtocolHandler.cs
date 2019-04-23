@@ -79,7 +79,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node.Id} due to tx flooding");
                 InitiateDisconnect(DisconnectReason.UselessPeer, $"tx flooding {_notAcceptedTxsSinceLastCheck}/{_txFloodCheckTimer}");
             }
-            
+
             if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 10)
             {
                 if (Logger.IsDebug) Logger.Debug($"Downgrading {Node.Id} due to tx flooding");
@@ -92,8 +92,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public virtual byte ProtocolVersion => 62;
         public string ProtocolCode => "eth";
         public virtual int MessageIdSpaceSize => 8;
-        
-        public Guid SessionId => Session.SessionId; 
+
+        public Guid SessionId => Session.SessionId;
         public virtual bool IsFastSyncSupported => false;
         public Node Node => Session.Node;
         public string ClientId { get; set; }
@@ -109,7 +109,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Init()
         {
-            if(Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
             if (SyncServer.Head == null)
             {
                 throw new InvalidOperationException($"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
@@ -160,6 +160,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     {
 //                        Node.ClientId = $"STRANGE_PREFIX({statusMessage.StrangePrefix}) " + Node.ClientId;
                     }
+
                     Handle(statusMessage);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
@@ -170,8 +171,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Metrics.Eth62TransactionsReceived++;
                     if (!_isDowngradedDueToTxFlooding || 10 > _random.Next(0, 99)) // TODO: disable that when IsMining is set to true
                     {
-                        Handle(Deserialize<TransactionsMessage>(message.Data));    
+                        Handle(Deserialize<TransactionsMessage>(message.Data));
                     }
+
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     Metrics.Eth62GetBlockHeadersReceived++;
@@ -205,7 +207,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             catch (ObjectDisposedException)
             {
             }
-            
+
             try
             {
                 _bodiesRequests.CompleteAdding();
@@ -213,7 +215,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             catch (ObjectDisposedException)
             {
             }
-            
+
             Session.Disconnect(disconnectReason, DisconnectType.Local, details);
         }
 
@@ -287,6 +289,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 ProtocolVersion = status.ProtocolVersion,
                 TotalDifficulty = status.TotalDifficulty
             };
+
+            if (status.BestHash == new Keccak("0x828f6e9967f75742364c7ab5efd6e64428e60ad38e218789aaf108fbd0232973"))
+            {
+                InitiateDisconnect(DisconnectReason.UselessPeer, "One of the Rinkeby nodes stuck at Constantinople transition");
+            }
 
             TotalDifficultyOnSessionStart = status.TotalDifficulty;
             ProtocolInitialized?.Invoke(this, eventArgs);

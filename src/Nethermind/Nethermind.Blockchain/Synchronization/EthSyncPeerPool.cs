@@ -36,6 +36,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly INodeStatsManager _stats;
         private readonly ISyncConfig _syncConfig;
+        private readonly SyncPeersReport _syncPeersReport;
         private readonly ILogger _logger;
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
@@ -59,6 +60,8 @@ namespace Nethermind.Blockchain.Synchronization
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            
+            _syncPeersReport = new SyncPeersReport(this, _stats, logManager);
         }
 
         private async Task RunRefreshPeerLoop()
@@ -68,6 +71,7 @@ namespace Nethermind.Blockchain.Synchronization
                 try
                 {
                     if (_logger.IsDebug) _logger.Debug($"Running refresh peer info for {peerInfo}.");
+                    _syncPeersReport.Write();
                     var initCancelSource = _refreshCancelTokens[peerInfo.SyncPeer.Node.Id] = new CancellationTokenSource();
                     var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
                     await RefreshPeerInfo(peerInfo, linkedSource.Token).ContinueWith(t =>
@@ -279,6 +283,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public int PeerCount => _peers.Count;
+        public int UsefulPeerCount => (_peers.Count(p => p.Value.TotalDifficulty >= (_blockTree.BestSuggested?.TotalDifficulty ?? 0)) - _sleepingPeers.Count);
         public int PeerMaxCount => _syncConfig.SyncPeersMaxCount;
 
         public void Refresh(PublicKey publicKey)
@@ -406,6 +411,11 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void ReplaceIfWorthReplacing(SyncPeerAllocation allocation, PeerInfo peerInfo)
         {
+            if (!allocation.CanBeReplaced)
+            {
+                return;
+            }
+            
             if (peerInfo == null)
             {
                 return;
@@ -459,9 +469,19 @@ namespace Nethermind.Blockchain.Synchronization
             return _peers.TryGetValue(nodeId, out peerInfo);
         }
 
-        public SyncPeerAllocation Allocate(string description)
+        public SyncPeerAllocation Borrow(string description)
+        {
+            return Borrow(BorrowOptions.None, description);
+        }
+            
+        public SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description)
         {
             SyncPeerAllocation allocation = new SyncPeerAllocation(description);
+            if ((borrowOptions & BorrowOptions.DoNotReplace) == BorrowOptions.DoNotReplace)
+            {
+                allocation.CanBeReplaced = false;
+            }
+            
             PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, "BORROW");
             if (bestPeer != null)
             {

@@ -392,7 +392,7 @@ namespace Nethermind.Runner.Runners
                 VirtualMachine virtualMachine = new VirtualMachine(StateProvider, storageProvider, blockhashProvider, logManager);
                 ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, StateProvider, storageProvider, virtualMachine, logManager);
                 ITxPool txPool = customTxPool;
-                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, storageProvider, txPool, receiptStorage, logManager);
+                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, storageProvider, txPool, receiptStorage, new SyncConfig(), logManager);
                 Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false);
             }
         }
@@ -603,6 +603,7 @@ namespace Nethermind.Runner.Runners
                 storageProvider,
                 _txPool,
                 _receiptStorage,
+                _configProvider.GetConfig<ISyncConfig>(),
                 _logManager);
 
             _blockchainProcessor = new BlockchainProcessor(
@@ -693,10 +694,11 @@ namespace Nethermind.Runner.Runners
             IReceiptStorage receiptStorage,
             ISealValidator sealValidator,
             TxValidator txValidator)
-        {
-            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
+        {   
             ISyncConfig syncConfig = _configProvider.GetConfig<ISyncConfig>();
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
+            NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
+            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
             _synchronizer = new Synchronizer(_blockTree, _blockValidator, _sealValidator, _syncPeerPool, syncConfig, nodeDataDownloader, _logManager);
 
             _syncServer = new SyncServer(

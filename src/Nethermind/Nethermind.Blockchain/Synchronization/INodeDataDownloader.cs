@@ -27,6 +27,7 @@ namespace Nethermind.Blockchain.Synchronization
         Task<long> SyncNodeData(CancellationToken cancellationToken, Keccak rootNode);
 
         // here now to pass the reference easily for the current implementation
-        void SetExecutor(INodeDataRequestExecutor executor);
+        
+        bool IsFullySynced(Keccak stateRoot);
     }
 }
