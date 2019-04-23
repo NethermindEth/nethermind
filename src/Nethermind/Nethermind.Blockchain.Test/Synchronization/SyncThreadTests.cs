@@ -284,7 +284,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var producer = new DevBlockProducer(txPool, devChainProcessor, tree, new Timestamp(), logManager);
                 
             NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, logManager);
-            NodeDataDownloader downloader = new NodeDataDownloader(feed, logManager);
+            NodeDataDownloader downloader = new NodeDataDownloader(syncPeerPool, feed, logManager);
             Synchronizer synchronizer = new Synchronizer(
                 tree,
                 blockValidator,
