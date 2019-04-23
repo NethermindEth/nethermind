@@ -23,6 +23,8 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class SyncPeerAllocation
     {
+        public bool CanBeReplaced { get; set; } = true;
+        
         public string Description { get; set; }
 
         public PeerInfo Current { get; private set; }
@@ -59,6 +61,11 @@ namespace Nethermind.Blockchain.Synchronization
             lock (_allocationLock)
             {
                 PeerInfo current = Current;
+                if (current != null && !CanBeReplaced)
+                {
+                    return;
+                }
+                
                 if (betterPeer.IsAllocated)
                 {
                     return;

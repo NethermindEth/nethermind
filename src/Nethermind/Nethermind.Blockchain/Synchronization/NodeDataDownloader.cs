@@ -34,24 +34,95 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class NodeDataDownloader : INodeDataDownloader
     {
+        private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly INodeDataFeed _nodeDataFeed;
-        private INodeDataRequestExecutor _executor;
-        private int _maxPendingRequestsCount = 1; // initial value - later adjusted based on the number of peers
-        private const int MaxRequestSize = 3;
+        private const int MaxRequestSize = 384;
         private int _pendingRequests;
         private int _consumedNodesCount;
         private ILogger _logger;
 
-        public NodeDataDownloader(INodeDataFeed nodeDataFeed, ILogManager logManager)
+        public NodeDataDownloader(IEthSyncPeerPool syncPeerPool, INodeDataFeed nodeDataFeed, ILogManager logManager)
         {
+            _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _nodeDataFeed = nodeDataFeed ?? throw new ArgumentNullException(nameof(nodeDataFeed));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public NodeDataDownloader(INodeDataFeed nodeDataFeed, INodeDataRequestExecutor executor, ILogManager logManager)
-            : this(nodeDataFeed, logManager)
+        private Semaphore _parallelNodeSyncs = new Semaphore(0, 25);
+
+        private int _lastPeerCount;
+
+        private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
-            SetExecutor(executor);
+            SyncPeerAllocation nodeSyncAllocation = null;
+            if (_parallelNodeSyncs.WaitOne(100))
+            {
+                nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, $"node sync");
+//                _logger.Warn($"Sending node data request to {nodeSyncAllocation.Current}");
+            }
+            
+            try
+            {   
+                ISyncPeer peer = nodeSyncAllocation?.Current?.SyncPeer;
+                batch.AssignedPeer = nodeSyncAllocation;
+                if (peer != null)
+                {
+                    var hashes = batch.StateSyncs.Select(r => r.Hash).ToArray();
+                    batch.Responses = await peer.GetNodeData(hashes, token); // handle timeout here
+                }
+                else
+                {
+                    await Task.Delay(50);
+                }
+                
+                int consumed = _nodeDataFeed.HandleResponse(batch);
+//                if (_logger.IsInfo) _logger.Info($"Consumed {consumed}");
+                Interlocked.Add(ref _consumedNodesCount, consumed);
+                if (consumed == 0)
+                {
+                    _syncPeerPool.ReportNoSyncProgress(nodeSyncAllocation);
+                }
+
+            }
+            finally
+            {
+                if (nodeSyncAllocation != null)
+                {
+//                    _logger.Warn($"Free {nodeSyncAllocation?.Current}");
+                    _syncPeerPool.Free(nodeSyncAllocation);
+                    _parallelNodeSyncs.Release(1);
+                }
+
+                int afterDecrement = Interlocked.Decrement(ref _pendingRequests);
+                if (_logger.IsTrace) _logger.Trace($"Decrementing pending requests - now at {afterDecrement}");
+            }
+        }
+
+        private void UpdateParallelism()
+        {   
+            int newPeerCount = _syncPeerPool.UsefulPeerCount;
+            int difference = newPeerCount - _lastPeerCount;
+
+            if (difference == 0)
+            {
+                return;
+            }
+            
+            _logger.Warn($"Updating parallelism: peer count {_syncPeerPool.PeerCount}, useful: {_syncPeerPool.UsefulPeerCount}");
+            
+            if (difference > 0)
+            {
+                _parallelNodeSyncs.Release(difference);
+            }
+            else
+            {
+                for (int i = 0; i < difference; i++)
+                {
+                    _parallelNodeSyncs.WaitOne(10000); // when failing?    
+                }
+            }
+
+            _lastPeerCount = newPeerCount;
         }
 
         private async Task KeepSyncing(CancellationToken token)
@@ -65,37 +136,13 @@ namespace Nethermind.Blockchain.Synchronization
                     return;
                 }
 
-                _maxPendingRequestsCount = _executor.HintMaxConcurrentRequests();
+                UpdateParallelism();
                 dataBatches = PrepareRequests();
                 for (int i = 0; i < dataBatches.Length; i++)
                 {
                     StateSyncBatch currentBatch = dataBatches[i];
                     if (_logger.IsTrace) _logger.Trace($"Creating new task with - {dataBatches[i].StateSyncs.Length}");
-                    Task task = _executor.ExecuteRequest(token, currentBatch).ContinueWith(t =>
-                    {
-                        int afterDecrement = Interlocked.Decrement(ref _pendingRequests);
-                        if (_logger.IsTrace) _logger.Trace($"Decrementing pending requests - now at {afterDecrement}");
-                        if (t.IsCompletedSuccessfully)
-                        {
-                            int consumed = _nodeDataFeed.HandleResponse(t.Result);
-                            Interlocked.Add(ref _consumedNodesCount, consumed);
-                            return;
-                        }
-
-                        if (t.IsCanceled)
-                        {
-                            throw new EthSynchronizationException("Canceled");
-                        }
-
-                        if (t.IsFaulted)
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"Node data request faulted {t.Exception}");
-                            throw t.Exception;
-                        }
-
-                        if (_logger.IsDebug) _logger.Debug("Something else happened with node data request");
-                    });
-
+                    Task task = ExecuteRequest(token, currentBatch);
                     tasks.Add(task);
                 }
 
@@ -110,8 +157,14 @@ namespace Nethermind.Blockchain.Synchronization
 
                     if (firstComplete.IsFaulted)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Node sync task throwing {firstComplete.Exception?.Message}");
-                        throw ((AggregateException) firstComplete.Exception).InnerExceptions[0];
+                        // all the missing ones
+//                        int consumed = _nodeDataFeed.HandleResponse(t.Result);
+//                        Interlocked.Add(ref _consumedNodesCount, consumed);
+
+// disconnect the guy
+
+//                        if (_logger.IsDebug) _logger.Debug($"Node sync task throwing {firstComplete.Exception?.Message}");
+//                        throw ((AggregateException) firstComplete.Exception).InnerExceptions[0];
                     }
                 }
             } while (dataBatches.Length + _pendingRequests + tasks.Count != 0 || _nodeDataFeed.TotalNodesPending != 0);
@@ -131,7 +184,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 requests.Add(currentBatch);
-            } while (_pendingRequests + requests.Count < _maxPendingRequestsCount);
+            } while (_pendingRequests + requests.Count < _lastPeerCount);
 
             var requestsArray = requests.ToArray();
             Interlocked.Add(ref _pendingRequests, requestsArray.Length);
@@ -145,12 +198,6 @@ namespace Nethermind.Blockchain.Synchronization
             _nodeDataFeed.SetNewStateRoot(rootNode);
             await KeepSyncing(token);
             return _consumedNodesCount;
-        }
-
-        public void SetExecutor(INodeDataRequestExecutor executor)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Setting request executor to {executor.GetType().Name}");
-            _executor = executor ?? throw new ArgumentNullException(nameof(executor));
         }
 
         public bool IsFullySynced(Keccak stateRoot)

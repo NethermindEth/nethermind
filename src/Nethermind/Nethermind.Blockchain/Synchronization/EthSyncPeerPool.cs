@@ -283,6 +283,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public int PeerCount => _peers.Count;
+        public int UsefulPeerCount => (_peers.Count(p => p.Value.TotalDifficulty >= (_blockTree.BestSuggested?.TotalDifficulty ?? 0)) - _sleepingPeers.Count);
         public int PeerMaxCount => _syncConfig.SyncPeersMaxCount;
 
         public void Refresh(PublicKey publicKey)
@@ -465,7 +466,17 @@ namespace Nethermind.Blockchain.Synchronization
 
         public SyncPeerAllocation Borrow(string description)
         {
+            return Borrow(BorrowOptions.None, description);
+        }
+            
+        public SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description)
+        {
             SyncPeerAllocation allocation = new SyncPeerAllocation(description);
+            if ((borrowOptions & BorrowOptions.DoNotReplace) == BorrowOptions.DoNotReplace)
+            {
+                allocation.CanBeReplaced = false;
+            }
+            
             PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, "BORROW");
             if (bestPeer != null)
             {

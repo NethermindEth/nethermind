@@ -307,16 +307,22 @@ namespace Nethermind.Blockchain.Synchronization
         public int HandleResponse(StateSyncBatch batch)
         {
             lock (_handleWatch)
-            {
+            {   
                 _handleWatch.Restart();
+                
+                if (batch.AssignedPeer?.Current == null || batch.Responses == null)
+                {
+                    for (int i = 0; i < batch.StateSyncs.Length; i++)
+                    {
+                        AddNode(batch.StateSyncs[i], null, "missing", true);
+                    }
+
+                    return 0;
+                }
+                
                 if (batch.StateSyncs == null)
                 {
                     throw new EthSynchronizationException("Received a response with a missing request.");
-                }
-
-                if (batch.Responses == null)
-                {
-                    throw new EthSynchronizationException("Node sent an empty response");
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Received node data - {batch.Responses.Length} items in response to {batch.StateSyncs.Length}");
@@ -490,10 +496,12 @@ namespace Nethermind.Blockchain.Synchronization
                     throw new EthSynchronizationException("Node sent no data");
                 }
 
-                if (_requestedNodesCount > _lastRequestedNodesCount + 5000)
+                if (DateTime.UtcNow - _lastReportTime > TimeSpan.FromSeconds(1))
                 {
+                    decimal nps = 1000m * (_requestedNodesCount - _lastRequestedNodesCount) / (decimal)(DateTime.UtcNow - _lastReportTime).TotalMilliseconds;
                     _lastRequestedNodesCount = _requestedNodesCount;
-                    if (_logger.IsInfo) _logger.Info($"Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
+                    _lastReportTime = DateTime.UtcNow;
+                    if (_logger.IsInfo) _logger.Info($"NPS: {nps,6:F0} | Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
                     if (_logger.IsTrace) _logger.Trace($"Requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
                     if (_logger.IsTrace) _logger.Trace($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
                 }
@@ -511,6 +519,8 @@ namespace Nethermind.Blockchain.Synchronization
                 return nonEmptyResponses;
             }
         }
+        
+        private DateTime _lastReportTime = DateTime.MinValue;
 
         private class DependentItemComparer : IEqualityComparer<DependentItem>
         {
@@ -590,6 +600,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void SetNewStateRoot(Keccak stateRoot)
         {
+            _lastReportTime = DateTime.UtcNow;
+            _lastRequestedNodesCount = _requestedNodesCount;
             if (_rootNode != stateRoot)
             {
                 _rootNode = stateRoot;

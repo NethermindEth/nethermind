@@ -694,12 +694,11 @@ namespace Nethermind.Runner.Runners
             IReceiptStorage receiptStorage,
             ISealValidator sealValidator,
             TxValidator txValidator)
-        {
-            NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
-            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(feed, _logManager);
-            
+        {   
             ISyncConfig syncConfig = _configProvider.GetConfig<ISyncConfig>();
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
+            NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
+            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
             _synchronizer = new Synchronizer(_blockTree, _blockValidator, _sealValidator, _syncPeerPool, syncConfig, nodeDataDownloader, _logManager);
 
             _syncServer = new SyncServer(
