@@ -255,13 +255,12 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 await syncProgressTask.ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                long bestFullState = FindBestFullState();
+                SyncMode beforeUpdate = _syncMode.Current;
+                _syncMode.Update(_bestSuggestedNumber, bestFullState);
                 if (syncProgressTask.IsCompletedSuccessfully)
                 {
                     long progress = syncProgressTask.Result;
-                    SyncMode beforeUpdate = _syncMode.Current;
-                    
-                    // TODO: can find best full state 64 nodes back
-                    _syncMode.Update(_bestSuggestedNumber, Math.Max(_bestFullState, _blockTree.Head?.Number ?? 0));
                     if (_syncMode.Current == beforeUpdate && progress == 0)
                     {
                         _syncPeerPool.ReportNoSyncProgress(_blocksSyncAllocation); // not very fair here - allocation may have changed
@@ -277,7 +276,32 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private long _bestFullState;
+        private long FindBestFullState()
+        {
+            BlockHeader bestSuggested = _blockTree.BestSuggested;
+            BlockHeader head = _blockTree.Head;
+            long bestFullState = head?.Number ?? 0;
+            long maxLookup = Math.Min(SyncModeSelector.FullSyncThreshold, bestSuggested?.Number ?? 0L - bestFullState);
+            
+            for (int i = 0; i < maxLookup; i++)
+            {
+                if (bestSuggested == null)
+                {
+                    break;
+                }
+
+                Keccak stateRoot = bestSuggested.StateRoot;
+                if (_nodeDataDownloader.IsFullySynced(stateRoot ?? Keccak.EmptyTreeHash))
+                {
+                    bestFullState = _bestSuggestedNumber;
+                    break;
+                }
+
+                bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash);
+            }
+
+            return bestFullState;
+        }
 
         private void HandleSyncRequestResult(Task task, PeerInfo peerInfo)
         {
@@ -375,15 +399,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             if(_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
-            Task<long> task = _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);
-            await task;
-            if (_nodeDataDownloader.IsFullySynced(bestSuggested.StateRoot))
-            {
-                if(_logger.IsWarn) _logger.Warn($"GOOD NEWS: Finished downloading all the states up to {bestSuggested.ToString(BlockHeader.Format.Short)}");
-                _bestFullState = _bestSuggestedNumber;
-            }
-            
-            return await task;
+            return await _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);            
         }
 
         public async Task<StateSyncBatch> ExecuteRequest(CancellationToken token, StateSyncBatch batch)

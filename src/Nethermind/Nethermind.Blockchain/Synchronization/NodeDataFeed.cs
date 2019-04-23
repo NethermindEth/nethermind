@@ -34,8 +34,9 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class NodeDataFeed : INodeDataFeed
     {
-        private static AccountDecoder accountDecoder = new AccountDecoder();
-
+        private static AccountDecoder _accountDecoder = new AccountDecoder();
+        private StateSyncBatch _emptyBatch = new StateSyncBatch{StateSyncs = new StateSyncItem[0]};
+        
         private Keccak _fastSyncProgressKey = Keccak.Compute("fast_sync_progress");
         private long _lastRequestedNodesCount;
         private long _consumedNodesCount;
@@ -50,7 +51,11 @@ namespace Nethermind.Blockchain.Synchronization
         private long _checkWasInDependencies;
         private long _stateWasThere;
         private long _stateWasNotThere;
-        private int maxStateLevel; // for priority calculation (prefer depth)
+        private int _maxStateLevel; // for priority calculation (prefer depth)
+        
+        private object _stateDbLock = new object();
+        private object _codeDbLock = new object();
+        private static object _nullObject = new object();
 
         private Stopwatch _networkWatch = new Stopwatch();
         private Stopwatch _handleWatch = new Stopwatch();
@@ -61,16 +66,12 @@ namespace Nethermind.Blockchain.Synchronization
         private ILogger _logger;
         private ISnapshotableDb _stateDb;
 
-        private int TotalCount => Stream0.Count + Stream1.Count + Stream2.Count;
-
         private ConcurrentStack<StateSyncItem>[] _nodes = new ConcurrentStack<StateSyncItem>[3];
         private ConcurrentStack<StateSyncItem> Stream0 => _nodes[0];
         private ConcurrentStack<StateSyncItem> Stream1 => _nodes[1];
         private ConcurrentStack<StateSyncItem> Stream2 => _nodes[2];
-
-        private object _stateDbLock = new object();
-        private object _codeDbLock = new object();
-        private static object _nullObject = new object();
+        
+        private int TotalCount => Stream0.Count + Stream1.Count + Stream2.Count;
 
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
 
@@ -264,15 +265,15 @@ namespace Nethermind.Blockchain.Synchronization
                 return 0;
             }
 
-            if (parent.Level > maxStateLevel)
+            if (parent.Level > _maxStateLevel)
             {
-                maxStateLevel = parent.Level;
+                _maxStateLevel = parent.Level;
             }
 
 // priority calculation does not make that much sense but the way it works in result
 // is very good so not changing it for now
 // in particular we should probably calculate priority as 2.5f - 2 * diff
-            return Math.Max(1 - (float) parent.Level / maxStateLevel, parent.Priority - (float) parent.Level / maxStateLevel);
+            return Math.Max(1 - (float) parent.Level / _maxStateLevel, parent.Priority - (float) parent.Level / _maxStateLevel);
         }
 
         private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
@@ -323,7 +324,7 @@ namespace Nethermind.Blockchain.Synchronization
                             }
                         }
 
-                        if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data of length {batch.Responses[i]?.Length} of type {batch.StateSyncs[i].NodeDataType} at level {batch.StateSyncs[i].Level} of type {batch.StateSyncs[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.StateSyncs[i].Hash}");
+                        if (_logger.IsWarn) _logger.Warn($"Peer sent invalid data (batch {batch.StateSyncs.Length}->{batch.Responses.Length}) of length {batch.Responses[i]?.Length} of type {batch.StateSyncs[i].NodeDataType} at level {batch.StateSyncs[i].Level} of type {batch.StateSyncs[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.StateSyncs[i].Hash}");
                         throw new EthSynchronizationException("Node sent invalid data");
                     }
 
@@ -392,7 +393,7 @@ namespace Nethermind.Blockchain.Synchronization
                             if (nodeDataType == NodeDataType.State)
                             {
                                 DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
-                                Account account = accountDecoder.Decode(new Rlp.DecoderContext(trieNode.Value));
+                                Account account = _accountDecoder.Decode(new Rlp.DecoderContext(trieNode.Value));
                                 if (account.CodeHash != Keccak.OfAnEmptyString)
                                 {
                                     if (account.CodeHash == account.StorageRoot)
@@ -514,8 +515,6 @@ namespace Nethermind.Blockchain.Synchronization
 
             return true;
         }
-
-        private StateSyncBatch _emptyBatch = new StateSyncBatch{StateSyncs = new StateSyncItem[0]};
         
         public StateSyncBatch PrepareRequest(int length)
         {
@@ -598,6 +597,11 @@ namespace Nethermind.Blockchain.Synchronization
 
         public bool IsFullySynced(Keccak stateRoot)
         {
+            if (stateRoot == Keccak.EmptyTreeHash)
+            {
+                return true;
+            }
+            
             lock (_stateDbLock)
             {
                 return _stateDb.Get(stateRoot) != null;

@@ -18,6 +18,7 @@
 
 using System;
 using Nethermind.Core.Logging;
+using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization
 {
