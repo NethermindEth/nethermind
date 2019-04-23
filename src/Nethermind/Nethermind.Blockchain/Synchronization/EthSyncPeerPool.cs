@@ -411,6 +411,11 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void ReplaceIfWorthReplacing(SyncPeerAllocation allocation, PeerInfo peerInfo)
         {
+            if (!allocation.CanBeReplaced)
+            {
+                return;
+            }
+            
             if (peerInfo == null)
             {
                 return;
