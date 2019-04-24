@@ -361,6 +361,12 @@ namespace Nethermind.Blockchain.Synchronization
             (PeerInfo Info, long Latency) bestPeer = (null, 100000);
             foreach ((_, PeerInfo info) in _peers)
             {
+                if (allocation.MinBlocksAhead.HasValue
+                    && info.HeadNumber <= _blockTree.BestKnownNumber + allocation.MinBlocksAhead.Value)
+                {
+                    continue;
+                }
+                
                 if (!info.IsInitialized || info.TotalDifficulty <= (_blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero))
                 {
                     continue;

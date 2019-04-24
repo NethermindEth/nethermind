@@ -17,12 +17,13 @@
  */
 
 using System;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization
-{
+{   
     public class SyncPeerAllocation
     {
+        public int? MinBlocksAhead { get; set; }
+        
         public bool CanBeReplaced { get; set; } = true;
         
         public string Description { get; set; }

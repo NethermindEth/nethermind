@@ -80,6 +80,10 @@ namespace Nethermind.Blockchain.Synchronization
                 Current = newSyncMode;
                 Changed?.Invoke(this, EventArgs.Empty);
             }
+            else
+            {
+                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {bestHeader}|{bestFullState}|{maxBlockNumberAmongPeers}.");
+            }
         }
 
         public event EventHandler Changed;

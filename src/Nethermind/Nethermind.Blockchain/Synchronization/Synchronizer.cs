@@ -259,6 +259,15 @@ namespace Nethermind.Blockchain.Synchronization
                 long bestFullState = FindBestFullState();
                 SyncMode beforeUpdate = _syncMode.Current;
                 _syncMode.Update(_bestSuggestedNumber, bestFullState);
+                if (_syncMode.Current == SyncMode.Headers)
+                {
+                    _blocksSyncAllocation.MinBlocksAhead = SyncModeSelector.FullSyncThreshold;
+                }
+                else if (_blocksSyncAllocation != null)
+                {
+                    _blocksSyncAllocation.MinBlocksAhead = null;
+                }
+                
                 if (syncProgressTask.IsCompletedSuccessfully)
                 {
                     long progress = syncProgressTask.Result;
