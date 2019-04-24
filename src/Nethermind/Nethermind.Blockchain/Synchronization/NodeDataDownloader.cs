@@ -210,7 +210,6 @@ namespace Nethermind.Blockchain.Synchronization
                 StateSyncBatch currentBatch = _nodeDataFeed.PrepareRequest(MaxRequestSize);
                 if (currentBatch.RequestedNodes.Length == 0)
                 {
-                    _logger.Error("No more batch - shall remove");
                     break;
                 }
 
