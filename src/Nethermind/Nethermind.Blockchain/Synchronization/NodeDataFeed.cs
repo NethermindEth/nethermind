@@ -566,7 +566,7 @@ namespace Nethermind.Blockchain.Synchronization
                         _lastRequestedNodesCount = _requestedNodesCount;
                         _lastReportTime = DateTime.UtcNow;
                         if (_logger.IsInfo) _logger.Info($"SNPS: {savedNodesPerSecond,6:F0} | NPS: {requestedNodesPerSecond,6:F0} | Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
-                        if (_logger.IsInfo) _logger.Info($"AVTIH: {_averageTimeInHandler} | Request results - OK: {(decimal) _okCount / TotalRequestsCount:p2}, Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2}, BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2}, InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2}, NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
+                        if (_logger.IsInfo) _logger.Info($"AVTIH: {_averageTimeInHandler:F2}ms | Request results - OK: {(decimal) _okCount / TotalRequestsCount:p2}, Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2}, BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2}, InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2}, NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
                         if (_logger.IsTrace) _logger.Trace($"Requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
                         if (_logger.IsTrace) _logger.Trace($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
                     }
@@ -578,7 +578,7 @@ namespace Nethermind.Blockchain.Synchronization
                         if (_logger.IsTrace) _logger.Trace($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
                     }
 
-                    _averageTimeInHandler = (int) (((decimal) _averageTimeInHandler * (ProcessedRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / ProcessedRequestsCount);
+                    _averageTimeInHandler = (_averageTimeInHandler * (ProcessedRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / ProcessedRequestsCount;
                     return (result, nonEmptyResponses);
                 }
             }
@@ -589,7 +589,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private int _averageTimeInHandler;
+        private decimal _averageTimeInHandler;
 
         private class DependentItemComparer : IEqualityComparer<DependentItem>
         {
