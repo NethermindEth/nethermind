@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
                 else
                 {
-                    await Task.Delay(50);
+                    await Task.Delay(20);
                 }
                 
                 var handlerResult = _nodeDataFeed.HandleResponse(batch);
