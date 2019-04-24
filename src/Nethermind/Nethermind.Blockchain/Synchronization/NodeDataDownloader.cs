@@ -55,9 +55,13 @@ namespace Nethermind.Blockchain.Synchronization
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
             SyncPeerAllocation nodeSyncAllocation = null;
-            if (await _semaphore.WaitAsync(200, token))
+            if (await _semaphore.WaitAsync(100, token))
             {            
-                nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, $"node sync");
+                nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, "node sync");
+            }
+            else
+            {
+                await Task.Delay(50);
             }
             
             try
