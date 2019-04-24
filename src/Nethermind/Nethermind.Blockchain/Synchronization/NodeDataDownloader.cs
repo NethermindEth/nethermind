@@ -197,9 +197,14 @@ namespace Nethermind.Blockchain.Synchronization
 //                        throw ((AggregateException) firstComplete.Exception).InnerExceptions[0];
                     }
                 }
+
+                if (dataBatches.Length == 0)
+                {
+                    if (_logger.IsInfo) _logger.Info($"DIAG: 0 batches created with {_pendingRequests} pending requests, {tasks.Count} tasks, {_nodeDataFeed.TotalNodesPending} pending nodes");
+                }
             } while (dataBatches.Length + _pendingRequests + tasks.Count != 0 || _nodeDataFeed.TotalNodesPending != 0);
 
-            _logger.Debug($"Finished with {dataBatches.Length} {_pendingRequests} {tasks.Count}");
+            if(_logger.IsInfo) _logger.Info($"Finished with {dataBatches.Length} {_pendingRequests} {tasks.Count}");
         }
 
         private StateSyncBatch[] PrepareRequests()
@@ -210,7 +215,9 @@ namespace Nethermind.Blockchain.Synchronization
                 StateSyncBatch currentBatch = _nodeDataFeed.PrepareRequest(MaxRequestSize);
                 if (currentBatch.RequestedNodes.Length == 0)
                 {
-                    _logger.Info($"DIAG: no more batches | pending req {_pendingRequests} | nodes pending {_nodeDataFeed.TotalNodesPending}");
+                    // 
+                    Thread.Sleep(1000);
+                    _logger.Info($"DIAG: no more batches | pending req {_pendingRequests} | nodes pending {_nodeDataFeed.TotalNodesPending} | requests count {requests.Count}");
                     break;
                 }
 
