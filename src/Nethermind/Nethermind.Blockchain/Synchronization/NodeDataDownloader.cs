@@ -48,17 +48,17 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private Semaphore _parallelNodeSyncs = new Semaphore(0, 50);
-
+        private int _parallelism;
+        
         private int _lastPeerCount;
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
             SyncPeerAllocation nodeSyncAllocation = null;
-            if (_parallelNodeSyncs.WaitOne(100))
+
+            if (SpinWait.SpinUntil(() => _pendingRequests < _parallelism, 200))
             {
                 nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, $"node sync");
-//                _logger.Warn($"Sending node data request to {nodeSyncAllocation.Current}");
             }
             
             try
@@ -69,10 +69,6 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     var hashes = batch.RequestedNodes.Select(r => r.Hash).ToArray();
                     batch.Responses = await peer.GetNodeData(hashes, token); // handle timeout here
-                }
-                else
-                {
-                    await Task.Delay(20);
                 }
                 
                 var handlerResult = _nodeDataFeed.HandleResponse(batch);
@@ -88,7 +84,6 @@ namespace Nethermind.Blockchain.Synchronization
                 {
 //                    _logger.Warn($"Free {nodeSyncAllocation?.Current}");
                     _syncPeerPool.Free(nodeSyncAllocation);
-                    _parallelNodeSyncs.Release(1);
                 }
 
                 int afterDecrement = Interlocked.Decrement(ref _pendingRequests);
@@ -107,20 +102,23 @@ namespace Nethermind.Blockchain.Synchronization
             }
             
             if(_logger.IsInfo) _logger.Info($"Node sync parallelism: {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total.");
-            
-            if (difference > 0)
-            {
-                _parallelNodeSyncs.Release(difference);
-            }
-            else
-            {
-                for (int i = 0; i < -difference; i++)
-                {
-                    _parallelNodeSyncs.WaitOne(10000); // when failing?    
-                }
-            }
 
+            _parallelism = newPeerCount;
             _lastPeerCount = newPeerCount;
+
+//            if (difference > 0)
+//            {
+//                _parallelNodeSyncs.Release(difference);
+//            }
+//            else
+//            {
+//                for (int i = 0; i < -difference; i++)
+//                {
+//                    _parallelNodeSyncs.WaitOne(10000); // when failing?    
+//                }
+//            }
+//
+//            _lastPeerCount = newPeerCount;
         }
 
         private async Task KeepSyncing(CancellationToken token)
