@@ -49,16 +49,16 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
 //        private SemaphoreSlim _semaphore = new SemaphoreSlim(0);
-        
+
         private int _parallelism;
-        
+
         private int _lastPeerCount;
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
             SyncPeerAllocation nodeSyncAllocation = null;
 
-            if(SpinWait.SpinUntil(() => _pendingRequests < _parallelism, 200))
+            if (SpinWait.SpinUntil(() => _pendingRequests < _parallelism, 200))
             {
                 nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, "node sync");
             }
@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 await Task.Delay(50);
             }
-            
+
 //            if (await _semaphore.WaitAsync(100, token))
 //            {            
 //                nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, "node sync");
@@ -75,20 +75,38 @@ namespace Nethermind.Blockchain.Synchronization
 //            {
 //                await Task.Delay(50);
 //            }
-            
+
             try
-            {   
+            {
                 ISyncPeer peer = nodeSyncAllocation?.Current?.SyncPeer;
                 batch.AssignedPeer = nodeSyncAllocation;
                 if (peer != null)
                 {
                     var hashes = batch.RequestedNodes.Select(r => r.Hash).ToArray();
-                    batch.Responses = await peer.GetNodeData(hashes, token); // handle timeout here
+                    Task<byte[][]> getNodeDataTask = peer.GetNodeData(hashes, token);
+                    await getNodeDataTask.ContinueWith(
+                        t =>
+                        {
+                            if (t.IsCompletedSuccessfully)
+                            {
+                                batch.Responses = getNodeDataTask.Result;
+                            }
+                        }
+                    );
                 }
-                
-                var handlerResult = _nodeDataFeed.HandleResponse(batch);
-                Interlocked.Add(ref _consumedNodesCount, handlerResult.NodesConsumed);
-                if (handlerResult.NodesConsumed == 0)
+
+                (NodeDataHandlerResult Result, int NodesConsumed) result = (NodeDataHandlerResult.InvalidFormat, 0);
+                try
+                {
+                    result = _nodeDataFeed.HandleResponse(batch);
+                }
+                catch (Exception e)
+                {
+                    if(_logger.IsError) _logger.Error($"Error when handling response", e);
+                }
+
+                Interlocked.Add(ref _consumedNodesCount, result.NodesConsumed);
+                if (result.NodesConsumed == 0 && peer != null)
                 {
                     _syncPeerPool.ReportNoSyncProgress(nodeSyncAllocation);
                 }
@@ -108,7 +126,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         private void UpdateParallelism()
-        {   
+        {
             int newPeerCount = _syncPeerPool.UsefulPeerCount;
             int difference = newPeerCount - _lastPeerCount;
 
@@ -116,8 +134,8 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 return;
             }
-            
-            if(_logger.IsInfo) _logger.Info($"Node sync parallelism: {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total.");
+
+            if (_logger.IsInfo) _logger.Info($"Node sync parallelism: {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests}).");
 
             _parallelism = newPeerCount;
             _lastPeerCount = newPeerCount;
@@ -192,6 +210,7 @@ namespace Nethermind.Blockchain.Synchronization
                 StateSyncBatch currentBatch = _nodeDataFeed.PrepareRequest(MaxRequestSize);
                 if (currentBatch.RequestedNodes.Length == 0)
                 {
+                    _logger.Error("No more batch - shall remove");
                     break;
                 }
 

@@ -158,7 +158,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
                 return task.Result;
             }
-
+            
+            StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockHeaders, (long)Timeouts.Eth.TotalMilliseconds);
             _perfService.EndPerfCalc(perfCalcId);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
         }
