@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             long maxBlockNumberAmongPeers = 0;
-            foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
+            foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
             {
                 maxBlockNumberAmongPeers = Math.Max(maxBlockNumberAmongPeers, peerInfo.HeadNumber);
             }

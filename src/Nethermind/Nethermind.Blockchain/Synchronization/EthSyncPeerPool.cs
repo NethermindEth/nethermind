@@ -270,6 +270,32 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
         }
+        
+        public IEnumerable<PeerInfo> UsefulPeers
+        {
+            get
+            {
+                foreach ((_, PeerInfo peerInfo) in _peers)
+                {
+                    if (_sleepingPeers.ContainsKey(peerInfo))
+                    {
+                        continue;
+                    }
+
+                    if (!peerInfo.IsInitialized)
+                    {
+                        continue;
+                    }
+
+                    if (peerInfo.TotalDifficulty < (_blockTree.BestSuggested?.TotalDifficulty ?? 0))
+                    {
+                        continue;
+                    }
+                    
+                    yield return peerInfo;
+                }
+            }
+        }
 
         public IEnumerable<SyncPeerAllocation> Allocations
         {
