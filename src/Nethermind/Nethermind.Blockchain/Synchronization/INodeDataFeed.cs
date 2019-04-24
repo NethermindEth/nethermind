@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Synchronization
         
         void SetNewStateRoot(Keccak stateRoot);
         
-        int HandleResponse(StateSyncBatch syncBatch);
+        (NodeDataHandlerResult Result, int NodesConsumed) HandleResponse(StateSyncBatch syncBatch);
         
         bool IsFullySynced(Keccak stateRoot);
         

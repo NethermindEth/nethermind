@@ -20,7 +20,8 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class StateSyncBatch
     {
-        public StateSyncItem[] StateSyncs { get; set; }
+        public StateSyncItem[] RequestedNodes { get; set; }
+        
         public byte[][] Responses { get; set; }
         
         public SyncPeerAllocation AssignedPeer { get; set; }

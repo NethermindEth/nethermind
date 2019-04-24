@@ -375,7 +375,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void AllocationOnRefreshed(object sender, EventArgs e)
         {
-            RequestSynchronization(SyncTriggerType.PeerRfresh);
+            RequestSynchronization(SyncTriggerType.PeerRefresh);
         }
 
         private void AllocationOnCancelled(object sender, AllocationChangeEventArgs e)

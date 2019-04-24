@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain.Synchronization
                 batch.AssignedPeer = nodeSyncAllocation;
                 if (peer != null)
                 {
-                    var hashes = batch.StateSyncs.Select(r => r.Hash).ToArray();
+                    var hashes = batch.RequestedNodes.Select(r => r.Hash).ToArray();
                     batch.Responses = await peer.GetNodeData(hashes, token); // handle timeout here
                 }
                 else
@@ -75,14 +75,12 @@ namespace Nethermind.Blockchain.Synchronization
                     await Task.Delay(50);
                 }
                 
-                int consumed = _nodeDataFeed.HandleResponse(batch);
-//                if (_logger.IsInfo) _logger.Info($"Consumed {consumed}");
-                Interlocked.Add(ref _consumedNodesCount, consumed);
-                if (consumed == 0)
+                var handlerResult = _nodeDataFeed.HandleResponse(batch);
+                Interlocked.Add(ref _consumedNodesCount, handlerResult.NodesConsumed);
+                if (handlerResult.NodesConsumed == 0)
                 {
                     _syncPeerPool.ReportNoSyncProgress(nodeSyncAllocation);
                 }
-
             }
             finally
             {
@@ -108,7 +106,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
             
-            _logger.Warn($"Updating parallelism: peer count {_syncPeerPool.PeerCount}, useful: {_syncPeerPool.UsefulPeerCount}");
+            if(_logger.IsInfo) _logger.Info($"Node sync parallelism: {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total.");
             
             if (difference > 0)
             {
@@ -141,7 +139,7 @@ namespace Nethermind.Blockchain.Synchronization
                 for (int i = 0; i < dataBatches.Length; i++)
                 {
                     StateSyncBatch currentBatch = dataBatches[i];
-                    if (_logger.IsTrace) _logger.Trace($"Creating new task with - {dataBatches[i].StateSyncs.Length}");
+                    if (_logger.IsTrace) _logger.Trace($"Creating new task with - {dataBatches[i].RequestedNodes.Length}");
                     Task task = ExecuteRequest(token, currentBatch);
                     tasks.Add(task);
                 }
@@ -178,7 +176,7 @@ namespace Nethermind.Blockchain.Synchronization
             do
             {
                 StateSyncBatch currentBatch = _nodeDataFeed.PrepareRequest(MaxRequestSize);
-                if (currentBatch.StateSyncs.Length == 0)
+                if (currentBatch.RequestedNodes.Length == 0)
                 {
                     break;
                 }

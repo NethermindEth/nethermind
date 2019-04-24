@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (peerInfo.IsAllocated)
                     {
-                        if (_logger.IsInfo) _logger.Info($" * {peerInfo}");
+                        if (_logger.IsInfo) _logger.Info($" * {peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000}]");
                     }
                 }
             }
