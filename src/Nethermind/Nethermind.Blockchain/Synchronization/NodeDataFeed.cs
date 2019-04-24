@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Synchronization
         private long _badQualityCount;
         private long _notAssignedCount;
         public long TotalRequestsCount => _emptishCount + _invalidFormatCount + _badQualityCount + _okCount + _notAssignedCount;
-        
+
         private int _maxStateLevel; // for priority calculation (prefer depth)
 
         private object _stateDbLock = new object();
@@ -333,252 +333,258 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
-            lock (_handleWatch)
+            try
             {
-                _handleWatch.Restart();
-
-                bool requestWasMade = batch.AssignedPeer?.Current != null;
-                if (!requestWasMade)
+                lock (_handleWatch)
                 {
-                    AddAgainAllItems();
-                    _pendingRequests.TryRemove(batch, out _);
-                    if (_logger.IsTrace) _logger.Trace($"Batch was not assigned to any peer.");
-                    Interlocked.Increment(ref _notAssignedCount);
-                    return (NodeDataHandlerResult.NotAssigned, 0);
-                }
+                    _handleWatch.Restart();
 
-                bool isMissingRequestData = batch.RequestedNodes == null;
-                bool isMissingResponseData = batch.Responses == null;
-                bool hasValidFormat = !isMissingRequestData && !isMissingResponseData;
-
-                if (!hasValidFormat)
-                {
-                    AddAgainAllItems();
-                    _pendingRequests.TryRemove(batch, out _);
-                    if (_logger.IsDebug) _logger.Debug($"Batch response had invalid format");
-                    Interlocked.Increment(ref _invalidFormatCount);
-                    return (NodeDataHandlerResult.InvalidFormat, 0);
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"Received node data - {batch.Responses.Length} items in response to {batch.RequestedNodes.Length}");
-                int nonEmptyResponses = 0;
-                int invalidNodes = 0;
-                for (int i = 0; i < batch.RequestedNodes.Length; i++)
-                {
-                    StateSyncItem currentStateSyncItem = batch.RequestedNodes[i];
-
-                    /* if the peer has limit on number of requests in a batch then the response will possibly be
-                       shorter than the request */
-                    if (batch.Responses.Length < i + 1)
+                    bool requestWasMade = batch.AssignedPeer?.Current != null;
+                    if (!requestWasMade)
                     {
-                        AddNode(currentStateSyncItem, null, "missing", true);
-                        continue;
+                        AddAgainAllItems();
+                        if (_logger.IsTrace) _logger.Trace($"Batch was not assigned to any peer.");
+                        Interlocked.Increment(ref _notAssignedCount);
+                        return (NodeDataHandlerResult.NotAssigned, 0);
                     }
 
-                    /* if the peer does not have details of this particular node */
-                    byte[] currentResponseItem = batch.Responses[i];
-                    if (currentResponseItem == null)
+                    bool isMissingRequestData = batch.RequestedNodes == null;
+                    bool isMissingResponseData = batch.Responses == null;
+                    bool hasValidFormat = !isMissingRequestData && !isMissingResponseData;
+
+                    if (!hasValidFormat)
                     {
-                        AddNode(batch.RequestedNodes[i], null, "missing", true);
-                        continue;
+                        AddAgainAllItems();
+                        if (_logger.IsDebug) _logger.Debug($"Batch response had invalid format");
+                        Interlocked.Increment(ref _invalidFormatCount);
+                        return (NodeDataHandlerResult.InvalidFormat, 0);
                     }
 
-                    /* node sent data that is not consistent with its hash - it happens surprisingly often */
-                    if (Keccak.Compute(currentResponseItem) != currentStateSyncItem.Hash)
+                    if (_logger.IsTrace) _logger.Trace($"Received node data - {batch.Responses.Length} items in response to {batch.RequestedNodes.Length}");
+                    int nonEmptyResponses = 0;
+                    int invalidNodes = 0;
+                    for (int i = 0; i < batch.RequestedNodes.Length; i++)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Peer sent invalid data (batch {batch.RequestedNodes.Length}->{batch.Responses.Length}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
-                        invalidNodes++;
-                        continue;
-                    }
+                        StateSyncItem currentStateSyncItem = batch.RequestedNodes[i];
 
-                    nonEmptyResponses++;
-                    NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
-                    if (nodeDataType == NodeDataType.Code)
-                    {
-                        SaveNode(currentStateSyncItem, currentResponseItem);
-                        continue;
-                    }
+                        /* if the peer has limit on number of requests in a batch then the response will possibly be
+                           shorter than the request */
+                        if (batch.Responses.Length < i + 1)
+                        {
+                            AddNode(currentStateSyncItem, null, "missing", true);
+                            continue;
+                        }
 
-                    TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(currentResponseItem));
-                    trieNode.ResolveNode(null);
-                    switch (trieNode.NodeType)
-                    {
-                        case NodeType.Unknown:
-                            invalidNodes++;
-                            if (_logger.IsError) _logger.Error($"Node {currentStateSyncItem.Hash} resolved to {nameof(NodeType.Unknown)}");
-                            break;
-                        case NodeType.Branch:
-                            trieNode.BuildLookupTable();
-                            DependentItem dependentBranch = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
-                            HashSet<Keccak> alreadyProcessedChildHashes = new HashSet<Keccak>();
-                            for (int childIndex = 0; childIndex < 16; childIndex++)
-                            {
-                                Keccak child = trieNode.GetChildHash(childIndex);
-                                if (alreadyProcessedChildHashes.Contains(child))
-                                {
-                                    continue;
-                                }
+                        /* if the peer does not have details of this particular node */
+                        byte[] currentResponseItem = batch.Responses[i];
+                        if (currentResponseItem == null)
+                        {
+                            AddNode(batch.RequestedNodes[i], null, "missing", true);
+                            continue;
+                        }
 
-                                alreadyProcessedChildHashes.Add(child);
-
-                                if (child != null)
-                                {
-                                    AddNodeResult addChildResult = AddNode(new StateSyncItem(child, nodeDataType, currentStateSyncItem.Level + 1, CalculatePriority(currentStateSyncItem)), dependentBranch, "branch child");
-                                    if (addChildResult != AddNodeResult.AlreadySaved)
-                                    {
-                                        dependentBranch.Counter++;
-                                    }
-                                }
-                            }
-
-                            if (dependentBranch.Counter == 0)
-                            {
-                                SaveNode(currentStateSyncItem, currentResponseItem);
-                            }
-
-                            break;
-                        case NodeType.Extension:
-                            Keccak next = trieNode[0].Keccak;
-                            if (next != null)
-                            {
-                                DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
-                                AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Priority), dependentItem, "extension child");
-                                if (addResult == AddNodeResult.AlreadySaved)
-                                {
-                                    SaveNode(currentStateSyncItem, currentResponseItem);
-                                }
-                            }
-                            else
-                            {
-                                invalidNodes++;
-                                /* it never happened, it is here more as an assertion 
-                                 * cannot really recover from it as it would mean that the root hash is a root of an invalid tree */
-                                if (_logger.IsError) _logger.Error($"Extension {currentStateSyncItem.Hash} is missing its child hash");
-                            }
-
-                            break;
-                        case NodeType.Leaf:
-                            if (nodeDataType == NodeDataType.State)
-                            {
-                                DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
-                                Account account = _accountDecoder.Decode(new Rlp.DecoderContext(trieNode.Value));
-                                if (account.CodeHash != Keccak.OfAnEmptyString)
-                                {
-                                    // prepare a branch without the code DB
-                                    // this only protects against being same as storage root?
-                                    if (account.CodeHash == account.StorageRoot)
-                                    {
-                                        lock (_codesSameAsNodes)
-                                        {
-                                            _codesSameAsNodes.Add(account.CodeHash);
-                                        }
-                                    }
-                                    else
-                                    {
-                                        AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, 0), dependentItem, "code");
-                                        if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
-                                    }
-                                }
-
-                                if (account.StorageRoot != Keccak.EmptyTreeHash)
-                                {
-                                    AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(account.StorageRoot, NodeDataType.Storage, 0, 0), dependentItem, "storage");
-                                    if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
-                                }
-
-                                if (dependentItem.Counter == 0)
-                                {
-                                    Interlocked.Increment(ref _savedAccounts);
-                                    SaveNode(currentStateSyncItem, currentResponseItem);
-                                }
-                            }
-                            else
-                            {
-                                SaveNode(currentStateSyncItem, currentResponseItem);
-                            }
-
-                            break;
-                        default:
-                            if (_logger.IsError) _logger.Error($"Unknown value {currentStateSyncItem.NodeDataType} of {nameof(NodeDataType)} at {currentStateSyncItem.Hash}");
+                        /* node sent data that is not consistent with its hash - it happens surprisingly often */
+                        if (Keccak.Compute(currentResponseItem) != currentStateSyncItem.Hash)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"Peer sent invalid data (batch {batch.RequestedNodes.Length}->{batch.Responses.Length}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
                             invalidNodes++;
                             continue;
-                    }
-                }
+                        }
 
-                lock (_stateDbLock)
-                {
-                    Rlp rlp = Rlp.Encode(
-                        Rlp.Encode(_consumedNodesCount),
-                        Rlp.Encode(_savedStorageCount),
-                        Rlp.Encode(_savedStateCount),
-                        Rlp.Encode(_savedNodesCount),
-                        Rlp.Encode(_savedAccounts),
-                        Rlp.Encode(_savedCode),
-                        Rlp.Encode(_requestedNodesCount),
-                        Rlp.Encode(_dbChecks),
-                        Rlp.Encode(_stateWasThere),
-                        Rlp.Encode(_stateWasNotThere));
-                    lock (_codeDbLock)
+                        nonEmptyResponses++;
+                        NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
+                        if (nodeDataType == NodeDataType.Code)
+                        {
+                            SaveNode(currentStateSyncItem, currentResponseItem);
+                            continue;
+                        }
+
+                        TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(currentResponseItem));
+                        trieNode.ResolveNode(null);
+                        switch (trieNode.NodeType)
+                        {
+                            case NodeType.Unknown:
+                                invalidNodes++;
+                                if (_logger.IsError) _logger.Error($"Node {currentStateSyncItem.Hash} resolved to {nameof(NodeType.Unknown)}");
+                                break;
+                            case NodeType.Branch:
+                                trieNode.BuildLookupTable();
+                                DependentItem dependentBranch = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
+                                HashSet<Keccak> alreadyProcessedChildHashes = new HashSet<Keccak>();
+                                for (int childIndex = 0; childIndex < 16; childIndex++)
+                                {
+                                    Keccak child = trieNode.GetChildHash(childIndex);
+                                    if (alreadyProcessedChildHashes.Contains(child))
+                                    {
+                                        continue;
+                                    }
+
+                                    alreadyProcessedChildHashes.Add(child);
+
+                                    if (child != null)
+                                    {
+                                        AddNodeResult addChildResult = AddNode(new StateSyncItem(child, nodeDataType, currentStateSyncItem.Level + 1, CalculatePriority(currentStateSyncItem)), dependentBranch, "branch child");
+                                        if (addChildResult != AddNodeResult.AlreadySaved)
+                                        {
+                                            dependentBranch.Counter++;
+                                        }
+                                    }
+                                }
+
+                                if (dependentBranch.Counter == 0)
+                                {
+                                    SaveNode(currentStateSyncItem, currentResponseItem);
+                                }
+
+                                break;
+                            case NodeType.Extension:
+                                Keccak next = trieNode[0].Keccak;
+                                if (next != null)
+                                {
+                                    DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
+                                    AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Priority), dependentItem, "extension child");
+                                    if (addResult == AddNodeResult.AlreadySaved)
+                                    {
+                                        SaveNode(currentStateSyncItem, currentResponseItem);
+                                    }
+                                }
+                                else
+                                {
+                                    invalidNodes++;
+                                    /* it never happened, it is here more as an assertion 
+                                     * cannot really recover from it as it would mean that the root hash is a root of an invalid tree */
+                                    if (_logger.IsError) _logger.Error($"Extension {currentStateSyncItem.Hash} is missing its child hash");
+                                }
+
+                                break;
+                            case NodeType.Leaf:
+                                if (nodeDataType == NodeDataType.State)
+                                {
+                                    DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
+                                    Account account = _accountDecoder.Decode(new Rlp.DecoderContext(trieNode.Value));
+                                    if (account.CodeHash != Keccak.OfAnEmptyString)
+                                    {
+                                        // prepare a branch without the code DB
+                                        // this only protects against being same as storage root?
+                                        if (account.CodeHash == account.StorageRoot)
+                                        {
+                                            lock (_codesSameAsNodes)
+                                            {
+                                                _codesSameAsNodes.Add(account.CodeHash);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, 0), dependentItem, "code");
+                                            if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
+                                        }
+                                    }
+
+                                    if (account.StorageRoot != Keccak.EmptyTreeHash)
+                                    {
+                                        AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(account.StorageRoot, NodeDataType.Storage, 0, 0), dependentItem, "storage");
+                                        if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
+                                    }
+
+                                    if (dependentItem.Counter == 0)
+                                    {
+                                        Interlocked.Increment(ref _savedAccounts);
+                                        SaveNode(currentStateSyncItem, currentResponseItem);
+                                    }
+                                }
+                                else
+                                {
+                                    SaveNode(currentStateSyncItem, currentResponseItem);
+                                }
+
+                                break;
+                            default:
+                                if (_logger.IsError) _logger.Error($"Unknown value {currentStateSyncItem.NodeDataType} of {nameof(NodeDataType)} at {currentStateSyncItem.Hash}");
+                                invalidNodes++;
+                                continue;
+                        }
+                    }
+
+                    lock (_stateDbLock)
                     {
-                        _codeDb[_fastSyncProgressKey.Bytes] = rlp.Bytes;
-                        _codeDb.Commit();
-                        _stateDb.Commit();
+                        Rlp rlp = Rlp.Encode(
+                            Rlp.Encode(_consumedNodesCount),
+                            Rlp.Encode(_savedStorageCount),
+                            Rlp.Encode(_savedStateCount),
+                            Rlp.Encode(_savedNodesCount),
+                            Rlp.Encode(_savedAccounts),
+                            Rlp.Encode(_savedCode),
+                            Rlp.Encode(_requestedNodesCount),
+                            Rlp.Encode(_dbChecks),
+                            Rlp.Encode(_stateWasThere),
+                            Rlp.Encode(_stateWasNotThere));
+                        lock (_codeDbLock)
+                        {
+                            _codeDb[_fastSyncProgressKey.Bytes] = rlp.Bytes;
+                            _codeDb.Commit();
+                            _stateDb.Commit();
+                        }
                     }
+
+                    Interlocked.Add(ref _consumedNodesCount, nonEmptyResponses);
+                    if (nonEmptyResponses == 0)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
+                        return (NodeDataHandlerResult.NoData, 0);
+                    }
+
+                    if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
+
+                    /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
+                    bool isEmptish = (decimal) nonEmptyResponses / batch.RequestedNodes.Length < 384m / 1024m * 0.75m;
+                    if (isEmptish) Interlocked.Increment(ref _emptishCount);
+
+                    bool isBadQuality = nonEmptyResponses > 64 && (decimal) invalidNodes / nonEmptyResponses > 0.1m;
+                    if (isBadQuality) Interlocked.Increment(ref _badQualityCount);
+
+                    if (!isEmptish && !isBadQuality)
+                    {
+                        Interlocked.Increment(ref _okCount);
+                    }
+
+                    NodeDataHandlerResult result = isEmptish
+                        ? NodeDataHandlerResult.Emptish
+                        : isBadQuality
+                            ? NodeDataHandlerResult.BadQuality
+                            : NodeDataHandlerResult.OK;
+
+                    if (DateTime.UtcNow - _lastReportTime > TimeSpan.FromSeconds(1))
+                    {
+                        decimal requestedNodesPerSecond = 1000m * (_requestedNodesCount - _lastRequestedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime).TotalMilliseconds;
+                        decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime).TotalMilliseconds;
+                        _lastSavedNodesCount = _savedNodesCount;
+                        _lastRequestedNodesCount = _requestedNodesCount;
+                        _lastReportTime = DateTime.UtcNow;
+                        if (_logger.IsInfo) _logger.Info($"SNPS: {savedNodesPerSecond,6:F0} | NPS: {requestedNodesPerSecond,6:F0} | Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
+                        if (_logger.IsInfo) _logger.Info($"AVTIH: {_averageTimeInHandler} | Request results - OK: {(decimal) _okCount / TotalRequestsCount:p2}, Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2}, BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2}, InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2}, NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
+                        if (_logger.IsTrace) _logger.Trace($"Requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
+                        if (_logger.IsTrace) _logger.Trace($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
+                    }
+
+                    long total = _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
+                    if (total != 0)
+                    {
+                        // calculate averages
+                        if (_logger.IsTrace) _logger.Trace($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
+                    }
+
+                    return (result, nonEmptyResponses);
                 }
-
-                Interlocked.Add(ref _consumedNodesCount, nonEmptyResponses);
-                if (nonEmptyResponses == 0)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
-                    _pendingRequests.TryRemove(batch, out _);
-                    return (NodeDataHandlerResult.NoData, 0);
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
-
-                /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
-                bool isEmptish = (decimal) nonEmptyResponses / batch.RequestedNodes.Length < 384m / 1024m * 0.75m;
-                if (isEmptish) Interlocked.Increment(ref _emptishCount);
-
-                bool isBadQuality = nonEmptyResponses > 64 && (decimal) invalidNodes / nonEmptyResponses > 0.1m;
-                if (isBadQuality) Interlocked.Increment(ref _badQualityCount);
-
-                if (!isEmptish && !isBadQuality)
-                {
-                    Interlocked.Increment(ref _okCount);
-                }
-
-                NodeDataHandlerResult result = isEmptish
-                    ? NodeDataHandlerResult.Emptish
-                    : isBadQuality
-                        ? NodeDataHandlerResult.BadQuality
-                        : NodeDataHandlerResult.OK;
-
-                if (DateTime.UtcNow - _lastReportTime > TimeSpan.FromSeconds(1))
-                {
-                    decimal requestedNodesPerSecond = 1000m * (_requestedNodesCount - _lastRequestedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime).TotalMilliseconds;
-                    decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime).TotalMilliseconds;
-                    _lastSavedNodesCount = _savedNodesCount;
-                    _lastRequestedNodesCount = _requestedNodesCount;
-                    _lastReportTime = DateTime.UtcNow;
-                    if (_logger.IsInfo) _logger.Info($"SNPS: {savedNodesPerSecond,6:F0} | NPS: {requestedNodesPerSecond,6:F0} | Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
-                    if (_logger.IsInfo) _logger.Info($"Request results - OK: {(decimal)_okCount / TotalRequestsCount:p2}, Emptish: {(decimal)_emptishCount / TotalRequestsCount:p2}, BadQuality: {(decimal)_badQualityCount / TotalRequestsCount:p2}, InvalidFormat: {(decimal)_invalidFormatCount / TotalRequestsCount:p2}, NotAssigned {(decimal)_notAssignedCount / TotalRequestsCount:p2}");
-                    if (_logger.IsTrace) _logger.Trace($"Requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
-                    if (_logger.IsTrace) _logger.Trace($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
-                }
-
+            }
+            finally
+            {
                 _handleWatch.Stop();
-                long total = _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
-                if (total != 0)
-                {
-                    // calculate averages
-                    if (_logger.IsTrace) _logger.Trace($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
-                }
-
                 _pendingRequests.TryRemove(batch, out _);
-                return (result, nonEmptyResponses);
+                _averageTimeInHandler = (int) (((decimal) _averageTimeInHandler * (TotalRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / TotalRequestsCount);
             }
         }
+
+        private int _averageTimeInHandler;
 
         private class DependentItemComparer : IEqualityComparer<DependentItem>
         {
