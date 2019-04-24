@@ -49,8 +49,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficultyOnSessionStart.Returns((UInt256) (1024 * 1024));
 
-            PeerInfo peerInfo1 = new PeerInfo(syncPeer) {HeadNumber = 0};
+            PeerInfo peerInfo1 = new PeerInfo(syncPeer) {HeadNumber = 0, IsInitialized = true};
             syncPeerPool.AllPeers.Returns(new[] {peerInfo1});
+            syncPeerPool.UsefulPeers.Returns(new[] {peerInfo1});
             syncPeerPool.PeerCount.Returns(1);
 
             SyncConfig syncConfig = new SyncConfig();
@@ -124,10 +125,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficultyOnSessionStart.Returns((UInt256) (1024 * 1024));
 
-            PeerInfo peerInfo1 = new PeerInfo(syncPeer) {HeadNumber = bestPeerBlock};
-            PeerInfo peerInfo2 = new PeerInfo(syncPeer) {HeadNumber = bestPeerBlock};
-            PeerInfo peerInfo3 = new PeerInfo(syncPeer) {HeadNumber = 0};
-            syncPeerPool.AllPeers.Returns(new[] {peerInfo1, peerInfo2, peerInfo3});
+            PeerInfo peerInfo1 = new PeerInfo(syncPeer) {HeadNumber = bestPeerBlock, IsInitialized = true};
+            PeerInfo peerInfo2 = new PeerInfo(syncPeer) {HeadNumber = bestPeerBlock, IsInitialized = true};
+            PeerInfo peerInfo3 = new PeerInfo(syncPeer) {HeadNumber = 0, IsInitialized = true};
+            PeerInfo peerInfo4 = new PeerInfo(syncPeer) {HeadNumber = bestPeerBlock * 2, IsInitialized = false};
+            syncPeerPool.AllPeers.Returns(new[] {peerInfo1, peerInfo2, peerInfo3, peerInfo4});
+            syncPeerPool.UsefulPeers.Returns(new[] {peerInfo1, peerInfo2});
             syncPeerPool.PeerCount.Returns(3);
 
             SyncConfig syncConfig = new SyncConfig();
