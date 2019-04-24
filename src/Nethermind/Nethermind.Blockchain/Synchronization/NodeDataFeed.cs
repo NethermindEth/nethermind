@@ -69,6 +69,7 @@ namespace Nethermind.Blockchain.Synchronization
         private long _badQualityCount;
         private long _notAssignedCount;
         public long TotalRequestsCount => _emptishCount + _invalidFormatCount + _badQualityCount + _okCount + _notAssignedCount;
+        public long ProcessedRequestsCount => _emptishCount + _badQualityCount + _okCount;
 
         private int _maxStateLevel; // for priority calculation (prefer depth)
 
@@ -333,6 +334,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
+            NodeDataHandlerResult result;
             try
             {
                 lock (_handleWatch)
@@ -345,7 +347,8 @@ namespace Nethermind.Blockchain.Synchronization
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace($"Batch was not assigned to any peer.");
                         Interlocked.Increment(ref _notAssignedCount);
-                        return (NodeDataHandlerResult.NotAssigned, 0);
+                        result = NodeDataHandlerResult.NotAssigned;
+                        return (result, 0);
                     }
 
                     bool isMissingRequestData = batch.RequestedNodes == null;
@@ -357,7 +360,8 @@ namespace Nethermind.Blockchain.Synchronization
                         AddAgainAllItems();
                         if (_logger.IsDebug) _logger.Debug($"Batch response had invalid format");
                         Interlocked.Increment(ref _invalidFormatCount);
-                        return (NodeDataHandlerResult.InvalidFormat, 0);
+                        result = NodeDataHandlerResult.InvalidFormat;
+                        return (result, 0);
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Received node data - {batch.Responses.Length} items in response to {batch.RequestedNodes.Length}");
@@ -530,7 +534,8 @@ namespace Nethermind.Blockchain.Synchronization
                     if (nonEmptyResponses == 0)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
-                        return (NodeDataHandlerResult.NoData, 0);
+                        result = NodeDataHandlerResult.NoData;
+                        return (result, 0);
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
@@ -547,7 +552,7 @@ namespace Nethermind.Blockchain.Synchronization
                         Interlocked.Increment(ref _okCount);
                     }
 
-                    NodeDataHandlerResult result = isEmptish
+                    result = isEmptish
                         ? NodeDataHandlerResult.Emptish
                         : isBadQuality
                             ? NodeDataHandlerResult.BadQuality
@@ -573,6 +578,7 @@ namespace Nethermind.Blockchain.Synchronization
                         if (_logger.IsTrace) _logger.Trace($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
                     }
 
+                    _averageTimeInHandler = (int) (((decimal) _averageTimeInHandler * (ProcessedRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / ProcessedRequestsCount);
                     return (result, nonEmptyResponses);
                 }
             }
@@ -580,7 +586,6 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 _handleWatch.Stop();
                 _pendingRequests.TryRemove(batch, out _);
-                _averageTimeInHandler = (int) (((decimal) _averageTimeInHandler * (TotalRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / TotalRequestsCount);
             }
         }
 
