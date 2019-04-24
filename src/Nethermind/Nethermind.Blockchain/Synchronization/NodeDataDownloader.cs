@@ -48,21 +48,33 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private SemaphoreSlim _semaphore = new SemaphoreSlim(0);
+//        private SemaphoreSlim _semaphore = new SemaphoreSlim(0);
+        
+        private int _parallelism;
         
         private int _lastPeerCount;
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
             SyncPeerAllocation nodeSyncAllocation = null;
-            if (await _semaphore.WaitAsync(100, token))
-            {            
+
+            if(SpinWait.SpinUntil(() => _pendingRequests < _parallelism, 200))
+            {
                 nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, "node sync");
             }
             else
             {
                 await Task.Delay(50);
             }
+            
+//            if (await _semaphore.WaitAsync(100, token))
+//            {            
+//                nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, "node sync");
+//            }
+//            else
+//            {
+//                await Task.Delay(50);
+//            }
             
             try
             {   
@@ -90,12 +102,12 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 int afterDecrement = Interlocked.Decrement(ref _pendingRequests);
-                _semaphore.Release();
+//                _semaphore.Release();
                 if (_logger.IsTrace) _logger.Trace($"Decrementing pending requests - now at {afterDecrement}");
             }
         }
 
-        private async Task UpdateParallelism()
+        private void UpdateParallelism()
         {   
             int newPeerCount = _syncPeerPool.UsefulPeerCount;
             int difference = newPeerCount - _lastPeerCount;
@@ -107,22 +119,22 @@ namespace Nethermind.Blockchain.Synchronization
             
             if(_logger.IsInfo) _logger.Info($"Node sync parallelism: {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total.");
 
-//            _parallelism = newPeerCount;
-//            _lastPeerCount = newPeerCount;
-
-            if (difference > 0)
-            {
-                _semaphore.Release(difference);
-            }
-            else
-            {
-                for (int i = 0; i < -difference; i++)
-                {
-                    await _semaphore.WaitAsync(10000); // when failing?    
-                }
-            }
-
+            _parallelism = newPeerCount;
             _lastPeerCount = newPeerCount;
+
+//            if (difference > 0)
+//            {
+//                _semaphore.Release(difference);
+//            }
+//            else
+//            {
+//                for (int i = 0; i < -difference; i++)
+//                {
+//                    await _semaphore.WaitAsync(10000); // when failing?    
+//                }
+//            }
+//
+//            _lastPeerCount = newPeerCount;
         }
 
         private async Task KeepSyncing(CancellationToken token)
@@ -136,7 +148,7 @@ namespace Nethermind.Blockchain.Synchronization
                     return;
                 }
 
-                await UpdateParallelism();
+                UpdateParallelism();
                 dataBatches = PrepareRequests();
                 for (int i = 0; i < dataBatches.Length; i++)
                 {
