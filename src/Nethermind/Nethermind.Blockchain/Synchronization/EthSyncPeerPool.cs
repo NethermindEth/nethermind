@@ -203,14 +203,22 @@ namespace Nethermind.Blockchain.Synchronization
             UpdateAllocations("ENSURE BEST");
         }
 
+        private ConcurrentDictionary<PeerInfo, int> _peerBadness = new ConcurrentDictionary<PeerInfo, int>();
+        
         public void ReportBadPeer(SyncPeerAllocation batchAssignedPeer)
         {
             if (batchAssignedPeer.CanBeReplaced)
             {
                 throw new InvalidOperationException("Reporting bad peer is only supported for non-dynamic allocations");
             }
-            
-            batchAssignedPeer.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "bad node data");
+
+            _peerBadness.AddOrUpdate(batchAssignedPeer.Current, 0, (pi, badness) => badness + 1);
+            if (_peerBadness[batchAssignedPeer.Current] >= 10)
+            {
+                // fast Geth nodes send invalid nodes quite often :/
+                // so we let them deliver fast and only disconnect them when they really misbehave
+                batchAssignedPeer.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "bad node data");    
+            }
         }
 
         private static int InitTimeout = 10000;
@@ -397,8 +405,7 @@ namespace Nethermind.Blockchain.Synchronization
             (PeerInfo Info, long Latency) bestPeer = (null, 100000);
             foreach ((_, PeerInfo info) in _peers)
             {
-                if (allocation.MinBlocksAhead.HasValue
-                    && info.HeadNumber <= _blockTree.BestKnownNumber + allocation.MinBlocksAhead.Value)
+                if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < _blockTree.BestKnownNumber + allocation.MinBlocksAhead.Value)
                 {
                     continue;
                 }
@@ -550,6 +557,12 @@ namespace Nethermind.Blockchain.Synchronization
         public void Free(SyncPeerAllocation syncPeerAllocation)
         {
             if (_logger.IsTrace) _logger.Trace($"Returning {syncPeerAllocation}");
+
+            if (!syncPeerAllocation.CanBeReplaced)
+            {
+                _peerBadness.TryRemove(syncPeerAllocation.Current, out _);
+            }
+
             _allocations.TryRemove(syncPeerAllocation, out _);
             syncPeerAllocation.Cancel();
         }

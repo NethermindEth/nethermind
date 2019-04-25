@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public SyncMode Current { get; private set; }
 
-        public void Update(long bestHeader, long bestFullState)
+        public void Update(long bestHeader, long bestFullBlock, long bestFullState)
         {
             if (!_fastSyncEnabled)
             {
@@ -61,28 +61,28 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             SyncMode newSyncMode;
-            if (maxBlockNumberAmongPeers - bestFullState <= FullSyncThreshold)
+            if (maxBlockNumberAmongPeers - Math.Max(bestFullState, bestFullBlock) <= FullSyncThreshold)
             {
-                newSyncMode = bestFullState >= bestHeader ? SyncMode.Full : SyncMode.StateNodes;
+                newSyncMode = Math.Max(bestFullState, bestFullBlock) >= bestHeader ? SyncMode.Full : SyncMode.StateNodes;
             }
             else if (maxBlockNumberAmongPeers - bestHeader <= FullSyncThreshold)
             {
-                newSyncMode = SyncMode.StateNodes;
+                newSyncMode = bestFullBlock > bestFullState ? SyncMode.WaitForProcessor : SyncMode.StateNodes;
             }
             else
             {
-                newSyncMode = SyncMode.Headers;
+                newSyncMode = bestFullBlock > bestFullState ? SyncMode.WaitForProcessor : SyncMode.Headers;
             }
 
             if (newSyncMode != Current)
             {
-                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {bestHeader}|{bestFullState}|{maxBlockNumberAmongPeers}.");
+                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {bestHeader}|{bestFullBlock}|{bestFullState}|{maxBlockNumberAmongPeers}.");
                 Current = newSyncMode;
                 Changed?.Invoke(this, EventArgs.Empty);
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {bestHeader}|{bestFullState}|{maxBlockNumberAmongPeers}.");
+                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {bestHeader}|{bestFullBlock}|{bestFullState}|{maxBlockNumberAmongPeers}.");
             }
         }
 

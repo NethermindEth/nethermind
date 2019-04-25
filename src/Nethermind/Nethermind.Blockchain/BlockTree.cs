@@ -225,11 +225,6 @@ namespace Nethermind.Blockchain
                             }
 
                             BestSuggested = header;
-                            // fast sync WIP
-//                        if (_logger.IsError) _logger.Error($"Could not find block {maxDifficultyBlock.BlockHash}. DB load cancelled.");
-//                        _dbBatchProcessed?.SetResult(null);
-                            // break;
-
                             if (i < blocksToLoad - 1024)
                             {
                                 long jumpSize = blocksToLoad - 1024 - 1;
@@ -247,6 +242,7 @@ namespace Nethermind.Blockchain
                         else
                         {
                             BestSuggested = block.Header;
+                            BestSuggestedFullBlock = block.Header;
                             NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
 
                             if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < blockNumber)
@@ -294,6 +290,8 @@ namespace Nethermind.Blockchain
         public BlockHeader Genesis { get; private set; }
         public BlockHeader Head { get; private set; }
         public BlockHeader BestSuggested { get; private set; }
+        
+        public BlockHeader BestSuggestedFullBlock { get; private set; }
         public long BestKnownNumber { get; private set; }
         public int ChainId => _specProvider.ChainId;
 
@@ -379,6 +377,7 @@ namespace Nethermind.Blockchain
                 BestSuggested = header;
                 if (block != null)
                 {
+                    BestSuggestedFullBlock = block.Header;
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
                 }
             }
@@ -518,7 +517,7 @@ namespace Nethermind.Blockchain
                     return set;
                 });
 
-            BestSuggested = Head;
+            BestSuggested = BestSuggestedFullBlock = Head;
 
             try
             {
@@ -794,7 +793,7 @@ namespace Nethermind.Blockchain
 
                 headBlockHeader.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
 
-                Head = BestSuggested = headBlockHeader;
+                Head = BestSuggested = BestSuggestedFullBlock = headBlockHeader;
             }
         }
 

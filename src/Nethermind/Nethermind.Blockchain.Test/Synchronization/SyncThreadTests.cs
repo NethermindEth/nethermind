@@ -216,12 +216,15 @@ namespace Nethermind.Blockchain.Test.Synchronization
             public IStateProvider StateProvider { get; set; }
 
             public DevBlockProducer BlockProducer { get; set; }
+            public ConsoleAsyncLogger Logger { get; set; }
 
             public async Task StopAsync()
             {
-                await Synchronizer.StopAsync();
-                await PeerPool.StopAsync();
-                await Synchronizer.StopAsync();
+                await (BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+                await (BlockProducer?.StopAsync() ?? Task.CompletedTask);
+                await (PeerPool?.StopAsync() ?? Task.CompletedTask);
+                await (Synchronizer?.StopAsync() ?? Task.CompletedTask);
+                Logger?.Flush();
             }
         }
 
@@ -229,8 +232,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
 
-//            var logManager = NoErrorLimboLogs.Instance;
-            var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, "PEER " + index + " "));
+            var logManager = NoErrorLimboLogs.Instance;
+            ConsoleAsyncLogger logger = new ConsoleAsyncLogger(LogLevel.Debug, "PEER " + index + " ");
+//            var logManager = new OneLoggerLogManager(logger);
             var specProvider = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, MainNetSpecProvider.Instance.ChainId);
 
             MemDb traceDb = new MemDb();
@@ -282,7 +286,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, traceDb, devState, devStorage, txPool, receiptStorage, syncConfig, logManager);
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false, false);
             var producer = new DevBlockProducer(txPool, devChainProcessor, tree, new Timestamp(), logManager);
-                
+
             NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, logManager);
             NodeDataDownloader downloader = new NodeDataDownloader(syncPeerPool, feed, logManager);
             Synchronizer synchronizer = new Synchronizer(
@@ -321,6 +325,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             context.Tree = tree;
             context.BlockProducer = producer;
             context.TxPool = txPool;
+            context.Logger = logger;
             return context;
         }
     }

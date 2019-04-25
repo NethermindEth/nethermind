@@ -662,7 +662,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             CompareTrees("AFTER FIRST SYNC", true);
 
             _localStateTree.RootHash = _remoteStateTree.RootHash;
-            for (byte i = 0; i < 255; i++)
+            for (byte i = 0; i < 128; i++)
             {
                 _remoteStateTree
                     .Set(TestItem.Addresses[i], AccountJustState0.WithChangedBalance(i)

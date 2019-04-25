@@ -271,8 +271,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             private IEthSyncPeerPool SyncPeerPool { get; set; }
 
-            ILogManager _logManager = LimboLogs.Instance;
-//            ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+//            ILogManager _logManager = LimboLogs.Instance;
+            ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
 
             private ILogger _logger;
             
@@ -328,7 +328,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext HeaderIs(BlockHeader header)
             {
-                _logger.Info($"ASSERTING THAT HEADER IS {header.Number}");
+                _logger.Info($"ASSERTING THAT HEADER IS {header.Number} (WHEN ACTUALLY IS {_blockHeader?.Number})");
                 Assert.AreSame(header, _blockHeader, "header");
                 return this;
             }
@@ -726,10 +726,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
+                .Wait(2000)
                 .BestSuggested.HeaderIs(peerA.HeadHeader)
                 .AfterPeerIsAdded(peerB)
-                .Wait()
+                .Wait(2000)
                 .BestSuggested.HeaderIs(peerB.HeadHeader).Stop();
         }
         
@@ -824,10 +824,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
+                .Wait(2000)
                 .BestSuggested.HeaderIs(peerA.HeadHeader)
                 .AfterPeerIsAdded(peerB)
-                .Wait()
+                .Wait(2000)
                 .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
         }
         
@@ -840,7 +840,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
+                .Wait(2000)
                 .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
         }
         
@@ -853,7 +853,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
+                .Wait(2000)
                 .BestSuggested.HeaderIs(peerA.HeadHeader)
                 .Stop();
         }

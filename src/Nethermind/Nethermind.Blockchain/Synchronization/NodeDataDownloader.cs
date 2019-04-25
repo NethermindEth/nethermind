@@ -183,7 +183,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (tasks.Count != 0)
                 {
                     Task firstComplete = await Task.WhenAny(tasks);
-                    if (_logger.IsTrace) _logger.Trace($"Removing task from the list of {tasks.Count} node sync tasks");
+                    if (_logger.IsDebug) _logger.Debug($"Removing task from the list of {tasks.Count} node sync tasks");
                     if (!tasks.Remove(firstComplete))
                     {
                         if (_logger.IsError) _logger.Error($"Could not remove node sync task - task count {tasks.Count}");
@@ -204,6 +204,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (dataBatches.Length == 0)
                 {
+                    await Task.Delay(50);
                     if (_logger.IsInfo) _logger.Info($"DIAG: 0 batches created with {_pendingRequests} pending requests, {tasks.Count} tasks, {_nodeDataFeed.TotalNodesPending} pending nodes");
                 }
             } while (dataBatches.Length + _pendingRequests + tasks.Count != 0);
@@ -219,8 +220,6 @@ namespace Nethermind.Blockchain.Synchronization
                 StateSyncBatch currentBatch = _nodeDataFeed.PrepareRequest(MaxRequestSize);
                 if (currentBatch.RequestedNodes.Length == 0)
                 {
-                    // 
-//                    Thread.Sleep(1000);
                     _logger.Info($"DIAG: no more batches | pending req {_pendingRequests} | nodes pending {_nodeDataFeed.TotalNodesPending} | requests count {requests.Count}");
                     break;
                 }

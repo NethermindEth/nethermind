@@ -22,6 +22,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         Headers,
         StateNodes,
-        Full
+        Full,
+        WaitForProcessor
     }
 }

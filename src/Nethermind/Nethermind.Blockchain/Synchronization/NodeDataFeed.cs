@@ -336,7 +336,6 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
-            NodeDataHandlerResult result;
             try
             {
                 lock (_handleWatch)
@@ -344,6 +343,7 @@ namespace Nethermind.Blockchain.Synchronization
                     _handleWatch.Restart();
 
                     bool requestWasMade = batch.AssignedPeer?.Current != null;
+                    NodeDataHandlerResult result;
                     if (!requestWasMade)
                     {
                         AddAgainAllItems();
@@ -539,7 +539,8 @@ namespace Nethermind.Blockchain.Synchronization
                     bool isEmptish = (decimal) nonEmptyResponses / requestLength < 384m / 1024m * 0.75m;
                     if (isEmptish) Interlocked.Increment(ref _emptishCount);
 
-                    bool isBadQuality = nonEmptyResponses > 64 && (decimal) invalidNodes / requestLength > 0.25m;
+                    /* here we are very forgiving for Geth nodes that send bad data fast */
+                    bool isBadQuality = nonEmptyResponses > 64 && (decimal) invalidNodes / requestLength > 0.50m;
                     if (isBadQuality) Interlocked.Increment(ref _badQualityCount);
 
                     bool isEmpty = nonEmptyResponses == 0 && !isBadQuality;

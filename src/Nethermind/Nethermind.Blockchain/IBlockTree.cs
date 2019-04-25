@@ -38,9 +38,14 @@ namespace Nethermind.Blockchain
         BlockHeader Genesis { get; }
         
         /// <summary>
-        /// Best block that has been suggested for processing
+        /// Best header that has been suggested
         /// </summary>
         BlockHeader BestSuggested { get; }
+        
+        /// <summary>
+        /// Best block that has been suggested for processing
+        /// </summary>
+        BlockHeader BestSuggestedFullBlock { get; }
         
         /// <summary>
         /// Best downloaded block number
