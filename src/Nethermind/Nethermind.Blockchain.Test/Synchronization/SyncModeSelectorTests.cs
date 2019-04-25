@@ -67,6 +67,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 (1032, 1000, 0, SyncMode.StateNodes),
                 (1048, 1000, 1000, SyncMode.Headers),
                 (1048, 1016, 1000, SyncMode.StateNodes),
+                (1048, 1016, 1000, SyncMode.StateNodes),
+                (1048, 1032, 1020, SyncMode.StateNodes), // just to check if we always chase headers
                 (1048, 1016, 1016, SyncMode.Full),
                 (1048, 1048, 1048, SyncMode.Full),
                 (1048, 1049, 1049, SyncMode.Full),

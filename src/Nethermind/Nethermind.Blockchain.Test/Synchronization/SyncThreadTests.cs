@@ -229,8 +229,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
 
-            var logManager = NoErrorLimboLogs.Instance;
-//            var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, "PEER " + index + " "));
+//            var logManager = NoErrorLimboLogs.Instance;
+            var logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, "PEER " + index + " "));
             var specProvider = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, MainNetSpecProvider.Instance.ChainId);
 
             MemDb traceDb = new MemDb();
