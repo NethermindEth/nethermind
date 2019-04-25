@@ -544,22 +544,26 @@ namespace Nethermind.Blockchain.Test.Synchronization
             CompareTrees("END");
         }
 
+        private IEthSyncPeerPool _pool;
+        private bool _isPeerAsleep = false;
+
         private NodeDataDownloader PrepareDownloader(ISyncPeer syncPeer)
         {
             PeerInfo peerInfo = new PeerInfo(syncPeer);
             Queue<SyncPeerAllocation> allocations = new Queue<SyncPeerAllocation>();
             SyncPeerAllocation allocation = new SyncPeerAllocation(peerInfo, "test") {CanBeReplaced = false};
-            bool isSleeping = false;
+            
             allocations.Enqueue(allocation);
-            IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
-            syncPeerPool.Borrow(BorrowOptions.DoNotReplace, Arg.Any<string>()).Returns((ci) => isSleeping ? null : allocations.Dequeue());
-            syncPeerPool.When(s => s.Free(Arg.Any<SyncPeerAllocation>())).Do(ci => allocations.Enqueue(ci.Arg<SyncPeerAllocation>()));
-            syncPeerPool.UsefulPeerCount.Returns((ci) => isSleeping ? 0 : 1);
-            syncPeerPool.PeerCount.Returns(1);
-            syncPeerPool.When(s => s.ReportNoSyncProgress(allocation)).Do(ci => isSleeping = true);
+
+            _pool = Substitute.For<IEthSyncPeerPool>();
+            _pool.Borrow(BorrowOptions.DoNotReplace, Arg.Any<string>()).Returns((ci) => _isPeerAsleep ? null : allocations.Dequeue());
+            _pool.When(s => s.Free(Arg.Any<SyncPeerAllocation>())).Do(ci => allocations.Enqueue(ci.Arg<SyncPeerAllocation>()));
+            _pool.UsefulPeerCount.Returns((ci) => _isPeerAsleep ? 0 : 1);
+            _pool.PeerCount.Returns(1);
+            _pool.When(s => s.ReportNoSyncProgress(allocation)).Do(ci => _isPeerAsleep = true);
 
             NodeDataFeed feed = new NodeDataFeed(_localCodeDb, _localStateDb, _logManager);
-            NodeDataDownloader downloader = new NodeDataDownloader(syncPeerPool, feed, _logManager);
+            NodeDataDownloader downloader = new NodeDataDownloader(_pool, feed, _logManager);
 
             return downloader;
         }
@@ -576,9 +580,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             mock.SetFilter(new[] {_remoteStateTree.RootHash});
 
             NodeDataDownloader downloader = PrepareDownloader(mock);
+            
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
 
+            _isPeerAsleep = false;
+            
             mock.SetFilter(null);
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
@@ -617,6 +624,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _remoteStateTree.Commit();
             _remoteStateDb.Commit();
 
+            _isPeerAsleep = false;
+            
             mock.SetFilter(null);
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
@@ -660,6 +669,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _remoteStateTree.Commit();
             _remoteStateDb.Commit();
 
+            _isPeerAsleep = false;
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
 
@@ -679,6 +689,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _remoteStateTree.Commit();
             _remoteStateDb.Commit();
 
+            _isPeerAsleep = false;
             mock.SetFilter(null);
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
@@ -832,31 +843,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test]
-        public async Task Throws_when_peer_sends_data_that_is_not_the_preimage()
+        public async Task Silences_bad_peers()
         {
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb, ExecutorMock.NotPreimage);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(20000000)).Unwrap()
-                .ContinueWith(t =>
-                {
-                    Assert.True(t.IsFaulted);
-                    Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
-                    Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
-                });
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(1000)).Unwrap()
+                .ContinueWith(t => { Assert.AreEqual(0, _pool.UsefulPeerCount); });
         }
 
         [Test]
-        public async Task Throws_when_peer_sends_empty_byte_arrays()
+        public async Task Silences_when_peer_sends_empty_byte_arrays()
         {
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb, ExecutorMock.EmptyArraysInResponses);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(_timeoutLength)).Unwrap()
-                .ContinueWith(t =>
-                {
-                    Assert.True(t.IsFaulted);
-                    Assert.AreEqual(typeof(AggregateException), t.Exception?.GetType());
-                    Assert.AreEqual(typeof(EthSynchronizationException), t.Exception?.InnerExceptions[0].GetType());
-                });
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(1000)).Unwrap()
+                .ContinueWith(t => { Assert.AreEqual(0, _pool.UsefulPeerCount); });
         }
 
         private void CompareTrees(string stage, bool skipLogs = false)
