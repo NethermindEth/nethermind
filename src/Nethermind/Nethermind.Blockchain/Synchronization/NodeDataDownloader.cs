@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             SyncPeerAllocation nodeSyncAllocation = null;
 
-            if (SpinWait.SpinUntil(() => _pendingRequests < _parallelism, 200))
+            if (SpinWait.SpinUntil(() => _pendingRequests <= _parallelism, 200))
             {
                 nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, "node sync");
             }
@@ -202,7 +202,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (_logger.IsInfo) _logger.Info($"DIAG: 0 batches created with {_pendingRequests} pending requests, {tasks.Count} tasks, {_nodeDataFeed.TotalNodesPending} pending nodes");
                 }
-            } while (dataBatches.Length + _pendingRequests + tasks.Count != 0 || _nodeDataFeed.TotalNodesPending != 0);
+            } while (dataBatches.Length + _pendingRequests + tasks.Count != 0);
 
             if(_logger.IsInfo) _logger.Info($"Finished with {dataBatches.Length} {_pendingRequests} {tasks.Count}");
         }
@@ -210,19 +210,19 @@ namespace Nethermind.Blockchain.Synchronization
         private StateSyncBatch[] PrepareRequests()
         {
             List<StateSyncBatch> requests = new List<StateSyncBatch>();
-            do
+            while(_pendingRequests + requests.Count < _lastPeerCount)
             {
                 StateSyncBatch currentBatch = _nodeDataFeed.PrepareRequest(MaxRequestSize);
                 if (currentBatch.RequestedNodes.Length == 0)
                 {
                     // 
-                    Thread.Sleep(1000);
+//                    Thread.Sleep(1000);
                     _logger.Info($"DIAG: no more batches | pending req {_pendingRequests} | nodes pending {_nodeDataFeed.TotalNodesPending} | requests count {requests.Count}");
                     break;
                 }
 
                 requests.Add(currentBatch);
-            } while (_pendingRequests + requests.Count < _lastPeerCount);
+            }
 
             var requestsArray = requests.ToArray();
             Interlocked.Add(ref _pendingRequests, requestsArray.Length);

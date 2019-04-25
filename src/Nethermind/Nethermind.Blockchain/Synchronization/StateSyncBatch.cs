@@ -16,8 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Diagnostics;
+
 namespace Nethermind.Blockchain.Synchronization
 {
+    [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
     public class StateSyncBatch
     {
         public StateSyncItem[] RequestedNodes { get; set; }
