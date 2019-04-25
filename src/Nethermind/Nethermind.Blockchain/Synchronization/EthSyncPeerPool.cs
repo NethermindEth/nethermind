@@ -203,6 +203,16 @@ namespace Nethermind.Blockchain.Synchronization
             UpdateAllocations("ENSURE BEST");
         }
 
+        public void ReportBadPeer(SyncPeerAllocation batchAssignedPeer)
+        {
+            if (batchAssignedPeer.CanBeReplaced)
+            {
+                throw new InvalidOperationException("Reporting bad peer is only supported for non-dynamic allocations");
+            }
+            
+            batchAssignedPeer.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "bad node data");
+        }
+
         private static int InitTimeout = 10000;
 
         private async Task RefreshPeerInfo(PeerInfo peerInfo, CancellationToken token)

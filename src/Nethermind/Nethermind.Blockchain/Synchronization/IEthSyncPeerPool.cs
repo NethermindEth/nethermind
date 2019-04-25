@@ -68,5 +68,7 @@ namespace Nethermind.Blockchain.Synchronization
         Task StopAsync();
         
         void EnsureBest();
+        
+        void ReportBadPeer(SyncPeerAllocation batchAssignedPeer);
     }
 }

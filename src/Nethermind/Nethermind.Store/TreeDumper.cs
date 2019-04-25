@@ -1,5 +1,6 @@
 using System.Text;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
@@ -34,20 +35,20 @@ namespace Nethermind.Store
             _builder.AppendLine($"{GetIndent(context.Level) }{GetChildIndex(context)}MISSING {nodeHash}");
         }
 
-        public void VisitBranch(Keccak nodeHash, VisitContext context)
+        public void VisitBranch(byte[] hashOrRlp, VisitContext context)
         {
-            _builder.AppendLine($"{GetPrefix(context)}BRANCH {nodeHash}");
+            _builder.AppendLine($"{GetPrefix(context)}BRANCH {hashOrRlp?.ToHexString()}");
         }
 
-        public void VisitExtension(Keccak nodeHash, VisitContext context)
+        public void VisitExtension(byte[] hashOrRlp, VisitContext context)
         {
-            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {nodeHash}");
+            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {hashOrRlp?.ToHexString()}");
         }
 
-        public void VisitLeaf(Keccak nodeHash, VisitContext context)
+        public void VisitLeaf(byte[] hashOrRlp, VisitContext context)
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(context)}{leafDescription}{nodeHash}");
+            _builder.AppendLine($"{GetPrefix(context)}{leafDescription}{hashOrRlp?.ToHexString()}");
         }
 
         public void VisitCode(Keccak codeHash, byte[] code, VisitContext context)

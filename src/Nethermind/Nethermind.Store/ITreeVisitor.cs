@@ -17,11 +17,11 @@ namespace Nethermind.Store
         
         void VisitMissingNode(Keccak nodeHash, VisitContext context);
         
-        void VisitBranch(Keccak nodeHash, VisitContext context);
+        void VisitBranch(byte[] hashOrRlp, VisitContext context);
         
-        void VisitExtension(Keccak nodeHash, VisitContext context);
+        void VisitExtension(byte[] hashOrRlp, VisitContext context);
         
-        void VisitLeaf(Keccak nodeHash, VisitContext context);
+        void VisitLeaf(byte[] hashOrRlp, VisitContext context);
         
         void VisitCode(Keccak codeHash, byte[] code, VisitContext context);
     }
