@@ -363,6 +363,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [SetUp]
         public void Setup()
         {
+            _isPeerAsleep = false;
             _logger = new ConsoleAsyncLogger(LogLevel.Debug);
             _logManager = new OneLoggerLogManager(_logger);
 //            _logManager = LimboLogs.Instance;
@@ -434,7 +435,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return Task.FromResult(result);
             };
 
-            private Func<Keccak[], Task<byte[][]>> _executorResultFunction = NotPreimage;
+            private Func<Keccak[], Task<byte[][]>> _executorResultFunction;
 
             public Guid SessionId { get; }
             public bool IsFastSyncSupported { get; }
@@ -484,6 +485,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
             {
+                if (_executorResultFunction != null)
+                {
+                    return _executorResultFunction(hashes);
+                }
+                
                 byte[][] responses = new byte[hashes.Length][];
 
                 int i = 0;
@@ -741,6 +747,46 @@ namespace Nethermind.Blockchain.Test.Synchronization
             CompareTrees("END");
         }
 
+        [Test, TestCaseSource("Scenarios")]
+        public async Task Dependent_branch_counter_is_zero_and_leaf_is_short((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
+        {
+            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
+            _remoteStateDb.Commit();
+
+            StorageTree remoteStorageTree = new StorageTree(_remoteDb);
+            remoteStorageTree.Set(
+                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb000"), new byte[] {1});
+            remoteStorageTree.Set(
+                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb111"), new byte[] {1});
+            remoteStorageTree.Set(
+                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeb000000000000000000000000000000000000000000"), new byte[] {1});
+            remoteStorageTree.Set(
+                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeb111111111111111111111111111111111111111111"), new byte[] {1});
+            remoteStorageTree.Commit();
+
+            _remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
+            _remoteStateTree.Commit();
+
+            CompareTrees("BEGIN");
+
+            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            NodeDataDownloader downloader = PrepareDownloader(mock);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+
+            Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
+            if (first == syncNode)
+            {
+                if (syncNode.IsFaulted)
+                {
+                    throw syncNode.Exception;
+                }
+            }
+
+            _localStateDb.Commit();
+
+            CompareTrees("END");
+        }
+        
         [Test, TestCaseSource("Scenarios")]
         public async Task Scenario_plus_one_storage((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {

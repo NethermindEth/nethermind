@@ -526,9 +526,9 @@ namespace Nethermind.Store
             int index = IsExtension ? i + 1 : i;
             _data[index] = node ?? NullNode;
         }
-        
+
         private static AccountDecoder _decoder = new AccountDecoder();
-        
+
         internal void Accept(ITreeVisitor visitor, PatriciaTree tree, IDb codeDb, VisitContext context)
         {
             try
@@ -547,7 +547,7 @@ namespace Nethermind.Store
                     throw new NotImplementedException();
                 case NodeType.Branch:
                 {
-                    visitor.VisitBranch(Keccak, context);
+                    visitor.VisitBranch(Keccak?.Bytes ?? FullRlp?.Bytes, context);
                     context.Level++;
                     for (int i = 0; i < 16; i++)
                     {
@@ -555,14 +555,14 @@ namespace Nethermind.Store
                         context.BranchChildIndex = i;
                         child?.Accept(visitor, tree, codeDb, context);
                     }
-                    
+
                     context.Level--;
                     context.BranchChildIndex = null;
                     break;
                 }
                 case NodeType.Extension:
                 {
-                    visitor.VisitExtension(Keccak, context);
+                    visitor.VisitExtension(Keccak?.Bytes ?? FullRlp?.Bytes, context);
                     context.Level++;
                     TrieNode child = GetChild(0);
                     context.BranchChildIndex = null;
@@ -572,7 +572,7 @@ namespace Nethermind.Store
                 }
                 case NodeType.Leaf:
                 {
-                    visitor.VisitLeaf(Keccak, context);
+                    visitor.VisitLeaf(Keccak?.Bytes ?? FullRlp?.Bytes, context);
                     if (!context.IsStorage)
                     {
                         Account account = _decoder.Decode(Value.AsRlpContext());
@@ -595,7 +595,7 @@ namespace Nethermind.Store
                             context.IsStorage = false;
                         }
                     }
-                    
+
                     break;
                 }
                 default:

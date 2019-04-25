@@ -50,7 +50,7 @@ namespace Nethermind.Store
             }
         }
 
-        public void VisitBranch(Keccak nodeHash, VisitContext context)
+        public void VisitBranch(byte[] hashOrRlp, VisitContext context)
         {
             if (context.IsStorage)
             {
@@ -62,7 +62,7 @@ namespace Nethermind.Store
             }
         }
 
-        public void VisitExtension(Keccak nodeHash, VisitContext context)
+        public void VisitExtension(byte[] hashOrRlp, VisitContext context)
         {
             if (context.IsStorage)
             {
@@ -74,7 +74,7 @@ namespace Nethermind.Store
             }
         }
         
-        public void VisitLeaf(Keccak nodeHash, VisitContext context)
+        public void VisitLeaf(byte[] hashOrRlp, VisitContext context)
         {
             if (Stats.NodesCount - _lastAccountNodeCount > 100000)
             {
@@ -91,7 +91,7 @@ namespace Nethermind.Store
                 Stats.AccountCount++;
             }
         }
-
+        
         public void VisitCode(Keccak codeHash, byte[] code, VisitContext context)
         {
             if (code != null)

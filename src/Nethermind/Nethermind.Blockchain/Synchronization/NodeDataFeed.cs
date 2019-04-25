@@ -326,9 +326,11 @@ namespace Nethermind.Blockchain.Synchronization
 
         public (NodeDataHandlerResult Result, int NodesConsumed) HandleResponse(StateSyncBatch batch)
         {
+            int requestLength = batch.RequestedNodes?.Length ?? 0;
+            int responseLength = batch.Responses?.Length ?? 0;
             void AddAgainAllItems()
             {
-                for (int i = 0; i < batch.RequestedNodes.Length; i++)
+                for (int i = 0; i < requestLength; i++)
                 {
                     AddNode(batch.RequestedNodes[i], null, "missing", true);
                 }
@@ -364,7 +366,7 @@ namespace Nethermind.Blockchain.Synchronization
                         return (result, 0);
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"Received node data - {batch.Responses.Length} items in response to {batch.RequestedNodes.Length}");
+                    if (_logger.IsTrace) _logger.Trace($"Received node data - {responseLength} items in response to {requestLength}");
                     int nonEmptyResponses = 0;
                     int invalidNodes = 0;
                     for (int i = 0; i < batch.RequestedNodes.Length; i++)
@@ -390,7 +392,7 @@ namespace Nethermind.Blockchain.Synchronization
                         /* node sent data that is not consistent with its hash - it happens surprisingly often */
                         if (Keccak.Compute(currentResponseItem) != currentStateSyncItem.Hash)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"Peer sent invalid data (batch {batch.RequestedNodes.Length}->{batch.Responses.Length}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
+                            if (_logger.IsDebug) _logger.Debug($"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
                             invalidNodes++;
                             continue;
                         }
@@ -454,10 +456,9 @@ namespace Nethermind.Blockchain.Synchronization
                                 }
                                 else
                                 {
-                                    invalidNodes++;
-                                    /* it never happened, it is here more as an assertion 
-                                     * cannot really recover from it as it would mean that the root hash is a root of an invalid tree */
-                                    if (_logger.IsError) _logger.Error($"Extension {currentStateSyncItem.Hash} is missing its child hash");
+                                    /* this happens when we have a short RLP format of the node
+                                     * that would not be stored as Keccak but full RLP*/
+                                    SaveNode(currentStateSyncItem, currentResponseItem);
                                 }
 
                                 break;
@@ -531,22 +532,24 @@ namespace Nethermind.Blockchain.Synchronization
                     }
 
                     Interlocked.Add(ref _consumedNodesCount, nonEmptyResponses);
-                    if (nonEmptyResponses == 0)
+
+                    if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
+
+                    /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
+                    bool isEmptish = (decimal) nonEmptyResponses / requestLength < 384m / 1024m * 0.75m;
+                    if (isEmptish) Interlocked.Increment(ref _emptishCount);
+
+                    bool isBadQuality = nonEmptyResponses > 64 && (decimal) invalidNodes / requestLength > 0.25m;
+                    if (isBadQuality) Interlocked.Increment(ref _badQualityCount);
+
+                    bool isEmpty = nonEmptyResponses == 0 && !isBadQuality;
+                    if (isEmpty)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
                         result = NodeDataHandlerResult.NoData;
                         return (result, 0);
                     }
-
-                    if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
-
-                    /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
-                    bool isEmptish = (decimal) nonEmptyResponses / batch.RequestedNodes.Length < 384m / 1024m * 0.75m;
-                    if (isEmptish) Interlocked.Increment(ref _emptishCount);
-
-                    bool isBadQuality = nonEmptyResponses > 64 && (decimal) invalidNodes / nonEmptyResponses > 0.1m;
-                    if (isBadQuality) Interlocked.Increment(ref _badQualityCount);
-
+                    
                     if (!isEmptish && !isBadQuality)
                     {
                         Interlocked.Increment(ref _okCount);

@@ -99,6 +99,10 @@ namespace Nethermind.Blockchain.Synchronization
                 try
                 {
                     result = _nodeDataFeed.HandleResponse(batch);
+                    if (result.Result == NodeDataHandlerResult.BadQuality)
+                    {
+                        _syncPeerPool.ReportBadPeer(batch.AssignedPeer); 
+                    }
                 }
                 catch (Exception e)
                 {
