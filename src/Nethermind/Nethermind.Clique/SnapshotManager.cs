@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using Nethermind.Blockchain;
@@ -119,15 +118,18 @@ namespace Nethermind.Clique
                     if (header.Hash == null) throw new InvalidOperationException("Block tree block without hash set");
 
                     Keccak parentHash = header.ParentHash;
-                    if (number == 0 || IsEpochTransition(number))
+                    if (IsEpochTransition(number))
                     {
+                        Snapshot parentSnapshot = GetSnapshot(number - 1, parentHash);
+                        
                         if(_logger.IsInfo) _logger.Info($"Creating epoch snapshot for {number}");
                         int signersCount = CalculateSignersCount(header);
                         var signers = new SortedList<Address, long>(signersCount, CliqueAddressComparer.Instance);
+                        Address epochSigner = GetBlockSealer(header);
                         for (int i = 0; i < signersCount; i++)
                         {
-                            Address signer = new Address(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));
-                            signers.Add(signer, 0L);
+                            Address signer = new Address(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));                            
+                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot == null ? 0L : parentSnapshot.Signers.ContainsKey(signer) ? parentSnapshot.Signers[signer] : 0L);
                         }
 
                         snapshot = new Snapshot(number, header.Hash, signers);
