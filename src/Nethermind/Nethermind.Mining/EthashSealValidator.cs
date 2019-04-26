@@ -22,7 +22,7 @@ namespace Nethermind.Mining
         
         public bool ValidateSeal(BlockHeader header)
         {
-            if (header.Number % 64 != 0)
+            if (header.Number % 64 != 0 || header.Number == 0)
             {
                 return true;
             }
