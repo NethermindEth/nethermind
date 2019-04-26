@@ -42,13 +42,25 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            bool isFastSyncSearch = false;
+
             BlockHeader header = _blockTree.FindHeader(currentBlock.ParentHash);
             for (var i = 0; i < _maxDepth; i++)
             {
                 if (number == header.Number) return header.Hash;
 
                 header = _blockTree.FindHeader(header.ParentHash);
-                if (_blockTree.IsMainChain(header.Hash)) header = _blockTree.FindHeader(number);
+                if (_blockTree.IsMainChain(header.Hash) && !isFastSyncSearch)
+                {
+                    try
+                    {
+                        header = _blockTree.FindHeader(number);
+                    }
+                    catch (InvalidOperationException) // fast sync during the first 256 blocks
+                    {
+                        isFastSyncSearch = true;
+                    }
+                }
             }
 
             return null;
