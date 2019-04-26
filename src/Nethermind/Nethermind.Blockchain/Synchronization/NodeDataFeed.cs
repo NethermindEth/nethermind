@@ -68,6 +68,7 @@ namespace Nethermind.Blockchain.Synchronization
         private long _okCount;
         private long _badQualityCount;
         private long _notAssignedCount;
+        private long _dataSize;
         public long TotalRequestsCount => _emptishCount + _invalidFormatCount + _badQualityCount + _okCount + _notAssignedCount;
         public long ProcessedRequestsCount => _emptishCount + _badQualityCount + _okCount;
 
@@ -117,6 +118,10 @@ namespace Nethermind.Blockchain.Synchronization
                 _dbChecks = context.DecodeLong();
                 _stateWasThere = context.DecodeLong();
                 _stateWasNotThere = context.DecodeLong();
+                if (context.Position != context.Length)
+                {
+                    _dataSize = context.DecodeLong();
+                }
             }
         }
 
@@ -243,6 +248,7 @@ namespace Nethermind.Blockchain.Synchronization
                     Interlocked.Increment(ref _savedStateCount);
                     lock (_stateDbLock)
                     {
+                        Interlocked.Add(ref _dataSize, data.Length);
                         _stateDb.Set(syncItem.Hash, data);
                     }
 
@@ -256,6 +262,7 @@ namespace Nethermind.Blockchain.Synchronization
                         {
                             lock (_codeDbLock)
                             {
+                                Interlocked.Add(ref _dataSize, data.Length);
                                 _codeDb.Set(syncItem.Hash, data);
                             }
 
@@ -266,6 +273,7 @@ namespace Nethermind.Blockchain.Synchronization
                     Interlocked.Increment(ref _savedStorageCount);
                     lock (_stateDbLock)
                     {
+                        Interlocked.Add(ref _dataSize, data.Length);
                         _stateDb.Set(syncItem.Hash, data);
                     }
 
@@ -276,6 +284,7 @@ namespace Nethermind.Blockchain.Synchronization
                     Interlocked.Increment(ref _savedCode);
                     lock (_codeDbLock)
                     {
+                        Interlocked.Add(ref _dataSize, data.Length);
                         _codeDb.Set(syncItem.Hash, data);
                     }
 
@@ -522,7 +531,8 @@ namespace Nethermind.Blockchain.Synchronization
                             Rlp.Encode(_requestedNodesCount),
                             Rlp.Encode(_dbChecks),
                             Rlp.Encode(_stateWasThere),
-                            Rlp.Encode(_stateWasNotThere));
+                            Rlp.Encode(_stateWasNotThere),
+                            Rlp.Encode(_dataSize));
                         lock (_codeDbLock)
                         {
                             _codeDb[_fastSyncProgressKey.Bytes] = rlp.Bytes;
@@ -569,7 +579,7 @@ namespace Nethermind.Blockchain.Synchronization
                         _lastSavedNodesCount = _savedNodesCount;
                         _lastRequestedNodesCount = _requestedNodesCount;
                         _lastReportTime = DateTime.UtcNow;
-                        if (_logger.IsInfo) _logger.Info($"SNPS: {savedNodesPerSecond,6:F0} | NPS: {requestedNodesPerSecond,6:F0} | Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
+                        if (_logger.IsInfo) _logger.Info($"SNPS: {savedNodesPerSecond,6:F0} | RNPS: {requestedNodesPerSecond,6:F0} | Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, size: {(decimal)_dataSize / 1000 / 1000:F2}MB, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
                         if (_logger.IsInfo) _logger.Info($"AVTIH: {_averageTimeInHandler:F2}ms | P: {_pendingRequests.Count} | Request results - OK: {(decimal) _okCount / TotalRequestsCount:p2}, Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2}, BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2}, InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2}, NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
                         if (_logger.IsTrace) _logger.Trace($"Requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
                         if (_logger.IsTrace) _logger.Trace($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
