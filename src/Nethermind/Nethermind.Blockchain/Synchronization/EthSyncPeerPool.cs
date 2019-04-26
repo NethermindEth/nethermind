@@ -177,6 +177,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     _upgradeTimer.Enabled = false;
                     UpdateAllocations("TIMER");
+                    DropUselessPeers();
                 }
                 catch (Exception exception)
                 {
@@ -189,6 +190,49 @@ namespace Nethermind.Blockchain.Synchronization
             };
 
             _upgradeTimer.Start();
+        }
+
+        private DateTime _lastUselessDrop = DateTime.UtcNow;
+        
+        private void DropUselessPeers()
+        {
+            if (DateTime.UtcNow - _lastUselessDrop < TimeSpan.FromSeconds(30))
+            {
+                // give some time to monitoring nodes
+                return;
+            }
+
+            _lastUselessDrop = DateTime.UtcNow;
+            if ((decimal) PeerCount / PeerMaxCount > 0.5m)
+            {
+                foreach (PeerInfo peerInfo in AllPeers)
+                {
+                    if (peerInfo.HeadNumber == 0)
+                    {
+                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
+                    }
+                    else if (peerInfo.HeadNumber == 1920000) // mainnet, temp
+                    {
+                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
+                    }
+                }
+            }
+
+            if (PeerCount == PeerMaxCount)
+            {
+                int worstLatency = 0;
+                PeerInfo worstPeer = null;
+                foreach (PeerInfo peerInfo in AllPeers)
+                {
+                    long latency = _stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000;
+                    if (latency > worstLatency)
+                    {
+                        worstPeer = peerInfo;
+                    }
+                }
+
+                worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LATENCY");
+            }
         }
 
         public async Task StopAsync()

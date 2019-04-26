@@ -432,12 +432,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
             return await _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);
         }
-
-        public int HintMaxConcurrentRequests()
-        {
-            return _syncPeerPool.PeerCount;
-        }
-
+        
         public void Dispose()
         {
             FreeBlocksSyncAllocation();
