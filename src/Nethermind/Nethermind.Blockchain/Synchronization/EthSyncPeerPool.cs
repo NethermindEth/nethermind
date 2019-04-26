@@ -215,6 +215,11 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
                     }
+                    else if(peerInfo.HeadNumber > (_blockTree.BestSuggested?.Number ?? 0L) + 1024L
+                            && peerInfo.TotalDifficulty < (_blockTree.BestSuggested ?.TotalDifficulty ?? UInt256.Zero))
+                    {
+                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
+                    }
                 }
             }
 
