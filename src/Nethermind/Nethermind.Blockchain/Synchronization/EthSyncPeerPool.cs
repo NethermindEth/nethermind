@@ -390,7 +390,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public int PeerCount => _peers.Count;
-        public int UsefulPeerCount => (_peers.Count(p => p.Value.IsInitialized && p.Value.TotalDifficulty >= (_blockTree.BestSuggested?.TotalDifficulty ?? 0)) - _sleepingPeers.Count);
+        public int UsefulPeerCount => _peers.Count(p => p.Value.IsInitialized && p.Value.TotalDifficulty >= (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && !_sleepingPeers.ContainsKey(p.Value));
         public int PeerMaxCount => _syncConfig.SyncPeersMaxCount;
 
         public void Refresh(PublicKey publicKey)
