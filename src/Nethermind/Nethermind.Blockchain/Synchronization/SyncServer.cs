@@ -87,17 +87,17 @@ namespace Nethermind.Blockchain.Synchronization
 
             if ((block.TotalDifficulty ?? 0) < _blockTree.BestSuggested.TotalDifficulty) return;
 
+            lock (_recentlySuggested)
+            {
+                if (_recentlySuggested.Get(block.Hash) != null) return;
+                _recentlySuggested.Set(block.Hash, _dummyValue);
+            }
+            
             if (block.Number > _blockTree.BestKnownNumber + 8)
             {
                 // ignore blocks when syncing in a simple non-locking way
                 _synchronizer.RequestSynchronization(SyncTriggerType.NewDistantBlock);
                 return;
-            }
-
-            lock (_recentlySuggested)
-            {
-                if (_recentlySuggested.Get(block.Hash) != null) return;
-                _recentlySuggested.Set(block.Hash, _dummyValue);
             }
             
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.ToString(Block.Format.Short)}) from {nodeWhoSentTheBlock:c}");

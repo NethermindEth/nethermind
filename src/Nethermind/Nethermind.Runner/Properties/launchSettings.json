@@ -9,7 +9,7 @@
     },
     "MainNet": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet.cfg --baseDbPath C:\\nethermind_db",
+      "commandLineArgs": "--config configs\\mainnet.cfg --baseDbPath D:\\mainnet_fast --SyncConfig.FastSync true",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
