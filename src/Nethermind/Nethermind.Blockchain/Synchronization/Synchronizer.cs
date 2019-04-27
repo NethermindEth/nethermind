@@ -279,6 +279,10 @@ namespace Nethermind.Blockchain.Synchronization
                         }
                     }
                 }
+                else
+                {
+                    await syncProgressTask;
+                }
 
                 _blocksSyncAllocation?.FinishSync();
 
