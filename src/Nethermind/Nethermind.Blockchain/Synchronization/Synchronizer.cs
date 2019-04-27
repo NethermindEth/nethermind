@@ -244,7 +244,7 @@ namespace Nethermind.Blockchain.Synchronization
                         syncProgressTask = DownloadStateNodes(_syncLoopCancellation.Token);
                         break;
                     case SyncMode.WaitForProcessor:
-                        syncProgressTask = Task.Delay(1000).ContinueWith(_ => 0L);
+                        syncProgressTask = Task.Delay(5000).ContinueWith(_ => 0L);
                         break;
                     case SyncMode.Full:
                         syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token);
@@ -280,6 +280,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
                 else
                 {
+                    if(_logger.IsInfo) _logger.Info("Waiting for the block processor to catch up before the next sync round...");
                     await syncProgressTask;
                 }
 
