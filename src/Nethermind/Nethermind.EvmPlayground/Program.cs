@@ -5,79 +5,65 @@ using System.Linq;
 using System.Text;
 using System.IO;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Primitives;
 using Nethermind.Evm;
 
 namespace Nethermind.EvmPlayground
 {
     public static class Program
     {
+        private static Client _client = new Client();
+
         public static async Task Main(string[] args)
         {
-            Client client = new Client();
-
-            if(args.Length > 0)
+            if (args.Length > 0)
             {
-                try
-                {
-                    string codeText = File.ReadAllText(args[0]);
-                    codeText = codeText.TrimEnd(codeText[codeText.Length - 1]);
-                    Console.WriteLine(codeText);
-                    codeText = RunMacros(codeText);
-                    Console.WriteLine(codeText);
-                    Console.WriteLine(codeText.Replace(" 0x", string.Empty));
-                    var code = codeText.Split(" ", StringSplitOptions.RemoveEmptyEntries).Select(b => byte.Parse(b.Replace("0x", string.Empty), NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
-                    string hash = await client.SendInit(code);
-                    await Task.Delay(100);
-                    string receipt = await client.GetReceipt(hash);
-                    if (receipt.StartsWith("Error:"))
-                    {
-                        WriteError(receipt);
-                        return;
-                    }
-
-                    Console.WriteLine(receipt);
-                    string trace = await client.GetTrace(hash);
-                    Console.WriteLine(trace);
-                }
-                catch (Exception e)
-                {
-                    WriteError(e.Message);
-                }
-                return;
+                string codeText = File.ReadAllText(args[0]);
+                codeText = codeText.TrimEnd(codeText[codeText.Length - 1]);
+                await ExecuteCode(codeText);
             }
-
-
-
-            while (true)
+            else
             {
-                try
+                while (true)
                 {
-                    Console.WriteLine();
-                    Console.WriteLine("======================================================");
-                    Console.WriteLine("Enter code and press [ENTER]");
-                    string codeText = Console.ReadLine();
-                    codeText = RunMacros(codeText);
-                    Console.WriteLine(codeText);
-                    Console.WriteLine(codeText.Replace(" 0x", string.Empty));
-                    var code = codeText.Split(" ", StringSplitOptions.RemoveEmptyEntries).Select(b => byte.Parse(b.Replace("0x", string.Empty), NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
-                    string hash = await client.SendInit(code);
-                    await Task.Delay(100);
-                    string receipt = await client.GetReceipt(hash);
-                    if (receipt.StartsWith("Error:"))
-                    {
-                        WriteError(receipt);
-                        continue;
-                    }
+                    await Execute();
+                }    
+            }
+        }
 
-                    Console.WriteLine(receipt);
-                    string trace = await client.GetTrace(hash);
-                    Console.WriteLine(trace);
-                }
-                catch (Exception e)
-                {
-                    WriteError(e.Message);
-                }
+        private static async Task Execute()
+        {
+            try
+            {
+                Console.WriteLine();
+                Console.WriteLine("======================================================");
+                Console.WriteLine("Enter code and press [ENTER]");
+                string codeText = Console.ReadLine();
+                await ExecuteCode(codeText);
+            }
+            catch (Exception e)
+            {
+                WriteError(e.Message);
+            }
+        }
+
+        private static async Task ExecuteCode(string codeText)
+        {
+            codeText = RunMacros(codeText);
+            Console.WriteLine(codeText);
+            Console.WriteLine(codeText.Replace(" 0x", string.Empty));
+            var code = codeText.Split(" ", StringSplitOptions.RemoveEmptyEntries).Select(b => byte.Parse(b.Replace("0x", string.Empty), NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
+            string hash = await _client.SendInit(code);
+            await Task.Delay(100);
+            string receipt = await _client.GetReceipt(hash);
+            if (receipt.StartsWith("Error:"))
+            {
+                WriteError(receipt);
+            }
+            else
+            {
+                Console.WriteLine(receipt);
+                string trace = await _client.GetTrace(hash);
+                Console.WriteLine(trace);    
             }
         }
 
@@ -105,14 +91,14 @@ namespace Nethermind.EvmPlayground
                         {
                             expansion[i + 1] = expansion[i + 1].Substring(2);
                         }
-                        
+
                         int length = expansion[i + 1].Length;
                         if (length % 2 == 1)
                         {
                             length++;
                             expansion[i + 1] = "0" + expansion[i + 1];
                         }
-                        
+
                         expansion[i] = (96 + length / 2 - 1).ToString();
                         string decimals = string.Join(" ", Bytes.FromHexString(expansion[i + 1]).Select(x => x.ToString()));
                         Console.WriteLine($"PUSHX {expansion[i + 1]} expanded to: {expansion[i]} {decimals}");
@@ -184,9 +170,36 @@ namespace Nethermind.EvmPlayground
 
             return string.Join(' ', split);
         }
+        
+        private static string RemoveBadCharacters(string input)
+        {
+            List<char> result = new List<char>();
+            int skip = 0;
+            foreach (char c in input)
+            {
+                if (skip > 0)
+                {
+                    skip--;
+                    continue;
+                }
+                
+                if (c == 27)
+                {
+                    skip = 2;
+                }
+                else
+                {
+                    result.Add(c);
+                }
+            }
+
+            string output = new string(result.ToArray());
+            return output.Trim();
+        }
 
         private static string RunMacros(string input)
         {
+            input = RemoveBadCharacters(input);
             input = input.Replace("PZ1", "96 0");
             input = ExpandPushHex(input);
             input = Instructions(input);
