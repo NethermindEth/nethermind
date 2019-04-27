@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
-using System.IO
+using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Primitives;
 using Nethermind.Evm;
@@ -20,7 +20,7 @@ namespace Nethermind.EvmPlayground
             {
                 try
                 {
-                    string codeText = File.ReadAllText(args[0];
+                    string codeText = File.ReadAllText(args[0]);
                     codeText = RunMacros(codeText);
                     Console.WriteLine(codeText);
                     Console.WriteLine(codeText.Replace(" 0x", string.Empty));
