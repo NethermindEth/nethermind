@@ -21,6 +21,8 @@ namespace Nethermind.EvmPlayground
                 try
                 {
                     string codeText = File.ReadAllText(args[0]);
+                    codeText = codeText.TrimEnd(codeText[codeText.Length - 1]);
+                    Console.WriteLine(codeText);
                     codeText = RunMacros(codeText);
                     Console.WriteLine(codeText);
                     Console.WriteLine(codeText.Replace(" 0x", string.Empty));
@@ -171,6 +173,7 @@ namespace Nethermind.EvmPlayground
             }
 
             string[] split = input.Split(' ');
+
             for (int i = 0; i < split.Length; i++)
             {
                 if (_instructions.ContainsKey(split[i]))
