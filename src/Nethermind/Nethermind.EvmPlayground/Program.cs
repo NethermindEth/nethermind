@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.IO
 using System.Threading.Tasks;
 using Microsoft.Extensions.Primitives;
 using Nethermind.Evm;
@@ -11,9 +12,41 @@ namespace Nethermind.EvmPlayground
 {
     public static class Program
     {
-        public static async Task Main()
+        public static async Task Main(string[] args)
         {
             Client client = new Client();
+
+            if(args.Length > 0)
+            {
+                try
+                {
+                    string codeText = File.ReadAllText(args[0];
+                    codeText = RunMacros(codeText);
+                    Console.WriteLine(codeText);
+                    Console.WriteLine(codeText.Replace(" 0x", string.Empty));
+                    var code = codeText.Split(" ", StringSplitOptions.RemoveEmptyEntries).Select(b => byte.Parse(b.Replace("0x", string.Empty), NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
+                    string hash = await client.SendInit(code);
+                    await Task.Delay(100);
+                    string receipt = await client.GetReceipt(hash);
+                    if (receipt.StartsWith("Error:"))
+                    {
+                        WriteError(receipt);
+                        return;
+                    }
+
+                    Console.WriteLine(receipt);
+                    string trace = await client.GetTrace(hash);
+                    Console.WriteLine(trace);
+                }
+                catch (Exception e)
+                {
+                    WriteError(e.Message);
+                }
+                return;
+            }
+
+
+
             while (true)
             {
                 try
