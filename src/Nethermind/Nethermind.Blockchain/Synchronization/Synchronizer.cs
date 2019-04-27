@@ -68,7 +68,6 @@ namespace Nethermind.Blockchain.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
             _syncMode = new SyncModeSelector(_syncPeerPool, _syncConfig, logManager);
-            _syncMode.Changed += (s, e) => RequestSynchronization(SyncTriggerType.SyncModeChange);
             _syncMode.Changed += (s, e) =>
             {
                 if (_blocksSyncAllocation == null && _syncMode.Current != SyncMode.StateNodes)
