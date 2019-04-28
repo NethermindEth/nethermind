@@ -283,7 +283,18 @@ namespace Nethermind.Network.P2P
 
         private object _sessionStateLock = new object();
         public byte P2PVersion { get; private set; }
-        public SessionState State { get; private set; }
+
+        private SessionState _state;
+        public SessionState State
+        {
+            get => _state;
+            private set {
+                _state = value;
+                BestStateReached = (SessionState)Math.Min((int)SessionState.Initialized, (int)value);
+            }
+        }
+
+        public SessionState BestStateReached { get; private set; }
 
         public void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {

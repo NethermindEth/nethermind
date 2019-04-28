@@ -194,6 +194,17 @@ namespace Nethermind.Network.Test.P2P
             session.Init(5, _channelHandlerContext, _packetSender);
             Assert.False(session.IsClosing);
         }
+        
+        [Test]
+        public void Best_state_reached_is_correct()
+        {
+            Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
+            Assert.AreEqual(SessionState.New, session.BestStateReached);
+            session.Handshake(TestItem.PublicKeyA);
+            Assert.AreEqual(SessionState.HandshakeComplete, session.BestStateReached);
+            session.Init(5, _channelHandlerContext, _packetSender);
+            Assert.AreEqual(SessionState.Initialized, session.BestStateReached);
+        }
 
         [Test]
         public void Cannot_dispose_unless_disconnected()

@@ -93,7 +93,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             TransactionReceipt[][] transactionReceipts = SyncServer.GetReceipts(msg.BlockHashes);
             Interlocked.Increment(ref _counter);
-            Logger.Warn($"OUT {_counterOut:D5} Receipts from {Node:s}");
+            Logger.Warn($"OUT {_counterOut:D5} Receipts to {Node:s}");
             Send(new ReceiptsMessage(transactionReceipts));
         }
 
@@ -110,7 +110,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             byte[][] nodeData = SyncServer.GetNodeData(msg.Keys);
             Interlocked.Increment(ref _counter);
-            Logger.Warn($"OUT {_counterOut:D5} NodeData from {Node:s}");
+            Logger.Warn($"OUT {_counterOut:D5} NodeData to {Node:s}");
             Send(new NodeDataMessage(nodeData));
         }
 

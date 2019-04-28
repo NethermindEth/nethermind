@@ -238,7 +238,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public void SendNewBlock(Block block)
         {
             Interlocked.Increment(ref _counter);
-            Logger.Warn($"OUT {_counterOut:D5} NewBlock from {Node:s}");
+            Logger.Warn($"OUT {_counterOut:D5} NewBlock to {Node:s}");
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
@@ -348,7 +348,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             Interlocked.Increment(ref _counter);
-            Logger.Warn($"OUT {_counterOut:D5} BlockBodies from {Node:s}");
+            Logger.Warn($"OUT {_counterOut:D5} BlockBodies to {Node:s}");
             Send(new BlockBodiesMessage(blocks));
         }
 
@@ -375,7 +375,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     : SyncServer.FindHeaders(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
 
             Interlocked.Increment(ref _counter);
-            Logger.Warn($"OUT {_counterOut:D5} BlockHeaders from {Node:s}");
+            Logger.Warn($"OUT {_counterOut:D5} BlockHeaders to {Node:s}");
             Send(new BlockHeadersMessage(headers));
         }
 

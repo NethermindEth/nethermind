@@ -143,7 +143,10 @@ namespace Nethermind.Network
                 ISyncPeer syncPeer = _syncPeers[session.SessionId];
                 _syncPool.RemovePeer(syncPeer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
                 _txPool.RemovePeer(syncPeer.Node.Id);
-                if(_logger.IsInfo) _logger.Info($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason}");
+                if (session.BestStateReached == SessionState.Initialized)
+                {
+                    if (_logger.IsInfo) _logger.Info($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason}");
+                }
             }
             
             _sessions.TryRemove(session.SessionId, out session);
