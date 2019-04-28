@@ -698,8 +698,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void SetNewStateRoot(Keccak stateRoot)
         {
-            _lastReportTime = DateTime.UtcNow;
-            _lastRequestedNodesCount = _requestedNodesCount;
+            _lastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
             _lastSavedNodesCount = _savedNodesCount;
             if (_rootNode != stateRoot)
             {
