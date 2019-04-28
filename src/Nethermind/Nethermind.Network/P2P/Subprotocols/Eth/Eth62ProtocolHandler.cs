@@ -354,11 +354,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             if (Logger.IsTrace || _counter < 6)
             {
-                Logger.Trace($"GetBlockHeaders.MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
-                Logger.Trace($"GetBlockHeaders.Reverse: {getBlockHeadersMessage.Reverse}");
-                Logger.Trace($"GetBlockHeaders.Skip: {getBlockHeadersMessage.Skip}");
-                Logger.Trace($"GetBlockHeaders.StartingBlockhash: {getBlockHeadersMessage.StartingBlockHash}");
-                Logger.Trace($"GetBlockHeaders.StartingBlockNumber: {getBlockHeadersMessage.StartingBlockNumber}");
+                Logger.Debug($"GetBlockHeaders.MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
+                Logger.Debug($"GetBlockHeaders.Reverse: {getBlockHeadersMessage.Reverse}");
+                Logger.Debug($"GetBlockHeaders.Skip: {getBlockHeadersMessage.Skip}");
+                Logger.Debug($"GetBlockHeaders.StartingBlockhash: {getBlockHeadersMessage.StartingBlockHash}");
+                Logger.Debug($"GetBlockHeaders.StartingBlockNumber: {getBlockHeadersMessage.StartingBlockNumber}");
             }
 
             Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
