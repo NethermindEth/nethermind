@@ -67,7 +67,8 @@ namespace Nethermind.Blockchain.Synchronization
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
-            _syncMode = new SyncModeSelector(_syncPeerPool, _syncConfig, logManager);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, _nodeDataDownloader, logManager);
+            _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
             _syncMode.Changed += (s, e) =>
             {
                 if (_blocksSyncAllocation == null && _syncMode.Current != SyncMode.StateNodes)
@@ -254,8 +255,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 SyncMode beforeUpdate = _syncMode.Current;
-                long bestFullState = FindBestFullState();
-                _syncMode.Update(_bestSuggestedNumber, _blockTree.BestSuggestedFullBlock?.Number ?? 0, bestFullState);
+                _syncMode.Update();
                 if (beforeUpdate != SyncMode.WaitForProcessor)
                 {
                     await syncProgressTask.ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
@@ -291,40 +291,6 @@ namespace Nethermind.Blockchain.Synchronization
                 _peerSyncCancellation = null;
                 source?.Dispose();
             }
-        }
-
-        private long FindBestFullState()
-        {
-            /* There is an interesting scenario (unlikely) here where we download more than 'full sync threshold'
-             blocks in full sync but they are not processed immediately so we switch to node sync
-             and the blocks that we downloaded are processed from their respective roots
-             and the next full sync will be after a leap.
-             This scenario is still correct. It may be worth to analyze what happens
-             when it causes a full sync vs node sync race at every block.*/
-
-            BlockHeader bestSuggested = _blockTree.BestSuggested;
-            BlockHeader head = _blockTree.Head;
-            long bestFullState = head?.Number ?? 0;
-            long maxLookup = Math.Min(SyncModeSelector.FullSyncThreshold * 2, bestSuggested?.Number ?? 0L - bestFullState);
-
-            for (int i = 0; i < maxLookup; i++)
-            {
-                if (bestSuggested == null)
-                {
-                    break;
-                }
-
-                Keccak stateRoot = bestSuggested.StateRoot;
-                if (_nodeDataDownloader.IsFullySynced(stateRoot ?? Keccak.EmptyTreeHash))
-                {
-                    bestFullState = bestSuggested.Number;
-                    break;
-                }
-
-                bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash);
-            }
-
-            return bestFullState;
         }
 
         private void HandleSyncRequestResult(Task task, PeerInfo peerInfo)

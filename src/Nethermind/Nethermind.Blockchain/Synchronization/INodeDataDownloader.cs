@@ -18,6 +18,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -28,6 +29,6 @@ namespace Nethermind.Blockchain.Synchronization
 
         // here now to pass the reference easily for the current implementation
         
-        bool IsFullySynced(Keccak stateRoot);
+        bool IsFullySynced(BlockHeader header);
     }
 }

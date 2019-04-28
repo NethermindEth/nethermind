@@ -17,6 +17,8 @@
  */
 
 using System;
+using System.IO;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Store;
 
@@ -25,14 +27,16 @@ namespace Nethermind.Blockchain.Synchronization
     internal class SyncModeSelector
     {
         public const int FullSyncThreshold = 32;
-        
+
+        private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly ILogger _logger;
 
         private bool _fastSyncEnabled;
 
-        public SyncModeSelector(IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager)
+        public SyncModeSelector(ISyncProgressResolver syncProgressResolver, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager)
         {
+            _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -41,8 +45,8 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public SyncMode Current { get; private set; }
-
-        public void Update(long bestHeader, long bestFullBlock, long bestFullState)
+        
+        public void Update()
         {
             if (!_fastSyncEnabled)
             {
@@ -54,6 +58,17 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
+            long bestFullBlock = _syncProgressResolver.FindBestFullBlock();
+            long bestHeader = _syncProgressResolver.FindBestHeader();
+            long bestFullState = _syncProgressResolver.FindBestFullState();
+            if (bestFullBlock < 0 || bestHeader < 0 || bestFullState < 0
+                || bestFullBlock > bestHeader)
+            {
+                string errorMessage = $"Invalid best state calculation: F:{bestFullBlock}|H:{bestHeader}|S:{bestFullState}";
+                if(_logger.IsError) _logger.Error(errorMessage);
+                throw new InvalidOperationException(errorMessage);
+            }
+            
             long maxBlockNumberAmongPeers = 0;
             foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
             {
@@ -76,13 +91,13 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (newSyncMode != Current)
             {
-                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {bestHeader}|{bestFullBlock}|{bestFullState}|{maxBlockNumberAmongPeers}.");
+                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} H:{bestHeader}|F:{bestFullBlock}|S:{bestFullState}|R:{maxBlockNumberAmongPeers}.");
                 Current = newSyncMode;
                 Changed?.Invoke(this, EventArgs.Empty);
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {bestHeader}|{bestFullBlock}|{bestFullState}|{maxBlockNumberAmongPeers}.");
+                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} H:{bestHeader}|F:{bestFullBlock}|S:{bestFullState}|R:{maxBlockNumberAmongPeers}.");
             }
         }
 

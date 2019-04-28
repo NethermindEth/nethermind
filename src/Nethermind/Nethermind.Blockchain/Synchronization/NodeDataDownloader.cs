@@ -20,6 +20,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 
@@ -180,9 +181,9 @@ namespace Nethermind.Blockchain.Synchronization
             return _consumedNodesCount;
         }
 
-        public bool IsFullySynced(Keccak stateRoot)
+        public bool IsFullySynced(BlockHeader header)
         {
-            return _nodeDataFeed.IsFullySynced(stateRoot);
+            return _nodeDataFeed.IsFullySynced(header.StateRoot);
         }
     }
 }
