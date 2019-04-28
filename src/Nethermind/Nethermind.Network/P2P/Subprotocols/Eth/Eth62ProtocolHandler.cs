@@ -371,14 +371,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 startingHash == null
                     ? new BlockHeader[0]
                     : SyncServer.FindHeaders(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
-
-            if (_counter < 6 && headers.Length < 10)
-            {
-                foreach (BlockHeader blockHeader in headers)
-                {
-                    Logger.Info("Sending header: " + blockHeader?.ToString(BlockHeader.Format.Short));
-                }
-            }
             
             Interlocked.Increment(ref _counter);
             if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} BlockHeaders to {Node:s}");

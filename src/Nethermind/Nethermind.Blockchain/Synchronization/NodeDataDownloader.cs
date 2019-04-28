@@ -108,7 +108,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Node sync parallelism: {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests}).");
+            if (_logger.IsInfo) _logger.Info($"Node sync parallelism ({_semaphore.CurrentCount}) - {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests}).");
 
             if (difference > 0)
             {

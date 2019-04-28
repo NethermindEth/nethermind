@@ -574,15 +574,18 @@ namespace Nethermind.Blockchain.Synchronization
 
                     if (DateTime.UtcNow - _lastReportTime > TimeSpan.FromSeconds(1))
                     {
-                        decimal requestedNodesPerSecond = 1000m * (_requestedNodesCount - _lastRequestedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime).TotalMilliseconds;
                         decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime).TotalMilliseconds;
                         _lastSavedNodesCount = _savedNodesCount;
                         _lastRequestedNodesCount = _requestedNodesCount;
+                        if (_logger.IsInfo) _logger.Info($"State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | SNPS: {savedNodesPerSecond,6:F0} | P: {_pendingRequests.Count} | accounts {_savedAccounts} | enqueued nodes {TotalNodesPending:D5} | AVTIH {_averageTimeInHandler:f2}");
+                        if (DateTime.UtcNow - _lastReportTime > TimeSpan.FromSeconds(30))
+                        {
+                            long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;
+                            if (_logger.IsInfo) _logger.Info($"OK {(decimal) _okCount / TotalRequestsCount:p2} | Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
+                            if (_logger.IsInfo) _logger.Info($"Consumed {(decimal) _consumedNodesCount / _requestedNodesCount:p2} | Saved {(decimal) _savedNodesCount / _requestedNodesCount:p2} | DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2} | DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} | Cached {_checkWasCached/allChecks:P2} + {_checkWasInDependencies/allChecks:P2}");
+                        }
+                        
                         _lastReportTime = DateTime.UtcNow;
-                        if (_logger.IsInfo) _logger.Info($"SNPS: {savedNodesPerSecond,6:F0} | RNPS: {requestedNodesPerSecond,6:F0} | Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, size: {(decimal)_dataSize / 1000 / 1000:F2}MB, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
-                        if (_logger.IsInfo) _logger.Info($"AVTIH: {_averageTimeInHandler:F2}ms | P: {_pendingRequests.Count} | Request results - OK: {(decimal) _okCount / TotalRequestsCount:p2}, Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2}, BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2}, InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2}, NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
-                        if (_logger.IsInfo) _logger.Info($"Requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
-                        if (_logger.IsInfo) _logger.Info($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
                     }
 
                     long total = _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
