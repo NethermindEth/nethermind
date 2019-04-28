@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Logging;
 using Nethermind.Stats;
@@ -55,14 +56,14 @@ namespace Nethermind.Blockchain.Synchronization
                 _currentInitializedPeerCount = initializedPeerCount;
             }
 
+            List<PeerInfo> displayedPeers = new List<PeerInfo>();
             if (timeSinceLastEntry > _fullPeerListInterval)
             {
                 _timeOfTheLastFullPeerListLogEntry = DateTime.UtcNow;
                 if (_logger.IsInfo) _logger.Info($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
                 foreach (PeerInfo peerInfo in _peerPool.AllPeers)
                 {
-                    string prefix = peerInfo.IsAllocated ? " * " : "   ";
-                    if (_logger.IsInfo) _logger.Info($"{prefix}{peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000}]");
+                    displayedPeers.Add(peerInfo);
                 }
             }
             else if (initializedCountChanged)
@@ -72,6 +73,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (peerInfo.IsAllocated)
                     {
+                        displayedPeers.Add(peerInfo);
                         if (_logger.IsInfo) _logger.Info($" * {peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000}]");
                     }
                 }
@@ -79,6 +81,12 @@ namespace Nethermind.Blockchain.Synchronization
             else if (_currentInitializedPeerCount == 0)
             {
                 if (_logger.IsInfo) _logger.Info($"Sync peers 0({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}, searching for peers to sync with...");
+            }
+
+            foreach (PeerInfo peerInfo in displayedPeers.Where(pi => pi != null).OrderBy(p => p.SyncPeer?.Node?.Host))
+            {
+                string prefix = peerInfo.IsAllocated ? " * " : "   ";
+                if (_logger.IsInfo) _logger.Info($"{prefix}{peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000}]");
             }
         }
     }
