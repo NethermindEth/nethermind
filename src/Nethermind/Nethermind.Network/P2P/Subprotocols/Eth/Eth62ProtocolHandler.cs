@@ -141,7 +141,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private Random _random = new Random();
 
         protected long _counter = 0;
-        protected long _counterOut = 0;
         
         public virtual void HandleMessage(Packet message)
         {
@@ -237,8 +236,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void SendNewBlock(Block block)
         {
-            Interlocked.Increment(ref _counter);
-            Logger.Warn($"OUT {_counterOut:D5} NewBlock to {Node:s}");
+            Logger.Warn($"OUT {_counter:D5} NewBlock to {Node:s}");
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
@@ -348,13 +346,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             Interlocked.Increment(ref _counter);
-            Logger.Warn($"OUT {_counterOut:D5} BlockBodies to {Node:s}");
+            Logger.Warn($"OUT {_counter:D5} BlockBodies to {Node:s}");
             Send(new BlockBodiesMessage(blocks));
         }
 
         private void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
-            if (Logger.IsTrace)
+            if (Logger.IsTrace || _counter < 6)
             {
                 Logger.Trace($"GetBlockHeaders.MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
                 Logger.Trace($"GetBlockHeaders.Reverse: {getBlockHeadersMessage.Reverse}");
@@ -374,8 +372,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     ? new BlockHeader[0]
                     : SyncServer.FindHeaders(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
 
+            if (_counter < 6 && headers.Length < 10)
+            {
+                foreach (BlockHeader blockHeader in headers)
+                {
+                    Logger.Info("Sending header: " + blockHeader.ToString(BlockHeader.Format.Short));
+                }
+            }
+            
             Interlocked.Increment(ref _counter);
-            Logger.Warn($"OUT {_counterOut:D5} BlockHeaders to {Node:s}");
+            Logger.Warn($"OUT {_counter:D5} BlockHeaders to {Node:s}");
             Send(new BlockHeadersMessage(headers));
         }
 

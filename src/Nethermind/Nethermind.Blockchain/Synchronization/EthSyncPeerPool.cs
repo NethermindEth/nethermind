@@ -204,39 +204,37 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             _logger.Warn($"Reviewing peer usefullness");
-            
+
             int peersDropped = 0;
             _lastUselessDrop = DateTime.UtcNow;
-            if ((decimal) PeerCount / PeerMaxCount > 0.5m)
-            {
-                long ourNumber = _blockTree.BestSuggested?.Number ?? 0L;
-                UInt256 ourDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero;
-                foreach (PeerInfo peerInfo in AllPeers)
-                {
-                    if (peerInfo.HeadNumber > ourNumber)
-                    {
-                        // as long as we are behind we can use the stuck peers
-                        continue;
-                    }
 
-                    if (peerInfo.HeadNumber == 0)
-                    {
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
-                    }
-                    else if (peerInfo.HeadNumber == 1920000) // mainnet, stuck Geth nodes
-                    {
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
-                    }
-                    else if (peerInfo.HeadNumber == 7280022) // mainnet, stuck Geth nodes
-                    {
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
-                    }
-                    else if (peerInfo.HeadNumber > ourNumber + 1024L && peerInfo.TotalDifficulty < ourDifficulty)
-                    {
-                        // probably classic nodes tht remain connected after we went pass the DAO
-                        // worth to find a better way to discard them at the right time
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
-                    }
+            long ourNumber = _blockTree.BestSuggested?.Number ?? 0L;
+            UInt256 ourDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero;
+            foreach (PeerInfo peerInfo in AllPeers)
+            {
+                if (peerInfo.HeadNumber > ourNumber)
+                {
+                    // as long as we are behind we can use the stuck peers
+                    continue;
+                }
+
+                if (peerInfo.HeadNumber == 0)
+                {
+                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
+                }
+                else if (peerInfo.HeadNumber == 1920000) // mainnet, stuck Geth nodes
+                {
+                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
+                }
+                else if (peerInfo.HeadNumber == 7280022) // mainnet, stuck Geth nodes
+                {
+                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
+                }
+                else if (peerInfo.HeadNumber > ourNumber + 1024L && peerInfo.TotalDifficulty < ourDifficulty)
+                {
+                    // probably classic nodes tht remain connected after we went pass the DAO
+                    // worth to find a better way to discard them at the right time
+                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
                 }
             }
 
