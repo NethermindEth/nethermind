@@ -352,7 +352,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
-            if (Logger.IsTrace || _counter < 6)
+            if (Logger.IsTrace || _counter < 20000)
             {
                 Logger.Debug($"GetBlockHeaders.MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
                 Logger.Debug($"GetBlockHeaders.Reverse: {getBlockHeadersMessage.Reverse}");
