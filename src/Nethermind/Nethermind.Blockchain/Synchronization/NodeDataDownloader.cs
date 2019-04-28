@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private SemaphoreSlim _semaphore = new SemaphoreSlim(0);
         
-        private int _lastPeerCount;
+        private int _lastUsefulPeerCount;
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
@@ -100,8 +100,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         private async Task UpdateParallelism()
         {
-            int newPeerCount = _syncPeerPool.UsefulPeerCount;
-            int difference = newPeerCount - _lastPeerCount;
+            int newUsefulPeerCount = _syncPeerPool.UsefulPeerCount;
+            int difference = newUsefulPeerCount - _lastUsefulPeerCount;
 
             if (difference == 0)
             {
@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
-            _lastPeerCount = newPeerCount;
+            _lastUsefulPeerCount = newUsefulPeerCount;
         }
 
         private async Task KeepSyncing(CancellationToken token)
@@ -163,7 +163,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             } while (_pendingRequests != 0);
 
-            if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests");
+            if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_lastUsefulPeerCount} useful peers.");
         }
 
         private StateSyncBatch PrepareRequest()
