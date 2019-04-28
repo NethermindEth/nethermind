@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 _timeOfTheLastFullPeerListLogEntry = DateTime.UtcNow;
                 if (_logger.IsInfo) _logger.Info($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
-                foreach (PeerInfo peerInfo in _peerPool.AllPeers.OrderBy(p => p.SyncPeer?.Node?.Host))
+                foreach (PeerInfo peerInfo in _peerPool.AllPeers)
                 {
                     string prefix = peerInfo.IsAllocated ? " * " : "   ";
                     if (_logger.IsInfo) _logger.Info($"{prefix}{peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000}]");
@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Synchronization
             else if (initializedCountChanged)
             {
                 if (_logger.IsInfo) _logger.Info($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
-                foreach (PeerInfo peerInfo in _peerPool.AllPeers.OrderBy(p => p.SyncPeer?.Node?.Host))
+                foreach (PeerInfo peerInfo in _peerPool.AllPeers)
                 {
                     if (peerInfo.IsAllocated)
                     {
