@@ -290,7 +290,6 @@ namespace Nethermind.Blockchain
         public BlockHeader Genesis { get; private set; }
         public BlockHeader Head { get; private set; }
         public BlockHeader BestSuggested { get; private set; }
-        
         public BlockHeader BestSuggestedFullBlock { get; private set; }
         public long BestKnownNumber { get; private set; }
         public int ChainId => _specProvider.ChainId;
@@ -471,6 +470,33 @@ namespace Nethermind.Blockchain
             return result;
         }
 
+        private Keccak GetBlockHashOnMainOrOnlyHash(long blockNumber)
+        {
+            if (blockNumber < 0)
+            {
+                throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}",
+                    nameof(blockNumber));
+            }
+
+            ChainLevelInfo level = LoadLevel(blockNumber);
+            if (level == null)
+            {
+                return null;
+            }
+
+            if (level.HasBlockOnMainChain)
+            {
+                return level.BlockInfos[0].BlockHash;
+            }
+
+            if (level.BlockInfos.Length != 1)
+            {
+                throw new InvalidOperationException($"Unexpected request by number for a block {blockNumber} that is not on the main chain and is not the only hash on chain");
+            }
+
+            return level.BlockInfos[0].BlockHash;
+        }
+        
         private Keccak GetBlockHashOnMain(long blockNumber)
         {
             if (blockNumber < 0)
@@ -981,7 +1007,7 @@ namespace Nethermind.Blockchain
 
         public BlockHeader FindHeader(long number)
         {
-            Keccak hash = GetBlockHashOnMain(number);
+            Keccak hash = GetBlockHashOnMainOrOnlyHash(number);
             if (hash == null)
             {
                 return null;

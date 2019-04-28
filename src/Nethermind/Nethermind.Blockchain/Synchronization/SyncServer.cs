@@ -196,9 +196,19 @@ namespace Nethermind.Blockchain.Synchronization
             return _blockTree.FindBlock(hash, false);
         }
 
+        public BlockHeader FindHeader(Keccak hash)
+        {
+            throw new NotImplementedException();
+        }
+
         public Block Find(long number)
         {
             return _blockTree.Head.Number >= number ? _blockTree.FindBlock(number) : null;
+        }
+
+        public BlockHeader FindHeader(long number)
+        {
+            return _blockTree.FindHeader(number);
         }
 
         public Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse)
