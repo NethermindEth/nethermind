@@ -592,8 +592,12 @@ namespace Nethermind.Blockchain.Synchronization
                         if (_logger.IsTrace) _logger.Trace($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
                     }
 
-                    
-                    _logger.Info($"Handle watch {_handleWatch.ElapsedMilliseconds}, DB reads {_dbChecks - _lastDbReads}, ratio {(decimal)_handleWatch.ElapsedMilliseconds/Math.Max(1, _dbChecks - _lastDbReads)}");
+
+                    if (_handleWatch.ElapsedMilliseconds > 250)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Handle watch {_handleWatch.ElapsedMilliseconds}, DB reads {_dbChecks - _lastDbReads}, ratio {(decimal) _handleWatch.ElapsedMilliseconds / Math.Max(1, _dbChecks - _lastDbReads)}");
+                    }
+
                     _lastDbReads = _dbChecks;
                     _averageTimeInHandler = (_averageTimeInHandler * (ProcessedRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / ProcessedRequestsCount;
                     return (result, nonEmptyResponses);
