@@ -451,19 +451,24 @@ namespace Nethermind.Blockchain
 
         public BlockHeader[] FindHeaders(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
         {
+            if (skip != 0)
+            {
+                _logger.Error($"SKIP IS NOT ZERO - {numberOfBlocks} {skip} {reverse}");
+            }
+            
             if (blockHash == null) throw new ArgumentNullException(nameof(blockHash));
 
             BlockHeader[] result = new BlockHeader[numberOfBlocks];
-            BlockHeader startBlock = FindHeader(blockHash, true);
+            BlockHeader startBlock = FindHeader(blockHash);
             if (startBlock == null)
             {
                 return result;
             }
 
+            BlockHeader current = startBlock;
             for (int i = 0; i < numberOfBlocks; i++)
             {
-                int blockNumber = (int) startBlock.Number + (reverse ? -1 : 1) * (i + i * skip);
-                BlockHeader ithBlock = FindHeader(blockNumber);
+                BlockHeader ithBlock = FindHeader(current.ParentHash);
                 result[i] = ithBlock;
             }
 
