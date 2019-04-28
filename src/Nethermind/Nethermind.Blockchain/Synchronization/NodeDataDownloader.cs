@@ -102,7 +102,6 @@ namespace Nethermind.Blockchain.Synchronization
         {
             int newUsefulPeerCount = _syncPeerPool.UsefulPeerCount;
             int difference = newUsefulPeerCount - _lastUsefulPeerCount;
-
             if (difference == 0)
             {
                 return;
@@ -118,7 +117,10 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 for (int i = 0; i < -difference; i++)
                 {
-                    await _semaphore.WaitAsync(10000); // when failing?    
+                    if (!await _semaphore.WaitAsync(5000))
+                    {
+                        newUsefulPeerCount++;
+                    }
                 }
             }
 
@@ -135,7 +137,6 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 await UpdateParallelism();
-                
                 if (!await _semaphore.WaitAsync(1000, token))
                 {
                     continue;
