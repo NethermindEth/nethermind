@@ -376,7 +376,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 foreach (BlockHeader blockHeader in headers)
                 {
-                    Logger.Info("Sending header: " + blockHeader.ToString(BlockHeader.Format.Short));
+                    Logger.Info("Sending header: " + blockHeader?.ToString(BlockHeader.Format.Short));
                 }
             }
             
