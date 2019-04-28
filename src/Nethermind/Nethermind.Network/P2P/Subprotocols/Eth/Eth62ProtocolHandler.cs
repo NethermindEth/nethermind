@@ -236,7 +236,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void SendNewBlock(Block block)
         {
-            Logger.Warn($"OUT {_counter:D5} NewBlock to {Node:s}");
+            if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} NewBlock to {Node:s}");
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
