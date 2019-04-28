@@ -460,17 +460,7 @@ namespace Nethermind.Blockchain
                 return result;
             }
 
-            BlockHeader current = startBlock;
-            for (int i = 0; i < skip; i++)
-            {
-                if (current == null)
-                {
-                    return new BlockHeader[numberOfBlocks];
-                }
-                
-                current = FindHeader(current.ParentHash);
-            }
-            
+            BlockHeader current = startBlock;            
             for (int i = 0; i < numberOfBlocks; i++)
             {
                 if (current == null)
@@ -479,6 +469,16 @@ namespace Nethermind.Blockchain
                 }
                 
                 result[i] = current;
+                
+                for (int sIndex = 0; sIndex < skip; sIndex++)
+                {
+                    current = FindHeader(current.ParentHash);
+                    if (current == null)
+                    {
+                        return result;
+                    }
+                }
+                
                 current = FindHeader(current.ParentHash);
             }
 
