@@ -203,6 +203,8 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
+            _logger.Warn($"Reviewing peer usefullness");
+            
             int peersDropped = 0;
             _lastUselessDrop = DateTime.UtcNow;
             if ((decimal) PeerCount / PeerMaxCount > 0.5m)
