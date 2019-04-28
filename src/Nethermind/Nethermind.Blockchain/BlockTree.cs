@@ -491,6 +491,7 @@ namespace Nethermind.Blockchain
 
             if (level.BlockInfos.Length != 1)
             {
+                _logger.Error($"NOT ONLY ONE {level.BlockInfos.Length}");
                 throw new InvalidOperationException($"Unexpected request by number for a block {blockNumber} that is not on the main chain and is not the only hash on chain");
             }
 
@@ -1008,12 +1009,7 @@ namespace Nethermind.Blockchain
         public BlockHeader FindHeader(long number)
         {
             Keccak hash = GetBlockHashOnMainOrOnlyHash(number);
-            if (hash == null)
-            {
-                return null;
-            }
-
-            return FindHeader(hash);
+            return hash == null ? null : FindHeader(hash);
         }
 
         private (BlockHeader Header, BlockInfo BlockInfo, ChainLevelInfo Level) LoadHeader(Keccak blockHash)

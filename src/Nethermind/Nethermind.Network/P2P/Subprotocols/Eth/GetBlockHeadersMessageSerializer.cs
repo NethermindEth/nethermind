@@ -54,7 +54,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             message.MaxHeaders = context.DecodeInt();
             message.Skip = context.DecodeInt();
-            message.Reverse = context.DecodeNibble();
+            message.Reverse = context.DecodeByte();
             return message;
         }
     }
