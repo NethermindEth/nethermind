@@ -33,7 +33,7 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test.P2P
 {
     [TestFixture]
-    public class P2PSessionTests
+    public class SessionTests
     {
         private IChannel _channel;
         private IChannelHandlerContext _channelHandlerContext;

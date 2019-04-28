@@ -422,6 +422,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
             _headersRequests.Add(request, token);
+            if (_headersRequests.IsAddingCompleted)
+            {
+                throw new EthSynchronizationException("Session disposed");
+            }
+
             var perfCalcId = _perfService.StartPerfCalc();
 
             Send(request.Message);
@@ -457,6 +462,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             var request = new Request<GetBlockBodiesMessage, Block[]>(message);
+            if (_bodiesRequests.IsCompleted)
+            {
+                throw new EthSynchronizationException("Session disposed");
+            }
+
             _bodiesRequests.Add(request, token);
             var perfCalcId = _perfService.StartPerfCalc();
 
