@@ -141,6 +141,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private Random _random = new Random();
 
         protected long _counter = 0;
+        protected long _counterOut = 0;
         
         public virtual void HandleMessage(Packet message)
         {
@@ -194,7 +195,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     break;
                 case Eth62MessageCode.GetBlockBodies:
                     Interlocked.Increment(ref _counter);
-                    Logger.Warn($"{_counter:D5} GetBlockBodes from {Node:s}");
+                    Logger.Warn($"{_counter:D5} GetBlockBodies from {Node:s}");
                     Metrics.Eth62GetBlockBodiesReceived++;
                     Handle(Deserialize<GetBlockBodiesMessage>(message.Data));
                     break;
@@ -236,6 +237,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void SendNewBlock(Block block)
         {
+            Interlocked.Increment(ref _counter);
+            Logger.Warn($"OUT {_counterOut:D5} NewBlock from {Node:s}");
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
@@ -250,6 +253,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void SendNewTransaction(Transaction transaction)
         {
+            Interlocked.Increment(ref _counter);
             if (transaction.Hash == null)
             {
                 throw new InvalidOperationException($"Trying to send a transaction with null hash");
@@ -343,6 +347,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 blocks[i] = SyncServer.Find(hashes[i]);
             }
 
+            Interlocked.Increment(ref _counter);
+            Logger.Warn($"OUT {_counterOut:D5} BlockBodies from {Node:s}");
             Send(new BlockBodiesMessage(blocks));
         }
 
@@ -368,6 +374,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     ? new BlockHeader[0]
                     : SyncServer.FindHeaders(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
 
+            Interlocked.Increment(ref _counter);
+            Logger.Warn($"OUT {_counterOut:D5} BlockHeaders from {Node:s}");
             Send(new BlockHeadersMessage(headers));
         }
 
