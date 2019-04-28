@@ -34,7 +34,8 @@ namespace Nethermind.Network.P2P
     {
         public override string ToString()
         {
-            return Direction == ConnectionDirection.In ? $"{State} {Direction} session {RemoteHost}:{RemotePort}->localhost:{LocalPort}" : $"{State} {Direction} session localhost:{LocalPort}->{RemoteHost}:{RemotePort}";
+            string formattedRemoteHost = RemoteHost.Replace("::ffff:", string.Empty);
+            return Direction == ConnectionDirection.In ? $"{State} {Direction} session {RemoteHost}:{RemotePort}->localhost:{LocalPort}" : $"{State} {Direction} session localhost:{LocalPort}->{formattedRemoteHost}:{RemotePort}";
         }
 
         private readonly ILogger _logger;

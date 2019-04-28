@@ -299,19 +299,19 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (firstToComplete.IsFaulted || firstToComplete == delayTask)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:s}{Environment.NewLine}{t.Exception}");
+                        if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                         syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault");
                         SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Failed : Synchronization.SyncEvent.InitFailed));
                     }
                     else if (firstToComplete.IsCanceled)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:s}{Environment.NewLine}{t.Exception}");
+                        if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                         SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Cancelled : Synchronization.SyncEvent.InitCancelled));
                         token.ThrowIfCancellationRequested();
                     }
                     else
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:s} with head block numer {getHeadHeaderTask.Result}");
+                        if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:c} with head block numer {getHeadHeaderTask.Result}");
                         if (!peerInfo.IsInitialized)
                         {
                             SyncEvent?.Invoke(
@@ -404,7 +404,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void AddPeer(ISyncPeer syncPeer)
         {
-            if (_logger.IsDebug) _logger.Debug($"|NetworkTrace| Adding synchronization peer {syncPeer.Node:f}");
+            if (_logger.IsDebug) _logger.Debug($"Adding sync peer {syncPeer.Node:c}");
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - adding peer is blocked: {syncPeer.Node:s}");
@@ -413,7 +413,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_peers.ContainsKey(syncPeer.Node.Id))
             {
-                if (_logger.IsDebug) _logger.Debug($"Sync peer already in peers collection: {syncPeer.Node:c}");
+                if (_logger.IsDebug) _logger.Debug($"Sync peer {syncPeer.Node:c} already in peers collection.");
                 return;
             }
 
@@ -433,10 +433,10 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void RemovePeer(ISyncPeer syncPeer, PeerRemoveReason reason)
         {
-            if (_logger.IsInfo) _logger.Info($"Removing synchronization peer {syncPeer.Node:c} - {reason}");
+            if (_logger.IsInfo) _logger.Info($"Removing sync peer {syncPeer.Node:c} - {reason}");
             if (!_isStarted)
             {
-                if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - removing peer is blocked: {syncPeer.Node:s}");
+                if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - removing {syncPeer.Node:c} is blocked.");
                 return;
             }
 
@@ -451,7 +451,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (allocation.Current?.SyncPeer.Node.Id == syncPeer.Node.Id)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Requesting peer cancel with: {syncPeer.Node:s} on {allocation}");
+                    if (_logger.IsTrace) _logger.Trace($"Requesting peer cancel with {syncPeer.Node:c} on {allocation}");
                     allocation.Cancel();
                 }
             }
