@@ -468,8 +468,13 @@ namespace Nethermind.Blockchain
             BlockHeader current = startBlock;
             for (int i = 0; i < numberOfBlocks; i++)
             {
-                BlockHeader ithBlock = FindHeader(current.ParentHash);
-                result[i] = ithBlock;
+                if (current == null)
+                {
+                    break;
+                }
+                
+                result[i] = current;
+                current = FindHeader(current.ParentHash);
             }
 
             return result;
