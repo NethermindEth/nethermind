@@ -55,9 +55,9 @@ namespace Nethermind.Core.Test
             _parent = Build.A.Block.WithParent(_grandparent).WithOmmers(_duplicateOmmer).TestObject;
             _block = Build.A.Block.WithParent(_parent).TestObject;
 
-            _blockTree.SuggestBlock(_grandparent);
-            _blockTree.SuggestBlock(_parent);
-            _blockTree.SuggestBlock(_block);
+            _blockTree.SuggestHeader(_grandparent.Header);
+            _blockTree.SuggestHeader(_parent.Header);
+            _blockTree.SuggestHeader(_block.Header);
         }
 
         [Test]

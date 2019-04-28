@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
             
-            BlockHeader parent = _blockTree.FindBlock(header.ParentHash, false)?.Header;
+            BlockHeader parent = _blockTree.FindHeader(header.ParentHash, false);
             if (parent == null)
             {
                 return false;
