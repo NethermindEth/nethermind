@@ -555,7 +555,7 @@ namespace Nethermind.Blockchain.Synchronization
                     bool isEmpty = nonEmptyResponses == 0 && !isBadQuality;
                     if (isEmpty)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
+                        if (_logger.IsDebug) _logger.Debug($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
                         result = NodeDataHandlerResult.NoData;
                         return (result, 0);
                     }

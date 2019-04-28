@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
@@ -33,6 +34,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
+using Org.BouncyCastle.Bcpg;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -99,7 +101,17 @@ namespace Nethermind.Network.Rlpx
                 {
                     if (t.IsFaulted)
                     {
-                        _logger.Error($"{nameof(Init)} failed", t.Exception);
+                        AggregateException aggregateException = t.Exception;
+                        if (aggregateException?.InnerException is SocketException socketException
+                            && socketException.ErrorCode == 10048)
+                        {
+                            if(_logger.IsError) _logger.Error($"Port {LocalPort} is in use. You can change the port used by adding: --InitConfig.P2PPort 30303");    
+                        }
+                        else
+                        {
+                            if(_logger.IsError) _logger.Error($"{nameof(Init)} failed", t.Exception);
+                        }
+
                         return null;
                     }
 

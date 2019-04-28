@@ -659,7 +659,7 @@ namespace Nethermind.Runner.Runners
                 }
                 else
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Shutting down processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
+                    if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
                     await _blockchainProcessor.StopAsync();
                 }
             }
@@ -681,11 +681,11 @@ namespace Nethermind.Runner.Runners
             {
                 if (t.IsFaulted)
                 {
-                    if (_logger.IsError) _logger.Error("Loading blocks from DB failed.", t.Exception);
+                    if (_logger.IsError) _logger.Error("Loading blocks from the DB failed.", t.Exception);
                 }
                 else if (t.IsCanceled)
                 {
-                    if (_logger.IsWarn) _logger.Warn("Loading blocks from DB canceled.");
+                    if (_logger.IsWarn) _logger.Warn("Loading blocks from the DB canceled.");
                 }
             });
         }
@@ -716,7 +716,7 @@ namespace Nethermind.Runner.Runners
             {
                 if (initPeerTask.IsFaulted)
                 {
-                    _logger.Error("Unable to init peer manager.", initPeerTask.Exception);
+                    _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
                 }
             });
             ;
@@ -725,7 +725,7 @@ namespace Nethermind.Runner.Runners
             {
                 if (initNetTask.IsFaulted)
                 {
-                    _logger.Error("Unable to start sync.", initNetTask.Exception);
+                    _logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
                 }
             });
 
@@ -733,7 +733,7 @@ namespace Nethermind.Runner.Runners
             {
                 if (initDiscoveryTask.IsFaulted)
                 {
-                    _logger.Error("Unable to start discovery protocol.", initDiscoveryTask.Exception);
+                    _logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
                 }
             });
 
@@ -743,7 +743,7 @@ namespace Nethermind.Runner.Runners
             }
             catch (Exception e)
             {
-                _logger.Error("Unable to start peer manager.", e);
+                _logger.Error("Unable to start the peer manager.", e);
             }
 
             ;
