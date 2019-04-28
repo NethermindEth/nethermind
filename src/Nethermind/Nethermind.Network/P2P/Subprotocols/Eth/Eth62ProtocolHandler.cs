@@ -433,6 +433,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         [Todo(Improve.Refactor, "Generic approach to requests")]
         private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
+            if (_headersRequests.IsAddingCompleted || _isDisposed)
+            {
+                throw new EthSynchronizationException("Session disposed");
+            }
+            
             if (Logger.IsTrace)
             {
                 Logger.Trace("Sending headers request:");
@@ -445,10 +450,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
             _headersRequests.Add(request, token);
-            if (_headersRequests.IsAddingCompleted)
-            {
-                throw new EthSynchronizationException("Session disposed");
-            }
 
             var perfCalcId = _perfService.StartPerfCalc();
 
@@ -478,6 +479,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         [Todo(Improve.Refactor, "Generic approach to requests")]
         private async Task<Block[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
+            if (_headersRequests.IsAddingCompleted || _isDisposed)
+            {
+                throw new EthSynchronizationException("Session disposed");
+            }
+            
             if (Logger.IsTrace)
             {
                 Logger.Trace("Sending bodies request:");
@@ -485,11 +491,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             var request = new Request<GetBlockBodiesMessage, Block[]>(message);
-            if (_bodiesRequests.IsCompleted)
-            {
-                throw new EthSynchronizationException("Session disposed");
-            }
-
             _bodiesRequests.Add(request, token);
             var perfCalcId = _perfService.StartPerfCalc();
 
@@ -565,13 +566,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return headers.Length > 0 ? headers[0] : null;
         }
 
+        private bool _isDisposed;
+        
         public void Dispose()
         {
+            if(_isDisposed)
+            {
+                return;
+            }
+            
             _headersRequests?.Dispose();
             _bodiesRequests?.Dispose();
 
             _txFloodCheckTimer.Elapsed -= CheckTxFlooding;
             _txFloodCheckTimer?.Dispose();
+            _isDisposed = true;
         }
     }
 }
