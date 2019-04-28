@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Synchronization
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
+
             _syncPeersReport = new SyncPeersReport(this, _stats, logManager);
         }
 
@@ -194,7 +194,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         private DateTime _lastUselessDrop = DateTime.UtcNow;
-        
+
         private void DropUselessPeers()
         {
             if (DateTime.UtcNow - _lastUselessDrop < TimeSpan.FromSeconds(30))
@@ -203,6 +203,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
+            int peersDropped = 0;
             _lastUselessDrop = DateTime.UtcNow;
             if ((decimal) PeerCount / PeerMaxCount > 0.5m)
             {
@@ -215,7 +216,7 @@ namespace Nethermind.Blockchain.Synchronization
                         // as long as we are behind we can use the stuck peers
                         continue;
                     }
-                    
+
                     if (peerInfo.HeadNumber == 0)
                     {
                         peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
@@ -228,7 +229,7 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
                     }
-                    else if(peerInfo.HeadNumber > ourNumber + 1024L && peerInfo.TotalDifficulty < ourDifficulty)
+                    else if (peerInfo.HeadNumber > ourNumber + 1024L && peerInfo.TotalDifficulty < ourDifficulty)
                     {
                         // probably classic nodes tht remain connected after we went pass the DAO
                         // worth to find a better way to discard them at the right time
@@ -252,6 +253,8 @@ namespace Nethermind.Blockchain.Synchronization
 
                 worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LATENCY");
             }
+
+            _logger.Warn($"Dropped {peersDropped} useless peers");
         }
 
         public async Task StopAsync()
@@ -267,7 +270,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         private ConcurrentDictionary<PeerInfo, int> _peerBadness = new ConcurrentDictionary<PeerInfo, int>();
-        
+
         public void ReportBadPeer(SyncPeerAllocation batchAssignedPeer)
         {
             if (batchAssignedPeer.CanBeReplaced)
@@ -280,7 +283,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 // fast Geth nodes send invalid nodes quite often :/
                 // so we let them deliver fast and only disconnect them when they really misbehave
-                batchAssignedPeer.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "bad node data");    
+                batchAssignedPeer.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "bad node data");
             }
         }
 
@@ -351,7 +354,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
         }
-        
+
         public IEnumerable<PeerInfo> UsefulPeers
         {
             get
@@ -372,7 +375,7 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         continue;
                     }
-                    
+
                     yield return peerInfo;
                 }
             }
@@ -472,7 +475,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     continue;
                 }
-                
+
                 if (!info.IsInitialized || info.TotalDifficulty <= (_blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero))
                 {
                     continue;
@@ -527,7 +530,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 return;
             }
-            
+
             if (peerInfo == null)
             {
                 return;
@@ -585,7 +588,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             return Borrow(BorrowOptions.None, description);
         }
-            
+
         public SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description)
         {
             SyncPeerAllocation allocation = new SyncPeerAllocation(description);
@@ -593,7 +596,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 allocation.CanBeReplaced = false;
             }
-            
+
             PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, "BORROW");
             if (bestPeer != null)
             {
