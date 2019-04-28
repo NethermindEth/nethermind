@@ -203,7 +203,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            _logger.Warn($"Reviewing peer usefullness");
+            _logger.Warn($"Reviewing {PeerCount} peer usefullness");
 
             int peersDropped = 0;
             _lastUselessDrop = DateTime.UtcNow;
@@ -251,6 +251,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
 
+                peersDropped++;
                 worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LATENCY");
             }
 
@@ -428,15 +429,9 @@ namespace Nethermind.Blockchain.Synchronization
             _peerRefreshQueue.Add(peerInfo);
         }
 
-        public enum PeerRemoveReason
+        public void RemovePeer(ISyncPeer syncPeer)
         {
-            SyncFault,
-            SessionDisconnected,
-        }
-
-        public void RemovePeer(ISyncPeer syncPeer, PeerRemoveReason reason)
-        {
-            if (_logger.IsInfo) _logger.Info($"Removing sync peer {syncPeer.Node:c} - {reason}");
+            if (_logger.IsInfo) _logger.Info($"Removing sync peer {syncPeer.Node:c}");
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - removing {syncPeer.Node:c} is blocked.");

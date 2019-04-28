@@ -141,7 +141,7 @@ namespace Nethermind.Network
             if (_syncPeers.ContainsKey(session.SessionId))
             {
                 ISyncPeer syncPeer = _syncPeers[session.SessionId];
-                _syncPool.RemovePeer(syncPeer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
+                _syncPool.RemovePeer(syncPeer);
                 _txPool.RemovePeer(syncPeer.Node.Id);
                 if (session.BestStateReached == SessionState.Initialized)
                 {
