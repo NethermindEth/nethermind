@@ -203,7 +203,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            _logger.Warn($"Reviewing {PeerCount} peer usefullness");
+            if(_logger.IsTrace) _logger.Trace($"Reviewing {PeerCount} peer usefullness");
 
             int peersDropped = 0;
             _lastUselessDrop = DateTime.UtcNow;
@@ -259,7 +259,7 @@ namespace Nethermind.Blockchain.Synchronization
                 worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LATENCY");
             }
 
-            _logger.Warn($"Dropped {peersDropped} useless peers");
+            if(_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
         }
 
         public async Task StopAsync()
