@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 try
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Running refresh peer info for {peerInfo}.");
+                    if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo}.");
                     _syncPeersReport.Write();
                     var initCancelSource = _refreshCancelTokens[peerInfo.SyncPeer.Node.Id] = new CancellationTokenSource();
                     var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
@@ -82,9 +82,9 @@ namespace Nethermind.Blockchain.Synchronization
                         {
                             if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                             {
-                                if (_logger.IsTrace) _logger.Trace($"Refreshing {peerInfo} failed due to timeout: {t.Exception.Message}");
+                                if (_logger.IsTrace) _logger.Trace($"Refreshing info for {peerInfo} failed due to timeout: {t.Exception.Message}");
                             }
-                            else if (_logger.IsDebug) _logger.Debug($"Refreshing {peerInfo} failed {t.Exception}");
+                            else if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo} failed {t.Exception}");
                         }
                         else if (t.IsCanceled)
                         {
@@ -421,7 +421,7 @@ namespace Nethermind.Blockchain.Synchronization
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             Metrics.SyncPeers = _peers.Count;
 
-            if (_logger.IsDebug) _logger.Debug($"Adding to refresh queue");
+            if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
             _peerRefreshQueue.Add(peerInfo);
         }
 
