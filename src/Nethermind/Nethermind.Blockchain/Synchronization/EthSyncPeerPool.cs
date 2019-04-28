@@ -220,20 +220,24 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (peerInfo.HeadNumber == 0)
                 {
+                    peersDropped++;
                     peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
                 }
                 else if (peerInfo.HeadNumber == 1920000) // mainnet, stuck Geth nodes
                 {
+                    peersDropped++;
                     peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
                 }
                 else if (peerInfo.HeadNumber == 7280022) // mainnet, stuck Geth nodes
                 {
+                    peersDropped++;
                     peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
                 }
                 else if (peerInfo.HeadNumber > ourNumber + 1024L && peerInfo.TotalDifficulty < ourDifficulty)
                 {
                     // probably classic nodes tht remain connected after we went pass the DAO
                     // worth to find a better way to discard them at the right time
+                    peersDropped++;
                     peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
                 }
             }

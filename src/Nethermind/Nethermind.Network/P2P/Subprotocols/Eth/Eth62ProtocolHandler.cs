@@ -549,6 +549,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Disconnect(DisconnectReason reason, string details)
         {
+            Logger.Warn($"Disconnecting {Node} baceuse {details}");
             Session.InitiateDisconnect(reason, details);
         }
 
