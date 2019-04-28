@@ -293,7 +293,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (syncItem.IsRoot)
             {
-                if (_logger.IsWarn) _logger.Warn($"DIAG: Saving root {syncItem.Hash} {syncItem.Level}");
+                if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash}");
 
                 lock (_dependencies)
                 {
