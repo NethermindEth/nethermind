@@ -34,7 +34,8 @@ namespace Nethermind.Network.P2P
     {
         public override string ToString()
         {
-            return Direction == ConnectionDirection.In ? $"{State} {Direction} session {RemoteHost}:{RemotePort}->localhost:{LocalPort}" : $"{State} {Direction} session localhost:{LocalPort}->{RemoteHost}:{RemotePort}";
+            string formattedRemoteHost = RemoteHost.Replace("::ffff:", string.Empty);
+            return Direction == ConnectionDirection.In ? $"{State} {Direction} session {formattedRemoteHost}:{RemotePort}->localhost:{LocalPort}" : $"{State} {Direction} session localhost:{LocalPort}->{formattedRemoteHost}:{RemotePort}";
         }
 
         private readonly ILogger _logger;
@@ -282,7 +283,18 @@ namespace Nethermind.Network.P2P
 
         private object _sessionStateLock = new object();
         public byte P2PVersion { get; private set; }
-        public SessionState State { get; private set; }
+
+        private SessionState _state;
+        public SessionState State
+        {
+            get => _state;
+            private set {
+                _state = value;
+                BestStateReached = (SessionState)Math.Min((int)SessionState.Initialized, (int)value);
+            }
+        }
+
+        public SessionState BestStateReached { get; private set; }
 
         public void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {

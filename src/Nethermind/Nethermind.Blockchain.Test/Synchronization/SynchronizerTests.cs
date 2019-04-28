@@ -394,7 +394,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext AfterPeerIsAdded(ISyncPeer syncPeer)
             {
-                ((SyncPeerMock) syncPeer).Disconnected += (s, e) => SyncPeerPool.RemovePeer(syncPeer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
+                ((SyncPeerMock) syncPeer).Disconnected += (s, e) => SyncPeerPool.RemovePeer(syncPeer);
                 
                 _logger.Info($"PEER ADDED {syncPeer.ClientId}");
                 _peers.TryAdd(syncPeer.ClientId, syncPeer);
@@ -405,7 +405,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             public SyncingContext AfterPeerIsRemoved(ISyncPeer syncPeer)
             {
                 _peers.Remove(syncPeer.ClientId);
-                SyncPeerPool.RemovePeer(syncPeer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
+                SyncPeerPool.RemovePeer(syncPeer);
                 return this;
             }
 

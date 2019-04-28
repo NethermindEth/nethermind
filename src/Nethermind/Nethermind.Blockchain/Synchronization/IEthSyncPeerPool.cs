@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Synchronization
         
         void Refresh(PublicKey nodeId);
         
-        void RemovePeer(ISyncPeer syncPeer, EthSyncPeerPool.PeerRemoveReason reason);
+        void RemovePeer(ISyncPeer syncPeer);
         
         void AddPeer(ISyncPeer syncPeer);
         

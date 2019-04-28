@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Synchronization
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
+
             _syncPeersReport = new SyncPeersReport(this, _stats, logManager);
         }
 
@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 try
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Running refresh peer info for {peerInfo}.");
+                    if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo}.");
                     _syncPeersReport.Write();
                     var initCancelSource = _refreshCancelTokens[peerInfo.SyncPeer.Node.Id] = new CancellationTokenSource();
                     var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
@@ -82,9 +82,9 @@ namespace Nethermind.Blockchain.Synchronization
                         {
                             if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                             {
-                                if (_logger.IsTrace) _logger.Trace($"Refreshing {peerInfo} failed due to timeout: {t.Exception.Message}");
+                                if (_logger.IsTrace) _logger.Trace($"Refreshing info for {peerInfo} failed due to timeout: {t.Exception.Message}");
                             }
-                            else if (_logger.IsDebug) _logger.Debug($"Refreshing {peerInfo} failed {t.Exception}");
+                            else if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo} failed {t.Exception}");
                         }
                         else if (t.IsCanceled)
                         {
@@ -194,7 +194,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         private DateTime _lastUselessDrop = DateTime.UtcNow;
-        
+
         private void DropUselessPeers()
         {
             if (DateTime.UtcNow - _lastUselessDrop < TimeSpan.FromSeconds(30))
@@ -203,37 +203,42 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
+            if(_logger.IsTrace) _logger.Trace($"Reviewing {PeerCount} peer usefullness");
+
+            int peersDropped = 0;
             _lastUselessDrop = DateTime.UtcNow;
-            if ((decimal) PeerCount / PeerMaxCount > 0.5m)
+
+            long ourNumber = _blockTree.BestSuggested?.Number ?? 0L;
+            UInt256 ourDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero;
+            foreach (PeerInfo peerInfo in AllPeers)
             {
-                long ourNumber = _blockTree.BestSuggested?.Number ?? 0L;
-                UInt256 ourDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero;
-                foreach (PeerInfo peerInfo in AllPeers)
+                if (peerInfo.HeadNumber > ourNumber)
                 {
-                    if (peerInfo.HeadNumber > ourNumber)
-                    {
-                        // as long as we are behind we can use the stuck peers
-                        continue;
-                    }
-                    
-                    if (peerInfo.HeadNumber == 0)
-                    {
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
-                    }
-                    else if (peerInfo.HeadNumber == 1920000) // mainnet, stuck Geth nodes
-                    {
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
-                    }
-                    else if (peerInfo.HeadNumber == 7280022) // mainnet, stuck Geth nodes
-                    {
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
-                    }
-                    else if(peerInfo.HeadNumber > ourNumber + 1024L && peerInfo.TotalDifficulty < ourDifficulty)
-                    {
-                        // probably classic nodes tht remain connected after we went pass the DAO
-                        // worth to find a better way to discard them at the right time
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
-                    }
+                    // as long as we are behind we can use the stuck peers
+                    continue;
+                }
+
+                if (peerInfo.HeadNumber == 0)
+                {
+                    peersDropped++;
+                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
+                }
+                else if (peerInfo.HeadNumber == 1920000) // mainnet, stuck Geth nodes
+                {
+                    peersDropped++;
+                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
+                }
+                else if (peerInfo.HeadNumber == 7280022) // mainnet, stuck Geth nodes
+                {
+                    peersDropped++;
+                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
+                }
+                else if (peerInfo.HeadNumber > ourNumber + 1024L && peerInfo.TotalDifficulty < ourDifficulty)
+                {
+                    // probably classic nodes tht remain connected after we went pass the DAO
+                    // worth to find a better way to discard them at the right time
+                    peersDropped++;
+                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
                 }
             }
 
@@ -250,8 +255,11 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
 
+                peersDropped++;
                 worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LATENCY");
             }
+
+            if(_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
         }
 
         public async Task StopAsync()
@@ -267,7 +275,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         private ConcurrentDictionary<PeerInfo, int> _peerBadness = new ConcurrentDictionary<PeerInfo, int>();
-        
+
         public void ReportBadPeer(SyncPeerAllocation batchAssignedPeer)
         {
             if (batchAssignedPeer.CanBeReplaced)
@@ -280,7 +288,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 // fast Geth nodes send invalid nodes quite often :/
                 // so we let them deliver fast and only disconnect them when they really misbehave
-                batchAssignedPeer.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "bad node data");    
+                batchAssignedPeer.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "bad node data");
             }
         }
 
@@ -299,19 +307,19 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (firstToComplete.IsFaulted || firstToComplete == delayTask)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:s}{Environment.NewLine}{t.Exception}");
+                        if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                         syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault");
                         SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Failed : Synchronization.SyncEvent.InitFailed));
                     }
                     else if (firstToComplete.IsCanceled)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:s}{Environment.NewLine}{t.Exception}");
+                        if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                         SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Cancelled : Synchronization.SyncEvent.InitCancelled));
                         token.ThrowIfCancellationRequested();
                     }
                     else
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:s} with head block numer {getHeadHeaderTask.Result}");
+                        if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:c} with head block numer {getHeadHeaderTask.Result}");
                         if (!peerInfo.IsInitialized)
                         {
                             SyncEvent?.Invoke(
@@ -351,7 +359,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
         }
-        
+
         public IEnumerable<PeerInfo> UsefulPeers
         {
             get
@@ -372,7 +380,7 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         continue;
                     }
-                    
+
                     yield return peerInfo;
                 }
             }
@@ -404,7 +412,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void AddPeer(ISyncPeer syncPeer)
         {
-            if (_logger.IsDebug) _logger.Debug($"|NetworkTrace| Adding synchronization peer {syncPeer.Node:f}");
+            if (_logger.IsDebug) _logger.Debug($"Adding sync peer {syncPeer.Node:c}");
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - adding peer is blocked: {syncPeer.Node:s}");
@@ -413,7 +421,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_peers.ContainsKey(syncPeer.Node.Id))
             {
-                if (_logger.IsDebug) _logger.Debug($"Sync peer already in peers collection: {syncPeer.Node:c}");
+                if (_logger.IsDebug) _logger.Debug($"Sync peer {syncPeer.Node:c} already in peers collection.");
                 return;
             }
 
@@ -421,22 +429,16 @@ namespace Nethermind.Blockchain.Synchronization
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             Metrics.SyncPeers = _peers.Count;
 
-            if (_logger.IsDebug) _logger.Debug($"Adding to refresh queue");
+            if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
             _peerRefreshQueue.Add(peerInfo);
         }
 
-        public enum PeerRemoveReason
+        public void RemovePeer(ISyncPeer syncPeer)
         {
-            SyncFault,
-            SessionDisconnected,
-        }
-
-        public void RemovePeer(ISyncPeer syncPeer, PeerRemoveReason reason)
-        {
-            if (_logger.IsInfo) _logger.Info($"Removing synchronization peer {syncPeer.Node:c} - {reason}");
+            if (_logger.IsInfo) _logger.Info($"Removing sync peer {syncPeer.Node:c}");
             if (!_isStarted)
             {
-                if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - removing peer is blocked: {syncPeer.Node:s}");
+                if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - removing {syncPeer.Node:c} is blocked.");
                 return;
             }
 
@@ -451,7 +453,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (allocation.Current?.SyncPeer.Node.Id == syncPeer.Node.Id)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Requesting peer cancel with: {syncPeer.Node:s} on {allocation}");
+                    if (_logger.IsTrace) _logger.Trace($"Requesting peer cancel with {syncPeer.Node:c} on {allocation}");
                     allocation.Cancel();
                 }
             }
@@ -472,7 +474,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     continue;
                 }
-                
+
                 if (!info.IsInitialized || info.TotalDifficulty <= (_blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero))
                 {
                     continue;
@@ -527,7 +529,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 return;
             }
-            
+
             if (peerInfo == null)
             {
                 return;
@@ -551,12 +553,12 @@ namespace Nethermind.Blockchain.Synchronization
             if (newLatency / (decimal) Math.Max(1L, currentLatency) < 1m - _syncConfig.MinDiffPercentageForLatencySwitch / 100m
                 && newLatency < currentLatency - _syncConfig.MinDiffForLatencySwitch)
             {
-                if (_logger.IsInfo) _logger.Info($"Sync allocation - replacing {allocation.Current} with {peerInfo} - previous latency {currentLatency} vs new latency {newLatency}");
+                if (_logger.IsInfo) _logger.Info($"Sync allocation replaced{Environment.NewLine}  OUT: {allocation.Current}[{currentLatency}]{Environment.NewLine}  IN : {peerInfo}[{newLatency}]");
                 allocation.ReplaceCurrent(peerInfo);
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"Staying with current peer {allocation.Current} (ignoring {peerInfo}) - latency {currentLatency} vs {newLatency}");
+                if (_logger.IsTrace) _logger.Trace($"Staying with current peer {allocation.Current}[{currentLatency}] (ignoring {peerInfo}[{newLatency}])");
             }
         }
 
@@ -585,7 +587,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             return Borrow(BorrowOptions.None, description);
         }
-            
+
         public SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description)
         {
             SyncPeerAllocation allocation = new SyncPeerAllocation(description);
@@ -593,7 +595,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 allocation.CanBeReplaced = false;
             }
-            
+
             PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, "BORROW");
             if (bestPeer != null)
             {

@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             for (int i = 3; i > 0; i--)
             {
                 Assert.AreEqual(3, _pool.PeerCount, $"Remove {i}");
-                _pool.RemovePeer(syncPeers[i - 1], EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
+                _pool.RemovePeer(syncPeers[i - 1]);
             }
         }
 
@@ -196,7 +196,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Does_not_crash_when_removing_non_existing_peer()
         {
             _pool.Start();
-            _pool.RemovePeer(new SimpleSyncPeerMock(TestItem.PublicKeyA), EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
+            _pool.RemovePeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             Assert.AreEqual(0, _pool.PeerCount);
         }
 
@@ -214,7 +214,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             for (int i = 3; i > 0; i--)
             {
                 Assert.AreEqual(i, _pool.PeerCount, $"Remove {i}");
-                _pool.RemovePeer(syncPeers[i - 1], EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
+                _pool.RemovePeer(syncPeers[i - 1]);
             }
         }
 
@@ -462,7 +462,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await Task.Delay(200);
 
             var allocation = _pool.Borrow();
-            _pool.RemovePeer(peer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
+            _pool.RemovePeer(peer);
 
             Assert.Null(allocation.Current);
         }
@@ -495,7 +495,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await Task.Delay(200);
 
             var allocation = _pool.Borrow();
-            _pool.RemovePeer(peer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
+            _pool.RemovePeer(peer);
             await Task.Delay(1000);
 
             Assert.AreEqual(null, allocation.Current);
@@ -513,7 +513,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await Task.Delay(200);
 
             var allocation = _pool.Borrow();
-            _pool.RemovePeer(peer, EthSyncPeerPool.PeerRemoveReason.SessionDisconnected);
+            _pool.RemovePeer(peer);
             await Task.Delay(1000);
 
             Assert.AreEqual(null, allocation.Current);

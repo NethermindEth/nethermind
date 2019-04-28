@@ -108,7 +108,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Node sync parallelism: {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests}).");
+            if (_logger.IsInfo) _logger.Info($"Node sync parallelism ({_semaphore.CurrentCount}) - {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests}).");
 
             if (difference > 0)
             {
@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     await Task.Delay(50);
                     _semaphore.Release();
-                    if (_logger.IsInfo) _logger.Info($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_nodeDataFeed.TotalNodesPending} pending nodes");
+                    if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_nodeDataFeed.TotalNodesPending} pending nodes");
                 }
             } while (_pendingRequests != 0);
 

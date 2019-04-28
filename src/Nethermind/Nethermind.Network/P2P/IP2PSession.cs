@@ -31,6 +31,7 @@ namespace Nethermind.Network.P2P
     {
         byte P2PVersion { get; }
         SessionState State { get; }
+        SessionState BestStateReached { get; }
         bool IsClosing { get; }
         PublicKey RemoteNodeId { get; set; }
         PublicKey ObsoleteRemoteNodeId { get; set; }

@@ -194,7 +194,9 @@ namespace Nethermind.Blockchain.Synchronization
                     if (t.IsFaulted)
                     {
                         _sinceLastTimeout = 0;
-                        if (bodiesTask.Exception?.InnerExceptions.Any(x => x.InnerException is TimeoutException) ?? false)
+                        if (t.Exception?.InnerException is TimeoutException
+                            || (t.Exception?.InnerExceptions.Any(x => x is TimeoutException) ?? false)
+                            || (t.Exception?.InnerExceptions.Any(x => x.InnerException is TimeoutException) ?? false))
                         {
                             if (_logger.IsTrace) _logger.Error("Failed to retrieve bodies when synchronizing (Timeout)", bodiesTask.Exception);
                             _syncBatchSize.Shrink();
@@ -212,7 +214,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     return blocksSynced;
                 }
-                
+
                 Block[] blocks = bodiesTask.Result;
 
                 _sinceLastTimeout++;
@@ -278,7 +280,8 @@ namespace Nethermind.Blockchain.Synchronization
                 if (t.IsFaulted)
                 {
                     _sinceLastTimeout = 0;
-                    if ((t.Exception?.InnerExceptions.Any(x => x is TimeoutException) ?? false)
+                    if (t.Exception?.InnerException is TimeoutException
+                        || (t.Exception?.InnerExceptions.Any(x => x is TimeoutException) ?? false)
                         || (t.Exception?.InnerExceptions.Any(x => x.InnerException is TimeoutException) ?? false))
                     {
                         _syncBatchSize.Shrink();

@@ -33,7 +33,7 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test.P2P
 {
     [TestFixture]
-    public class P2PSessionTests
+    public class SessionTests
     {
         private IChannel _channel;
         private IChannelHandlerContext _channelHandlerContext;
@@ -193,6 +193,17 @@ namespace Nethermind.Network.Test.P2P
             Assert.False(session.IsClosing);
             session.Init(5, _channelHandlerContext, _packetSender);
             Assert.False(session.IsClosing);
+        }
+        
+        [Test]
+        public void Best_state_reached_is_correct()
+        {
+            Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
+            Assert.AreEqual(SessionState.New, session.BestStateReached);
+            session.Handshake(TestItem.PublicKeyA);
+            Assert.AreEqual(SessionState.HandshakeComplete, session.BestStateReached);
+            session.Init(5, _channelHandlerContext, _packetSender);
+            Assert.AreEqual(SessionState.Initialized, session.BestStateReached);
         }
 
         [Test]

@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISynchronizer _synchronizer;
         private object _dummyValue = new object();
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
-        
+
         public SyncServer(ISnapshotableDb stateDb, ISnapshotableDb codeDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ILogManager logManager)
         {
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
@@ -52,10 +52,10 @@ namespace Nethermind.Blockchain.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
+
             _blockTree.NewHeadBlock += OnNewHeadBlock;
         }
-        
+
         public int ChainId => _blockTree.ChainId;
         public BlockHeader Genesis => _blockTree.Genesis;
         public BlockHeader Head => _blockTree.Head;
@@ -92,20 +92,20 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_recentlySuggested.Get(block.Hash) != null) return;
                 _recentlySuggested.Set(block.Hash, _dummyValue);
             }
-            
+
             if (block.Number > _blockTree.BestKnownNumber + 8)
             {
                 // ignore blocks when syncing in a simple non-locking way
                 _synchronizer.RequestSynchronization(SyncTriggerType.NewDistantBlock);
                 return;
             }
-            
+
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.ToString(Block.Format.Short)}) from {nodeWhoSentTheBlock:c}");
 
             if (!_sealValidator.ValidateSeal(block.Header)) throw new EthSynchronizationException("Peer sent a block with an invalid seal");
 
             if (block.Number <= _blockTree.BestKnownNumber + 1)
-            {   
+            {
                 if (_logger.IsInfo)
                 {
                     string authorString = block.Author == null ? string.Empty : "sealed by " + (KnownAddresses.GoerliValidators.ContainsKey(block.Author) ? KnownAddresses.GoerliValidators[block.Author] : block.Author?.ToString());
@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public void HintBlock(Keccak hash, long number, Node node)
-        {         
+        {
             if (!_pool.TryFind(node.Id, out PeerInfo peerInfo))
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a block hint from an unknown {node:c}, ignoring");
@@ -196,9 +196,19 @@ namespace Nethermind.Blockchain.Synchronization
             return _blockTree.FindBlock(hash, false);
         }
 
+        public BlockHeader FindHeader(Keccak hash)
+        {
+            return _blockTree.FindHeader(hash, false);
+        }
+
         public Block Find(long number)
         {
             return _blockTree.Head.Number >= number ? _blockTree.FindBlock(number) : null;
+        }
+
+        public BlockHeader FindHeader(long number)
+        {
+            return _blockTree.FindHeader(number);
         }
 
         public Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse)

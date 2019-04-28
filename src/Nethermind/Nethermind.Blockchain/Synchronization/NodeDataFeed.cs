@@ -48,8 +48,7 @@ namespace Nethermind.Blockchain.Synchronization
         private StateSyncBatch _emptyBatch = new StateSyncBatch {RequestedNodes = new StateSyncItem[0]};
 
         private Keccak _fastSyncProgressKey = Keccak.Compute("fast_sync_progress");
-        private DateTime _lastReportTime = DateTime.MinValue;
-        private long _lastRequestedNodesCount;
+        private (DateTime small, DateTime full) _lastReportTime = (DateTime.MinValue, DateTime.MinValue);
         private long _lastSavedNodesCount;
         private long _consumedNodesCount;
         private long _savedStorageCount;
@@ -294,7 +293,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (syncItem.IsRoot)
             {
-                if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} {syncItem.Level}");
+                if (_logger.IsWarn) _logger.Warn($"DIAG: Saving root {syncItem.Hash} {syncItem.Level}");
 
                 lock (_dependencies)
                 {
@@ -572,17 +571,20 @@ namespace Nethermind.Blockchain.Synchronization
                             ? NodeDataHandlerResult.BadQuality
                             : NodeDataHandlerResult.OK;
 
-                    if (DateTime.UtcNow - _lastReportTime > TimeSpan.FromSeconds(1))
+                    if (DateTime.UtcNow - _lastReportTime.small > TimeSpan.FromSeconds(1))
                     {
-                        decimal requestedNodesPerSecond = 1000m * (_requestedNodesCount - _lastRequestedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime).TotalMilliseconds;
-                        decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime).TotalMilliseconds;
+                        decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime.small).TotalMilliseconds;
                         _lastSavedNodesCount = _savedNodesCount;
-                        _lastRequestedNodesCount = _requestedNodesCount;
-                        _lastReportTime = DateTime.UtcNow;
-                        if (_logger.IsInfo) _logger.Info($"SNPS: {savedNodesPerSecond,6:F0} | RNPS: {requestedNodesPerSecond,6:F0} | Saved nodes {_savedNodesCount} / requested {_requestedNodesCount} ({(decimal) _savedNodesCount / _requestedNodesCount:P2}), saved accounts {_savedAccounts}, size: {(decimal)_dataSize / 1000 / 1000:F2}MB, enqueued nodes {Stream0.Count:D5}|{Stream1.Count:D5}|{Stream2.Count:D5}");
-                        if (_logger.IsInfo) _logger.Info($"AVTIH: {_averageTimeInHandler:F2}ms | P: {_pendingRequests.Count} | Request results - OK: {(decimal) _okCount / TotalRequestsCount:p2}, Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2}, BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2}, InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2}, NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
-                        if (_logger.IsTrace) _logger.Trace($"Requested {_requestedNodesCount}, consumed {_consumedNodesCount}, missed {_requestedNodesCount - _consumedNodesCount}, {_savedCode} contracts, {_savedStateCount - _savedAccounts} states, {_savedStorageCount} storage, DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} cached({_checkWasCached}+{_checkWasInDependencies})");
-                        if (_logger.IsTrace) _logger.Trace($"Consume : {(decimal) _consumedNodesCount / _requestedNodesCount:p2}, Save : {(decimal) _savedNodesCount / _requestedNodesCount:p2}, DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2}");
+                        if (_logger.IsInfo) _logger.Info($"State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | SNPS: {savedNodesPerSecond,6:F0} | P: {_pendingRequests.Count} | accounts {_savedAccounts} | enqueued nodes {TotalNodesPending:D6} | AVTIH {_averageTimeInHandler:f2}");
+                        if (DateTime.UtcNow - _lastReportTime.full > TimeSpan.FromSeconds(10))
+                        {
+                            long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;
+                            if (_logger.IsInfo) _logger.Info($"OK {(decimal) _okCount / TotalRequestsCount:p2} | Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
+                            if (_logger.IsInfo) _logger.Info($"Consumed {(decimal) _consumedNodesCount / _requestedNodesCount:p2} | Saved {(decimal) _savedNodesCount / _requestedNodesCount:p2} | DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2} | DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} | Cached {_checkWasCached/allChecks:P2} + {_checkWasInDependencies/allChecks:P2}");
+                            _lastReportTime.full = DateTime.UtcNow;
+                        }
+                        
+                        _lastReportTime.small = DateTime.UtcNow;
                     }
 
                     long total = _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
@@ -592,6 +594,13 @@ namespace Nethermind.Blockchain.Synchronization
                         if (_logger.IsTrace) _logger.Trace($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
                     }
 
+
+                    if (_handleWatch.ElapsedMilliseconds > 250)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Handle watch {_handleWatch.ElapsedMilliseconds}, DB reads {_dbChecks - _lastDbReads}, ratio {(decimal) _handleWatch.ElapsedMilliseconds / Math.Max(1, _dbChecks - _lastDbReads)}");
+                    }
+
+                    _lastDbReads = _dbChecks;
                     _averageTimeInHandler = (_averageTimeInHandler * (ProcessedRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / ProcessedRequestsCount;
                     return (result, nonEmptyResponses);
                 }
@@ -606,6 +615,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
+        private long _lastDbReads;
         private decimal _averageTimeInHandler;
 
         private class DependentItemComparer : IEqualityComparer<DependentItem>
@@ -688,8 +698,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void SetNewStateRoot(Keccak stateRoot)
         {
-            _lastReportTime = DateTime.UtcNow;
-            _lastRequestedNodesCount = _requestedNodesCount;
+            _lastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
             _lastSavedNodesCount = _savedNodesCount;
             if (_rootNode != stateRoot)
             {

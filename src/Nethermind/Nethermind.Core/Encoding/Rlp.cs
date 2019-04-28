@@ -1218,15 +1218,14 @@ namespace Nethermind.Core.Encoding
                 return System.Text.Encoding.UTF8.GetString(bytes);
             }
 
-            public byte DecodeNibble()
-            {
-                return ReadByte();
-            }
-
             public byte DecodeByte()
             {
                 Span<byte> bytes = DecodeByteArraySpan();
-                return bytes.Length == 0 ? (byte) 0 : bytes[0];
+                return bytes.Length == 0 ? (byte)0 :
+                    bytes.Length == 1 ? bytes[0] == (byte)128
+                        ? (byte)0
+                        : bytes[0]
+                    : bytes[1];
             }
 
             public int DecodeInt()
