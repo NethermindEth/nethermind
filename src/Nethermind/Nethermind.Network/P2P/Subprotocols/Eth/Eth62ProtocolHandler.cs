@@ -441,7 +441,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             if (_headersRequests.IsAddingCompleted || _isDisposed)
             {
-                throw new EthSynchronizationException("Session disposed");
+                throw new TimeoutException("Session disposed");
             }
             
             if (Logger.IsTrace)
@@ -487,7 +487,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             if (_headersRequests.IsAddingCompleted || _isDisposed)
             {
-                throw new EthSynchronizationException("Session disposed");
+                throw new TimeoutException("Session disposed");
             }
             
             if (Logger.IsTrace)
