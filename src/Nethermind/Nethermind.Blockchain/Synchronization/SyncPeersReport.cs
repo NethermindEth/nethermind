@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (timeSinceLastEntry > _fullPeerListInterval)
             {
                 _timeOfTheLastFullPeerListLogEntry = DateTime.UtcNow;
-                if (_logger.IsInfo) _logger.Info($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
+                if (_logger.IsInfo) _logger.Info($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
                 foreach (PeerInfo peerInfo in _peerPool.AllPeers)
                 {
                     string prefix = peerInfo.IsAllocated ? " * " : "   ";

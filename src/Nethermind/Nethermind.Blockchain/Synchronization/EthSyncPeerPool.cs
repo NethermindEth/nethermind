@@ -412,7 +412,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void AddPeer(ISyncPeer syncPeer)
         {
-            if (_logger.IsInfo) _logger.Info($"Adding sync peer {syncPeer.Node:c}");
+            if (_logger.IsDebug) _logger.Debug($"Adding sync peer {syncPeer.Node:c}");
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - adding peer is blocked: {syncPeer.Node:s}");
@@ -435,7 +435,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void RemovePeer(ISyncPeer syncPeer)
         {
-            if (_logger.IsInfo) _logger.Info($"Removing sync peer {syncPeer.Node:c}");
+            if (_logger.IsDebug) _logger.Debug($"Removing sync peer {syncPeer.Node:c}");
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - removing {syncPeer.Node:c} is blocked.");
