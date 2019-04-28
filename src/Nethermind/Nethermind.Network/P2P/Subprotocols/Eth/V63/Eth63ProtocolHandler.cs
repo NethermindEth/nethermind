@@ -63,18 +63,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
+                    Interlocked.Increment(ref _counter);
+                    Logger.Warn($"{_counter:D5} GetReceipts from {Node:s}");
                     Metrics.Eth63GetReceiptsReceived++;
                     Handle(Deserialize<GetReceiptsMessage>(message.Data));
                     break;
                 case Eth63MessageCode.Receipts:
+                    Interlocked.Increment(ref _counter);
+                    Logger.Warn($"{_counter:D5} Receipts from {Node:s}");
                     Metrics.Eth63ReceiptsReceived++;
                     Handle(Deserialize<ReceiptsMessage>(message.Data));
                     break;
                 case Eth63MessageCode.GetNodeData:
+                    Interlocked.Increment(ref _counter);
+                    Logger.Warn($"{_counter:D5} GetNodeData from {Node:s}");
                     Metrics.Eth63GetNodeDataReceived++;
                     Handle(Deserialize<GetNodeDataMessage>(message.Data));
                     break;
                 case Eth63MessageCode.NodeData:
+                    Interlocked.Increment(ref _counter);
+                    Logger.Warn($"{_counter:D5} NodeData from {Node:s}");
                     Metrics.Eth63NodeDataReceived++;
                     Handle(Deserialize<NodeDataMessage>(message.Data));
                     break;

@@ -79,10 +79,6 @@ namespace Nethermind.Network.P2P
             }); 
         }
 
-        public void Close()
-        {
-        }
-
         public byte ProtocolVersion { get; private set; } = 5;
 
         public string ProtocolCode => Protocol.P2P;

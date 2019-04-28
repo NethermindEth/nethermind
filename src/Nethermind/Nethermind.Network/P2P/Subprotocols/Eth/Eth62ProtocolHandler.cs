@@ -140,6 +140,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private Random _random = new Random();
 
+        protected long _counter = 0;
+        
         public virtual void HandleMessage(Packet message)
         {
             if (Logger.IsTrace)
@@ -164,10 +166,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Handle(statusMessage);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
+                    Interlocked.Increment(ref _counter);
+                    Logger.Warn($"{_counter:D5} NewBlockHashes from {Node:s}");
                     Metrics.Eth62NewBlockHashesReceived++;
                     Handle(Deserialize<NewBlockHashesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.Transactions:
+                    Interlocked.Increment(ref _counter);
                     Metrics.Eth62TransactionsReceived++;
                     if (!_isDowngradedDueToTxFlooding || 10 > _random.Next(0, 99)) // TODO: disable that when IsMining is set to true
                     {
@@ -176,22 +181,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
+                    Interlocked.Increment(ref _counter);
+                    Logger.Warn($"{_counter:D5} GetBlockHeaders from {Node:s}");
                     Metrics.Eth62GetBlockHeadersReceived++;
                     Handle(Deserialize<GetBlockHeadersMessage>(message.Data));
                     break;
                 case Eth62MessageCode.BlockHeaders:
+                    Interlocked.Increment(ref _counter);
+                    Logger.Warn($"{_counter:D5} BlockHeaders from {Node:s}");
                     Metrics.Eth62BlockHeadersReceived++;
                     Handle(Deserialize<BlockHeadersMessage>(message.Data));
                     break;
                 case Eth62MessageCode.GetBlockBodies:
+                    Interlocked.Increment(ref _counter);
+                    Logger.Warn($"{_counter:D5} GetBlockBodes from {Node:s}");
                     Metrics.Eth62GetBlockBodiesReceived++;
                     Handle(Deserialize<GetBlockBodiesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.BlockBodies:
+                    Interlocked.Increment(ref _counter);
+                    Logger.Warn($"{_counter:D5} BlockBodies from {Node:s}");
                     Metrics.Eth62BlockBodiesReceived++;
                     Handle(Deserialize<BlockBodiesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.NewBlock:
+                    Interlocked.Increment(ref _counter);
+                    Logger.Warn($"{_counter:D5} NewBlock from {Node:s}");
                     Metrics.Eth62NewBlockReceived++;
                     Handle(Deserialize<NewBlockMessage>(message.Data));
                     break;
