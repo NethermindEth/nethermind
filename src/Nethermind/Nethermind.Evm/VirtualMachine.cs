@@ -42,15 +42,14 @@ namespace Nethermind.Evm
         public const int MaxCallDepth = 1024;
         public const int MaxStackSize = 1025;
 
-        private static readonly BigInteger P255Int = BigInteger.Pow(2, 255);
-        private static readonly BigInteger P256Int = P255Int * 2;
-        private static readonly BigInteger P255 = P255Int;
-        private static readonly BigInteger BigInt256 = 256;
-        public static readonly BigInteger BigInt32 = 32;
-        public static readonly UInt256 BigIntMaxInt = int.MaxValue;
-        private static readonly byte[] EmptyBytes = new byte[0];
+        private readonly BigInteger P255Int = BigInteger.Pow(2, 255);
+        private readonly BigInteger P256Int = BigInteger.Pow(2, 256);
+        private BigInteger P255 => P255Int;
+        private readonly BigInteger BigInt256 = 256;
+        public readonly BigInteger BigInt32 = 32;
+        public readonly UInt256 BigIntMaxInt = int.MaxValue;
 
-        internal static readonly byte[] BytesOne32 =
+        internal readonly byte[] BytesOne32 =
         {
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -58,9 +57,9 @@ namespace Nethermind.Evm
             0, 0, 0, 0, 0, 0, 0, 1
         };
 
-        internal static readonly byte[] BytesZero = {0};
+        internal readonly byte[] BytesZero = {0};
 
-        internal static readonly byte[] BytesZero32 =
+        internal readonly byte[] BytesZero32 =
         {
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -76,7 +75,7 @@ namespace Nethermind.Evm
         private readonly IStorageProvider _storage;
         private Address _parityTouchBugAccount;
         private Dictionary<Address, IPrecompiledContract> _precompiles;
-        private byte[] _returnDataBuffer = EmptyBytes;
+        private byte[] _returnDataBuffer = new byte[0];
         private ITxTracer _txTracer;
 
         public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogManager logManager)
@@ -420,7 +419,7 @@ namespace Nethermind.Evm
             }
             catch (Exception)
             {
-                CallResult callResult = new CallResult(EmptyBytes, false);
+                CallResult callResult = new CallResult(new byte[0], false);
                 return callResult;
             }
         }
@@ -2094,7 +2093,7 @@ namespace Nethermind.Evm
                         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
                         {
                             // TODO: need a test for this
-                            _returnDataBuffer = EmptyBytes;
+                            _returnDataBuffer = new byte[0];
                             PushZero(bytesOnStack);
                             break;
                         }
@@ -2285,7 +2284,7 @@ namespace Nethermind.Evm
                         if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
                         {
                             RefundGas(gasLimitUl, ref gasAvailable);
-                            _returnDataBuffer = EmptyBytes;
+                            _returnDataBuffer = new byte[0];
                             PushZero(bytesOnStack);
                             if (isTrace) _logger.Trace("FAIL - call depth");
                             break;
