@@ -32,8 +32,6 @@ namespace Nethermind.Evm
         public const int WordSize = 32;
         private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Shared;
 
-        private static readonly byte[] EmptyBytes = new byte[0];
-
         private int _lastZeroedSize;
 
         private byte[] _memory;
@@ -132,7 +130,7 @@ namespace Nethermind.Evm
         {
             if (length.IsZero)
             {
-                return EmptyBytes;
+                return new byte[0];
             }
 
             CheckMemoryAccessViolation(ref location, length);
@@ -145,7 +143,7 @@ namespace Nethermind.Evm
         {
             if (length.IsZero)
             {
-                return EmptyBytes;
+                return new byte[0];
             }
 
             if (location > long.MaxValue)

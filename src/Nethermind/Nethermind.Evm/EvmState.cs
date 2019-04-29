@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -32,12 +33,13 @@ namespace Nethermind.Evm
         {
             private readonly int _capacity;
 
-            public StackPool(int capacity = VirtualMachine.MaxCallDepth * 2) // TODO: we have wrong call depth calculation somewhere
+            // TODO: we have wrong call depth calculation somewhere
+            public StackPool(int capacity = VirtualMachine.MaxCallDepth * 2)
             {
                 _capacity = capacity;
             }
 
-            private readonly Stack<byte[]> _bytesOnStackPool = new Stack<byte[]>();
+            private readonly ConcurrentStack<byte[]> _bytesOnStackPool = new ConcurrentStack<byte[]>();
 
             private int _bytesOnStackCreated;
 
@@ -50,7 +52,7 @@ namespace Nethermind.Evm
             {
                 if (_bytesOnStackPool.Count == 0)
                 {
-                    _bytesOnStackCreated++;
+                    Interlocked.Increment(ref _bytesOnStackCreated);
                     if (_bytesOnStackCreated > _capacity)
                     {
                         throw new Exception();
@@ -59,11 +61,12 @@ namespace Nethermind.Evm
                     _bytesOnStackPool.Push(new byte[VirtualMachine.MaxStackSize * 32]);
                 }
 
-                return _bytesOnStackPool.Pop();
+                _bytesOnStackPool.TryPop(out byte[] result);
+                return result;
             }
         }
 
-        private static readonly StackPool _stackPool = new StackPool();
+        private readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>();
 
         public byte[] BytesOnStack;
 
@@ -132,7 +135,7 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            if (BytesOnStack != null) _stackPool.ReturnBytesOnStack(BytesOnStack);
+            if (BytesOnStack != null) _stackPool.Value.ReturnBytesOnStack(BytesOnStack);
             Memory?.Dispose();
         }
 
@@ -141,7 +144,7 @@ namespace Nethermind.Evm
             if (BytesOnStack == null)
             {
                 Memory = new EvmPooledMemory();
-                BytesOnStack = _stackPool.RentBytesOnStack();
+                BytesOnStack = _stackPool.Value.RentBytesOnStack();
             }
         }
     }
