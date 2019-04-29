@@ -1,5 +1,5 @@
 RELEASE_DIRECTORY=nethermind-packages
-LAUNCHER_PATH=Nethermind.Launcher
+LAUNCHER_PATH=nethermind.launcher
 APP_NAME=Nethermind.Launcher
 LIN_RELEASE=nethermind-lin-x64
 OSX_RELEASE=nethermind-osx-x64
