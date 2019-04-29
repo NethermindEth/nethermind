@@ -16,14 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
-
 namespace Nethermind.Core.Specs
 {
     public class SturebySpecProvider : ISpecProvider
     {
-        public IReleaseSpec CurrentSpec => Constantinople.Instance;
-
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)

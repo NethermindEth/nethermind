@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
-
 namespace Nethermind.Core.Specs
 {
     public class GoerliSpecProvider : ISpecProvider
@@ -27,8 +25,6 @@ namespace Nethermind.Core.Specs
         private GoerliSpecProvider()
         {
         }
-
-        public IReleaseSpec CurrentSpec => ConstantinopleFix.Instance;
 
         public IReleaseSpec GenesisSpec => ConstantinopleFix.Instance;
 

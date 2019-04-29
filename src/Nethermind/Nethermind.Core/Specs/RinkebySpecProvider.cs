@@ -16,17 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
-using System;
-using System.Numerics;
-using Nethermind.Dirichlet.Numerics;
-
 namespace Nethermind.Core.Specs
 {
     public class RinkebySpecProvider : ISpecProvider
     {
-        public IReleaseSpec CurrentSpec => Byzantium.Instance;
-
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)

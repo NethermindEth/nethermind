@@ -16,14 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
-
 namespace Nethermind.Core.Specs
 {
     public class OlympicSpecProvider : ISpecProvider
     {
-        public IReleaseSpec CurrentSpec => Olympic.Instance;
-
         public IReleaseSpec GenesisSpec => Olympic.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)

@@ -31,13 +31,13 @@ namespace Nethermind.Runner.Runners
         private readonly IBlockchainProcessor _processor;
 
         private object _lock = new object();
-        
+
         public OneTimeProcessor(IReadOnlyDbProvider readOnlyDbProvider, IBlockchainProcessor processor)
         {
             _readOnlyDbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         }
-            
+
         public void Start()
         {
             _processor.Start();
@@ -58,6 +58,10 @@ namespace Nethermind.Runner.Runners
             }
         }
 
-        public event EventHandler ProcessingQueueEmpty;
+        public event EventHandler ProcessingQueueEmpty
+        {
+            add { }
+            remove { }
+        }
     }
 }

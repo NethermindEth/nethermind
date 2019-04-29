@@ -20,8 +20,6 @@ namespace Nethermind.Core.Specs
 {
     public class MordenSpecProvider : ISpecProvider
     {
-        public IReleaseSpec CurrentSpec => SpuriousDragon.Instance;
-
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)

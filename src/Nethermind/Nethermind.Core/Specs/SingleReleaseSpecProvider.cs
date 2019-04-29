@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
-
 namespace Nethermind.Core.Specs
 {
     public class SingleReleaseSpecProvider : ISpecProvider
@@ -35,8 +33,6 @@ namespace Nethermind.Core.Specs
                 DaoBlockNumber = 0;
             }
         }
-
-        public IReleaseSpec CurrentSpec => _releaseSpec;
 
         public IReleaseSpec GenesisSpec => _releaseSpec;
 

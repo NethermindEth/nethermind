@@ -42,8 +42,6 @@ namespace Nethermind.Core.Specs
             }
         }
 
-        public IReleaseSpec CurrentSpec => _transitions.Last().Release;
-
         public IReleaseSpec GenesisSpec => _transitions.First().Release;
         
         public IReleaseSpec GetSpec(long blockNumber)
