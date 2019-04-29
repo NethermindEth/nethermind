@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Test
 
                 ManualResetEventSlim blockProcessedEvent = new ManualResetEventSlim(false);
                 blockchainProcessor.ProcessingQueueEmpty += (sender, args) => blockProcessedEvent.Set();
-                blockchainProcessor.SuggestBlock(block.Hash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
+                blockchainProcessor.SuggestBlock(block, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
                 blockProcessedEvent.Wait(1000);
 
                 Tracer tracer = new Tracer(blockchainProcessor, receiptStorage, blockTree, new MemDb());

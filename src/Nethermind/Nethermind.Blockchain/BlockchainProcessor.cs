@@ -87,12 +87,6 @@ namespace Nethermind.Blockchain
             SuggestBlock(blockEventArgs.Block, options);
         }
 
-        public void SuggestBlock(Keccak blockHash, ProcessingOptions processingOptions)
-        {
-            Block block = _blockTree.FindBlock(blockHash, false);
-            SuggestBlock(block, processingOptions);
-        }
-
         public void SuggestBlock(Block block, ProcessingOptions processingOptions)
         {
             if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");

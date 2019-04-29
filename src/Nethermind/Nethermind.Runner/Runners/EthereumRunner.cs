@@ -68,8 +68,6 @@ using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Runner.Config;
@@ -78,8 +76,6 @@ using Nethermind.Store;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
 using ISyncConfig = Nethermind.Blockchain.ISyncConfig;
-using PingMessageSerializer = Nethermind.Network.P2P.PingMessageSerializer;
-using PongMessageSerializer = Nethermind.Network.P2P.PongMessageSerializer;
 
 namespace Nethermind.Runner.Runners
 {
@@ -366,62 +362,6 @@ namespace Nethermind.Runner.Runners
 
             _chainSpec = loader.LoadFromFile(_initConfig.ChainSpecPath);
             _chainSpec.Bootnodes = _chainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_nodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
-        }
-
-        [Todo("This will be replaced with a bigger rewrite of state management so we can create a state at will")]
-        private class AlternativeChain
-        {
-            public IBlockchainProcessor Processor { get; }
-            public IStateProvider StateProvider { get; }
-
-            public AlternativeChain(
-                IBlockTree blockTree,
-                IBlockValidator blockValidator,
-                IRewardCalculator rewardCalculator,
-                ISpecProvider specProvider,
-                IReadOnlyDbProvider dbProvider,
-                IBlockDataRecoveryStep recoveryStep,
-                ILogManager logManager,
-                ITxPool customTxPool,
-                IReceiptStorage receiptStorage)
-            {
-                StateProvider = new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, logManager);
-                StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, StateProvider, logManager);
-                IBlockTree readOnlyTree = new ReadOnlyBlockTree(blockTree);
-                BlockhashProvider blockhashProvider = new BlockhashProvider(readOnlyTree);
-                VirtualMachine virtualMachine = new VirtualMachine(StateProvider, storageProvider, blockhashProvider, logManager);
-                ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, StateProvider, storageProvider, virtualMachine, logManager);
-                ITxPool txPool = customTxPool;
-                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, storageProvider, txPool, receiptStorage, new SyncConfig(), logManager);
-                Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false);
-            }
-        }
-
-        private class RpcState
-        {
-            public IStateReader StateReader;
-            public IStateProvider StateProvider;
-            public IStorageProvider StorageProvider;
-            public IBlockhashProvider BlockhashProvider;
-            public IVirtualMachine VirtualMachine;
-            public TransactionProcessor TransactionProcessor;
-            public IBlockTree BlockTree;
-
-            public RpcState(IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyDbProvider readOnlyDbProvider, ILogManager logManager)
-            {
-                ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
-                IDb codeDb = readOnlyDbProvider.CodeDb;
-
-                StateReader = new StateReader(stateDb, codeDb, logManager);
-                StateProvider = new StateProvider(stateDb, codeDb, logManager);
-                StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
-
-                BlockTree = new ReadOnlyBlockTree(blockTree);
-                BlockhashProvider = new BlockhashProvider(BlockTree);
-
-                VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, logManager);
-                TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider, VirtualMachine, logManager);
-            }
         }
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
