@@ -558,7 +558,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (newLatency / (decimal) Math.Max(1L, currentLatency) < 1m - _syncConfig.MinDiffPercentageForLatencySwitch / 100m
                 && newLatency < currentLatency - _syncConfig.MinDiffForLatencySwitch)
             {
-                if (_logger.IsInfo) _logger.Info($"Sync allocation replaced{Environment.NewLine}  OUT: {allocation.Current}[{currentLatency}]{Environment.NewLine}  IN : {peerInfo}[{newLatency}]");
+                if (_logger.IsInfo) _logger.Info($"Sync peer substitution{Environment.NewLine}  OUT: {allocation.Current}[{currentLatency}]{Environment.NewLine}  IN : {peerInfo}[{newLatency}]");
                 allocation.ReplaceCurrent(peerInfo);
             }
             else

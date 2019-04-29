@@ -399,7 +399,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return 0;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
+            if (_logger.IsInfo) _logger.Info($"Syncing node data at block {bestSuggested.ToString(BlockHeader.Format.Short)} | state root: {bestSuggested.StateRoot}");
             return await _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.StateRoot);
         }
         
