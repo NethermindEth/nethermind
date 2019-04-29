@@ -219,12 +219,14 @@ namespace Nethermind.Evm
             }
         }
 
+        private static UInt256 MaxInt32 = (UInt256)int.MaxValue;
+        
         public static long Div32Ceiling(UInt256 length)
         {
             UInt256 rem = length & 31;
             UInt256 result = length >> 5;
             UInt256 withCeiling = result + (rem.IsZero ? 0UL : 1UL);
-            if (withCeiling > VirtualMachine.BigIntMaxInt)
+            if (withCeiling > MaxInt32)
             {
                 Metrics.EvmExceptions++;
                 throw new OutOfGasException();

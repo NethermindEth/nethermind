@@ -20,6 +20,7 @@ using System;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -41,6 +42,8 @@ namespace Nethermind.Evm.Precompiles
             return 0L;
         }
 
+        private static UInt256 MaxInt32 = (UInt256)int.MaxValue;
+        
         public long DataGasCost(byte[] inputData)
         {
             try
@@ -53,7 +56,7 @@ namespace Nethermind.Evm.Precompiles
 
                 byte[] expSignificantBytes = inputData.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)BigInteger.Min(expLength, 32));
 
-                BigInteger lengthOver32 = expLength <= VirtualMachine.BigInt32 ? 0 : expLength - 32;
+                BigInteger lengthOver32 = expLength <= MaxInt32 ? 0 : expLength - 32;
                 BigInteger adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
                 BigInteger gas = complexity * BigInteger.Max(adjusted, BigInteger.One) / 20;
                 return (long)gas;
