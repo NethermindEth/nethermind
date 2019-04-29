@@ -72,7 +72,6 @@ namespace Nethermind.Blockchain.Synchronization
                 try
                 {
                     if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo}.");
-                    _syncPeersReport.Write();
                     var initCancelSource = _refreshCancelTokens[peerInfo.SyncPeer.Node.Id] = new CancellationTokenSource();
                     var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
                     await RefreshPeerInfo(peerInfo, linkedSource.Token).ContinueWith(t =>
@@ -179,6 +178,7 @@ namespace Nethermind.Blockchain.Synchronization
                     _upgradeTimer.Enabled = false;
                     UpdateAllocations("TIMER");
                     DropUselessPeers();
+                    DisplayPeersReport();
                 }
                 catch (Exception exception)
                 {
@@ -191,6 +191,11 @@ namespace Nethermind.Blockchain.Synchronization
             };
 
             _upgradeTimer.Start();
+        }
+
+        private void DisplayPeersReport()
+        {
+            _syncPeersReport.Write();
         }
 
         private DateTime _lastUselessDrop = DateTime.UtcNow;
