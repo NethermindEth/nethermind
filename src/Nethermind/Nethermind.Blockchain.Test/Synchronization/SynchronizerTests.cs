@@ -525,6 +525,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Wait()
                 .After(() => peerA.AddBlocksUpTo(2))
                 .AfterNewBlockMessage(peerA.HeadBlock, peerA)
+                .Wait()
                 .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
         }
         
@@ -790,6 +791,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Wait()
                 .After(() => peerB.AddHighDifficultyBlocksUpTo(6, 0, 1))
                 .AfterNewBlockMessage(peerB.HeadBlock, peerB)
+                .Wait()
                 .BestSuggested.HeaderIs(peerB.HeadHeader).Stop();
         }
 
