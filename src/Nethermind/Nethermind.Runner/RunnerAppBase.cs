@@ -110,7 +110,7 @@ namespace Nethermind.Runner
 
         private void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
         {
-            _cancelKeySource.SetResult(null);
+            _cancelKeySource?.SetResult(null);
             e.Cancel = false;
         }
 

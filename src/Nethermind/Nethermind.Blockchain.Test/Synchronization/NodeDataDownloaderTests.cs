@@ -365,8 +365,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             _isPeerAsleep = false;
             _logger = new ConsoleAsyncLogger(LogLevel.Debug);
-            _logManager = new OneLoggerLogManager(_logger);
-//            _logManager = LimboLogs.Instance;
+//            _logManager = new OneLoggerLogManager(_logger);
+            _logManager = LimboLogs.Instance;
 
             _remoteDb = new MemDb();
             _localDb = new MemDb();
