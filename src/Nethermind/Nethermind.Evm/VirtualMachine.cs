@@ -47,15 +47,6 @@ namespace Nethermind.Evm
         private BigInteger P255 => P255Int;
         private readonly BigInteger BigInt256 = 256;
         public readonly BigInteger BigInt32 = 32;
-        public readonly UInt256 BigIntMaxInt = int.MaxValue;
-
-        internal readonly byte[] BytesOne32 =
-        {
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 1
-        };
 
         internal readonly byte[] BytesZero = {0};
 

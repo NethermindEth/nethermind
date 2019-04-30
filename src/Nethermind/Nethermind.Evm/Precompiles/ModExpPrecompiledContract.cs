@@ -41,8 +41,6 @@ namespace Nethermind.Evm.Precompiles
         {
             return 0L;
         }
-
-        private static UInt256 MaxInt32 = (UInt256)int.MaxValue;
         
         public long DataGasCost(byte[] inputData)
         {
@@ -56,7 +54,7 @@ namespace Nethermind.Evm.Precompiles
 
                 byte[] expSignificantBytes = inputData.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)BigInteger.Min(expLength, 32));
 
-                BigInteger lengthOver32 = expLength <= MaxInt32 ? 0 : expLength - 32;
+                BigInteger lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
                 BigInteger adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
                 BigInteger gas = complexity * BigInteger.Max(adjusted, BigInteger.One) / 20;
                 return (long)gas;
