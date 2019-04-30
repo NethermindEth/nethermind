@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} H:{bestHeader}|F:{bestFullBlock}|S:{bestFullState}|R:{maxBlockNumberAmongPeers}.");
+                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} |best header:{bestHeader}|best full block:{bestFullBlock}|best state:{bestFullState}|best peer block:{maxBlockNumberAmongPeers}");
             }
         }
 
