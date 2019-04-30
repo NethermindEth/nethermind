@@ -336,6 +336,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             int requestLength = batch.RequestedNodes?.Length ?? 0;
             int responseLength = batch.Responses?.Length ?? 0;
+
             void AddAgainAllItems()
             {
                 for (int i = 0; i < requestLength; i++)
@@ -518,6 +519,7 @@ namespace Nethermind.Blockchain.Synchronization
                         }
                     }
 
+                    Interlocked.Add(ref _consumedNodesCount, nonEmptyResponses);
                     lock (_stateDbLock)
                     {
                         Rlp rlp = Rlp.Encode(
@@ -540,8 +542,6 @@ namespace Nethermind.Blockchain.Synchronization
                         }
                     }
 
-                    Interlocked.Add(ref _consumedNodesCount, nonEmptyResponses);
-
                     if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
 
                     /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
@@ -559,7 +559,7 @@ namespace Nethermind.Blockchain.Synchronization
                         result = NodeDataHandlerResult.NoData;
                         return (result, 0);
                     }
-                    
+
                     if (!isEmptish && !isBadQuality)
                     {
                         Interlocked.Increment(ref _okCount);
@@ -580,10 +580,10 @@ namespace Nethermind.Blockchain.Synchronization
                         {
                             long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;
                             if (_logger.IsInfo) _logger.Info($"OK {(decimal) _okCount / TotalRequestsCount:p2} | Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
-                            if (_logger.IsInfo) _logger.Info($"Consumed {(decimal) _consumedNodesCount / _requestedNodesCount:p2} | Saved {(decimal) _savedNodesCount / _requestedNodesCount:p2} | DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2} | DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} | Cached {(decimal)_checkWasCached/allChecks:P2} + {(decimal)_checkWasInDependencies/allChecks:P2}");
+                            if (_logger.IsInfo) _logger.Info($"Consumed {(decimal) _consumedNodesCount / _requestedNodesCount:p2} | Saved {(decimal) _savedNodesCount / _requestedNodesCount:p2} | DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2} | DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} | Cached {(decimal) _checkWasCached / allChecks:P2} + {(decimal) _checkWasInDependencies / allChecks:P2}");
                             _lastReportTime.full = DateTime.UtcNow;
                         }
-                        
+
                         _lastReportTime.small = DateTime.UtcNow;
                     }
 

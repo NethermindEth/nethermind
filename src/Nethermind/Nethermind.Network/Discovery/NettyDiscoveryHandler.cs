@@ -130,7 +130,7 @@ namespace Nethermind.Network.Discovery
             }
             catch (Exception e)
             {
-                _logger.Error($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}", e);
+                if(_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}, {e.Message}");
                 return;
             }
 
