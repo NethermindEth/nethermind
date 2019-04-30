@@ -122,7 +122,7 @@ namespace Nethermind.Stats.Model
        
         public string ToString(string format, IFormatProvider formatProvider)
         {
-            string formattedHost = Host.Replace("::ffff:", string.Empty);
+            string formattedHost = Host?.Replace("::ffff:", string.Empty);
             switch (format)
             {
                 default:
