@@ -105,7 +105,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
             handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
-            syncManager.Received().Find(1920000);
+            syncManager.Received().FindHeader(1920000);
         }
     }
 }
