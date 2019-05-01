@@ -82,6 +82,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
             else if (maxBlockNumberAmongPeers - bestHeader <= FullSyncThreshold)
             {
+                // TODO: we need to check here if there are any blocks in processing queue... any other checks are wrong
                 newSyncMode = bestFullBlock > bestFullState ? SyncMode.WaitForProcessor : SyncMode.StateNodes;
             }
             else
