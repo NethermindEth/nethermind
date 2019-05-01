@@ -19,8 +19,10 @@
 using System;
 using System.Net.Sockets;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
+using Snappy;
 
 namespace Nethermind.Network.P2P
 {
@@ -48,6 +50,25 @@ namespace Nethermind.Network.P2P
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
         {
+            if (SnappyEnabled)
+            {
+                if (SnappyCodec.GetUncompressedLength(msg.Data) > SnappyDecoder.MaxSnappyLength)
+                {
+                    throw new Exception("Max message size exceeeded"); // TODO: disconnect here
+                }
+
+                if (msg.Data.Length > SnappyDecoder.MaxSnappyLength / 4)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {msg.Data.Length}");
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {msg.Data.Length}");
+                }
+
+                msg.Data = SnappyCodec.Uncompress(msg.Data);
+            }
+            
             if (_logger.IsTrace) _logger.Trace($"Channel read... data length {msg.Data.Length}");
             _session.ReceiveMessage(msg);
         }
@@ -58,14 +79,21 @@ namespace Nethermind.Network.P2P
             string clientId = _session?.Node.ClientId ?? $"unknown {_session?.RemoteHost}";
             if (exception is SocketException)
             {
-                if (_logger.IsTrace) _logger.Trace($"Error in commmunication with {clientId} (SocketException): {exception}");
+                if (_logger.IsTrace) _logger.Trace($"Error in communication with {clientId} (SocketException): {exception}");
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Error in commmunication with {clientId}: {exception}");
+                if (_logger.IsDebug) _logger.Debug($"Error in communication with {clientId}: {exception}");
             } 
 
             base.ExceptionCaught(context, exception);
+        }
+
+        private bool SnappyEnabled { get; set; }
+        
+        public void EnableSnappy()
+        {
+            SnappyEnabled = true;
         }
     }
 }

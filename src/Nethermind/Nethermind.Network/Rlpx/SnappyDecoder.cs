@@ -27,7 +27,7 @@ namespace Nethermind.Network.Rlpx
 {
     public class SnappyDecoder : MessageToMessageDecoder<Packet>
     {
-        private const int MaxSnappyLength = 1024 * 1024 * 16;
+        public const int MaxSnappyLength = 1024 * 1024 * 16;
         private readonly ILogger _logger;
 
         public SnappyDecoder(ILogger logger)
