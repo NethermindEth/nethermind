@@ -223,7 +223,7 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                if (peerInfo.HeadNumber == 0)
+                if (peerInfo.HeadNumber == 0 && ourNumber != 0)
                 {
                     peersDropped++;
                     peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
