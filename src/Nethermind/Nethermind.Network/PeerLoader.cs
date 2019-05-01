@@ -104,7 +104,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            foreach (var networkNode in NetworkNode.ParseNodes(enodesString))
+            foreach (var networkNode in NetworkNode.ParseNodes(enodesString, _logger))
             {
                 var node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
                 nodeUpdate.Invoke(node);

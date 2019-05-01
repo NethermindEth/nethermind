@@ -19,6 +19,7 @@
 using System.IO;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
@@ -76,7 +77,7 @@ namespace Nethermind.Config.Test
                 Assert.IsTrue(statsConfig.PenalizedReputationLocalDisconnectReasons.Contains(x));
             });
 
-            NetworkNode[] nodes = NetworkNode.ParseNodes(networkConfig.Bootnodes);
+            NetworkNode[] nodes = NetworkNode.ParseNodes(networkConfig.Bootnodes, LimboNoErrorLogger.Instance);
             Assert.AreEqual(2, nodes.Length);
 
             var node1 = nodes[0];

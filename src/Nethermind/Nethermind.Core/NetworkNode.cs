@@ -17,9 +17,11 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 
 namespace Nethermind.Core
@@ -36,22 +38,40 @@ namespace Nethermind.Core
             Port = int.Parse(address[1]);
         }
 
-        public static NetworkNode[] ParseNodes(string enodesString)
+        public static NetworkNode[] ParseNodes(string enodesString, ILogger logger)
         {
-            NetworkNode[] nodes = enodesString?.Split(",", StringSplitOptions.RemoveEmptyEntries).Select(bn => new NetworkNode(bn.Trim())).ToArray() ?? new NetworkNode[0];
-            return nodes;
+            string[] nodeStrings = enodesString?.Split(",", StringSplitOptions.RemoveEmptyEntries);
+            if (nodeStrings == null)
+            {
+                return new NetworkNode[0];
+            }
+
+            List<NetworkNode> nodes = new List<NetworkNode>();
+            foreach (string nodeString in nodeStrings)
+            {
+                try
+                {
+                    nodes.Add(new NetworkNode(nodeString.Trim()));
+                }
+                catch (Exception e)
+                {
+                    if (logger.IsError) logger.Error($"Could not parse enode data from {nodeString}", e);
+                }
+            }
+
+            return nodes.ToArray();
         }
-        
+
         public override string ToString()
         {
             return $"enode://{NodeId?.ToString(false)}@{Host}:{Port}";
         }
 
         public NetworkNode(string publicKey, string ip, int port, long reputation = 0)
-        :this(new PublicKey(publicKey), ip, port, reputation)
+            : this(new PublicKey(publicKey), ip, port, reputation)
         {
         }
-        
+
         public NetworkNode(PublicKey publicKey, string ip, int port, long reputation = 0)
         {
             NodeId = publicKey;

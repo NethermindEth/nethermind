@@ -404,7 +404,7 @@ namespace Nethermind.Network.Discovery
 
         private async Task<bool> InitializeBootnodes(CancellationToken cancellationToken)
         {
-            var bootnodes = NetworkNode.ParseNodes(_networkConfig.Bootnodes);
+            var bootnodes = NetworkNode.ParseNodes(_networkConfig.Bootnodes, _logger);
             if (!bootnodes.Any())
             {
                 if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
