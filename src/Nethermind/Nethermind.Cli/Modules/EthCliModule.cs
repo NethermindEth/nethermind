@@ -63,6 +63,36 @@ namespace Nethermind.Cli.Modules
             return NodeManager.Post<string>("eth_getCode", address, blockParameter).Result;
         }
         
+        [CliFunction("eth", "getBlockTransactionCountByNumber")]
+        public string GetBlockTransactionCountByNumber(string blockParameter)
+        {
+            return NodeManager.Post<string>("eth_getBlockTransactionCountByNumber", blockParameter).Result;
+        }
+        
+        [CliFunction("eth", "getBlockTransactionCountByHash")]
+        public string GetBlockTransactionCountByHash(string hash)
+        {
+            return NodeManager.Post<string>("eth_getBlockTransactionCountByHash", hash).Result;
+        }
+        
+        [CliFunction("eth", "getUncleCountByBlockNumber")]
+        public string GetUncleCountByBlockNumber(string blockParameter)
+        {
+            return NodeManager.Post<string>("eth_getUncleCountByBlockNumber", blockParameter).Result;
+        }
+        
+        [CliFunction("eth", "getTransactionByBlockNumberAndIndex")]
+        public string GetTransactionByBlockNumberAndIndex(string blockParameter, string index)
+        {
+            return NodeManager.Post<string>("eth_getTransactionByBlockNumberAndIndex", blockParameter, index).Result;
+        }
+        
+        [CliFunction("eth", "getTransactionReceipt")]
+        public string GetTransactionReceipt(string txHash)
+        {
+            return NodeManager.Post<string>("eth_getTransactionReceipt", txHash).Result;
+        }
+        
         [CliFunction("eth", "getBalance")]
         public string GetBalance(string address, string blockParameter)
         {

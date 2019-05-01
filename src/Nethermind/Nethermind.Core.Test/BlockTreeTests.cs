@@ -234,6 +234,91 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Find_headers_basic()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
+
+            BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 2, 0, false);
+            Assert.AreEqual(2, headers.Length);
+            Assert.AreEqual(block0.Hash, headers[0].Hash);
+            Assert.AreEqual(block1.Hash, headers[1].Hash);
+        }
+        
+        [Test]
+        public void Find_headers_skip()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
+
+            BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 2, 1, false);
+            Assert.AreEqual(2, headers.Length);
+            Assert.AreEqual(block0.Hash, headers[0].Hash);
+            Assert.AreEqual(block2.Hash, headers[1].Hash);
+        }
+        
+        [Test]
+        public void Find_headers_reverse()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
+
+            BlockHeader[] headers = blockTree.FindHeaders(block2.Hash, 2, 0, true);
+            Assert.AreEqual(2, headers.Length);
+            Assert.AreEqual(block2.Hash, headers[0].Hash);
+            Assert.AreEqual(block1.Hash, headers[1].Hash);
+        }
+        
+        [Test]
+        public void Find_headers_reverse_skip()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
+
+            BlockHeader[] headers = blockTree.FindHeaders(block2.Hash, 2, 1, true);
+            Assert.AreEqual(2, headers.Length);
+            Assert.AreEqual(block2.Hash, headers[0].Hash);
+            Assert.AreEqual(block0.Hash, headers[1].Hash);
+        }
+        
+        [Test]
+        public void Find_headers_reverse_below_zero()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
+
+            BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 2, 1, true);
+            Assert.AreEqual(2, headers.Length);
+            Assert.AreEqual(block0.Hash, headers[0].Hash);
+            Assert.Null(headers[1]);
+        }
+        
+        [Test]
         public void Find_sequence_basic()
         {
             BlockTree blockTree = BuildBlockTree();

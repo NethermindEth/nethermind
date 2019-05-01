@@ -32,6 +32,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
+using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Store;
 
@@ -460,27 +461,21 @@ namespace Nethermind.Blockchain
                 return result;
             }
 
-            BlockHeader current = startBlock;            
-            for (int i = 0; i < numberOfBlocks; i++)
+            BlockHeader current = startBlock;
+            int directionMultiplier = reverse ? -1 : 1;
+            int responseIndex = 0;
+            do
             {
-                if (current == null)
+                result[responseIndex] = current;
+                responseIndex++;
+                long nextNumber = startBlock.Number + directionMultiplier * (responseIndex * skip + responseIndex);
+                if (nextNumber < 0)
                 {
                     break;
                 }
                 
-                result[i] = current;
-                
-                for (int sIndex = 0; sIndex < skip; sIndex++)
-                {
-                    current = FindHeader(current.ParentHash);
-                    if (current == null)
-                    {
-                        return result;
-                    }
-                }
-                
-                current = FindHeader(current.ParentHash);
-            }
+                current = FindHeader(nextNumber);
+            } while (current != null && responseIndex < numberOfBlocks);
 
             return result;
         }
@@ -506,7 +501,7 @@ namespace Nethermind.Blockchain
 
             if (level.BlockInfos.Length != 1)
             {
-                _logger.Error($"NOT ONLY ONE {level.BlockInfos.Length}");
+                if(_logger.IsError) _logger.Error($"Invalid request for block {blockNumber} ({level.BlockInfos.Length} blocks at the same level).");
                 throw new InvalidOperationException($"Unexpected request by number for a block {blockNumber} that is not on the main chain and is not the only hash on chain");
             }
 
