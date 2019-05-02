@@ -101,17 +101,6 @@ namespace Nethermind.Core.Test.Specs
         }
         
         [Test]
-        public void Can_load_kovan()
-        {
-            byte[] data = File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/kovan.json"));
-            ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new EthereumJsonSerializer());
-            ChainSpec chainSpec = chainSpecLoader.Load(data);
-            Assert.AreEqual(42, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
-            Assert.AreEqual("Kovan", chainSpec.Name, $"{nameof(chainSpec.Name)}");
-            Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
-        }
-        
-        [Test]
         public void Can_load_rinkeby()
         {
             byte[] data = File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/rinkeby.json"));
