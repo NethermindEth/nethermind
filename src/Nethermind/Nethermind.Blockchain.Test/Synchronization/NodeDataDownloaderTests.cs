@@ -364,9 +364,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Setup()
         {
             _isPeerAsleep = false;
-            _logger = new ConsoleAsyncLogger(LogLevel.Debug);
+//            _logger = new ConsoleAsyncLogger(LogLevel.Debug);
 //            _logManager = new OneLoggerLogManager(_logger);
             _logManager = LimboLogs.Instance;
+            _logger = _logManager.GetLogger("test");
 
             _remoteDb = new MemDb();
             _localDb = new MemDb();
@@ -382,7 +383,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [TearDown]
         public void TearDown()
         {
-            _logger.Flush();
+            (_logger as ConsoleAsyncLogger)?.Flush();
         }
 
         private class ExecutorMock : ISyncPeer
@@ -537,7 +538,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
 //        private static ILogManager _logManager = LimboLogs.Instance;
-        private ConsoleAsyncLogger _logger;
+        private ILogger _logger;
         private ILogManager _logManager;
 
         [Test]
@@ -907,7 +908,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         private void CompareTrees(string stage, bool skipLogs = false)
-        {
+        {            
             if (!skipLogs) _logger.Info($"==================== {stage} ====================");
             _localStateTree.RootHash = _remoteStateTree.RootHash;
 
