@@ -31,10 +31,10 @@ namespace Nethermind.Network.P2P
         private readonly ISession _session;
         private readonly ILogger _logger;
 
-        public NettyP2PHandler(ISession session, ILogger logger)
+        public NettyP2PHandler(ISession session, ILogManager logManager)
         {
-            _session = session;
-            _logger = logger;
+            _session = session ?? throw new ArgumentNullException(nameof(session));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void Init(IPacketSender packetSender, IChannelHandlerContext context)
@@ -89,7 +89,7 @@ namespace Nethermind.Network.P2P
             base.ExceptionCaught(context, exception);
         }
 
-        private bool SnappyEnabled { get; set; }
+        public bool SnappyEnabled { get; set; }
         
         public void EnableSnappy()
         {

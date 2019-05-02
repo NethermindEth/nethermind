@@ -61,7 +61,7 @@ namespace Nethermind.Network.Test.P2P
             Assert.AreEqual(ConnectionDirection.Out, session.Direction);
             Assert.AreNotEqual(default(Guid), session.SessionId);
         }
-        
+
         [Test]
         public void Can_set_remaining_properties()
         {
@@ -80,7 +80,7 @@ namespace Nethermind.Network.Test.P2P
             {
                 var node = session.Node;
             });
-            
+
             session.Handshake(TestItem.PublicKeyA);
             session.RemoteHost = "127.0.0.1";
             session.RemotePort = 30000;
@@ -106,7 +106,7 @@ namespace Nethermind.Network.Test.P2P
             Assert.AreEqual(5, session.P2PVersion);
             Assert.True(wasCalled);
         }
-        
+
         [Test]
         public void Sets_p2p_version_on_init()
         {
@@ -159,11 +159,14 @@ namespace Nethermind.Network.Test.P2P
         public void Can_enable_snappy()
         {
             Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
+            NettyP2PHandler handler = new NettyP2PHandler(session, LimboLogs.Instance);
+            _pipeline.Get<NettyP2PHandler>().Returns(handler);
+            Assert.False(handler.SnappyEnabled);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             session.EnableSnappy();
+            Assert.True(handler.SnappyEnabled);
             _pipeline.Received().Get<NettyPacketSplitter>();
-            _pipeline.Received().AddBefore(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<SnappyDecoder>());
             _pipeline.Received().AddBefore(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<SnappyEncoder>());
         }
 
@@ -194,7 +197,7 @@ namespace Nethermind.Network.Test.P2P
             session.Init(5, _channelHandlerContext, _packetSender);
             Assert.False(session.IsClosing);
         }
-        
+
         [Test]
         public void Best_state_reached_is_correct()
         {
@@ -274,7 +277,7 @@ namespace Nethermind.Network.Test.P2P
             session.InitiateDisconnect(DisconnectReason.Other);
             Assert.True(wasCalled);
         }
-        
+
         [Test]
         public void Error_on_channel_when_disconnecting_channels_does_not_prevent_the_event()
         {
@@ -285,7 +288,7 @@ namespace Nethermind.Network.Test.P2P
             session.Disconnect(DisconnectReason.Other, DisconnectType.Local, "test");
             Assert.True(wasCalled);
         }
-        
+
         [Test]
         public void Error_on_context_when_disconnecting_channels_does_not_prevent_the_event()
         {
@@ -326,7 +329,7 @@ namespace Nethermind.Network.Test.P2P
             session.Init(5, _channelHandlerContext, _packetSender);
             Assert.AreEqual(1, wasCalledTimes);
         }
-        
+
         [Test]
         public void On_incoming_sessions_can_fill_remote_id_on_handshake()
         {
@@ -441,7 +444,7 @@ namespace Nethermind.Network.Test.P2P
             Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(new Packet("ccc", 100, Bytes.Empty)), "ccc.100");
             Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(new Packet("ddd", 0, Bytes.Empty)), "ddd.0");
         }
-        
+
         [Test]
         public void Cannot_deliver_before_initialized()
         {
@@ -453,7 +456,7 @@ namespace Nethermind.Network.Test.P2P
             IProtocolHandler p2p = BuildHandler("p2p", 10);
             session.AddProtocolHandler(p2p);
         }
-        
+
         [Test]
         public void Cannot_receive_before_initialized()
         {
@@ -480,7 +483,7 @@ namespace Nethermind.Network.Test.P2P
             session.DeliverMessage(new Packet("p2p", 3, Bytes.Empty));
             _packetSender.DidNotReceive().Enqueue(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
         }
-        
+
         [Test]
         public void Stops_receiving_messages_after_disconnect()
         {

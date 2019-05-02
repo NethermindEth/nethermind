@@ -53,12 +53,13 @@ namespace Nethermind.Network.Rlpx
             ILogManager logManager,
             IEventExecutorGroup group)
         {
-            _role = role;
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(NettyHandshakeHandler));
-            _group = @group;
+            
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<NettyHandshakeHandler>();
-            _service = service;
-            _session = session;
+            _role = role;
+            _group = group;
+            _service = service ?? throw new ArgumentNullException(nameof(service));
+            _session = session ?? throw new ArgumentNullException(nameof(session));
             _initCompletionSource = new TaskCompletionSource<object>();
         }
 
@@ -178,7 +179,7 @@ namespace Nethermind.Network.Rlpx
                 context.Channel.Pipeline.AddLast(packetSender);
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyP2PHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                NettyP2PHandler handler = new NettyP2PHandler(_session, _logger);
+                NettyP2PHandler handler = new NettyP2PHandler(_session, _logManager);
                 context.Channel.Pipeline.AddLast(_group, handler);
 
                 handler.Init(packetSender, context);
