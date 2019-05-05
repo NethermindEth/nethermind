@@ -476,7 +476,7 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime.small).TotalMilliseconds;
                         _lastSavedNodesCount = _savedNodesCount;
-                        if (_logger.IsInfo) _logger.Info($"State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | SNPS: {savedNodesPerSecond,6:F0} | P: {_pendingRequests.Count} | accounts {_savedAccounts} | enqueued nodes {TotalNodesPending:D6} | AVTIH {_averageTimeInHandler:f2}");
+                        if (_logger.IsInfo) _logger.Info($"Progress {_syncProgress.LastProgress:p2} | State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | SNPS: {savedNodesPerSecond,6:F0} | P: {_pendingRequests.Count} | accounts {_savedAccounts} | enqueued nodes {TotalNodesPending:D6} | AVTIH {_averageTimeInHandler:f2}");
                         if (DateTime.UtcNow - _lastReportTime.full > TimeSpan.FromSeconds(10))
                         {
                             long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;
@@ -811,9 +811,9 @@ namespace Nethermind.Blockchain.Synchronization
                 Saved
             }
 
-            private decimal _lastProgress;
             private DateTime _lastProgressTime = DateTime.MinValue;
             private NodeProgressState[] _syncProgress;
+            public decimal LastProgress { get; set; }
 
             private void ReportSyncedLevel1(int childIndex, NodeProgressState nodeProgressState)
             {
@@ -897,13 +897,13 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 decimal currentProgress = (decimal) savedBranches / _syncProgress.Length;
-                if (currentProgress == _lastProgress || nodeProgressState == NodeProgressState.Empty)
+                if (currentProgress == LastProgress || nodeProgressState == NodeProgressState.Empty)
                 {
                     return;
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Node sync progress: {(decimal) savedBranches / _syncProgress.Length:p2} from block {_currentSyncBlock}");
-                _lastProgress = currentProgress;
+                LastProgress = currentProgress;
                 
                 if (currentProgress != 1M && DateTime.UtcNow - _lastProgressTime < TimeSpan.FromSeconds(5))
                 {
@@ -914,7 +914,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_logger.IsInfo)
                 {
                     StringBuilder builder = new StringBuilder();
-                    builder.Append($"(after {level} {parentIndex}.{childIndex} {nodeProgressState})");
+//                    builder.Append($"(after {level} {parentIndex}.{childIndex} {nodeProgressState})");
                     for (int i = 0; i < _syncProgress.Length; i++)
                     {
                         if (i % 64 == 0)
