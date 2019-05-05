@@ -337,11 +337,6 @@ namespace Nethermind.Blockchain.Synchronization
                 return 0;
             }
 
-            if (level <= 2)
-            {
-                return 0;
-            }
-
             if (level > _maxStateLevel)
             {
                 _maxStateLevel = level;
