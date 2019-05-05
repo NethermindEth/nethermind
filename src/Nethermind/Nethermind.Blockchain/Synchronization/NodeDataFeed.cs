@@ -722,11 +722,6 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 temp.Add(poppedSyncItem);
             }
-            
-            while (Stream1.TryPop(out StateSyncItem poppedSyncItem))
-            {
-                temp.Add(poppedSyncItem);
-            }
 
             foreach (StateSyncItem syncItem in temp)
             {
