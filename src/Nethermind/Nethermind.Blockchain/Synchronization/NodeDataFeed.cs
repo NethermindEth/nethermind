@@ -59,6 +59,7 @@ namespace Nethermind.Blockchain.Synchronization
         private long _savedAccounts;
         private long _savedCode;
         private long _requestedNodesCount;
+        private long _secondsInSync;
         private long _dbChecks;
         private long _checkWasCached;
         private long _checkWasInDependencies;
@@ -70,6 +71,9 @@ namespace Nethermind.Blockchain.Synchronization
         private long _badQualityCount;
         private long _notAssignedCount;
         private long _dataSize;
+
+        private DateTime _currentSyncStart;
+        private long _currentSyncStartSecondsInSync;
         public long TotalRequestsCount => _emptishCount + _invalidFormatCount + _badQualityCount + _okCount + _notAssignedCount;
         public long ProcessedRequestsCount => _emptishCount + _badQualityCount + _okCount;
 
@@ -119,9 +123,11 @@ namespace Nethermind.Blockchain.Synchronization
                 _dbChecks = context.DecodeLong();
                 _stateWasThere = context.DecodeLong();
                 _stateWasNotThere = context.DecodeLong();
+                _dataSize = context.DecodeLong();
+
                 if (context.Position != context.Length)
                 {
-                    _dataSize = context.DecodeLong();
+                    _secondsInSync = context.DecodeLong();
                 }
             }
         }
@@ -295,7 +301,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (syncItem.IsRoot)
             {
-                if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash}");
+                if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_syncProgress.CurrentSyncBlock}");
 
                 lock (_dependencies)
                 {
@@ -311,7 +317,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
-            _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeSyncProgress.NodeProgressState.Saved);
+            _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);
             RunChainReaction(syncItem.Hash);
         }
 
@@ -434,7 +440,8 @@ namespace Nethermind.Blockchain.Synchronization
                             Rlp.Encode(_dbChecks),
                             Rlp.Encode(_stateWasThere),
                             Rlp.Encode(_stateWasNotThere),
-                            Rlp.Encode(_dataSize));
+                            Rlp.Encode(_dataSize),
+                            Rlp.Encode(_secondsInSync));
                         lock (_codeDbLock)
                         {
                             _codeDb[_fastSyncProgressKey.Bytes] = rlp.Bytes;
@@ -476,7 +483,7 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime.small).TotalMilliseconds;
                         _lastSavedNodesCount = _savedNodesCount;
-                        if (_logger.IsInfo) _logger.Info($"Progress {_syncProgress.LastProgress:p2} | State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | SNPS: {savedNodesPerSecond,6:F0} | P: {_pendingRequests.Count} | accounts {_savedAccounts} | enqueued nodes {TotalNodesPending:D6} | AVTIH {_averageTimeInHandler:f2}");
+                        if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | Progress {_syncProgress.LastProgress:p2} | State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | SNPS: {savedNodesPerSecond,6:F0} | P: {_pendingRequests.Count} | accounts {_savedAccounts} | enqueued nodes {TotalNodesPending:D6} | AVTIH {_averageTimeInHandler:f2}");
                         if (DateTime.UtcNow - _lastReportTime.full > TimeSpan.FromSeconds(10))
                         {
                             long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;
@@ -540,29 +547,29 @@ namespace Nethermind.Blockchain.Synchronization
 //                            _logger.Warn($"Testing {currentStateSyncItem.Level} {currentStateSyncItem.BranchChildIndex}.{childIndex}");
 //                        }
 
-                        Keccak child = trieNode.GetChildHash(childIndex);
-                        if (alreadyProcessedChildHashes.Contains(child))
+                        Keccak childHash = trieNode.GetChildHash(childIndex);
+                        if (alreadyProcessedChildHashes.Contains(childHash))
                         {
                             continue;
                         }
 
-                        alreadyProcessedChildHashes.Add(child);
+                        alreadyProcessedChildHashes.Add(childHash);
 
-                        if (child != null)
+                        if (childHash != null)
                         {
-                            AddNodeResult addChildResult = AddNode(new StateSyncItem(child, nodeDataType, currentStateSyncItem.Level + 1, CalculatePriority(currentStateSyncItem)) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
+                            AddNodeResult addChildResult = AddNode(new StateSyncItem(childHash, nodeDataType, currentStateSyncItem.Level + 1, CalculatePriority(currentStateSyncItem)) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
                             if (addChildResult != AddNodeResult.AlreadySaved)
                             {
                                 dependentBranch.Counter++;
                             }
                             else
                             {
-                                _syncProgress.ReportSynced(currentStateSyncItem.Level, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeSyncProgress.NodeProgressState.AlreadySaved);
+                                _syncProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.AlreadySaved);
                             }
                         }
                         else
                         {
-                            _syncProgress.ReportSynced(currentStateSyncItem.Level, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeSyncProgress.NodeProgressState.Empty);
+                            _syncProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.Empty);
                         }
                     }
 
@@ -709,6 +716,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             StateSyncBatch result = batch.RequestedNodes == null ? _emptyBatch : batch;
             Interlocked.Add(ref _requestedNodesCount, result.RequestedNodes.Length);
+            Interlocked.Exchange(ref _secondsInSync, _currentSyncStartSecondsInSync + (long)(DateTime.UtcNow - _currentSyncStart).TotalSeconds);
 
             if (_logger.IsTrace) _logger.Trace($"After preparing a request of {length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
 
@@ -724,6 +732,9 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void SetNewStateRoot(long number, Keccak stateRoot)
         {
+            _currentSyncStart = DateTime.UtcNow;
+            _currentSyncStartSecondsInSync = _secondsInSync;
+            
             _lastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
             _lastSavedNodesCount = _savedNodesCount;
             if (_rootNode != stateRoot)
@@ -788,161 +799,6 @@ namespace Nethermind.Blockchain.Synchronization
             lock (_stateDbLock)
             {
                 return _stateDb.Get(stateRoot) != null;
-            }
-        }
-
-        private class NodeSyncProgress
-        {
-            public NodeSyncProgress(long syncBlockNumber, ILogger logger)
-            {
-                _currentSyncBlock = syncBlockNumber;
-                _logger = logger;
-                _syncProgress = new NodeProgressState[256];
-            }
-
-            private long _currentSyncBlock;
-            private readonly ILogger _logger;
-
-            public enum NodeProgressState
-            {
-                Unknown,
-                Empty,
-                AlreadySaved,
-                Saved
-            }
-
-            private DateTime _lastProgressTime = DateTime.MinValue;
-            private NodeProgressState[] _syncProgress;
-            public decimal LastProgress { get; set; }
-
-            private void ReportSyncedLevel1(int childIndex, NodeProgressState nodeProgressState)
-            {
-                if (childIndex == -1)
-                {
-                    for (int i = 0; i < 256; i++)
-                    {
-                        if (_syncProgress[i] == NodeProgressState.Unknown)
-                        {
-                            _syncProgress[i] = nodeProgressState;
-                        }
-                    }
-                }
-                else
-                {
-                    for (int i = 16 * childIndex; i < 16 * childIndex + 16; i++)
-                    {
-                        if (_syncProgress[i] == NodeProgressState.Unknown)
-                        {
-                            _syncProgress[i] = nodeProgressState;
-                        }
-                    }
-                }
-            }
-
-            private void ReportSyncedLevel2(int parentIndex, int childIndex, NodeProgressState nodeProgressState)
-            {
-                if (childIndex == -1)
-                {
-                    for (int i = 0; i < 16; i++)
-                    {
-                        if (_syncProgress[16 * parentIndex + i] == NodeProgressState.Unknown)
-                        {
-                            _syncProgress[16 * parentIndex + i] = nodeProgressState;
-                        }
-                    }
-                }
-                else
-                {
-                    if (_syncProgress[16 * parentIndex + childIndex] == NodeProgressState.Unknown)
-                    {
-                        _syncProgress[16 * parentIndex + childIndex] = nodeProgressState;
-                    }
-                }
-            }
-
-            public void ReportSynced(int level, int parentIndex, int childIndex, NodeDataType nodeDataType, NodeProgressState nodeProgressState)
-            {
-                if (level > 2 || nodeDataType != NodeDataType.State)
-                {
-                    return;
-                }
-
-                switch (level)
-                {
-                    case 0:
-                        for (int i = 0; i < 256; i++)
-                        {
-                            if (_syncProgress[i] == NodeProgressState.Unknown)
-                            {
-                                _syncProgress[i] = nodeProgressState;
-                            }
-                        }
-
-                        break;
-                    case 1:
-                        ReportSyncedLevel1(childIndex, nodeProgressState);
-                        break;
-                    case 2:
-                        ReportSyncedLevel2(parentIndex, childIndex, nodeProgressState);
-                        break;
-                }
-
-                int savedBranches = 0;
-                for (int i = 0; i < _syncProgress.Length; i++)
-                {
-                    if (_syncProgress[i] != NodeProgressState.Unknown)
-                    {
-                        savedBranches += 1;
-                    }
-                }
-
-                decimal currentProgress = (decimal) savedBranches / _syncProgress.Length;
-                if (currentProgress == LastProgress || nodeProgressState == NodeProgressState.Empty)
-                {
-                    return;
-                }
-
-                if (_logger.IsInfo) _logger.Info($"Node sync progress: {(decimal) savedBranches / _syncProgress.Length:p2} from block {_currentSyncBlock}");
-                LastProgress = currentProgress;
-                
-                if (currentProgress != 1M && DateTime.UtcNow - _lastProgressTime < TimeSpan.FromSeconds(5))
-                {
-                    return;
-                }
-                
-                _lastProgressTime = DateTime.UtcNow;                
-                if (_logger.IsInfo)
-                {
-                    StringBuilder builder = new StringBuilder();
-//                    builder.Append($"(after {level} {parentIndex}.{childIndex} {nodeProgressState})");
-                    for (int i = 0; i < _syncProgress.Length; i++)
-                    {
-                        if (i % 64 == 0)
-                        {
-                            builder.AppendLine();
-                        }
-
-                        switch (_syncProgress[i])
-                        {
-                            case NodeProgressState.Unknown:
-                                builder.Append('?');
-                                break;
-                            case NodeProgressState.Empty:
-                                builder.Append('0');
-                                break;
-                            case NodeProgressState.AlreadySaved:
-                                builder.Append('1');
-                                break;
-                            case NodeProgressState.Saved:
-                                builder.Append('+');
-                                break;
-                            default:
-                                throw new ArgumentOutOfRangeException();
-                        }
-                    }
-                    
-                    _logger.Info(builder.ToString());
-                }
             }
         }
 
