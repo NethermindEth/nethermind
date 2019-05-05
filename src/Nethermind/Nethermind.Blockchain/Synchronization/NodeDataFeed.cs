@@ -347,9 +347,9 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             float priority = 1.0f - (float) level / _maxStateLevel + (float) rightness / _maxRightness;
-            int stream = priority <= 0.5f ? 0 : priority <= 1.5f ? 1 : 2;
             
-            _logger.Error($"{stream} | {priority} = 1.0f - (float) {level} / {_maxStateLevel} + (float){rightness} / {_maxRightness}");
+            // int stream = priority <= 0.5f ? 0 : priority <= 1.5f ? 1 : 2;
+            // _logger.Error($"{stream} | {priority} = 1.0f - (float) {level} / {_maxStateLevel} + (float){rightness} / {_maxRightness}");
             return priority;
         }
 
