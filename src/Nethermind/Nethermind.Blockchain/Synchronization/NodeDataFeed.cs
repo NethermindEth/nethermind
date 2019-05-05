@@ -357,13 +357,7 @@ namespace Nethermind.Blockchain.Synchronization
         private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
 
         public (NodeDataHandlerResult Result, int NodesConsumed) HandleResponse(StateSyncBatch batch)
-        {
-            if (DateTime.UtcNow - _lastReview > TimeSpan.FromSeconds(60))
-            {
-                _lastReview = DateTime.UtcNow;
-                RunReview();
-            }
-            
+        {   
             int requestLength = batch.RequestedNodes?.Length ?? 0;
             int responseLength = batch.Responses?.Length ?? 0;
 
@@ -379,6 +373,12 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 lock (_handleWatch)
                 {
+                    if (DateTime.UtcNow - _lastReview > TimeSpan.FromSeconds(60))
+                    {
+                        _lastReview = DateTime.UtcNow;
+                        RunReview();
+                    }
+                    
                     _handleWatch.Restart();
 
                     bool requestWasMade = batch.AssignedPeer?.Current != null;
@@ -711,15 +711,27 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void RunReview()
         {
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start();
+            
             string reviewMessage = "Node sync queues review:" + Environment.NewLine;
             reviewMessage += $"  before {Stream0.Count:D6} {Stream1.Count:D6} {Stream2.Count:D6}" + Environment.NewLine;
             
-            while (Stream2.TryPop(out StateSyncItem syncItem))
+            List<StateSyncItem> temp = new List<StateSyncItem>();
+            while (Stream2.TryPop(out StateSyncItem poppedSyncItem))
+            {
+                temp.Add(poppedSyncItem);
+            }
+
+            foreach (StateSyncItem syncItem in temp)
             {
                 PushToSelectedStream(syncItem);
             }
             
             reviewMessage += $"  after {Stream0.Count:D6} {Stream1.Count:D6} {Stream2.Count:D6}";
+            
+            stopwatch.Stop();
+            reviewMessage += $"  time spent in review: {stopwatch.ElapsedMilliseconds}ms";
             if(_logger.IsInfo) _logger.Info(reviewMessage);
         }
         
