@@ -138,6 +138,11 @@ namespace Nethermind.Blockchain.Synchronization
         {
             if (!missing)
             {
+                if (syncItem.Level <= 2)
+                {
+                    _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Requested);
+                }
+
                 if (_alreadySaved.Get(syncItem.Hash) != null)
                 {
                     Interlocked.Increment(ref _checkWasCached);

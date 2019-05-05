@@ -46,24 +46,26 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 for (int i = 0; i < 256; i++)
                 {
-                    if (_syncProgress[i] == NodeProgressState.Unknown)
-                    {
-                        _syncProgress[i] = nodeProgressState;
-                    }
+                    UpdateState(i, nodeProgressState);
                 }
             }
             else
             {
                 for (int i = 16 * childIndex; i < 16 * childIndex + 16; i++)
                 {
-                    if (_syncProgress[i] == NodeProgressState.Unknown)
-                    {
-                        _syncProgress[i] = nodeProgressState;
-                    }
+                    UpdateState(i, nodeProgressState);
                 }
             }
         }
 
+        void UpdateState(int index, NodeProgressState newState)
+        {
+            if (_syncProgress[index] == NodeProgressState.Unknown || _syncProgress[index] == NodeProgressState.Requested)
+            {
+                _syncProgress[index] = newState;
+            }
+        }
+        
         private void ReportSyncedLevel2(int parentIndex, int childIndex, NodeProgressState nodeProgressState)
         {
             if (parentIndex == -1)
@@ -76,18 +78,12 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 for (int i = 0; i < 16; i++)
                 {
-                    if (_syncProgress[16 * parentIndex + i] == NodeProgressState.Unknown)
-                    {
-                        _syncProgress[16 * parentIndex + i] = nodeProgressState;
-                    }
+                    UpdateState(16 * parentIndex + i, nodeProgressState);
                 }
             }
             else
             {
-                if (_syncProgress[16 * parentIndex + childIndex] == NodeProgressState.Unknown)
-                {
-                    _syncProgress[16 * parentIndex + childIndex] = nodeProgressState;
-                }
+                UpdateState(16 * parentIndex + childIndex, nodeProgressState);
             }
         }
 
@@ -103,10 +99,7 @@ namespace Nethermind.Blockchain.Synchronization
                 case 0:
                     for (int i = 0; i < 256; i++)
                     {
-                        if (_syncProgress[i] == NodeProgressState.Unknown)
-                        {
-                            _syncProgress[i] = nodeProgressState;
-                        }
+                        UpdateState(i, nodeProgressState);
                     }
 
                     break;
@@ -172,6 +165,9 @@ namespace Nethermind.Blockchain.Synchronization
                         case NodeProgressState.Saved:
                             builder.Append('+');
                             break;
+                        case NodeProgressState.Requested:
+                            builder.Append('*');
+                            break;
                         default:
                             throw new ArgumentOutOfRangeException();
                     }
@@ -186,6 +182,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         Unknown,
         Empty,
+        Requested,
         AlreadySaved,
         Saved
     }
