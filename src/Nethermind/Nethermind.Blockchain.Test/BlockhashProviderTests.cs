@@ -27,12 +27,98 @@ namespace Nethermind.Blockchain.Test
     public class BlockhashProviderTests
     {
         [Test]
+        public void Can_get_parent_only_headers()
+        {
+            const int chainLength = 512;
+
+            Block genesis = Build.A.Block.Genesis.TestObject;
+
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
+
+            BlockhashProvider provider = new BlockhashProvider(tree);
+            BlockHeader head = tree.FindHeader(chainLength - 1);
+            Block current = Build.A.Block.WithParent(head).TestObject;
+            Keccak result = provider.GetBlockhash(current.Header, chainLength - 1);
+            Assert.AreEqual(head.Hash, result);
+        }
+
+        [Test]
+        public void Can_lookup_up_to_256_before_with_headers_only()
+        {
+            const int chainLength = 512;
+
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
+
+            BlockhashProvider provider = new BlockhashProvider(tree);
+            BlockHeader head = tree.FindHeader(chainLength - 1);
+            Block current = Build.A.Block.WithParent(head).TestObject;
+            Keccak result = provider.GetBlockhash(current.Header, chainLength - 256);
+            Assert.AreEqual(tree.FindHeader(256).Hash, result);
+        }
+
+        [Test]
+        public void Can_lookup_up_to_256_before_with_headers_only_and_competing_branches()
+        {
+            const int chainLength = 512;
+
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block alternativeHeadBlock, chainLength, 1).TestObject;
+
+            BlockhashProvider provider = new BlockhashProvider(tree);
+            Block current = Build.A.Block.WithParent(headBlock).TestObject;
+            long lookupNumber = chainLength - 256;
+            Keccak result = provider.GetBlockhash(current.Header, lookupNumber);
+            Assert.NotNull(result);
+        }
+        
+        [Test]
+        public void Can_lookup_up_to_256_before_soon_after_fast_sync()
+        {
+            const int chainLength = 512;
+
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block alternativeHeadBlock, chainLength, 1).TestObject;
+
+            BlockhashProvider provider = new BlockhashProvider(tree);
+            Block current = Build.A.Block.WithParent(headBlock).TestObject;
+            tree.SuggestBlock(current);
+            tree.UpdateMainChain(current);
+            long lookupNumber = chainLength - 256;
+            Keccak result = provider.GetBlockhash(current.Header, lookupNumber);
+            Assert.NotNull(result);
+        }
+        
+        [Test]
+        public void Can_lookup_up_to_256_before_some_blocks_after_fast_sync()
+        {
+            const int chainLength = 512;
+
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block alternativeHeadBlock, chainLength, 1).TestObject;
+
+            BlockhashProvider provider = new BlockhashProvider(tree);
+
+            Block current = Build.A.Block.WithParent(headBlock).TestObject;
+            for (int i = 0; i < 6; i++)
+            {
+                tree.SuggestBlock(current);
+                tree.UpdateMainChain(current);
+                current = Build.A.Block.WithParent(current).TestObject;
+            }
+            
+            long lookupNumber = current.Number - 256;
+            Keccak result = provider.GetBlockhash(current.Header, lookupNumber);
+            Assert.NotNull(result);
+        }
+
+        [Test]
         public void Can_get_parent_hash()
         {
             const int chainLength = 512;
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            
+
             BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
 
             BlockhashProvider provider = new BlockhashProvider(tree);
@@ -84,7 +170,7 @@ namespace Nethermind.Blockchain.Test
             BlockHeader head = tree.FindHeader(chainLength - 1);
             Block current = Build.A.Block.WithParent(head).TestObject;
             Keccak result = provider.GetBlockhash(current.Header, chainLength - 256);
-            Assert.NotNull(result);
+            Assert.AreEqual(tree.FindHeader(256).Hash, result);
         }
 
         [Test]
@@ -101,7 +187,7 @@ namespace Nethermind.Blockchain.Test
             Keccak result = provider.GetBlockhash(current.Header, chainLength - 257);
             Assert.Null(result);
         }
-        
+
         [Test]
         public void UInt_256_overflow()
         {

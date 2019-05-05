@@ -32,6 +32,8 @@ namespace Nethermind.Core.Test.Builders
     {
         private readonly Block _genesisBlock;
 
+        private bool _onlyHeaders;
+
         public BlockTreeBuilder()
             : this(Build.A.Block.Genesis.TestObject)
         {
@@ -43,24 +45,59 @@ namespace Nethermind.Core.Test.Builders
             MemDb headersDb = new MemDb();
             // so we automatically include in all tests my questionable decision of storing Head block header at 00...
             blocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
-            
+
             _genesisBlock = genesisBlock;
             TestObjectInternal = new BlockTree(blocksDb, headersDb, new MemDb(), RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
         }
 
+        public BlockTreeBuilder OfHeadersOnly
+        {
+            get
+            {
+                _onlyHeaders = true;
+                return this;
+            }
+        }
+
         public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0)
         {
+            OfChainLength(out _, chainLength, splitVariant);
+            return this;
+        }
+        
+        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0)
+        {
             Block current = _genesisBlock;
+            headBlock = _genesisBlock;
+            
+            bool skipGenesis = splitVariant != 0;
             for (int i = 0; i < chainLength; i++)
             {
-                TestObjectInternal.SuggestBlock(current);
-                TestObjectInternal.UpdateMainChain(current);
-                current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong)splitVariant).TestObject;
+                headBlock = current;
+                if (_onlyHeaders)
+                {
+                    if (!(current.IsGenesis && skipGenesis))
+                    {
+                        TestObjectInternal.SuggestHeader(current.Header);
+                    }
+
+                    current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong) splitVariant).TestObject;
+                }
+                else
+                {
+                    if (!(current.IsGenesis && skipGenesis))
+                    {
+                        TestObjectInternal.SuggestBlock(current);
+                    }
+
+                    TestObjectInternal.UpdateMainChain(current);
+                    current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong) splitVariant).TestObject;
+                }
             }
 
             return this;
         }
-        
+
         public BlockTreeBuilder WithOnlySomeBlocksProcessed(int chainLength, int processedChainLength)
         {
             Block current = _genesisBlock;
@@ -71,7 +108,7 @@ namespace Nethermind.Core.Test.Builders
                 {
                     TestObjectInternal.UpdateMainChain(current);
                 }
-                
+
                 current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
             }
 
@@ -81,12 +118,12 @@ namespace Nethermind.Core.Test.Builders
         public static void ExtendTree(IBlockTree blockTree, int newChainLength)
         {
             Block previous = blockTree.RetrieveHeadBlock();
-            int initialLength = (int)previous.Number + 1;
+            int initialLength = (int) previous.Number + 1;
             for (int i = initialLength; i < newChainLength; i++)
             {
                 previous = Build.A.Block.WithNumber(i).WithParent(previous).TestObject;
                 blockTree.SuggestBlock(previous);
-                blockTree.UpdateMainChain(new []{previous});
+                blockTree.UpdateMainChain(new[] {previous});
             }
         }
     }
