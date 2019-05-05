@@ -190,11 +190,13 @@ namespace Nethermind.Blockchain.Synchronization
         private void PushToSelectedStream(StateSyncItem stateSyncItem)
         {
             ConcurrentStack<StateSyncItem> selectedStream;
-            if (stateSyncItem.Priority < 0.5f)
+            double priority = CalculatePriority(stateSyncItem.NodeDataType, stateSyncItem.Level);
+            
+            if (priority <= 0.5f)
             {
                 selectedStream = Stream0;
             }
-            else if (stateSyncItem.Priority <= 1.5f)
+            else if (priority <= 1.5f)
             {
                 selectedStream = Stream1;
             }
@@ -321,27 +323,25 @@ namespace Nethermind.Blockchain.Synchronization
             RunChainReaction(syncItem.Hash);
         }
 
-        private float CalculatePriority(StateSyncItem parent)
+        private float CalculatePriority(NodeDataType nodeDataType, int level)
         {
-            if (parent.NodeDataType != NodeDataType.State)
+            if (nodeDataType != NodeDataType.State)
             {
                 return 0;
             }
 
-            if (parent.Level <= 2)
+            if (level <= 2)
             {
                 return 0;
             }
 
-            if (parent.Level > _maxStateLevel)
+            if (level > _maxStateLevel)
             {
-                _maxStateLevel = parent.Level;
+                _maxStateLevel = level;
             }
 
-// priority calculation does not make that much sense but the way it works in result
-// is very good so not changing it for now
-// in particular we should probably calculate priority as 2.5f - 2 * diff
-            return Math.Max(1 - (float) parent.Level / _maxStateLevel, parent.Priority - (float) parent.Level / _maxStateLevel);
+
+            return 1.5f - (float) level / _maxStateLevel;
         }
 
         private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
@@ -562,7 +562,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                         if (childHash != null)
                         {
-                            AddNodeResult addChildResult = AddNode(new StateSyncItem(childHash, nodeDataType, currentStateSyncItem.Level + 1, CalculatePriority(currentStateSyncItem)) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
+                            AddNodeResult addChildResult = AddNode(new StateSyncItem(childHash, nodeDataType, currentStateSyncItem.Level + 1) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
                             if (addChildResult != AddNodeResult.AlreadySaved)
                             {
                                 dependentBranch.Counter++;
@@ -589,7 +589,7 @@ namespace Nethermind.Blockchain.Synchronization
                     if (next != null)
                     {
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
-                        AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Priority) {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentItem, "extension child");
+                        AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + trieNode.Path.Length) {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentItem, "extension child");
                         if (addResult == AddNodeResult.AlreadySaved)
                         {
                             SaveNode(currentStateSyncItem, currentResponseItem);
@@ -621,14 +621,14 @@ namespace Nethermind.Blockchain.Synchronization
                             }
                             else
                             {
-                                AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, 0), dependentItem, "code");
+                                AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0), dependentItem, "code");
                                 if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                             }
                         }
 
                         if (account.StorageRoot != Keccak.EmptyTreeHash)
                         {
-                            AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(account.StorageRoot, NodeDataType.Storage, 0, 0), dependentItem, "storage");
+                            AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(account.StorageRoot, NodeDataType.Storage, 0), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                         }
 
@@ -790,7 +790,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (!hasOnlyRootNode && _rootNode != Keccak.EmptyTreeHash)
             {
-                AddNode(new StateSyncItem(stateRoot, NodeDataType.State, 0, 1), null, "initial");
+                AddNode(new StateSyncItem(stateRoot, NodeDataType.State, 0), null, "initial");
             }
         }
 

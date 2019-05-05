@@ -24,12 +24,11 @@ namespace Nethermind.Blockchain.Synchronization
     [DebuggerDisplay("{Level} {NodeDataType} {Hash} {Priority}")]
     public class StateSyncItem
     {
-        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level, float priority)
+        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level)
         {
             Hash = hash;
             NodeDataType = nodeType;
             Level = level;
-            Priority = priority;
         }
             
         public Keccak Hash { get; }
@@ -37,8 +36,6 @@ namespace Nethermind.Blockchain.Synchronization
         public NodeDataType NodeDataType { get; }
             
         public int Level { get; }
-            
-        public float Priority { get; }
 
         public short ParentBranchChildIndex { get; set; } = (short)-1;
         public short BranchChildIndex { get; set; } = (short)-1;
