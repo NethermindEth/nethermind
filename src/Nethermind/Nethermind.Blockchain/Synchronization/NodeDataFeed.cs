@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Synchronization
         public long ProcessedRequestsCount => _emptishCount + _badQualityCount + _okCount;
 
         private byte _maxStateLevel; // for priority calculation (prefer depth)
-        private ushort _maxRightness; // for priority calculation (prefer left)
+        private uint _maxRightness; // for priority calculation (prefer left)
 
         private object _stateDbLock = new object();
         private object _codeDbLock = new object();
@@ -324,7 +324,7 @@ namespace Nethermind.Blockchain.Synchronization
             RunChainReaction(syncItem.Hash);
         }
 
-        private float CalculatePriority(NodeDataType nodeDataType, byte level, ushort rightness)
+        private float CalculatePriority(NodeDataType nodeDataType, byte level, uint rightness)
         {   
             if (nodeDataType != NodeDataType.State)
             {
@@ -571,7 +571,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                         if (childHash != null)
                         {
-                            AddNodeResult addChildResult = AddNode(new StateSyncItem(childHash, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Rightness + Math.Max(0, 64 - currentStateSyncItem.Level) * childIndex) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
+                            AddNodeResult addChildResult = AddNode(new StateSyncItem(childHash, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Rightness + (uint)Math.Pow(16, Math.Max(0, 7 - currentStateSyncItem.Level)) * (uint)childIndex) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
                             if (addChildResult != AddNodeResult.AlreadySaved)
                             {
                                 dependentBranch.Counter++;

@@ -25,12 +25,12 @@ namespace Nethermind.Blockchain.Synchronization
     [DebuggerDisplay("{Level} {NodeDataType} {Hash}")]
     public class StateSyncItem
     {
-        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level, int rightness)
+        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level, uint rightness)
         {
             Hash = hash;
             NodeDataType = nodeType;
             Level = (byte)level;
-            Rightness = (ushort)Math.Min(ushort.MaxValue, rightness);
+            Rightness = rightness;
         }
 
         public Keccak Hash { get; }
@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public short BranchChildIndex { get; set; } = (short) -1;
 
-        public ushort Rightness { get; }
+        public uint Rightness { get; }
 
         public bool IsRoot => Level == 0 && NodeDataType == NodeDataType.State;
     }
