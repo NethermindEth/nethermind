@@ -24,25 +24,40 @@ namespace Nethermind.Blockchain.Synchronization
     [DebuggerDisplay("{Level} {NodeDataType} {Hash} {Priority}")]
     public class StateSyncItem
     {
-        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level, float priority)
+        public StateSyncItem(StateSyncItem parent, Keccak hash, NodeDataType nodeType, float priority)
         {
+            Path0 = parent.Path0;
+            Path1 = parent.Path1;
+            Path2 = parent.Path2;
+
             Hash = hash;
             NodeDataType = nodeType;
-            Level = level;
             Priority = priority;
+
+            Level = parent.NodeDataType != nodeType ? 0 : parent.Level + 1;
         }
-            
+
+        public StateSyncItem(Keccak hash)
+        {
+            Hash = hash;
+            NodeDataType = NodeDataType.State;
+            Level = 0;
+            Priority = 1;
+        }
+
         public Keccak Hash { get; }
-            
+
         public NodeDataType NodeDataType { get; }
-            
+
         public int Level { get; }
-            
+
         public float Priority { get; }
 
-        public short ParentBranchChildIndex { get; set; } = (short)-1;
-        public short BranchChildIndex { get; set; } = (short)-1;
-        
+        public short Path0 { get; set; } = (short) -1;
+        public short Path1 { get; set; } = (short) -1;
+
+        public short Path2 { get; set; } = (short) -1;
+
         public bool IsRoot => Level == 0 && NodeDataType == NodeDataType.State;
     }
 }

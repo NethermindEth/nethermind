@@ -317,7 +317,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
-            _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);
+            _syncProgress.ReportSynced(syncItem.Level, syncItem.Path0, syncItem.Path1, syncItem.NodeDataType, NodeProgressState.Saved);
             RunChainReaction(syncItem.Hash);
         }
 
@@ -557,19 +557,20 @@ namespace Nethermind.Blockchain.Synchronization
 
                         if (childHash != null)
                         {
-                            AddNodeResult addChildResult = AddNode(new StateSyncItem(childHash, nodeDataType, currentStateSyncItem.Level + 1, CalculatePriority(currentStateSyncItem)) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
+                            StateSyncItem childNode = new StateSyncItem(currentStateSyncItem, childHash, nodeDataType, CalculatePriority(currentStateSyncItem));
+                            AddNodeResult addChildResult = AddNode(childNode, dependentBranch, "branch child");
                             if (addChildResult != AddNodeResult.AlreadySaved)
                             {
                                 dependentBranch.Counter++;
                             }
                             else
                             {
-                                _syncProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.AlreadySaved);
+                                _syncProgress.ReportSynced(currentStateSyncItem.Path0, currentStateSyncItem.Path1, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.AlreadySaved);
                             }
                         }
                         else
                         {
-                            _syncProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.Empty);
+                            _syncProgress.ReportSynced(currentStateSyncItem.Path0, currentStateSyncItem.Path1, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.Empty);
                         }
                     }
 
@@ -584,7 +585,7 @@ namespace Nethermind.Blockchain.Synchronization
                     if (next != null)
                     {
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
-                        AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Priority) {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentItem, "extension child");
+                        AddNodeResult addResult = AddNode(new StateSyncItem(currentStateSyncItem, next, nodeDataType, currentStateSyncItem.Priority), dependentItem, "extension child");
                         if (addResult == AddNodeResult.AlreadySaved)
                         {
                             SaveNode(currentStateSyncItem, currentResponseItem);
@@ -616,14 +617,14 @@ namespace Nethermind.Blockchain.Synchronization
                             }
                             else
                             {
-                                AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, 0), dependentItem, "code");
+                                AddNodeResult addCodeResult = AddNode(new StateSyncItem(currentStateSyncItem, account.CodeHash, NodeDataType.Code, 0), dependentItem, "code");
                                 if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                             }
                         }
 
                         if (account.StorageRoot != Keccak.EmptyTreeHash)
                         {
-                            AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(account.StorageRoot, NodeDataType.Storage, 0, 0), dependentItem, "storage");
+                            AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(currentStateSyncItem, account.StorageRoot, NodeDataType.Storage, 0), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                         }
 
@@ -716,7 +717,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             StateSyncBatch result = batch.RequestedNodes == null ? _emptyBatch : batch;
             Interlocked.Add(ref _requestedNodesCount, result.RequestedNodes.Length);
-            Interlocked.Exchange(ref _secondsInSync, _currentSyncStartSecondsInSync + (long)(DateTime.UtcNow - _currentSyncStart).TotalSeconds);
+            Interlocked.Exchange(ref _secondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
 
             if (_logger.IsTrace) _logger.Trace($"After preparing a request of {length} from ({Stream0.Count}|{Stream1.Count}|{Stream2.Count}) nodes");
 
@@ -734,7 +735,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             _currentSyncStart = DateTime.UtcNow;
             _currentSyncStartSecondsInSync = _secondsInSync;
-            
+
             _lastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
             _lastSavedNodesCount = _savedNodesCount;
             if (_rootNode != stateRoot)
@@ -785,7 +786,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (!hasOnlyRootNode && _rootNode != Keccak.EmptyTreeHash)
             {
-                AddNode(new StateSyncItem(stateRoot, NodeDataType.State, 0, 1), null, "initial");
+                AddNode(new StateSyncItem(stateRoot), null, "initial");
             }
         }
 

@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        public void ReportSynced(int level, int parentIndex, int childIndex, NodeDataType nodeDataType, NodeProgressState nodeProgressState)
+        public void ReportSynced(int level, int path0, int path1, NodeDataType nodeDataType, NodeProgressState nodeProgressState)
         {
             if (level > 2 || nodeDataType != NodeDataType.State)
             {
@@ -111,10 +111,10 @@ namespace Nethermind.Blockchain.Synchronization
 
                     break;
                 case 1:
-                    ReportSyncedLevel1(childIndex, nodeProgressState);
+                    ReportSyncedLevel1(path0, nodeProgressState);
                     break;
                 case 2:
-                    ReportSyncedLevel2(parentIndex, childIndex, nodeProgressState);
+                    ReportSyncedLevel2(path0, path1, nodeProgressState);
                     break;
             }
 
