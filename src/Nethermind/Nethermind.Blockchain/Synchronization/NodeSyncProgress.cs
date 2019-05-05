@@ -114,7 +114,7 @@ namespace Nethermind.Blockchain.Synchronization
             int savedBranches = 0;
             for (int i = 0; i < _syncProgress.Length; i++)
             {
-                if (_syncProgress[i] != NodeProgressState.Unknown)
+                if (_syncProgress[i] != NodeProgressState.Unknown && _syncProgress[i] != NodeProgressState.Requested)
                 {
                     savedBranches += 1;
                 }
