@@ -72,6 +72,7 @@ namespace Nethermind.Blockchain.Synchronization
         private long _notAssignedCount;
         private long _dataSize;
 
+        private DateTime _lastReview = DateTime.UtcNow;
         private DateTime _currentSyncStart;
         private long _currentSyncStartSecondsInSync;
         public long TotalRequestsCount => _emptishCount + _invalidFormatCount + _badQualityCount + _okCount + _notAssignedCount;
@@ -357,6 +358,12 @@ namespace Nethermind.Blockchain.Synchronization
 
         public (NodeDataHandlerResult Result, int NodesConsumed) HandleResponse(StateSyncBatch batch)
         {
+            if (DateTime.UtcNow - _lastReview > TimeSpan.FromSeconds(60))
+            {
+                _lastReview = DateTime.UtcNow;
+                RunReview();
+            }
+            
             int requestLength = batch.RequestedNodes?.Length ?? 0;
             int responseLength = batch.Responses?.Length ?? 0;
 
@@ -702,6 +709,20 @@ namespace Nethermind.Blockchain.Synchronization
             return true;
         }
 
+        private void RunReview()
+        {
+            string reviewMessage = "Node sync queues review:" + Environment.NewLine;
+            reviewMessage += $"  before {Stream0.Count:D6} {Stream1.Count:D6} {Stream2.Count:D6}" + Environment.NewLine;
+            
+            while (Stream2.TryPop(out StateSyncItem syncItem))
+            {
+                PushToSelectedStream(syncItem);
+            }
+            
+            reviewMessage += $"  after {Stream0.Count:D6} {Stream1.Count:D6} {Stream2.Count:D6}";
+            if(_logger.IsInfo) _logger.Info(reviewMessage);
+        }
+        
         public StateSyncBatch PrepareRequest(int length)
         {
             if (_rootNode == Keccak.EmptyTreeHash)
