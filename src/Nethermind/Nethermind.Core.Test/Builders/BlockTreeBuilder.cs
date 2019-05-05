@@ -25,6 +25,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Store;
 using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -64,13 +65,13 @@ namespace Nethermind.Core.Test.Builders
             OfChainLength(out _, chainLength, splitVariant);
             return this;
         }
-        
+
         public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0)
         {
             Block current = _genesisBlock;
             headBlock = _genesisBlock;
-            
-            bool skipGenesis = splitVariant != 0;
+
+            bool skipGenesis = TestObjectInternal.Head != null;
             for (int i = 0; i < chainLength; i++)
             {
                 headBlock = current;
@@ -87,10 +88,12 @@ namespace Nethermind.Core.Test.Builders
                 {
                     if (!(current.IsGenesis && skipGenesis))
                     {
-                        TestObjectInternal.SuggestBlock(current);
+                        AddBlockResult result = TestObjectInternal.SuggestBlock(current);
+                        Assert.AreEqual(AddBlockResult.Added, result, $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
+                        
+                        TestObjectInternal.UpdateMainChain(current);
                     }
 
-                    TestObjectInternal.UpdateMainChain(current);
                     current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong) splitVariant).TestObject;
                 }
             }

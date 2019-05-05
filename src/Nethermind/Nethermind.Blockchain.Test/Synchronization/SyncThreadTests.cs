@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _synchronizerType = synchronizerType;
         }
 
-        private int remotePeersCount = 3;
+        private int remotePeersCount = 2;
 
         [SetUp]
         public void Setup()
@@ -243,12 +243,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             MemDb blockInfoDb = new MemDb();
             StateDb codeDb = new StateDb();
             StateDb stateDb = new StateDb();
-            ;
 
             var stateProvider = new StateProvider(stateDb, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree();
+            stateDb.Commit();
 
             var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
             var receiptStorage = new InMemoryReceiptStorage();
