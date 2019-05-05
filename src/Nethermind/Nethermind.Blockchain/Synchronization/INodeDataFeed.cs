@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         StateSyncBatch PrepareRequest(int length);
         
-        void SetNewStateRoot(Keccak stateRoot);
+        void SetNewStateRoot(long number, Keccak stateRoot);
         
         (NodeDataHandlerResult Result, int NodesConsumed) HandleResponse(StateSyncBatch syncBatch);
         

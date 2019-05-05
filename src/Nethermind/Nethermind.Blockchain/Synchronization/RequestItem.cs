@@ -40,6 +40,9 @@ namespace Nethermind.Blockchain.Synchronization
             
         public float Priority { get; }
 
-        public bool IsRoot { get; set; }
+        public short ParentBranchChildIndex { get; set; } = (short)-1;
+        public short BranchChildIndex { get; set; } = (short)-1;
+        
+        public bool IsRoot => Level == 0 && NodeDataType == NodeDataType.State;
     }
 }

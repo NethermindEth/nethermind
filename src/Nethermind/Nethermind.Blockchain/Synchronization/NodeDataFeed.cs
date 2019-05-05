@@ -17,10 +17,12 @@
  */
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -309,6 +311,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
+            _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeSyncProgress.NodeProgressState.Saved);
             RunChainReaction(syncItem.Hash);
         }
 
@@ -414,109 +417,7 @@ namespace Nethermind.Blockchain.Synchronization
                             continue;
                         }
 
-                        TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(currentResponseItem));
-                        trieNode.ResolveNode(null);
-                        switch (trieNode.NodeType)
-                        {
-                            case NodeType.Unknown:
-                                invalidNodes++;
-                                if (_logger.IsError) _logger.Error($"Node {currentStateSyncItem.Hash} resolved to {nameof(NodeType.Unknown)}");
-                                break;
-                            case NodeType.Branch:
-                                trieNode.BuildLookupTable();
-                                DependentItem dependentBranch = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
-                                HashSet<Keccak> alreadyProcessedChildHashes = new HashSet<Keccak>();
-                                for (int childIndex = 0; childIndex < 16; childIndex++)
-                                {
-                                    Keccak child = trieNode.GetChildHash(childIndex);
-                                    if (alreadyProcessedChildHashes.Contains(child))
-                                    {
-                                        continue;
-                                    }
-
-                                    alreadyProcessedChildHashes.Add(child);
-
-                                    if (child != null)
-                                    {
-                                        AddNodeResult addChildResult = AddNode(new StateSyncItem(child, nodeDataType, currentStateSyncItem.Level + 1, CalculatePriority(currentStateSyncItem)), dependentBranch, "branch child");
-                                        if (addChildResult != AddNodeResult.AlreadySaved)
-                                        {
-                                            dependentBranch.Counter++;
-                                        }
-                                    }
-                                }
-
-                                if (dependentBranch.Counter == 0)
-                                {
-                                    SaveNode(currentStateSyncItem, currentResponseItem);
-                                }
-
-                                break;
-                            case NodeType.Extension:
-                                Keccak next = trieNode[0].Keccak;
-                                if (next != null)
-                                {
-                                    DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
-                                    AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Priority), dependentItem, "extension child");
-                                    if (addResult == AddNodeResult.AlreadySaved)
-                                    {
-                                        SaveNode(currentStateSyncItem, currentResponseItem);
-                                    }
-                                }
-                                else
-                                {
-                                    /* this happens when we have a short RLP format of the node
-                                     * that would not be stored as Keccak but full RLP*/
-                                    SaveNode(currentStateSyncItem, currentResponseItem);
-                                }
-
-                                break;
-                            case NodeType.Leaf:
-                                if (nodeDataType == NodeDataType.State)
-                                {
-                                    DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
-                                    Account account = _accountDecoder.Decode(new Rlp.DecoderContext(trieNode.Value));
-                                    if (account.CodeHash != Keccak.OfAnEmptyString)
-                                    {
-                                        // prepare a branch without the code DB
-                                        // this only protects against being same as storage root?
-                                        if (account.CodeHash == account.StorageRoot)
-                                        {
-                                            lock (_codesSameAsNodes)
-                                            {
-                                                _codesSameAsNodes.Add(account.CodeHash);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, 0), dependentItem, "code");
-                                            if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
-                                        }
-                                    }
-
-                                    if (account.StorageRoot != Keccak.EmptyTreeHash)
-                                    {
-                                        AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(account.StorageRoot, NodeDataType.Storage, 0, 0), dependentItem, "storage");
-                                        if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
-                                    }
-
-                                    if (dependentItem.Counter == 0)
-                                    {
-                                        Interlocked.Increment(ref _savedAccounts);
-                                        SaveNode(currentStateSyncItem, currentResponseItem);
-                                    }
-                                }
-                                else
-                                {
-                                    SaveNode(currentStateSyncItem, currentResponseItem);
-                                }
-
-                                break;
-                            default:
-                                if (_logger.IsError) _logger.Error($"Unknown value {currentStateSyncItem.NodeDataType} of {nameof(NodeDataType)} at {currentStateSyncItem.Hash}");
-                                invalidNodes++;
-                                continue;
-                        }
+                        HandleTrieNode(currentStateSyncItem, currentResponseItem, ref invalidNodes);
                     }
 
                     Interlocked.Add(ref _consumedNodesCount, nonEmptyResponses);
@@ -615,6 +516,129 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
+        private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
+        {
+            NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(currentResponseItem));
+            trieNode.ResolveNode(null);
+            switch (trieNode.NodeType)
+            {
+                case NodeType.Unknown:
+                    invalidNodes++;
+                    if (_logger.IsError) _logger.Error($"Node {currentStateSyncItem.Hash} resolved to {nameof(NodeType.Unknown)}");
+                    break;
+                case NodeType.Branch:
+                    trieNode.BuildLookupTable();
+                    DependentItem dependentBranch = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
+
+                    // children may have the same hashes (e.g. a set of accounts with the same code at different addresses)
+                    HashSet<Keccak> alreadyProcessedChildHashes = new HashSet<Keccak>();
+                    for (int childIndex = 0; childIndex < 16; childIndex++)
+                    {
+//                        if (currentStateSyncItem.Level <= 1)
+//                        {
+//                            _logger.Warn($"Testing {currentStateSyncItem.Level} {currentStateSyncItem.BranchChildIndex}.{childIndex}");
+//                        }
+
+                        Keccak child = trieNode.GetChildHash(childIndex);
+                        if (alreadyProcessedChildHashes.Contains(child))
+                        {
+                            continue;
+                        }
+
+                        alreadyProcessedChildHashes.Add(child);
+
+                        if (child != null)
+                        {
+                            AddNodeResult addChildResult = AddNode(new StateSyncItem(child, nodeDataType, currentStateSyncItem.Level + 1, CalculatePriority(currentStateSyncItem)) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
+                            if (addChildResult != AddNodeResult.AlreadySaved)
+                            {
+                                dependentBranch.Counter++;
+                            }
+                            else
+                            {
+                                _syncProgress.ReportSynced(currentStateSyncItem.Level, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeSyncProgress.NodeProgressState.AlreadySaved);
+                            }
+                        }
+                        else
+                        {
+                            _syncProgress.ReportSynced(currentStateSyncItem.Level, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeSyncProgress.NodeProgressState.Empty);
+                        }
+                    }
+
+                    if (dependentBranch.Counter == 0)
+                    {
+                        SaveNode(currentStateSyncItem, currentResponseItem);
+                    }
+
+                    break;
+                case NodeType.Extension:
+                    Keccak next = trieNode[0].Keccak;
+                    if (next != null)
+                    {
+                        DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
+                        AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Priority) {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentItem, "extension child");
+                        if (addResult == AddNodeResult.AlreadySaved)
+                        {
+                            SaveNode(currentStateSyncItem, currentResponseItem);
+                        }
+                    }
+                    else
+                    {
+                        /* this happens when we have a short RLP format of the node
+                                     * that would not be stored as Keccak but full RLP*/
+                        SaveNode(currentStateSyncItem, currentResponseItem);
+                    }
+
+                    break;
+                case NodeType.Leaf:
+                    if (nodeDataType == NodeDataType.State)
+                    {
+                        DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
+                        Account account = _accountDecoder.Decode(new Rlp.DecoderContext(trieNode.Value));
+                        if (account.CodeHash != Keccak.OfAnEmptyString)
+                        {
+                            // prepare a branch without the code DB
+                            // this only protects against being same as storage root?
+                            if (account.CodeHash == account.StorageRoot)
+                            {
+                                lock (_codesSameAsNodes)
+                                {
+                                    _codesSameAsNodes.Add(account.CodeHash);
+                                }
+                            }
+                            else
+                            {
+                                AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, 0), dependentItem, "code");
+                                if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
+                            }
+                        }
+
+                        if (account.StorageRoot != Keccak.EmptyTreeHash)
+                        {
+                            AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(account.StorageRoot, NodeDataType.Storage, 0, 0), dependentItem, "storage");
+                            if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
+                        }
+
+                        if (dependentItem.Counter == 0)
+                        {
+                            Interlocked.Increment(ref _savedAccounts);
+                            SaveNode(currentStateSyncItem, currentResponseItem);
+                        }
+                    }
+                    else
+                    {
+                        SaveNode(currentStateSyncItem, currentResponseItem);
+                    }
+
+                    break;
+                default:
+                    if (_logger.IsError) _logger.Error($"Unknown value {currentStateSyncItem.NodeDataType} of {nameof(NodeDataType)} at {currentStateSyncItem.Hash}");
+                    invalidNodes++;
+                    break;
+            }
+        }
+
         private long _lastDbReads;
         private decimal _averageTimeInHandler;
 
@@ -696,12 +720,15 @@ namespace Nethermind.Blockchain.Synchronization
             return result;
         }
 
-        public void SetNewStateRoot(Keccak stateRoot)
+        private NodeSyncProgress _syncProgress;
+
+        public void SetNewStateRoot(long number, Keccak stateRoot)
         {
             _lastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
             _lastSavedNodesCount = _savedNodesCount;
             if (_rootNode != stateRoot)
             {
+                _syncProgress = new NodeSyncProgress(number, _logger);
                 _rootNode = stateRoot;
                 lock (_dependencies) _dependencies.Clear();
                 lock (_codesSameAsNodes) _codesSameAsNodes.Clear();
@@ -747,7 +774,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (!hasOnlyRootNode && _rootNode != Keccak.EmptyTreeHash)
             {
-                AddNode(new StateSyncItem(stateRoot, NodeDataType.State, 0, 1) {IsRoot = true}, null, "initial");
+                AddNode(new StateSyncItem(stateRoot, NodeDataType.State, 0, 1), null, "initial");
             }
         }
 
@@ -761,6 +788,161 @@ namespace Nethermind.Blockchain.Synchronization
             lock (_stateDbLock)
             {
                 return _stateDb.Get(stateRoot) != null;
+            }
+        }
+
+        private class NodeSyncProgress
+        {
+            public NodeSyncProgress(long syncBlockNumber, ILogger logger)
+            {
+                _currentSyncBlock = syncBlockNumber;
+                _logger = logger;
+                _syncProgress = new NodeProgressState[256];
+            }
+
+            private long _currentSyncBlock;
+            private readonly ILogger _logger;
+
+            public enum NodeProgressState
+            {
+                Unknown,
+                Empty,
+                AlreadySaved,
+                Saved
+            }
+
+            private decimal _lastProgress;
+            private DateTime _lastProgressTime = DateTime.MinValue;
+            private NodeProgressState[] _syncProgress;
+
+            private void ReportSyncedLevel1(int childIndex, NodeProgressState nodeProgressState)
+            {
+                if (childIndex == -1)
+                {
+                    for (int i = 0; i < 256; i++)
+                    {
+                        if (_syncProgress[i] == NodeProgressState.Unknown)
+                        {
+                            _syncProgress[i] = nodeProgressState;
+                        }
+                    }
+                }
+                else
+                {
+                    for (int i = 16 * childIndex; i < 16 * childIndex + 16; i++)
+                    {
+                        if (_syncProgress[i] == NodeProgressState.Unknown)
+                        {
+                            _syncProgress[i] = nodeProgressState;
+                        }
+                    }
+                }
+            }
+
+            private void ReportSyncedLevel2(int parentIndex, int childIndex, NodeProgressState nodeProgressState)
+            {
+                if (childIndex == -1)
+                {
+                    for (int i = 0; i < 16; i++)
+                    {
+                        if (_syncProgress[16 * parentIndex + i] == NodeProgressState.Unknown)
+                        {
+                            _syncProgress[16 * parentIndex + i] = nodeProgressState;
+                        }
+                    }
+                }
+                else
+                {
+                    if (_syncProgress[16 * parentIndex + childIndex] == NodeProgressState.Unknown)
+                    {
+                        _syncProgress[16 * parentIndex + childIndex] = nodeProgressState;
+                    }
+                }
+            }
+
+            public void ReportSynced(int level, int parentIndex, int childIndex, NodeDataType nodeDataType, NodeProgressState nodeProgressState)
+            {
+                if (level > 2 || nodeDataType != NodeDataType.State)
+                {
+                    return;
+                }
+
+                switch (level)
+                {
+                    case 0:
+                        for (int i = 0; i < 256; i++)
+                        {
+                            if (_syncProgress[i] == NodeProgressState.Unknown)
+                            {
+                                _syncProgress[i] = nodeProgressState;
+                            }
+                        }
+
+                        break;
+                    case 1:
+                        ReportSyncedLevel1(childIndex, nodeProgressState);
+                        break;
+                    case 2:
+                        ReportSyncedLevel2(parentIndex, childIndex, nodeProgressState);
+                        break;
+                }
+
+                int savedBranches = 0;
+                for (int i = 0; i < _syncProgress.Length; i++)
+                {
+                    if (_syncProgress[i] != NodeProgressState.Unknown)
+                    {
+                        savedBranches += 1;
+                    }
+                }
+
+                decimal currentProgress = (decimal) savedBranches / _syncProgress.Length;
+                if (currentProgress == _lastProgress || nodeProgressState == NodeProgressState.Empty)
+                {
+                    return;
+                }
+
+                if (_logger.IsInfo) _logger.Info($"Node sync progress: {(decimal) savedBranches / _syncProgress.Length:p2} from block {_currentSyncBlock}");
+                _lastProgress = currentProgress;
+                
+                if (currentProgress != 1M && DateTime.UtcNow - _lastProgressTime < TimeSpan.FromSeconds(5))
+                {
+                    return;
+                }
+                
+                _lastProgressTime = DateTime.UtcNow;                
+                if (_logger.IsInfo)
+                {
+                    StringBuilder builder = new StringBuilder();
+                    builder.Append($"(after {level} {parentIndex}.{childIndex} {nodeProgressState})");
+                    for (int i = 0; i < _syncProgress.Length; i++)
+                    {
+                        if (i % 64 == 0)
+                        {
+                            builder.AppendLine();
+                        }
+
+                        switch (_syncProgress[i])
+                        {
+                            case NodeProgressState.Unknown:
+                                builder.Append('?');
+                                break;
+                            case NodeProgressState.Empty:
+                                builder.Append('0');
+                                break;
+                            case NodeProgressState.AlreadySaved:
+                                builder.Append('1');
+                                break;
+                            case NodeProgressState.Saved:
+                                builder.Append('+');
+                                break;
+                            default:
+                                throw new ArgumentOutOfRangeException();
+                        }
+                    }
+                    
+                    _logger.Info(builder.ToString());
+                }
             }
         }
 
