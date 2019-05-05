@@ -497,7 +497,7 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime.small).TotalMilliseconds;
                         _lastSavedNodesCount = _savedNodesCount;
-                        if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | Progress {_syncProgress.LastProgress:p2} | State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | SNPS: {savedNodesPerSecond,6:F0} | P: {_pendingRequests.Count} | accounts {_savedAccounts} | enqueued nodes {TotalNodesPending:D6} | AVTIH {_averageTimeInHandler:f2}");
+                        if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | Progress {_syncProgress.LastProgress:p2} | State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | SNPS: {savedNodesPerSecond,6:F0} | P: {_pendingRequests.Count} | accounts {_savedAccounts} | enqueued nodes {Stream0.Count:D6} {Stream1.Count:D6} {Stream2.Count:D6} | AVTIH {_averageTimeInHandler:f2}");
                         if (DateTime.UtcNow - _lastReportTime.full > TimeSpan.FromSeconds(10))
                         {
                             long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;
