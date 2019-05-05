@@ -38,12 +38,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.AreEqual(0M, progress.LastProgress);
         }
 
-        [TestCase(0, -1, -1, 1d)] // root
-        [TestCase(1, -1, -1, (double) 1)] // extension
-        [TestCase(1, 1, -1, (double) 1 / 16)] // branch
-        [TestCase(2, 1, 1, (double) 1 / 256)] // branch into branch
-        [TestCase(2, 1, -1, (double) 1 / 16)] // branch into extension
-        [TestCase(2, -1, 1, (double) 1 / 16)] // extension into branch
+        [TestCase(0, -1, -1, 1d)]
+        [TestCase(1, -1, 1, (double) 1 / 16)]
+        [TestCase(1, 1, -1, (double) 1)]
+        [TestCase(2, 1, 1, (double) 1 / 256)]
+        [TestCase(2, 1, -1, (double) 1 / 16)]
+        [TestCase(2, -1, 1, (double) 1 / 16)]
         public void Single_item_progress_is_correct(int level, int parentIndex, int childIndex, double expectedResult)
         {
             NodeSyncProgress progress = new NodeSyncProgress(7, NullLogger.Instance);
@@ -87,22 +87,22 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Multiple_items()
         {
             NodeSyncProgress progress = new NodeSyncProgress(7, NullLogger.Instance);
-            progress.ReportSynced(2, 0, 0, NodeDataType.State, NodeProgressState.Saved);
+            progress.ReportSynced(2, 1, 1, NodeDataType.State, NodeProgressState.Saved);
             Assert.AreEqual((decimal) 1/256, progress.LastProgress, "0");
             
-            progress.ReportSynced(2, 0, 1, NodeDataType.State, NodeProgressState.Saved);
+            progress.ReportSynced(2, 1, 2, NodeDataType.State, NodeProgressState.Saved);
             Assert.AreEqual((decimal) 2/256, progress.LastProgress, "1");
             
-            progress.ReportSynced(2, 1, 0, NodeDataType.State, NodeProgressState.Saved);
+            progress.ReportSynced(2, 2, 1, NodeDataType.State, NodeProgressState.Saved);
             Assert.AreEqual((decimal) 3/256, progress.LastProgress, "2");
             
-            progress.ReportSynced(1, 1, -1, NodeDataType.State, NodeProgressState.Saved);
+            progress.ReportSynced(1, 1, 2, NodeDataType.State, NodeProgressState.Saved);
             Assert.AreEqual((decimal) 18/256, progress.LastProgress, "3");
             
-            progress.ReportSynced(2, 2, 1, NodeDataType.State, NodeProgressState.Saved);
+            progress.ReportSynced(2, 3, 1, NodeDataType.State, NodeProgressState.Saved);
             Assert.AreEqual((decimal) 19/256, progress.LastProgress, "4");
             
-            progress.ReportSynced(1, 4, -1, NodeDataType.State, NodeProgressState.Saved);
+            progress.ReportSynced(1, 1, 4, NodeDataType.State, NodeProgressState.Saved);
             Assert.AreEqual((decimal) 35/256, progress.LastProgress, "5");
             
             progress.ReportSynced(0, -1, -1, NodeDataType.State, NodeProgressState.Saved);
