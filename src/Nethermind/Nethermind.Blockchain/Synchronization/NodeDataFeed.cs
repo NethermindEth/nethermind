@@ -722,13 +722,18 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 temp.Add(poppedSyncItem);
             }
+            
+            while (Stream1.TryPop(out StateSyncItem poppedSyncItem))
+            {
+                temp.Add(poppedSyncItem);
+            }
 
             foreach (StateSyncItem syncItem in temp)
             {
                 PushToSelectedStream(syncItem);
             }
             
-            reviewMessage += $"  after {Stream0.Count:D6} {Stream1.Count:D6} {Stream2.Count:D6}";
+            reviewMessage += $"  after {Stream0.Count:D6} {Stream1.Count:D6} {Stream2.Count:D6}" + Environment.NewLine;
             
             stopwatch.Stop();
             reviewMessage += $"  time spent in review: {stopwatch.ElapsedMilliseconds}ms";
