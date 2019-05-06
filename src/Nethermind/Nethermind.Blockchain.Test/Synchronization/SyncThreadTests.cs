@@ -256,7 +256,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var ecdsa = new EthereumEcdsa(specProvider, logManager);
             var txPool = new TxPool(new InMemoryTransactionStorage(), new PendingTransactionThresholdValidator(), new Timestamp(), ecdsa, specProvider, logManager);
             var tree = new BlockTree(blockDb, headerDb, blockInfoDb, specProvider, txPool, logManager);
-            var blockhashProvider = new BlockhashProvider(tree);
+            var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
 
             var sealValidator = TestSealValidator.AlwaysValid;

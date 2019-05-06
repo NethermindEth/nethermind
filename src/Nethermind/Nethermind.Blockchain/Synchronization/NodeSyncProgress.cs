@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Node sync progress: {(decimal) savedBranches / _syncProgress.Length:p2} from block {CurrentSyncBlock}");
+            if (_logger.IsInfo) _logger.Info($"Branch sync progress (do not extrapolate): {(decimal) savedBranches / _syncProgress.Length:p2} of block {CurrentSyncBlock}");
 
 //                if (currentProgress != 1M && DateTime.UtcNow - _lastProgressTime < TimeSpan.FromSeconds(5))
 //                {
@@ -143,7 +143,6 @@ namespace Nethermind.Blockchain.Synchronization
             if (_logger.IsInfo)
             {
                 StringBuilder builder = new StringBuilder();
-//                    builder.Append($"(after {level} {parentIndex}.{childIndex} {nodeProgressState})");
                 for (int i = 0; i < _syncProgress.Length; i++)
                 {
                     if (i % 64 == 0)

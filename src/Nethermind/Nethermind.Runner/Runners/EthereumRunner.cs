@@ -516,7 +516,7 @@ namespace Nethermind.Runner.Runners
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(
-                _blockTree);
+                _blockTree, _logManager);
 
             var virtualMachine = new VirtualMachine(
                 stateProvider,

@@ -44,7 +44,7 @@ namespace Nethermind.Runner.Runners
             StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
 
             BlockTree = new ReadOnlyBlockTree(blockTree);
-            BlockhashProvider = new BlockhashProvider(BlockTree);
+            BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
             VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, logManager);
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider, VirtualMachine, logManager);

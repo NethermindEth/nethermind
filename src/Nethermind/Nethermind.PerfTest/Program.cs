@@ -160,7 +160,7 @@ namespace Nethermind.PerfTest
                 new TxPool(NullTransactionStorage.Instance,
                     new PendingTransactionThresholdValidator(), new Timestamp(),
                     NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, logManager), logManager);
-            _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
+            _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree, LimboLogs.Instance), logManager);
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
@@ -353,7 +353,7 @@ namespace Nethermind.PerfTest
 
             /* blockchain processing */
             var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
-            var blockhashProvider = new BlockhashProvider(blockTree);
+            var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _logManager);
             //var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, new TransactionTracer("D:\\tx_traces\\perf_test", new UnforgivingJsonSerializer()), _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);

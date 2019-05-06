@@ -48,7 +48,7 @@ namespace Nethermind.Runner.Runners
             StateProvider = new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, logManager);
             StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, StateProvider, logManager);
             IBlockTree readOnlyTree = new ReadOnlyBlockTree(blockTree);
-            BlockhashProvider blockhashProvider = new BlockhashProvider(readOnlyTree);
+            BlockhashProvider blockhashProvider = new BlockhashProvider(readOnlyTree, logManager);
             VirtualMachine virtualMachine = new VirtualMachine(StateProvider, storageProvider, blockhashProvider, logManager);
             ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, StateProvider, storageProvider, virtualMachine, logManager);
             ITxPool txPool = customTxPool;

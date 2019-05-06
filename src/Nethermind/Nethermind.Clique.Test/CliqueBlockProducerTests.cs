@@ -94,7 +94,7 @@ namespace Nethermind.Clique.Test
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, GoerliSpecProvider.Instance, txPool, nodeLogManager);
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
 
-                BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
+                BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
                 _blockTrees.Add(privateKey, blockTree);
 
                 IBasicWallet wallet = new BasicWallet(privateKey);
