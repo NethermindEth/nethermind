@@ -273,7 +273,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, txProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, syncConfig, logManager);
 
-            var step = new TxSignaturesRecoveryStep(ecdsa, txPool);
+            var step = new TxSignaturesRecoveryStep(ecdsa, txPool, logManager);
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true, true);
 
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);

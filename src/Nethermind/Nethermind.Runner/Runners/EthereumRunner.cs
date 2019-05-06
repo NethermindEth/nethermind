@@ -427,7 +427,7 @@ namespace Nethermind.Runner.Runners
                 _txPool,
                 _logManager);
 
-            _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _txPool);
+            _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _txPool, _logManager);
 
             CliqueConfig cliqueConfig = null;
             _snapshotManager = null;

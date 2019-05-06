@@ -46,6 +46,7 @@ namespace Nethermind.Evm
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
+            _ecdsa = new EthereumEcdsa(specProvider, logManager);
         }
 
         [Todo("Wider work needed to split calls and execution properly")]
@@ -58,14 +59,16 @@ namespace Nethermind.Evm
         {
             Execute(transaction, block, txTracer, false);
         }
-        
+
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool readOnly)
         {
-            block.GasUsed += (long)tx.GasLimit;
+            block.GasUsed += (long) tx.GasLimit;
             Address recipient = tx.To ?? Address.OfContract(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
-            if(txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long)tx.GasLimit, Bytes.Empty,"invalid");
+            if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long) tx.GasLimit, Bytes.Empty, "invalid");
         }
-        
+
+        private EthereumEcdsa _ecdsa;
+
         public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
@@ -105,10 +108,20 @@ namespace Nethermind.Evm
 
             if (!_stateProvider.AccountExists(sender))
             {
-                TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
-                if (gasPrice == UInt256.Zero)
+                // hacky fix for the potential recovery issue
+                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, block.Number);
+                if (sender != transaction.SenderAddress)
                 {
-                    _stateProvider.CreateAccount(sender, UInt256.Zero);
+                    _logger.Error($"TX recovery failure - tx was coming with sender {sender} and the now it recovers to {transaction.SenderAddress}");
+                    sender = transaction.SenderAddress;
+                }
+                else
+                {
+                    TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
+                    if (gasPrice == UInt256.Zero)
+                    {
+                        _stateProvider.CreateAccount(sender, UInt256.Zero);
+                    }                    
                 }
             }
 
@@ -129,7 +142,7 @@ namespace Nethermind.Evm
 
             _stateProvider.IncrementNonce(sender);
             _stateProvider.SubtractFromBalance(sender, (ulong) gasLimit * gasPrice, spec);
-            
+
             // TODO: I think we can skip this commit and decrease the tree operations this way
             _stateProvider.Commit(_specProvider.GetSpec(block.Number), txTracer.IsTracingState ? txTracer : null);
 
