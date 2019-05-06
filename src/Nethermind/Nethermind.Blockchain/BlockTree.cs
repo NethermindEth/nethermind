@@ -1011,8 +1011,6 @@ namespace Nethermind.Blockchain
 
             BlockInfo blockInfo = LoadInfo(header.Number, header.Hash).Info;
             header.TotalDifficulty = blockInfo.TotalDifficulty;
-            if (_logger.IsTrace) _logger.Trace($"Updating total difficulty of the main chain to {header.TotalDifficulty}");
-
             return header;
         }
 
