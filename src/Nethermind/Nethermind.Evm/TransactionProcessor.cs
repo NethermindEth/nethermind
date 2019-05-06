@@ -112,7 +112,7 @@ namespace Nethermind.Evm
                 transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, block.Number);
                 if (sender != transaction.SenderAddress)
                 {
-                    _logger.Error($"TX recovery failure - tx was coming with sender {sender} and the now it recovers to {transaction.SenderAddress}");
+                    if(_logger.IsWarn) _logger.Warn($"TX recovery issue fixed - tx was coming with sender {sender} and the now it recovers to {transaction.SenderAddress}");
                     sender = transaction.SenderAddress;
                 }
                 else

@@ -39,38 +39,31 @@ namespace Nethermind.Blockchain
 
         public Keccak GetBlockhash(BlockHeader currentBlock, in long number)
         {
-            _logger.Error($"GetBlockhash({currentBlock.ToString(BlockHeader.Format.Short)}, {number})");
             long current = currentBlock.Number;
             if (number >= current || number < current - Math.Min(current, _maxDepth))
             {
-                _logger.Error($"GetBlockhash({currentBlock.ToString(BlockHeader.Format.Short)}, {number}) returns null");
                 return null;
             }
 
             bool isFastSyncSearch = false;
 
-            _logger.Error($"GetBlockhash -> FindHeader of parent of {currentBlock.ToString(BlockHeader.Format.Short)}");
             BlockHeader header = _blockTree.FindHeader(currentBlock.ParentHash);
             for (var i = 0; i < _maxDepth; i++)
             {
                 if (number == header.Number)
                 {
-                    _logger.Error($"GetBlockhash -> found at {header.ToString(BlockHeader.Format.Short)}");
                     return header.Hash;
                 }
 
-                _logger.Error($"GetBlockhash -> FindHeader of parent of {header.ToString(BlockHeader.Format.Short)}");
                 header = _blockTree.FindHeader(header.ParentHash);
                 if (_blockTree.IsMainChain(header.Hash) && !isFastSyncSearch)
                 {
                     try
                     {
-                        _logger.Error($"GetBlockhash -> inside FindHeader of parent of {header.ToString(BlockHeader.Format.Short)}");
                         header = _blockTree.FindHeader(number);
                     }
                     catch (InvalidOperationException) // fast sync during the first 256 blocks after the transition
                     {
-                        _logger.Error($"GetBlockhash -> is fast sync set to true");
                         isFastSyncSearch = true;
                     }
                 }
