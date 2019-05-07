@@ -43,5 +43,7 @@ namespace Nethermind.Store
         byte[] GetCode(Keccak stateRoot, Address address);
 
         byte[] GetCode(Keccak codeHash);
+        
+        void RunTreeVisitor(ITreeVisitor treeVisitor);
     }
 }

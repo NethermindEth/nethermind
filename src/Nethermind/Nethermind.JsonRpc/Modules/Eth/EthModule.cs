@@ -608,6 +608,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<bool?>.Fail("eth_submitHashrate not supported", ErrorType.MethodNotFound, null);
         }
 
+        // https://github.com/ethereum/EIPs/issues/1186
+        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, Keccak[] hashRate, BlockParameter blockParameter)
+        {
+            ProofCollector proofCollector = new ProofCollector(accountAddress);
+            _blockchainBridge.RunTreeVisitor(proofCollector);
+
+            return ResultWrapper<AccountProof>.Success(proofCollector.AccountProof);
+        }
+
         private ResultWrapper<BigInteger?> GetOmmersCount(BlockParameter blockParameter)
         {
             Block block;

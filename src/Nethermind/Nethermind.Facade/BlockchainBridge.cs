@@ -256,6 +256,11 @@ namespace Nethermind.Facade
             return new FilterLog[0];
         }
 
+        public void RunTreeVisitor(ITreeVisitor treeVisitor)
+        {
+            _stateReader.RunTreeVisitor(treeVisitor);
+        }
+        
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)
         {

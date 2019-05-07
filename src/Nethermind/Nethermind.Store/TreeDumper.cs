@@ -30,7 +30,12 @@ namespace Nethermind.Store
         {
             _builder.Clear();
         }
-        
+
+        public bool ShouldVisit(Keccak nextNode)
+        {
+            return true;
+        }
+
         public void VisitTree(Keccak rootHash, VisitContext context)
         {
             if (rootHash == Keccak.EmptyTreeHash)

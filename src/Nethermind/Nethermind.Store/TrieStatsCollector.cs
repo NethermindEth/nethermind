@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -33,7 +34,12 @@ namespace Nethermind.Store
         }
         
         public TrieStats Stats { get; } = new TrieStats();
-        
+
+        public bool ShouldVisit(Keccak nextNode)
+        {
+            return true;
+        }
+
         public void VisitTree(Keccak rootHash, VisitContext context)
         {
         }

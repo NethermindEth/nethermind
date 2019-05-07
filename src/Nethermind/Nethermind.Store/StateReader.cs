@@ -101,6 +101,11 @@ namespace Nethermind.Store
             return _codeDb[codeHash.Bytes];
         }
 
+        public void RunTreeVisitor(ITreeVisitor treeVisitor)
+        {
+            _state.Accept(treeVisitor, _codeDb);
+        }
+
         public byte[] GetCode(Keccak rootHash, Address address)
         {
             Account account = GetState(rootHash, address);

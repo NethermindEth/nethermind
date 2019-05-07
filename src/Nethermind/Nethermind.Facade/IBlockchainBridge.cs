@@ -24,6 +24,7 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store;
 using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
@@ -91,5 +92,6 @@ namespace Nethermind.Facade
 
         FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
+        void RunTreeVisitor(ITreeVisitor treeVisitor);
     }
 }

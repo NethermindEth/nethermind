@@ -31,6 +31,8 @@ namespace Nethermind.Store
     
     public interface ITreeVisitor
     {
+        bool ShouldVisit(Keccak nextNode);
+        
         void VisitTree(Keccak rootHash, VisitContext context);
         
         void VisitMissingNode(Keccak nodeHash, VisitContext context);
