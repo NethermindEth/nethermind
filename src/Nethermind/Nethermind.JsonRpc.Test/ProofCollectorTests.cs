@@ -30,7 +30,6 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Balance_is_correct()
         {
-            ProofCollector proofCollector = new ProofCollector(TestItem.AddressA);
             StateTree tree = new StateTree();
 
             Account account1 = Build.An.Account.WithBalance(1).TestObject;
@@ -39,17 +38,20 @@ namespace Nethermind.JsonRpc.Test
             tree.Set(TestItem.AddressB, account2);
             tree.Commit();
 
+            ProofCollector proofCollector = new ProofCollector(TestItem.AddressA);
             tree.Accept(proofCollector, new MemDb());
-
             AccountProof proof = proofCollector.BuildResult();
-
             Assert.AreEqual(UInt256.One, proof.Balance);
+            
+            ProofCollector proofCollector2 = new ProofCollector(TestItem.AddressB);
+            tree.Accept(proofCollector2, new MemDb());
+            AccountProof proof2 = proofCollector2.BuildResult();
+            Assert.AreEqual(UInt256.One + 1, proof2.Balance);
         }
 
         [Test]
         public void Code_hash_is_correct()
         {
-            ProofCollector proofCollector = new ProofCollector(TestItem.AddressA);
             StateTree tree = new StateTree();
 
             byte[] code = new byte[] {1, 2, 3};
@@ -59,17 +61,20 @@ namespace Nethermind.JsonRpc.Test
             tree.Set(TestItem.AddressB, account2);
             tree.Commit();
 
+            ProofCollector proofCollector = new ProofCollector(TestItem.AddressA);
             tree.Accept(proofCollector, new MemDb());
-
             AccountProof proof = proofCollector.BuildResult();
-
-            Assert.AreEqual(Keccak.Compute(code), proof.CodeHash);
+            Assert.AreEqual(account1.CodeHash, proof.CodeHash);
+            
+            ProofCollector proofCollector2 = new ProofCollector(TestItem.AddressB);
+            tree.Accept(proofCollector2, new MemDb());
+            AccountProof proof2 = proofCollector2.BuildResult();
+            Assert.AreEqual(Keccak.OfAnEmptyString, proof2.CodeHash);
         }
         
         [Test]
         public void Nonce_is_correct()
         {
-            ProofCollector proofCollector = new ProofCollector(TestItem.AddressA);
             StateTree tree = new StateTree();
 
             byte[] code = new byte[] {1, 2, 3};
@@ -79,17 +84,20 @@ namespace Nethermind.JsonRpc.Test
             tree.Set(TestItem.AddressB, account2);
             tree.Commit();
 
+            ProofCollector proofCollector = new ProofCollector(TestItem.AddressA);
             tree.Accept(proofCollector, new MemDb());
-
             AccountProof proof = proofCollector.BuildResult();
-
             Assert.AreEqual(account1.Nonce, proof.Nonce);
+            
+            ProofCollector proofCollector2 = new ProofCollector(TestItem.AddressB);
+            tree.Accept(proofCollector2, new MemDb());
+            AccountProof proof2 = proofCollector2.BuildResult();
+            Assert.AreEqual(UInt256.Zero, proof2.Nonce);
         }
         
         [Test]
         public void Storage_root_is_correct()
         {
-            ProofCollector proofCollector = new ProofCollector(TestItem.AddressA);
             StateTree tree = new StateTree();
 
             byte[] code = new byte[] {1, 2, 3};
@@ -99,11 +107,33 @@ namespace Nethermind.JsonRpc.Test
             tree.Set(TestItem.AddressB, account2);
             tree.Commit();
 
+            ProofCollector proofCollector = new ProofCollector(TestItem.AddressA);
             tree.Accept(proofCollector, new MemDb());
-
             AccountProof proof = proofCollector.BuildResult();
-
             Assert.AreEqual(TestItem.KeccakA, proof.StorageRoot);
+            
+            ProofCollector proofCollector2 = new ProofCollector(TestItem.AddressB);
+            tree.Accept(proofCollector2, new MemDb());
+            AccountProof proof2 = proofCollector2.BuildResult();
+            Assert.AreEqual(Keccak.EmptyTreeHash, proof2.StorageRoot);
+        }
+        
+        [Test]
+        public void Proof_path_is_filled()
+        {
+            StateTree tree = new StateTree();
+
+            byte[] code = new byte[] {1, 2, 3};
+            Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject;
+            Account account2 = Build.An.Account.WithBalance(2).TestObject;
+            tree.Set(TestItem.AddressA, account1);
+            tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
+
+            ProofCollector proofCollector = new ProofCollector(TestItem.AddressA);
+            tree.Accept(proofCollector, new MemDb());
+            AccountProof proof = proofCollector.BuildResult();
+            Assert.AreEqual(3, proof.Proof.Length);
         }
     }
 }
