@@ -92,6 +92,11 @@ namespace Nethermind.Blockchain
 
             int stateSnapshot = _stateDb.TakeSnapshot();
             int codeSnapshot = _codeDb.TakeSnapshot();
+            if (stateSnapshot != -1 || codeSnapshot != -1)
+            {
+                if(_logger.IsError) _logger.Error($"Uncommitted state ({stateSnapshot}, {codeSnapshot}) when processing from a branch root {branchStateRoot} starting with block {suggestedBlocks[0].ToString(Block.Format.Short)}");
+            }
+            
             Keccak snapshotStateRoot = _stateProvider.StateRoot;
 
             if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)

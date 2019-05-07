@@ -86,13 +86,13 @@ namespace Nethermind.Blockchain.Test
             generator.Start();
 
             /* blockchain processing */
-            BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
+            BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
             TransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator,
                 processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, new SyncConfig(), logManager);
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumEcdsa, NullTxPool.Instance), logManager, false, false);
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumEcdsa, NullTxPool.Instance, LimboLogs.Instance), logManager, false, false);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());

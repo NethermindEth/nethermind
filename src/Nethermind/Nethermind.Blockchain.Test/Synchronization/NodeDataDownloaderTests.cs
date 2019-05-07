@@ -546,7 +546,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+            await downloader.SyncNodeData(CancellationToken.None, 1000, _remoteStateTree.RootHash);
 
             CompareTrees("END");
         }
@@ -588,13 +588,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             NodeDataDownloader downloader = PrepareDownloader(mock);
             
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
 
             _isPeerAsleep = false;
             
             mock.SetFilter(null);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
 
             CompareTrees("END");
@@ -612,7 +612,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             CompareTrees("BEFORE FIRST SYNC");
 
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
 
             CompareTrees("AFTER FIRST SYNC");
@@ -634,7 +634,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _isPeerAsleep = false;
             
             mock.SetFilter(null);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
 
             CompareTrees("END");
@@ -657,7 +657,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             CompareTrees("BEFORE FIRST SYNC", true);
 
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
 
             CompareTrees("AFTER FIRST SYNC", true);
@@ -677,7 +677,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _remoteStateDb.Commit();
 
             _isPeerAsleep = false;
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
 
             CompareTrees("AFTER SECOND SYNC", true);
@@ -698,7 +698,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             _isPeerAsleep = false;
             mock.SetFilter(null);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
 
             CompareTrees("END");
@@ -717,7 +717,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             mock.MaxResponseLength = 1;
 
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
             _localStateDb.Commit();
 
             CompareTrees("END");
@@ -733,7 +733,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            Task syncNode = downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
             if (first == syncNode)
@@ -772,7 +772,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            Task syncNode = downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
             if (first == syncNode)
@@ -805,7 +805,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            Task syncNode = downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
             if (first == syncNode)
@@ -837,7 +837,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            Task syncNode = downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
             if (first == syncNode)
@@ -873,7 +873,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            Task syncNode = downloader.SyncNodeData(CancellationToken.None, _remoteStateTree.RootHash);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
             if (first == syncNode)
@@ -894,7 +894,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb, ExecutorMock.NotPreimage);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(1000)).Unwrap()
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, Keccak.Compute("the_peer_has_no_data")), Task.Delay(1000)).Unwrap()
                 .ContinueWith(t => { Assert.AreEqual(0, _pool.UsefulPeerCount); });
         }
 
@@ -903,7 +903,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb, ExecutorMock.EmptyArraysInResponses);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, Keccak.Compute("the_peer_has_no_data")), Task.Delay(1000)).Unwrap()
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, Keccak.Compute("the_peer_has_no_data")), Task.Delay(1000)).Unwrap()
                 .ContinueWith(t => { Assert.AreEqual(0, _pool.UsefulPeerCount); });
         }
 

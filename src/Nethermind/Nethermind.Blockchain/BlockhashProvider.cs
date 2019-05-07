@@ -19,6 +19,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 
@@ -28,10 +29,12 @@ namespace Nethermind.Blockchain
     {
         private static int _maxDepth = 256;
         private readonly IBlockTree _blockTree;
+        private ILogger _logger;
 
-        public BlockhashProvider(IBlockTree blockTree)
+        public BlockhashProvider(IBlockTree blockTree, ILogManager logManager)
         {
-            _blockTree = blockTree;
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public Keccak GetBlockhash(BlockHeader currentBlock, in long number)
@@ -47,7 +50,10 @@ namespace Nethermind.Blockchain
             BlockHeader header = _blockTree.FindHeader(currentBlock.ParentHash);
             for (var i = 0; i < _maxDepth; i++)
             {
-                if (number == header.Number) return header.Hash;
+                if (number == header.Number)
+                {
+                    return header.Hash;
+                }
 
                 header = _blockTree.FindHeader(header.ParentHash);
                 if (_blockTree.IsMainChain(header.Hash) && !isFastSyncSearch)

@@ -471,7 +471,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{reason}] Selecting best peer");
+            if (_logger.IsTrace) _logger.Trace($"[{reason}] Selecting best peer for {allocation}");
             (PeerInfo Info, long Latency) bestPeer = (null, 100000);
             foreach ((_, PeerInfo info) in _peers)
             {
@@ -571,7 +571,12 @@ namespace Nethermind.Blockchain.Synchronization
         {
             foreach ((SyncPeerAllocation allocation, _) in _allocations)
             {
-                var bestPeer = SelectBestPeerForAllocation(allocation, reason);
+                if (!allocation.CanBeReplaced)
+                {
+                    continue;
+                }
+
+                PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, reason);
                 if (bestPeer != allocation.Current)
                 {
                     ReplaceIfWorthReplacing(allocation, bestPeer);

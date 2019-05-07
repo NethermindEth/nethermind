@@ -20,6 +20,7 @@ using System;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Blockchain
 {
@@ -27,11 +28,13 @@ namespace Nethermind.Blockchain
     {
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ITxPool _txPool;
+        private readonly ILogger _logger;
 
-        public TxSignaturesRecoveryStep(IEthereumEcdsa ecdsa, ITxPool txPool)
+        public TxSignaturesRecoveryStep(IEthereumEcdsa ecdsa, ITxPool txPool, ILogManager logManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(ecdsa));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public void RecoverData(Block block)
@@ -45,6 +48,7 @@ namespace Nethermind.Blockchain
             {
                 _txPool.TryGetSender(block.Transactions[i].Hash, out Address sender);
                 block.Transactions[i].SenderAddress = sender ?? _ecdsa.RecoverAddress(block.Transactions[i], block.Number);
+                if(_logger.IsTrace) _logger.Trace($"Recovered {block.Transactions[i].SenderAddress} sender for {block.Transactions[i].Hash} (tx pool cached value: {sender})");
             }
         }
     }

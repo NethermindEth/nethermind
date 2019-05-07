@@ -243,7 +243,7 @@ namespace Ethereum.Test.Base
                 new PendingTransactionThresholdValidator(), new Timestamp(), ecdsa, specProvider, _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
-            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
+            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
             ITxValidator transactionValidator = new TxValidator(ChainId.MainNet);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);

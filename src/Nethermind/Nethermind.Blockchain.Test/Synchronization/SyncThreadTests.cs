@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _synchronizerType = synchronizerType;
         }
 
-        private int remotePeersCount = 3;
+        private int remotePeersCount = 2;
 
         [SetUp]
         public void Setup()
@@ -243,12 +243,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             MemDb blockInfoDb = new MemDb();
             StateDb codeDb = new StateDb();
             StateDb stateDb = new StateDb();
-            ;
 
             var stateProvider = new StateProvider(stateDb, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree();
+            stateDb.Commit();
 
             var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
             var receiptStorage = new InMemoryReceiptStorage();
@@ -256,7 +256,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var ecdsa = new EthereumEcdsa(specProvider, logManager);
             var txPool = new TxPool(new InMemoryTransactionStorage(), new PendingTransactionThresholdValidator(), new Timestamp(), ecdsa, specProvider, logManager);
             var tree = new BlockTree(blockDb, headerDb, blockInfoDb, specProvider, txPool, logManager);
-            var blockhashProvider = new BlockhashProvider(tree);
+            var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
 
             var sealValidator = TestSealValidator.AlwaysValid;
@@ -273,7 +273,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, txProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, syncConfig, logManager);
 
-            var step = new TxSignaturesRecoveryStep(ecdsa, txPool);
+            var step = new TxSignaturesRecoveryStep(ecdsa, txPool, logManager);
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true, true);
 
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);

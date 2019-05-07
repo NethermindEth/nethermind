@@ -174,10 +174,10 @@ namespace Nethermind.Blockchain.Synchronization
             return request;
         }
 
-        public async Task<long> SyncNodeData(CancellationToken token, Keccak rootNode)
+        public async Task<long> SyncNodeData(CancellationToken token, long number, Keccak rootNode)
         {
             _consumedNodesCount = 0;
-            _nodeDataFeed.SetNewStateRoot(rootNode);
+            _nodeDataFeed.SetNewStateRoot(number, rootNode);
             await KeepSyncing(token);
             return _consumedNodesCount;
         }

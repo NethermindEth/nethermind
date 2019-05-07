@@ -427,7 +427,7 @@ namespace Nethermind.Runner.Runners
                 _txPool,
                 _logManager);
 
-            _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _txPool);
+            _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _txPool, _logManager);
 
             CliqueConfig cliqueConfig = null;
             _snapshotManager = null;
@@ -516,7 +516,7 @@ namespace Nethermind.Runner.Runners
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(
-                _blockTree);
+                _blockTree, _logManager);
 
             var virtualMachine = new VirtualMachine(
                 stateProvider,

@@ -160,7 +160,7 @@ namespace Nethermind.PerfTest
                 new TxPool(NullTransactionStorage.Instance,
                     new PendingTransactionThresholdValidator(), new Timestamp(),
                     NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, logManager), logManager);
-            _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
+            _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree, LimboLogs.Instance), logManager);
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
@@ -353,13 +353,13 @@ namespace Nethermind.PerfTest
 
             /* blockchain processing */
             var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
-            var blockhashProvider = new BlockhashProvider(blockTree);
+            var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _logManager);
             //var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, new TransactionTracer("D:\\tx_traces\\perf_test", new UnforgivingJsonSerializer()), _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, new SyncConfig(), _logManager);
-            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumSigner, transactionPool), _logManager, true, true);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager), _logManager, true, true);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());

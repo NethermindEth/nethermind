@@ -185,7 +185,7 @@ namespace Nethermind.Blockchain
                 }
 
                 Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block.Transactions.Length);
-                if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash ?? blockRef.Block.Hash}.");
+                if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash?.ToString() ?? blockRef.Block.ToString(Block.Format.Short)}.");
                 _recoveryStep.RecoverData(blockRef.Block);
 
                 try
