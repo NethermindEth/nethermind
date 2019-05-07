@@ -56,7 +56,7 @@ namespace Nethermind.Store
             }
         }
 
-        public void VisitBranch(byte[] hashOrRlp, VisitContext context)
+        public void VisitBranch(TrieNode node, VisitContext context)
         {
             if (context.IsStorage)
             {
@@ -68,8 +68,8 @@ namespace Nethermind.Store
             }
         }
 
-        public void VisitExtension(byte[] hashOrRlp, VisitContext context)
-        {
+        public void VisitExtension(TrieNode node, VisitContext context)
+                 {
             if (context.IsStorage)
             {
                 Stats.StorageExtensionCount++;
@@ -80,7 +80,7 @@ namespace Nethermind.Store
             }
         }
         
-        public void VisitLeaf(byte[] hashOrRlp, VisitContext context)
+        public void VisitLeaf(TrieNode node, VisitContext context)
         {
             if (Stats.NodesCount - _lastAccountNodeCount > 100000)
             {

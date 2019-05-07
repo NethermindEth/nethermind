@@ -58,20 +58,20 @@ namespace Nethermind.Store
             _builder.AppendLine($"{GetIndent(context.Level) }{GetChildIndex(context)}MISSING {nodeHash}");
         }
 
-        public void VisitBranch(byte[] hashOrRlp, VisitContext context)
+        public void VisitBranch(TrieNode node, VisitContext context)
         {
-            _builder.AppendLine($"{GetPrefix(context)}BRANCH {hashOrRlp?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(context)}BRANCH {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
         }
 
-        public void VisitExtension(byte[] hashOrRlp, VisitContext context)
+        public void VisitExtension(TrieNode node, VisitContext context)
         {
-            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {hashOrRlp?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
         }
 
-        public void VisitLeaf(byte[] hashOrRlp, VisitContext context)
+        public void VisitLeaf(TrieNode node, VisitContext context)
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(context)}{leafDescription}{hashOrRlp?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(context)}{leafDescription}{(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
         }
 
         public void VisitCode(Keccak codeHash, byte[] code, VisitContext context)

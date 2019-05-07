@@ -16,9 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
@@ -66,7 +69,7 @@ namespace Nethermind.JsonRpc
     /// </summary>
     public class ProofCollector : ITreeVisitor
     {
-        private Keccak _nextNodeToVisit;
+        private int _pathIndex = 0;
         
         private readonly Address _address;
 
@@ -74,59 +77,91 @@ namespace Nethermind.JsonRpc
         {
             _address = address;
         }
-        
-        public AccountProof AccountProof { get; set; }
+
+        private AccountProof _accountProof;
+
+        public AccountProof BuildResult()
+        {
+            _accountProof.Proof = _proof.ToArray();
+            return _accountProof;
+        }
 
         public bool ShouldVisit(Keccak nextNode)
         {
-            return true;
+            return _visitingFilter.Contains(nextNode);
         }
 
         public void VisitTree(Keccak rootHash, VisitContext context)
         {
-            AccountProof = new AccountProof();
+            _accountProof = new AccountProof();
         }
 
         public void VisitMissingNode(Keccak nodeHash, VisitContext context)
         {
         }
 
-        public void VisitBranch(byte[] hashOrRlp, VisitContext context)
+        private List<byte[]> _proof = new List<byte[]>();
+        
+        private Nibble[] _prefix => Nibbles.FromBytes(Keccak.Compute(_address.Bytes).Bytes);
+        
+        public void VisitBranch(TrieNode node, VisitContext context)
         {
-            TrieNode node = new TrieNode(NodeType.Branch, new Rlp(hashOrRlp));
+            _visitingFilter.Clear();
+            _proof.Add(node.FullRlp.Bytes);
+            _visitingFilter.Add(node.GetChildHash((byte) _prefix[_pathIndex]));
+            _pathIndex++;
         }
 
-        public void VisitExtension(byte[] hashOrRlp, VisitContext context)
+        private HashSet<Keccak> _visitingFilter = new HashSet<Keccak>();
+        
+        public void VisitExtension(TrieNode node, VisitContext context)
         {
-            TrieNode node = new TrieNode(NodeType.Extension, new Rlp(hashOrRlp));
+            _visitingFilter.Clear();
+            _proof.Add(node.FullRlp.Bytes);
+            _visitingFilter.Add(node.GetChildHash(0));
+            _pathIndex += node.Path.Length;
         }
 
-        public void VisitLeaf(byte[] hashOrRlp, VisitContext context)
+        public void VisitLeaf(TrieNode node, VisitContext context)
         {
-            TrieNode node = new TrieNode(NodeType.Leaf, new Rlp(hashOrRlp));
-            
+            _visitingFilter.Clear();
+            _proof.Add(node.FullRlp.Bytes);
             if (context.IsStorage)
             {
             }
             else
             {
-                new TrieNode(NodeType.Unknown, new Rlp(hashOrRlp));
+                Account account = _accountDecoder.Decode(new Rlp.DecoderContext(node.Value));
+                _accountProof.Nonce = account.Nonce;
+                _accountProof.Balance = account.Balance;
+                _accountProof.StorageRoot = account.StorageRoot;
+                _accountProof.CodeHash = account.CodeHash;
             }
+            
+            _pathIndex += node.Path.Length;
+            _visitingFilter.Add(_accountProof.StorageRoot);
         }
+        
+        private AccountDecoder _accountDecoder = new AccountDecoder();
 
         public void VisitCode(Keccak codeHash, byte[] code, VisitContext context)
         {
+            throw new InvalidOperationException($"{nameof(ProofCollector)} does never expect to visit code");
         }
     }
 
     public class AccountProof
     {
         public byte[][] Proof { get; set; }
+        
         public UInt256 Balance { get; set; }
+        
         public Keccak CodeHash { get; set; }
         
         public UInt256 Nonce { get; set; }
+        
         public Keccak StorageRoot { get; set; }
+        
         public StorageProof[] StorageProofs { get; set; }
     }
 

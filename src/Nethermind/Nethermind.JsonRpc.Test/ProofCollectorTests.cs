@@ -37,10 +37,11 @@ namespace Nethermind.JsonRpc.Test
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
 
             tree.Accept(proofCollector, new MemDb());
 
-            AccountProof proof = proofCollector.AccountProof;
+            AccountProof proof = proofCollector.BuildResult();
 
             Assert.AreEqual(UInt256.One, proof.Balance);
         }
@@ -56,10 +57,11 @@ namespace Nethermind.JsonRpc.Test
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
 
             tree.Accept(proofCollector, new MemDb());
 
-            AccountProof proof = proofCollector.AccountProof;
+            AccountProof proof = proofCollector.BuildResult();
 
             Assert.AreEqual(Keccak.Compute(code), proof.CodeHash);
         }
@@ -75,10 +77,11 @@ namespace Nethermind.JsonRpc.Test
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
 
             tree.Accept(proofCollector, new MemDb());
 
-            AccountProof proof = proofCollector.AccountProof;
+            AccountProof proof = proofCollector.BuildResult();
 
             Assert.AreEqual(account1.Nonce, proof.Nonce);
         }
@@ -94,10 +97,11 @@ namespace Nethermind.JsonRpc.Test
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
 
             tree.Accept(proofCollector, new MemDb());
 
-            AccountProof proof = proofCollector.AccountProof;
+            AccountProof proof = proofCollector.BuildResult();
 
             Assert.AreEqual(TestItem.KeccakA, proof.StorageRoot);
         }

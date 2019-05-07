@@ -37,11 +37,11 @@ namespace Nethermind.Store
         
         void VisitMissingNode(Keccak nodeHash, VisitContext context);
         
-        void VisitBranch(byte[] hashOrRlp, VisitContext context);
+        void VisitBranch(TrieNode node, VisitContext context);
         
-        void VisitExtension(byte[] hashOrRlp, VisitContext context);
+        void VisitExtension(TrieNode node, VisitContext context);
         
-        void VisitLeaf(byte[] hashOrRlp, VisitContext context);
+        void VisitLeaf(TrieNode node, VisitContext context);
         
         void VisitCode(Keccak codeHash, byte[] code, VisitContext context);
     }
