@@ -1,4 +1,4 @@
 Supported Platforms
 *******************
 
-Nethermind run on Windows, Linux, MacOS.
+Nethermind runs on Windows, Linux, MacOS.

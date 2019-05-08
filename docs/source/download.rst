@@ -8,7 +8,7 @@ Windows
  * download Windows package
  * unzip
  * open the folder
- * Nethermind.Runner.exe
+ * run Nethermind.Launcher.exe
 
 Linux (Ubuntu 16.04 18.04 - reach out on gitter for other distributions)
 
@@ -16,8 +16,7 @@ Linux (Ubuntu 16.04 18.04 - reach out on gitter for other distributions)
  * curl [Linux_package_address] --output nethermind.zip
  * unzip nethermind.zip -d nethermind
  * cd nethermind
- * chmod +x Nethermind.Runner
- * ./Nethermind.Runner
+ * ./Nethermind.Launcher
 
 MacOS (10.12+)
 
@@ -26,5 +25,4 @@ MacOS (10.12+)
  * download MacOS package
  * unzip
  * cd into the folder
- * chmod +x Nethermind.Runner
- * ./Nethermind.Runner
+ * ./Nethermind.Launcher

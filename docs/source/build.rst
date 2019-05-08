@@ -2,7 +2,7 @@ Build
 *****
 
 IDE (optional)
-^^^
+^^^^^^^^^^^^^^
 
 * JetBrains Rider https://www.jetbrains.com/rider/
 * VS Code https://code.visualstudio.com/docs/other/dotnet

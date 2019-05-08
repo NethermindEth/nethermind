@@ -15,6 +15,7 @@ ToC
    download
    releases
    build
+   known_issues
    runtime
    networks
    private_networks
