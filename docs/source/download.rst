@@ -10,7 +10,7 @@ Windows
  * open the folder
  * run Nethermind.Launcher.exe
 
-Linux (Ubuntu 16.04 18.04 - reach out on gitter for other distributions)
+Linux (Ubuntu 16.04, 18.04, 18.10, 19.04)
 
  * sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6 unzip
  * curl [Linux_package_address] --output nethermind.zip

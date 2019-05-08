@@ -25,4 +25,5 @@ ToC
    hardware_requirements
    jsonrpc
    docker
+   systemd
    contact
