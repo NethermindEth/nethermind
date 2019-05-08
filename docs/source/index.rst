@@ -21,6 +21,8 @@ ToC
    private_networks
    configuration
    platforms
+   firewall_configuration
+   hardware_requirements
    jsonrpc
    docker
    contact
