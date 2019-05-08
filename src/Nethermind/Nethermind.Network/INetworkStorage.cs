@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.Network
@@ -23,7 +24,9 @@ namespace Nethermind.Network
     public interface INetworkStorage
     {
         NetworkNode[] GetPersistedNodes();
-        void UpdateNodes(NetworkNode[] nodes);
+        
+        void UpdateNode(NetworkNode node);
+        void UpdateNodes(IEnumerable<NetworkNode> nodes);
         void RemoveNodes(NetworkNode[] nodes);
         void StartBatch();
         void Commit();

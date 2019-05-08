@@ -965,7 +965,7 @@ namespace Nethermind.Network
             if (nodesForUpdate.Any())
             {
                 //we need to update all stored notes to update reputation
-                _peerStorage.UpdateNodes(nodesForUpdate.ToArray());
+                _peerStorage.UpdateNodes(nodesForUpdate);
             }
 
             //if we have more persisted nodes then the threshold, we run cleanup process

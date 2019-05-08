@@ -58,21 +58,24 @@ namespace Nethermind.Network
                 }
                 catch (Exception e)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
+                    if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
                 }
             }
 
             return nodes.ToArray();
         }
 
-        public void UpdateNodes(NetworkNode[] nodes)
+        public void UpdateNode(NetworkNode node)
         {
-            for (var i = 0; i < nodes.Length; i++)
+            _db[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
+            _updateCounter++;
+        }
+
+        public void UpdateNodes(IEnumerable<NetworkNode> nodes)
+        {
+            foreach (NetworkNode node in nodes)
             {
-                var node = nodes[i];
-                _db[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
-                _updateCounter++;
-//                if (_logger.IsTrace) _logger.Trace($"[{_dbDirectory}] Node update: {node.NodeId}, data: {node.Host}:{node.Port}, {node.Reputation}");
+                UpdateNode(node);
             }
         }
 

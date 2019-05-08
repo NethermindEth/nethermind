@@ -16,7 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Net.Http.Headers;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
@@ -54,6 +57,36 @@ namespace Nethermind.Core.Test
             byte[] x = hexString1 == null ? null : Bytes.FromHexString(hexString1);
             byte[] y = hexString2 == null ? null : Bytes.FromHexString(hexString2);
             Assert.AreEqual(expectedResult, comparer.Equals(x, y));
+        }
+        
+        [Test]
+        public void Stream_hex_works()
+        {
+            byte[] bytes = new byte[] {15, 16, 255};
+            StreamWriter sw = null;
+            StreamReader sr = null;
+
+            try
+            {
+                using (var ms = new MemoryStream())
+                {
+                    sw = new StreamWriter(ms);
+                    sr = new StreamReader(ms);
+
+                    bytes.StreamHex(sw);
+                    sw.Flush();
+                    
+                    ms.Position = 0;
+
+                    string result = sr.ReadToEnd();
+                    Assert.AreEqual("0f10ff", result);
+                }
+            }
+            finally
+            {
+                sw?.Dispose();
+                sr?.Dispose();
+            }
         }
     }
 }

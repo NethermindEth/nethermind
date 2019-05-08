@@ -147,14 +147,18 @@ namespace Nethermind.Network.Test
                 return _nodes.Values.ToArray();
             }
 
-            public void UpdateNodes(NetworkNode[] nodes)
+            public void UpdateNode(NetworkNode node)
+            {
+                _nodes[node.NodeId] = node;
+                _pendingChanges = true;
+            }
+
+            public void UpdateNodes(IEnumerable<NetworkNode> nodes)
             {
                 foreach (NetworkNode node in nodes)
                 {
-                    _nodes[node.NodeId] = node;
+                    UpdateNode(node);
                 }
-
-                _pendingChanges = true;
             }
 
             public void RemoveNodes(NetworkNode[] nodes)
@@ -219,12 +223,7 @@ namespace Nethermind.Network.Test
                 nodes.Add(node);
             }
 
-//            foreach (NetworkNode networkNode in nodes.OrderBy(n => n.NodeId.ToString()).ToArray())
-//            {
-//                Console.WriteLine(networkNode.NodeId);
-//            }
-
-            _storage.UpdateNodes(nodes.ToArray());
+            _storage.UpdateNodes(nodes);
         }
 
         [Test]

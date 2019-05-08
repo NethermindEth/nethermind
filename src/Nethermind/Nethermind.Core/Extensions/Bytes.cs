@@ -20,6 +20,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -523,6 +524,16 @@ namespace Nethermind.Core.Extensions
         public static string ToHexString(this byte[] bytes)
         {
             return ToHexString(bytes, false, false, false);
+        }
+        
+        public static void StreamHex(this byte[] bytes, StreamWriter streamWriter)
+        {
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                uint val = Lookup32[bytes[i]];
+                streamWriter.Write((char) val);
+                streamWriter.Write((char) (val >> 16));
+            }
         }
 
         public static string ToHexString(this byte[] bytes, bool withZeroX)
