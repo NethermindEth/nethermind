@@ -7,6 +7,6 @@ Supported Platforms
  - Ubuntu 16.04
  - Ubuntu 18.04
  - Ubuntu 18.10
- - Ubuntu 19.04
+ - Ubuntu 19.04 (may fail due to openssl incompatibility)
  - other Linux (submit a PR whenever you test on a specific Linux distribution)
  - Raspberry PI (currently only 0.9.6 build available)
