@@ -87,3 +87,90 @@ It can take some time (up to a few minutes before it finds the first nodes to sy
 
 .. image:: clouds/do/18.png
 
+
+UpCloud
+^^^^^^^
+
+Deploy a new server
+
+.. image:: clouds/upcloud/1.png
+
+
+Select preferred region (some will sync faster)
+
+.. image:: clouds/upcloud/2.png
+
+
+Choose the server size ($5 is enough for Goerli, $40 is enough for the mainnet fast sync)
+
+.. image:: clouds/upcloud/3.png
+.. image:: clouds/upcloud/4.png
+
+
+Leave the storage size unchanged
+
+.. image:: clouds/upcloud/5.png
+
+
+Choose the operating system (Ubuntu 18.04)
+
+.. image:: clouds/upcloud/6.png
+
+
+Choose a hostname
+
+.. image:: clouds/upcloud/7.png
+
+
+Install packages::
+
+  sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6 unzip
+
+.. image:: clouds/do/7.png
+
+
+Wait for the packages (input 'Y' when prompted)
+
+.. image:: clouds/do/8.png
+
+
+Download Nethermind Launcher::
+
+  wget https://github.com/NethermindEth/nethermind/releases/download/0.9.9/nethermind-lin-x64.zip
+
+.. image:: clouds/do/9.png
+
+
+Unzip the package::
+
+  unzip nethermind-lin-x64.zip -d nethermind && cd nethermind
+
+.. image:: clouds/do/10.png
+.. image:: clouds/do/11.png
+
+
+Launch screen (and press ENTER)::
+
+  screen
+
+.. image:: clouds/do/12.png
+.. image:: clouds/do/13.png
+
+Launch Nethermind::
+
+  ./Nethermind.Launcher
+
+.. image:: clouds/do/14.png
+
+Select the network
+
+.. image:: clouds/do/16.png
+
+Select the sync mode (fast sync or full archive)
+
+.. image:: clouds/do/17.png
+
+
+It can take some time (up to a few minutes before it finds the first nodes to sync with):
+
+.. image:: clouds/do/18.png
