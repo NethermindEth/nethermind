@@ -109,7 +109,11 @@ namespace Nethermind.Evm
             if (!_stateProvider.AccountExists(sender))
             {
                 // hacky fix for the potential recovery issue
-                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, block.Number);
+                if (transaction.Signature != null)
+                {
+                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, block.Number);
+                }
+                
                 if (sender != transaction.SenderAddress)
                 {
                     if(_logger.IsWarn) _logger.Warn($"TX recovery issue fixed - tx was coming with sender {sender} and the now it recovers to {transaction.SenderAddress}");
