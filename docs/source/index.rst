@@ -15,6 +15,7 @@ ToC
    download
    releases
    build
+   cloud
    known_issues
    runtime
    networks
