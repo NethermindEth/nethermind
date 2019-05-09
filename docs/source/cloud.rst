@@ -174,3 +174,22 @@ Select the sync mode (fast sync or full archive)
 It can take some time (up to a few minutes before it finds the first nodes to sync with):
 
 .. image:: clouds/do/18.png
+
+
+Google Cloud
+^^^^^^^^^^^^
+
+Based on our tests it is probably the third best option from the providers listed here (after UpCloud and Digital Ocean).
+Should be fine (although more expensive) for fast syncing nodes. Full archive is not reasonable with the price / IOPS ratio.
+
+AWS
+^^^
+
+Based on our tests it is probably the fourth best option from the providers listed here (after UpCloud, Digital Ocean, and AWS).
+Should be fine (although more expensive) for fast syncing nodes. Full archive is not reasonable with the price / IOPS ratio.
+
+Azure
+^^^^^
+
+Based on our tests it is probably the worst choice from the providers listed here.
+Should be fine (although more expensive) for fast syncing nodes. Full archive is not reasonable with the price / IOPS ratio.
