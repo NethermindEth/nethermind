@@ -121,6 +121,7 @@ namespace Nethermind.Network.Test
             {
                 IChannel channel = Substitute.For<IChannel>();
                 _currentSession = new Session(_localPort,  LimboLogs.Instance, channel);
+                _pipeline.Get<NettyP2PHandler>().Returns(new NettyP2PHandler(_currentSession, LimboLogs.Instance));
                 _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;
             }
@@ -129,6 +130,7 @@ namespace Nethermind.Network.Test
             {
                 IChannel channel = Substitute.For<IChannel>();
                 _currentSession = new Session(_localPort, LimboLogs.Instance, channel, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort) {AddedToDiscovery = true});
+                _pipeline.Get<NettyP2PHandler>().Returns(new NettyP2PHandler(_currentSession, LimboLogs.Instance));
                 _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;
             }
