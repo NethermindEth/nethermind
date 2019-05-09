@@ -35,7 +35,7 @@ namespace Nethermind.Db
         private readonly ILogger _logger;
         private readonly IPerfService _perfService;
         private ConcurrentDictionary<byte[], byte[]> _cache;
-        private const string DbName = "SimpleFileDb.db";
+        public const string DbName = "SimpleFileDb.db";
         private readonly string _dbPath;
         private readonly string _dbLastDirName;
         private bool _anyPendingChanges;
@@ -101,6 +101,7 @@ namespace Nethermind.Db
                     keyValuePair.Key.StreamHex(streamWriter);
                     streamWriter.Write(',');
                     keyValuePair.Value.StreamHex(streamWriter);
+                    streamWriter.WriteLine();
                 }
             }
 
