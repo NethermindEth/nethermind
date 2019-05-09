@@ -23,6 +23,7 @@ ToC
    platforms
    firewall_configuration
    hardware_requirements
+   security
    jsonrpc
    docker
    systemd
