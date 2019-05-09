@@ -1,6 +1,4 @@
-Contact
-*******
+Source Code
+***********
 
-Reach out to Nethermind team on `Gitter <https://gitter.im/nethermindeth/nethermind>`_
-
-Send us mail at hello [at] nethermind [dot] io
+Source code is on `GitHub <https://github.com/NethermindEth/nethermind>`_
