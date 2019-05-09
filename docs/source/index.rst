@@ -15,6 +15,7 @@ ToC
    download
    releases
    build
+   source_code
    cloud
    known_issues
    runtime
