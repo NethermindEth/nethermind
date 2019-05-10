@@ -295,7 +295,7 @@ namespace Nethermind.Blockchain
         public long BestKnownNumber { get; private set; }
         public int ChainId => _specProvider.ChainId;
 
-        private AddBlockResult Suggest(Block block, BlockHeader header)
+        private AddBlockResult Suggest(Block block, BlockHeader header, bool shouldProcess = true)
         {
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -375,7 +375,7 @@ namespace Nethermind.Blockchain
             if (header.IsGenesis || header.TotalDifficulty > (BestSuggested?.TotalDifficulty ?? 0))
             {
                 BestSuggested = header;
-                if (block != null)
+                if (block != null && shouldProcess)
                 {
                     BestSuggestedFullBlock = block.Header;
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
@@ -390,9 +390,9 @@ namespace Nethermind.Blockchain
             return Suggest(null, header);
         }
 
-        public AddBlockResult SuggestBlock(Block block)
+        public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true)
         {
-            return Suggest(block, block.Header);
+            return Suggest(block, block.Header, shouldProcess);
         }
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)

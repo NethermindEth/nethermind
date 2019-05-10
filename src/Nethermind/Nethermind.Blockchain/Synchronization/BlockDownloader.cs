@@ -143,7 +143,7 @@ namespace Nethermind.Blockchain.Synchronization
             return headersSynced;
         }
 
-        public async Task<long> DownloadBlocks(PeerInfo bestPeer, CancellationToken cancellation)
+        public async Task<long> DownloadBlocks(PeerInfo bestPeer, CancellationToken cancellation, bool shouldProcess = true)
         {
             if (bestPeer == null)
             {
@@ -255,7 +255,7 @@ namespace Nethermind.Blockchain.Synchronization
                         throw new EthSynchronizationException($"{bestPeer} sent an invalid block {blocks[i].ToString(Block.Format.Short)}.");
                     }
 
-                    if (HandleAddResult(blocks[i].Header, i == 0, _blockTree.SuggestBlock(blocks[i])))
+                    if (HandleAddResult(blocks[i].Header, i == 0, _blockTree.SuggestBlock(blocks[i], shouldProcess)))
                     {
                         blocksSynced++;
                     }

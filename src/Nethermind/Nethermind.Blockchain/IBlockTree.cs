@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="block">Block to be included</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult SuggestBlock(Block block);
+        AddBlockResult SuggestBlock(Block block, bool shouldProcess = true);
         
         /// <summary>
         /// Suggests a block header (without body)
