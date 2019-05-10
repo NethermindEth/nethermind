@@ -103,7 +103,7 @@ namespace Nethermind.Facade
         public (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
             TransactionReceipt transactionReceipt = _receiptStorage.Get(transactionHash);
-            if (transactionReceipt.BlockHash == null) return (null, null);
+            if (transactionReceipt?.BlockHash == null) return (null, null);
 
             Block block = _blockTree.FindBlock(transactionReceipt.BlockHash, true);
             return (transactionReceipt, block.Transactions[transactionReceipt.Index]);

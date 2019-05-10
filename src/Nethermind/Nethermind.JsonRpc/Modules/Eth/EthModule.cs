@@ -504,10 +504,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             try
             {
                 _readerWriterLockSlim.EnterReadLock();
-                (Core.TransactionReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
+                (TransactionReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
                 if (transaction == null)
                 {
-                    return ResultWrapper<TransactionForRpc>.Fail($"Cannot find transaction for hash: {transactionHash}", ErrorType.NotFound);
+                    return ResultWrapper<TransactionForRpc>.Success(null);
                 }
 
                 var transactionModel = new TransactionForRpc(receipt.BlockHash, receipt.BlockNumber, receipt.Index, transaction);

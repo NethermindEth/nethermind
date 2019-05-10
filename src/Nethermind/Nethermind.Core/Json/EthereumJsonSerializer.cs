@@ -77,7 +77,59 @@ namespace Nethermind.Core.Json
 
         public (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json)
         {
-            throw new NotSupportedException();
+            JsonSerializer serializer = JsonSerializer.Create(_settings);
+            var token = JToken.Parse(json);
+            if (token is JArray array)
+            {
+                foreach (var tokenElement in array)
+                {
+                    UpdateParams(tokenElement);
+                }
+
+                return (default, array.ToObject<List<T>>(serializer));
+            }
+            
+            UpdateParams(token);
+            return (token.ToObject<T>(serializer), null);
+        }
+        
+        private void UpdateParams(JToken token)
+        {
+            var paramsToken = token.SelectToken("params");
+            if (paramsToken == null)
+            {
+                paramsToken = token.SelectToken("Params");
+                if (paramsToken == null)
+                {
+                    return;
+                }
+
+//                if (paramsToken == null)
+//                {
+//                    throw new FormatException("Missing 'params' token");
+//                }
+            }
+            
+            var values = new List<string>();
+            foreach (var value in paramsToken.Value<IEnumerable<object>>())
+            {
+                var valueString = value?.ToString();
+                if (valueString == null)
+                {
+                    values.Add($"\"null\"");
+                    continue;
+                }
+                
+                if (valueString.StartsWith("{") || valueString.StartsWith("["))
+                {
+                    values.Add(Serialize(valueString));
+                    continue;
+                }
+                values.Add($"\"{valueString}\"");
+            }
+
+            var json = $"[{string.Join(",", values)}]";
+            paramsToken.Replace(JToken.Parse(json));
         }
 
         public string Serialize<T>(T value, bool indented = false)

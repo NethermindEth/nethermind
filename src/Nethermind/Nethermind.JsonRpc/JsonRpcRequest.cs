@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc
@@ -27,7 +28,7 @@ namespace Nethermind.JsonRpc
         
         [JsonProperty(Required = Required.Default)]
         public string[] Params { get; set; } = new string[0];
-        public ulong Id { get; set; }
+        public UInt256 Id { get; set; }
 
         public override string ToString()
         {
