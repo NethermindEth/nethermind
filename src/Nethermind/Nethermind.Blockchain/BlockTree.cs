@@ -537,7 +537,7 @@ namespace Nethermind.Blockchain
 
         public Block FindBlock(long blockNumber)
         {
-            Keccak hash = GetBlockHashOnMain(blockNumber);
+            Keccak hash = GetBlockHashOnMainOrOnlyHash(blockNumber);
             return Load(hash).Block;
         }
 
