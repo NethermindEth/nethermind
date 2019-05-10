@@ -143,6 +143,8 @@ namespace Nethermind.Blockchain
             int batchSize = DbLoadBatchSize,
             int maxBlocksToLoad = int.MaxValue)
         {
+            return;
+            
             try
             {
                 CanAcceptNewBlocks = false;
