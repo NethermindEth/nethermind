@@ -8,3 +8,6 @@ There are several known issues with the current version of Nethermind.
  
  RocksDB on macOS
    RocksDB library does not always load properly on macOS. One (hacky) workaround is to install the latest version of RocksDB by running brew install rocksdb. For the time being it should not cause much trouble but the future RocksDB versions may be incompatible.
+
+ Does not work with Metamask
+   Version 0.9.9 does not work with Metamask. Metamask support will be added in version 1.0.
