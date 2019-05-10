@@ -85,7 +85,7 @@ namespace Nethermind.Facade
         {
             return _wallet.Sign(message, address);
         }
-        
+
         public void Sign(Transaction tx)
         {
             _wallet.Sign(tx, _blockTree.ChainId);
@@ -110,7 +110,7 @@ namespace Nethermind.Facade
         }
 
         public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Get(transactionHash).BlockHash;
-        
+
         private Timestamp _timestamp = new Timestamp();
 
         public Keccak SendTransaction(Transaction transaction)
@@ -137,23 +137,28 @@ namespace Nethermind.Facade
             public CallOutput()
             {
             }
-            
+
             public CallOutput(byte[] outputData, long gasSpent, string error)
             {
                 Error = error;
                 OutputData = outputData;
                 GasSpent = gasSpent;
             }
-            
+
             public string Error { get; set; }
 
             public byte[] OutputData { get; set; }
 
             public long GasSpent { get; set; }
         }
-        
+
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction)
         {
+            if (transaction.SenderAddress == null)
+            {
+                transaction.SenderAddress = Address.Zero;
+            }
+
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
             BlockHeader header = new BlockHeader(blockHeader.Hash, Keccak.OfAnEmptySequenceRlp, blockHeader.Beneficiary,
                 blockHeader.Difficulty, blockHeader.Number + 1, (long) transaction.GasLimit, blockHeader.Timestamp + 1, Bytes.Empty);
@@ -163,9 +168,9 @@ namespace Nethermind.Facade
             _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
             _stateProvider.Reset();
             _storageProvider.Reset();
-            return new CallOutput{Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
+            return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
         }
-        
+
         public long EstimateGas(Block block, Transaction transaction)
         {
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
@@ -181,7 +186,7 @@ namespace Nethermind.Facade
         }
 
         public byte[] GetCode(Address address)
-        {            
+        {
             return _stateReader.GetCode(_blockTree.Head.StateRoot, address);
         }
 
