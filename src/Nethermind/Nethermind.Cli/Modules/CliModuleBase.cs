@@ -28,5 +28,34 @@ namespace Nethermind.Cli.Modules
             Engine = engine;
             NodeManager = nodeManager;
         }
+<<<<<<< Updated upstream
+=======
+
+        public Address CliParseAddress(string addressHex)
+        {
+            try
+            {
+                Address address = new Address(addressHex);
+                return address;
+            }
+            catch (Exception)
+            {
+                throw new CliArgumentParserException($"Invalid address format \"{addressHex}\". Expected format: \"0x000102030405060708090a0b0c0d0e0f10111213\"");
+            }
+        }
+        
+        public Keccak CliParseHash(string hashHex)
+        {
+            try
+            {
+                Keccak hash = new Keccak(hashHex);
+                return hash;
+            }
+            catch (Exception)
+            {
+                throw new CliArgumentParserException($"Invalid hash format \"{hashHex}\". Expected format: \"0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\"");
+            }
+        }
+>>>>>>> Stashed changes
     }
 }
