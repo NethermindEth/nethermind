@@ -42,6 +42,9 @@ namespace Nethermind.Cli
         private readonly IJsonRpcClient _client;
         private readonly ICliEngine _engine;
 
+        public List<string> ModuleNames { get; set; } = new List<string>();
+        public Dictionary<string, List<string>> MethodsByModules { get; set; } = new Dictionary<string, List<string>>();
+        
         public CliModuleLoader(ICliEngine engine, IJsonRpcClient client)
         {
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));
@@ -69,6 +72,11 @@ namespace Nethermind.Cli
 
         public void LoadModule(CliModuleBase module)
         {
+            var cliModuleAttribute = module.GetType().GetCustomAttribute<CliModuleAttribute>();
+            Console.WriteLine($"module ({cliModuleAttribute.ModuleName})");
+            ModuleNames.Add(cliModuleAttribute.ModuleName);
+            MethodsByModules[cliModuleAttribute.ModuleName] = new List<string>();
+            
             var properties = module.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             foreach (MethodInfo methodInfo in properties)
             {
@@ -99,19 +107,25 @@ namespace Nethermind.Cli
 
                 if (isProperty)
                 {
-                    Console.WriteLine($"{objectName}.{itemName}");
+                    Console.WriteLine($"  {objectName}.{itemName}");
+                    
+                    MethodsByModules[objectName].Add(itemName);
                     AddProperty(instance, itemName, nativeDelegate);
                 }
                 else
                 {
-                    Console.WriteLine($"{objectName}.{itemName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})");
+                    Console.WriteLine($"  {objectName}.{itemName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})");
+                    
+                    MethodsByModules[objectName].Add(itemName + "(");
                     AddMethod(instance, itemName, nativeDelegate);
                 }
             }
+            
+            Console.WriteLine();
         }
         
         public void LoadModule(Type type)
-        {
+        {   
             var ctor = type.GetConstructor(new[] {typeof(ICliEngine), typeof(INodeManager)});
             CliModuleBase module = (CliModuleBase) ctor.Invoke(new object[] {_engine, _client});
             LoadModule(module);
@@ -120,7 +134,7 @@ namespace Nethermind.Cli
         private Dictionary<string, ObjectInstance> _objects = new Dictionary<string, ObjectInstance>();
 
         private void AddMethod(ObjectInstance instance, string name, DelegateWrapper delegateWrapper)
-        {
+        {   
             instance.FastAddProperty(name, delegateWrapper, true, false, true);
         }
 

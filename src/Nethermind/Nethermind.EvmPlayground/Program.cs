@@ -37,7 +37,8 @@ namespace Nethermind.EvmPlayground
                 Console.WriteLine();
                 Console.WriteLine("======================================================");
                 Console.WriteLine("Enter code and press [ENTER]");
-                string codeText = Console.ReadLine();
+                string codeText = ReadLine.Read("bytecode> ");
+                ReadLine.AddHistory(codeText);
                 await ExecuteCode(codeText);
             }
             catch (Exception e)

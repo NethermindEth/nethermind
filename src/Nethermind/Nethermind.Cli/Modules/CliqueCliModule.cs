@@ -18,7 +18,7 @@
 
 namespace Nethermind.Cli.Modules
 {
-    [CliModule]
+    [CliModule("clique")]
     public class CliqueCliModule : CliModuleBase
     {
         [CliFunction("clique", "getSnapshot")]

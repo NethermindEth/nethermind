@@ -22,5 +22,11 @@ namespace Nethermind.Cli
 {
     public class CliModuleAttribute : Attribute
     {
+        public string ModuleName { get; }
+
+        public CliModuleAttribute(string moduleName)
+        {
+            ModuleName = moduleName;
+        }
     }
 }

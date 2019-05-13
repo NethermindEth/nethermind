@@ -8,6 +8,7 @@
     
     <ItemGroup>
       <PackageReference Include="Jint" Version="2.11.58" />
+      <PackageReference Include="ReadLine" Version="2.0.1" />
     </ItemGroup>
 
     <ItemGroup>

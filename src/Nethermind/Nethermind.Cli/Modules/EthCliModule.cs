@@ -26,17 +26,17 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Cli.Modules
 {
-    [CliModule]
+    [CliModule("eth")]
     public class EthCliModule : CliModuleBase
     {
-        private string SendEth(Address from, Address address, decimal amount)
+        private string SendEth(Address from, Address address, UInt256 amountInWei)
         {
             UInt256 blockNumber = NodeManager.Post<UInt256>("eth_blockNumber").Result;
 
             TransactionForRpc tx = new TransactionForRpc();
-            tx.Value = (UInt256) (amount * (decimal) 1.Ether());
+            tx.Value = amountInWei;
             tx.Gas = 21000;
-            tx.GasPrice = (UInt256) (Engine.JintEngine.GetValue("gasPrice").AsNumber());
+            tx.GasPrice = (UInt256) Engine.JintEngine.GetValue("gasPrice").AsNumber();
             tx.To = address;
             tx.Nonce = (ulong) NodeManager.Post<BigInteger>("eth_getTransactionCount", address, blockNumber).Result;
             tx.From = from;
@@ -44,61 +44,67 @@ namespace Nethermind.Cli.Modules
             Keccak keccak = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;
             return keccak.Bytes.ToHexString();
         }
-        
+
         [CliFunction("eth", "sendEth")]
-        public string ListAccounts(string from, string to, decimal amount)
+        public string SendEth(string from, string to, decimal amountInEth)
         {
-            return SendEth(new Address(from), new Address(to), amount);
+            return SendEth(CliParseAddress(from), CliParseAddress(to), (UInt256) (amountInEth * (decimal) 1.Ether()));
         }
-        
+
+        [CliFunction("eth", "sendWei")]
+        public string SendWei(string from, string to, BigInteger amountInWei)
+        {
+            return SendEth(CliParseAddress(from), CliParseAddress(to), (UInt256) amountInWei);
+        }
+
         [CliProperty("eth", "blockNumber")]
         public BigInteger BlockNumber()
         {
             return NodeManager.Post<BigInteger>("eth_blockNumber").Result;
         }
-        
+
         [CliFunction("eth", "getCode")]
         public string GetCode(string address, string blockParameter)
         {
             return NodeManager.Post<string>("eth_getCode", address, blockParameter).Result;
         }
-        
+
         [CliFunction("eth", "getBlockTransactionCountByNumber")]
         public string GetBlockTransactionCountByNumber(string blockParameter)
         {
             return NodeManager.Post<string>("eth_getBlockTransactionCountByNumber", blockParameter).Result;
         }
-        
+
         [CliFunction("eth", "getBlockTransactionCountByHash")]
         public string GetBlockTransactionCountByHash(string hash)
         {
             return NodeManager.Post<string>("eth_getBlockTransactionCountByHash", hash).Result;
         }
-        
+
         [CliFunction("eth", "getUncleCountByBlockNumber")]
         public string GetUncleCountByBlockNumber(string blockParameter)
         {
             return NodeManager.Post<string>("eth_getUncleCountByBlockNumber", blockParameter).Result;
         }
-        
+
         [CliFunction("eth", "getTransactionByBlockNumberAndIndex")]
         public string GetTransactionByBlockNumberAndIndex(string blockParameter, string index)
         {
             return NodeManager.Post<string>("eth_getTransactionByBlockNumberAndIndex", blockParameter, index).Result;
         }
-        
+
         [CliFunction("eth", "getTransactionReceipt")]
         public string GetTransactionReceipt(string txHash)
         {
             return NodeManager.Post<string>("eth_getTransactionReceipt", txHash).Result;
         }
-        
+
         [CliFunction("eth", "getBalance")]
         public string GetBalance(string address, string blockParameter)
         {
-            return NodeManager.Post<string>("eth_getBalance", address, blockParameter).Result;
+            return NodeManager.Post<string>("eth_getBalance", CliParseAddress(address), blockParameter).Result;
         }
-        
+
         [CliProperty("eth", "protocolVersion")]
         public int ProtocolVersion()
         {

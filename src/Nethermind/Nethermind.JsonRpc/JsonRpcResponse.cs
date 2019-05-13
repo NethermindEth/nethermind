@@ -42,6 +42,6 @@ namespace Nethermind.JsonRpc
         [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
         public Error Error { get; set; }
         [JsonProperty(PropertyName = "id", Order = 0)]
-        public ulong Id { get; set; }
+        public UInt256 Id { get; set; }
     }
 }

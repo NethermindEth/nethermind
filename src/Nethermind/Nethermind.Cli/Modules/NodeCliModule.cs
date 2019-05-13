@@ -24,7 +24,7 @@ using Nethermind.Network;
 
 namespace Nethermind.Cli.Modules
 {
-    [CliModule]
+    [CliModule("node")]
     public class NodeCliModule : CliModuleBase
     {
         [CliFunction("node", "setNodeKey")]

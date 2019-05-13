@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using Jint;
@@ -38,7 +39,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Trace;
 
 namespace Nethermind.Cli
-{   
+{
     static class Program
     {
         private static IJsonSerializer _serializer = new EthereumJsonSerializer();
@@ -49,29 +50,88 @@ namespace Nethermind.Cli
         // ReSharper disable once InconsistentNaming
         private static CliModuleLoader ModuleLoader;
 
-        static void Main(string[] args)
+        private const string _historyFilePath = "cli.cmd.history";
+
+        private static void CurrentDomainOnProcessExit(object sender, EventArgs e)
         {
-            Setup();
-            LoadModules();
-            RunEvalLoop();
-            
-            
+            File.WriteAllLines(_historyFilePath, ReadLine.GetHistory().TakeLast(60));
         }
 
+        static void Main(string[] args)
+        {
+            AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
+
+            Setup();
+            LoadModules();
+            Test();
+
+            RunEvalLoop();
+        }
+
+        private static void Test()
+        {
+            Console.WriteLine($"Connecting to {_nodeManager.CurrentUri}");
+            JsValue result = _engine.Execute("web3.clientVersion");
+//            Console.WriteLine(_serializer.Serialize(result.ToObject(), true));
+            Console.WriteLine();
+        }
+
+        class AutoCompletionHandler : IAutoCompleteHandler
+        {
+            // characters to start completion from
+            public char[] Separators { get; set; } = new char[] { ' ', '.', '/' };
+
+            // text - The current text entered in the console
+            // index - The index of the terminal cursor within {text}
+            public string[] GetSuggestions(string text, int index)
+            {
+                if (index == 0)
+                {
+                    return ModuleLoader.ModuleNames.OrderBy(x => x).ToArray();
+                }
+
+                foreach (string moduleName in ModuleLoader.ModuleNames)
+                {
+                    if (text.StartsWith($"{moduleName}."))
+                    {
+                        return ModuleLoader.MethodsByModules[moduleName].OrderBy(x => x).ToArray();
+                    }
+                }
+
+                return null;
+            }
+        }
+        
         private static void RunEvalLoop()
         {
+            try
+            {
+                if (File.Exists(_historyFilePath))
+                {
+                    foreach (string line in File.ReadLines(_historyFilePath).TakeLast(60))
+                    {
+                        ReadLine.AddHistory(line);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                WriteErrorMessage($"Could not load cmd history from {_historyFilePath} {e.Message}");
+            }
+            
+            ReadLine.AutoCompletionHandler = new AutoCompletionHandler();
+
             while (true)
             {
                 try
                 {
-                    Console.Write("> ");
-                    
                     int bufferSize = 1024 * 16;
                     string statement;
                     using (Stream inStream = Console.OpenStandardInput(bufferSize))
                     {
                         Console.SetIn(new StreamReader(inStream, Console.InputEncoding, false, bufferSize));
-                        statement = Console.ReadLine();
+                        statement = ReadLine.Read("nethermind> ");
+                        ReadLine.AddHistory(statement);
                     }
 
                     if (statement == "exit")
@@ -80,19 +140,24 @@ namespace Nethermind.Cli
                     }
 
                     JsValue result = _engine.Execute(statement);
-                    Console.WriteLine(_serializer.Serialize(result.ToObject(), true)); 
-                    
+                    Console.WriteLine(_serializer.Serialize(result.ToObject(), true));
+
                     bool isNull = result.IsNull();
                     Console.WriteLine(isNull ? "null" : result);
                 }
                 catch (Exception e)
                 {
-                    var color = Console.ForegroundColor;
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine(e);
-                    Console.ForegroundColor = color;
+                    WriteErrorMessage(e.ToString());
                 }
             }
+        }
+
+        private static void WriteErrorMessage(string errorMessage)
+        {
+            var color = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine(errorMessage);
+            Console.ForegroundColor = color;
         }
 
         private static void Setup()
@@ -101,7 +166,7 @@ namespace Nethermind.Cli
             _serializer.RegisterConverter(new ParityAccountStateChangeConverter());
             _serializer.RegisterConverter(new ParityTraceActionConverter());
             _serializer.RegisterConverter(new ParityTraceResultConverter());
-            
+
             _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace));
             _nodeManager = new NodeManager(_serializer, _logManager);
             _nodeManager.SwitchUri(new Uri("http://localhost:8545"));

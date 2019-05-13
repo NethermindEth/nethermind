@@ -16,24 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Evm.Tracing;
-
 namespace Nethermind.Cli.Modules
 {
-    [CliModule]
+    [CliModule("trace")]
     public class ParityCliModule : CliModuleBase
     {
         [CliFunction("trace", "replayTransaction")]
-        public ParityLikeTxTrace ReplayTransaction(string txHash, string[] traceTypes)
+        public string ReplayTransaction(string txHash, string[] traceTypes)
         {
-            ParityLikeTxTrace parityLikeTxTrace = NodeManager.Post<ParityLikeTxTrace>("trace_replayTransaction", txHash, traceTypes).Result;
+            string parityLikeTxTrace = NodeManager.Post<string>("trace_replayTransaction", txHash, traceTypes).Result;
             return parityLikeTxTrace;
         }
         
         [CliFunction("trace", "replayBlockTransactions")]
-        public ParityLikeTxTrace ReplayBlockTransactions(string blockNumber, string[] traceTypes)
+        public string ReplayBlockTransactions(string blockNumber, string[] traceTypes)
         {
-            ParityLikeTxTrace parityLikeTxTrace = NodeManager.Post<ParityLikeTxTrace>("trace_replayBlockTransactions", blockNumber, traceTypes).Result;
+            string parityLikeTxTrace = NodeManager.Post<string>("trace_replayBlockTransactions", blockNumber, traceTypes).Result;
             return parityLikeTxTrace;
         }
 
