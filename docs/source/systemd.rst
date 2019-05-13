@@ -15,6 +15,7 @@ Please update (with PR) to be more specific.
     WorkingDirectory=/home/nethermind/nethermind
     ExecStart=/home/nethermind/nethermind/Nethermind.Runner --config goerli
     Environment=NETHERMIND_DETACHED_MODE=true
+    LimitNOFILE=1000000
     Restart=on-failure
 
     KillSignal=SIGHUP

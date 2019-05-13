@@ -50,7 +50,7 @@ namespace Nethermind.Cli.Modules
             }
             catch (Exception)
             {
-                throw new CliArgumentParserException($"Invalid address format \"{addressHex}\". Expected format: \"0x000102030405060708090a0b0c0d00e0f10111213\"");
+                throw new CliArgumentParserException($"Invalid address format \"{addressHex}\". Expected format: \"0x000102030405060708090a0b0c0d0e0f10111213\"");
             }
         }
         
