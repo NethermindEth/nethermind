@@ -22,16 +22,16 @@ namespace Nethermind.KeyStore
 {
     public class KeyStoreItem
     {
-        [JsonProperty(PropertyName = "address")]
-        public string Address { get; set; }
+        [JsonProperty(PropertyName = "version", Order = 0)]
+        public int Version { get; set; }
         
-        [JsonProperty(PropertyName = "crypto")]
-        public Crypto Crypto { get; set; }
-        
-        [JsonProperty(PropertyName = "id")]
+        [JsonProperty(PropertyName = "id", Order = 1)]
         public string Id { get; set; }
         
-        [JsonProperty(PropertyName = "version")]
-        public int Version { get; set; }
+        [JsonProperty(PropertyName = "address", Order = 2)]
+        public string Address { get; set; }
+        
+        [JsonProperty(PropertyName = "crypto", Order = 3)]
+        public Crypto Crypto { get; set; }
     }
 }

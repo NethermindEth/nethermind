@@ -22,22 +22,22 @@ namespace Nethermind.KeyStore
 {
     public class Crypto
     {
-        [JsonProperty(PropertyName = "cipher")]
-        public string Cipher { get; set; }
-        
-        [JsonProperty(PropertyName = "ciphertext")]
+        [JsonProperty(PropertyName = "ciphertext", Order = 0)]
         public string CipherText { get; set; }
         
-        [JsonProperty(PropertyName = "cipherparams")]
+        [JsonProperty(PropertyName = "cipherparams", Order = 1)]
         public CipherParams CipherParams { get; set; }
         
-        [JsonProperty(PropertyName = "kdf")]
+        [JsonProperty(PropertyName = "cipher", Order = 2)]
+        public string Cipher { get; set; }
+        
+        [JsonProperty(PropertyName = "kdf", Order = 3)]
         public string KDF { get; set; }
         
-        [JsonProperty(PropertyName = "kdfparams")]
+        [JsonProperty(PropertyName = "kdfparams", Order = 4)]
         public KdfParams KDFParams { get; set; }
         
-        [JsonProperty(PropertyName = "mac")]
+        [JsonProperty(PropertyName = "mac", Order = 5)]
         public string MAC { get; set; }
     }
 }

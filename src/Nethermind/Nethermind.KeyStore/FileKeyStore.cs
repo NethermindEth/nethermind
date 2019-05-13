@@ -230,10 +230,10 @@ namespace Nethermind.KeyStore
                 Crypto = new Crypto
                 {
                     Cipher = _config.Cipher,
-                    CipherText = cipher.ToHexString(true),
+                    CipherText = cipher.ToHexString(false),
                     CipherParams = new CipherParams
                     {
-                        IV = iv.ToHexString(true)
+                        IV = iv.ToHexString(false)
                     },
                     KDF = _config.Kdf,
                     KDFParams = new KdfParams
@@ -242,9 +242,9 @@ namespace Nethermind.KeyStore
                        N = _config.KdfparamsN,
                        P = _config.KdfparamsP,
                        R = _config.KdfparamsR,
-                       Salt = salt.ToHexString(true)
+                       Salt = salt.ToHexString(false)
                     },
-                    MAC = mac.ToHexString(true),
+                    MAC = mac.ToHexString(false),
                 },
                 
                 Id = addressString,
