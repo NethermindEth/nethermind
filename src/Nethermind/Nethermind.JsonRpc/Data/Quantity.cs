@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Data
         public void FromJson(string jsonValue)
         {
             Value = jsonValue.StartsWith("0x")
-                ? BigInteger.Parse(jsonValue.Replace("0x", string.Empty), NumberStyles.AllowHexSpecifier)
+                ? BigInteger.Parse(jsonValue.Replace("0x", "0"), NumberStyles.AllowHexSpecifier)
                 : BigInteger.Parse(jsonValue);
         }
 
