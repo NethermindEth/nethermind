@@ -62,7 +62,22 @@ namespace Nethermind.JsonRpc.Client
                 HttpResponseMessage response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
                 responseString = await response.Content.ReadAsStringAsync();
                 if(_logger.IsTrace) _logger.Trace(responseString);
-                return _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString).Result;
+
+                JsonRpcResponse<T> jsonResponse = _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString);
+                if (jsonResponse.Error != null)
+                {
+                    if(_logger.IsError) _logger.Error(jsonResponse.Error.Message);
+                }
+                
+                return jsonResponse.Result;
+            }
+            catch (NotImplementedException)
+            {
+                throw;
+            }
+            catch (NotSupportedException)
+            {
+                throw;
             }
             catch (HttpRequestException)
             {

@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core;
 
 namespace Nethermind.Cli.Modules
@@ -25,15 +24,15 @@ namespace Nethermind.Cli.Modules
     public class CliqueCliModule : CliModuleBase
     {
         [CliFunction("clique", "getSnapshot")]
-        public string GetSnapshot()
+        public object GetSnapshot()
         {
-            return NodeManager.Post<string>("clique_getSnapshot").Result;
+            return NodeManager.Post<object>("clique_getSnapshot").Result;
         }
 
         [CliFunction("clique", "getSnapshotAtHash")]
-        public string GetSnapshotAtHash(string hash)
+        public object GetSnapshotAtHash(string hash)
         {
-            return NodeManager.Post<string>("clique_getSnapshotAtHash", CliParseHash(hash)).Result;
+            return NodeManager.Post<object>("clique_getSnapshotAtHash", CliParseHash(hash)).Result;
         }
         
         [CliFunction("clique", "getSigners")]

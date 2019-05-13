@@ -189,6 +189,44 @@ namespace Nethermind.Cli
             }
         }
 
+        private class CliLogger : ILogger
+        {
+            public void Info(string text)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void Warn(string text)
+            {
+                CliConsole.WriteLessImportant(text);
+            }
+
+            public void Debug(string text)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void Trace(string text)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void Error(string text, Exception ex = null)
+            {
+                CliConsole.WriteErrorLine(text);
+                if (ex != null)
+                {
+                    CliConsole.WriteException(ex);
+                }
+            }
+
+            public bool IsInfo => false;
+            public bool IsWarn => true;
+            public bool IsDebug => false;
+            public bool IsTrace => false;
+            public bool IsError => true;
+        }
+
         private static void Setup()
         {
             _serializer.RegisterConverter(new ParityLikeTxTraceConverter());
@@ -196,7 +234,8 @@ namespace Nethermind.Cli
             _serializer.RegisterConverter(new ParityTraceActionConverter());
             _serializer.RegisterConverter(new ParityTraceResultConverter());
 
-            _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Info));
+            
+            _logManager = new OneLoggerLogManager(new CliLogger());
             _nodeManager = new NodeManager(_serializer, _logManager);
             _nodeManager.SwitchUri(new Uri("http://localhost:8545"));
             _engine = new CliEngine();

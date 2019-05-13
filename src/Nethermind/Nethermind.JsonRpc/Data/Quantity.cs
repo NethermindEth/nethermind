@@ -17,9 +17,11 @@
  */
 
 using System;
+using System.Globalization;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Json;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.JsonRpc.Data
@@ -32,48 +34,43 @@ namespace Nethermind.JsonRpc.Data
 
         public Quantity(BigInteger value)
         {
-            var encodedValue = value.ToBigEndianByteArray();
-            Value = encodedValue;
+            Value = value;
         }
 
         public Quantity(string value)
         {
-            Value = Bytes.FromHexString(value);
+            FromJson(value);
         }
 
-        public byte[] Value { get; private set; }
+        public BigInteger? Value { get; private set; }
 
         public void FromJson(string jsonValue)
         {
-            Value = Bytes.FromHexString(jsonValue.Trim('\''));
+            Value = jsonValue.StartsWith("0x")
+                ? BigInteger.Parse(jsonValue.Replace("0x", string.Empty), NumberStyles.AllowHexSpecifier)
+                : BigInteger.Parse(jsonValue);
         }
 
         public object ToJson()
         {
-            return Value?.ToHexString(true);
+            return Value?.ToBigEndianByteArray()?.ToHexString(true);
         }
 
         private static BigInteger _maxInt = BigInteger.Pow(2, 256) - 1;
         
         public UInt256? AsNumber()
         {
-            BigInteger bigInteger = new BigInteger(Value, true, true);
-            if (bigInteger > _maxInt)
+            if (Value > _maxInt)
             {
                 return null;
             }
             
-            return Value != null ? (UInt256?)bigInteger : null;
-        }
-        
-        public Keccak AsHash()
-        {
-            return Value != null ? new Keccak(Value) : null;
+            return Value != null ? (UInt256?)Value : null;
         }
 
         public override string ToString()
         {
-            return Value.ToHexString(true);
+            return Value?.ToBigEndianByteArray()?.ToHexString(true);
         }
     }
 }

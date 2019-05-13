@@ -60,7 +60,19 @@ namespace Nethermind.Clique
             
             _cliqueBlockProducer.UncastVote(signer);
         }
-        
+
+        public Snapshot GetSnapshot()
+        {
+            BlockHeader head = _blockTree.Head;
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
+        }
+
+        public Snapshot GetSnapshot(Keccak hash)
+        {
+            BlockHeader head = _blockTree.FindHeader(hash);
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
+        }
+
         public static Address[] ExtractSigners(BlockHeader blockHeader)
         {
             Span<byte> signersData = blockHeader.ExtraData.AsSpan().Slice(Clique.ExtraVanityLength, blockHeader.ExtraData.Length - Clique.ExtraSealLength - Clique.ExtraVanityLength);

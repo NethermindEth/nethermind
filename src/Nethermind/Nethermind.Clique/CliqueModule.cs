@@ -39,14 +39,14 @@ namespace Nethermind.Clique
 
         public override ModuleType ModuleType => ModuleType.Clique;
 
-        public ResultWrapper<bool> clique_getSnapshot()
+        public ResultWrapper<Snapshot> clique_getSnapshot()
         {
-            throw new NotSupportedException();
+            return ResultWrapper<Snapshot>.Success(_cliqueBridge.GetSnapshot());
         }
 
-        public ResultWrapper<bool> clique_getSnapshotAtHash(Keccak hash)
+        public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Keccak hash)
         {
-            throw new NotSupportedException();
+            return ResultWrapper<Snapshot>.Success(_cliqueBridge.GetSnapshot(hash));
         }
 
         public ResultWrapper<Address[]> clique_getSigners()

@@ -171,7 +171,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 var result = GetAccountBalance(address, blockParameter);
                 if (result.Result.ResultType == ResultType.Failure)
                 {
-                    return ResultWrapper<BigInteger?>.Fail("Internal error", ErrorType.InternalError, null);
+                    return ResultWrapper<BigInteger?>.Fail($"Could not find balance of {address} at {blockParameter}", ErrorType.InternalError, null);
                 }
 
                 if (Logger.IsTrace) Logger.Trace($"eth_getBalance request {address}, {blockParameter}, result: {result.Data}");
