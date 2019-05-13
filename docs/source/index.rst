@@ -28,5 +28,4 @@ ToC
    security
    jsonrpc
    docker
-   systemd
    contact

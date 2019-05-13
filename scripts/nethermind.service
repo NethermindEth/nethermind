@@ -1,0 +1,13 @@
+[Unit]
+Description=Nethermind Ethereum Daemon
+After=network.target
+
+[Service]
+User=nethermind
+WorkingDirectory=/home/nethermind/nethermind
+ExecStart=/home/nethermind/nethermind/Nethermind.Runner
+Restart=on-failure
+LimitNOFILE=1000000
+
+[Install]
+WantedBy=default.target
