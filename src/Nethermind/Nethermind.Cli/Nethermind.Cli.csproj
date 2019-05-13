@@ -1,12 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
         <TargetFramework>netcoreapp2.2</TargetFramework>
         <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+        <OutputType>Exe</OutputType>
+        <PackageId>Nethermind CLI</PackageId>
+        <Authors>Nethermind</Authors>
+        <PackageVersion>1.0.0</PackageVersion>
     </PropertyGroup>
     
     <ItemGroup>
+      <PackageReference Include="Colorful.Console" Version="1.2.9" />
       <PackageReference Include="Jint" Version="2.11.58" />
       <PackageReference Include="ReadLine" Version="2.0.1" />
     </ItemGroup>

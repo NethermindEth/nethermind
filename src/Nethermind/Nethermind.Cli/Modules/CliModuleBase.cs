@@ -48,7 +48,7 @@ namespace Nethermind.Cli.Modules
                 Address address = new Address(addressHex);
                 return address;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 throw new CliArgumentParserException($"Invalid address format \"{addressHex}\". Expected format: \"0x000102030405060708090a0b0c0d00e0f10111213\"");
             }
@@ -61,7 +61,7 @@ namespace Nethermind.Cli.Modules
                 Keccak hash = new Keccak(hashHex);
                 return hash;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 throw new CliArgumentParserException($"Invalid hash format \"{hashHex}\". Expected format: \"0x000102030405060708090a0b0c0d00e0f101112131415161718191a1b1c1d1e1f\"");
             }

@@ -20,23 +20,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Numerics;
-using System.Threading.Tasks;
-using Jint;
 using Jint.Native;
-using Jint.Runtime.Interop;
 using Nethermind.Cli.Modules;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Client;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Trace;
+using Console = Colorful.Console;
 
 namespace Nethermind.Cli
 {
@@ -57,8 +47,12 @@ namespace Nethermind.Cli
             File.WriteAllLines(_historyFilePath, ReadLine.GetHistory().TakeLast(60));
         }
 
+        private static ColorScheme _colorScheme = new DraculaColorScheme();
+        
         static void Main(string[] args)
         {
+            CliConsole.Init(_colorScheme);
+
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
 
             Setup();
@@ -70,31 +64,36 @@ namespace Nethermind.Cli
 
         private static void Test()
         {
-            Console.WriteLine($"Connecting to {_nodeManager.CurrentUri}");
+            CliConsole.WriteLine($"Connecting to {_nodeManager.CurrentUri}");
             JsValue result = _engine.Execute("web3.clientVersion");
+            if (result != JsValue.Null)
+            {
+                CliConsole.WriteGood("Connected");
+            }
 //            Console.WriteLine(_serializer.Serialize(result.ToObject(), true));
-            Console.WriteLine();
+            CliConsole.WriteLine();
         }
 
         class AutoCompletionHandler : IAutoCompleteHandler
         {
             // characters to start completion from
-            public char[] Separators { get; set; } = new char[] { ' ', '.', '/' };
+            public char[] Separators { get; set; } = new char[] {' ', '.', '/'};
 
             // text - The current text entered in the console
             // index - The index of the terminal cursor within {text}
             public string[] GetSuggestions(string text, int index)
             {
-                if (index == 0)
+                if (text.IndexOf('.') == -1)
                 {
-                    return ModuleLoader.ModuleNames.OrderBy(x => x).ToArray();
+                    return ModuleLoader.ModuleNames.OrderBy(x => x).Where(x => x.StartsWith(text)).ToArray();
                 }
 
                 foreach (string moduleName in ModuleLoader.ModuleNames)
                 {
                     if (text.StartsWith($"{moduleName}."))
                     {
-                        return ModuleLoader.MethodsByModules[moduleName].OrderBy(x => x).ToArray();
+                        string methodPart = text.Substring(text.IndexOf('.') + 1);
+                        return ModuleLoader.MethodsByModules[moduleName].Where(x => x.StartsWith(methodPart)).OrderBy(x => x).ToArray();
                     }
                 }
 
@@ -107,12 +106,12 @@ namespace Nethermind.Cli
             get
             {
                 yield return "unlockAccount";
-                yield return "newAccount";    
+                yield return "newAccount";
             }
         }
 
         private const string _removedString = "*removed*";
-        
+
         private static void RunEvalLoop()
         {
             try
@@ -130,9 +129,9 @@ namespace Nethermind.Cli
             }
             catch (Exception e)
             {
-                WriteErrorMessage($"Could not load cmd history from {_historyFilePath} {e.Message}");
+                CliConsole.WriteErrorLine($"Could not load cmd history from {_historyFilePath} {e.Message}");
             }
-            
+
             ReadLine.AutoCompletionHandler = new AutoCompletionHandler();
 
             while (true)
@@ -141,10 +140,11 @@ namespace Nethermind.Cli
                 {
                     int bufferSize = 1024 * 16;
                     string statement;
-                    using (Stream inStream = Console.OpenStandardInput(bufferSize))
+                    using (Stream inStream = System.Console.OpenStandardInput(bufferSize))
                     {
                         Console.SetIn(new StreamReader(inStream, Console.InputEncoding, false, bufferSize));
-                        statement = ReadLine.Read("nethermind> ");
+                        CliConsole.WriteLessImportant("nethermind> ");
+                        statement = ReadLine.Read();
                         if (!SecuredCommands.Any(sc => statement.Contains(sc)))
                         {
                             ReadLine.AddHistory(statement);
@@ -161,24 +161,19 @@ namespace Nethermind.Cli
                     }
 
                     JsValue result = _engine.Execute(statement);
-                    Console.WriteLine(_serializer.Serialize(result.ToObject(), true));
+                    CliConsole.WriteGood(_serializer.Serialize(result.ToObject(), true));
 
-                    bool isNull = result.IsNull();
-                    Console.WriteLine(isNull ? "null" : result);
+//                    bool isNull = result.IsNull();
+//                    if (!isNull)
+//                    {
+//                        CliConsole.WriteString(result);
+//                    }
                 }
                 catch (Exception e)
                 {
-                    WriteErrorMessage(e.ToString());
+                    CliConsole.WriteException(e);
                 }
             }
-        }
-
-        private static void WriteErrorMessage(string errorMessage)
-        {
-            var color = Console.ForegroundColor;
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine(errorMessage);
-            Console.ForegroundColor = color;
         }
 
         private static void Setup()
@@ -188,7 +183,7 @@ namespace Nethermind.Cli
             _serializer.RegisterConverter(new ParityTraceActionConverter());
             _serializer.RegisterConverter(new ParityTraceResultConverter());
 
-            _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace));
+            _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Info));
             _nodeManager = new NodeManager(_serializer, _logManager);
             _nodeManager.SwitchUri(new Uri("http://localhost:8545"));
             _engine = new CliEngine();
@@ -197,14 +192,14 @@ namespace Nethermind.Cli
         private static void LoadModules()
         {
             ModuleLoader = new CliModuleLoader(_engine, _nodeManager);
-            ModuleLoader.LoadModule(typeof(PersonalCliModule));
-            ModuleLoader.LoadModule(typeof(EthCliModule));
-            ModuleLoader.LoadModule(typeof(NetCliModule));
-            ModuleLoader.LoadModule(typeof(Web3CliModule));
-            ModuleLoader.LoadModule(typeof(NodeCliModule));
             ModuleLoader.LoadModule(typeof(CliqueCliModule));
             ModuleLoader.LoadModule(typeof(DebugCliModule));
+            ModuleLoader.LoadModule(typeof(EthCliModule));
+            ModuleLoader.LoadModule(typeof(NetCliModule));
+            ModuleLoader.LoadModule(typeof(NodeCliModule));
             ModuleLoader.LoadModule(typeof(ParityCliModule));
+            ModuleLoader.LoadModule(typeof(PersonalCliModule));
+            ModuleLoader.LoadModule(typeof(Web3CliModule));
         }
     }
 }

@@ -17,39 +17,25 @@
  */
 
 using System;
-using Jint;
-using Jint.Native;
-using Nethermind.Cli.Modules;
+using System.IO;
+using System.Reflection;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Network;
 
-namespace Nethermind.Cli
+namespace Nethermind.Cli.Modules
 {
-    public class CliEngine : ICliEngine
+    [CliModule("diag")]
+    public class DiagCliModule : CliModuleBase
     {
-        public Engine JintEngine { get; }
-
-        public CliEngine()
+        [CliProperty("diag", "cliVersion")]
+        public string CliVersion()
         {
-            JintEngine = new Engine();
-            JintEngine.SetValue("gasPrice", (double) 20.GWei());
+            return this.GetType().Assembly.FullName;
         }
-        
-        public JsValue Execute(string statement)
-        {
-            try
-            {
-                return JintEngine.Execute(statement).GetCompletionValue();
-            }
-            catch (CliArgumentParserException e)
-            {
-                CliConsole.WriteErrorLine(e.Message);
-            }
-            catch (Exception e)
-            {
-                CliConsole.WriteException(e);
-            }
 
-            return JsValue.Null;
+        public DiagCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
+        {
         }
     }
 }
