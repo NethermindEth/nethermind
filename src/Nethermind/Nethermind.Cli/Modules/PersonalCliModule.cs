@@ -18,7 +18,7 @@
 
 namespace Nethermind.Cli.Modules
 {
-    [CliModule]
+    [CliModule("personal")]
     public class PersonalCliModule : CliModuleBase
     {
         [CliProperty("personal", "listAccounts")]

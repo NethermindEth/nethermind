@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
@@ -54,12 +55,25 @@ namespace Nethermind.Cli
 
         public async Task<string> Post(string method, params object[] parameters)
         {
-            return await _currentClient.Post(method, parameters);
+            return await Post<string>(method, parameters);
         }
 
         public async Task<T> Post<T>(string method, params object[] parameters)
         {
-            return await _currentClient.Post<T>(method, parameters);
+            try
+            {
+                return await _currentClient.Post<T>(method, parameters);
+            }
+            catch (HttpRequestException e)
+            {
+                CliConsole.WriteErrorLine(e.Message);
+            }
+            catch (Exception e)
+            {
+                CliConsole.WriteException(e);
+            }
+            
+            return default(T);
         }
     }
 }

@@ -21,18 +21,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Numerics;
 using System.Reflection;
-using Jint;
 using Jint.Native;
 using Jint.Native.Object;
 using Jint.Runtime;
 using Jint.Runtime.Descriptors;
 using Jint.Runtime.Interop;
 using Nethermind.Cli.Modules;
-using Nethermind.Core;
-using Nethermind.Core.Logging;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Client;
 
 namespace Nethermind.Cli
@@ -42,6 +37,9 @@ namespace Nethermind.Cli
         private readonly IJsonRpcClient _client;
         private readonly ICliEngine _engine;
 
+        public List<string> ModuleNames { get; set; } = new List<string>();
+        public Dictionary<string, List<string>> MethodsByModules { get; set; } = new Dictionary<string, List<string>>();
+        
         public CliModuleLoader(ICliEngine engine, IJsonRpcClient client)
         {
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));
@@ -69,8 +67,13 @@ namespace Nethermind.Cli
 
         public void LoadModule(CliModuleBase module)
         {
-            var properties = module.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-            foreach (MethodInfo methodInfo in properties)
+            var cliModuleAttribute = module.GetType().GetCustomAttribute<CliModuleAttribute>();
+            CliConsole.WriteLine($"module ({cliModuleAttribute.ModuleName})");
+            ModuleNames.Add(cliModuleAttribute.ModuleName);
+            MethodsByModules[cliModuleAttribute.ModuleName] = new List<string>();
+            
+            var methods = module.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            foreach (MethodInfo methodInfo in methods.OrderBy(m => m.Name))
             {
                 var cliProperty = methodInfo.GetCustomAttribute<CliPropertyAttribute>();
                 var cliFunction = methodInfo.GetCustomAttribute<CliFunctionAttribute>();
@@ -99,19 +102,27 @@ namespace Nethermind.Cli
 
                 if (isProperty)
                 {
-                    Console.WriteLine($"{objectName}.{itemName}");
+                    CliConsole.WriteKeyword($"  {objectName}");
+                    CliConsole.WriteLine($".{itemName}");
+                    
+                    MethodsByModules[objectName].Add(itemName);
                     AddProperty(instance, itemName, nativeDelegate);
                 }
                 else
                 {
-                    Console.WriteLine($"{objectName}.{itemName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})");
+                    CliConsole.WriteKeyword($"  {objectName}");
+                    CliConsole.WriteLine($".{itemName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})");
+
+                    MethodsByModules[objectName].Add(itemName + "(");
                     AddMethod(instance, itemName, nativeDelegate);
                 }
             }
+            
+            CliConsole.WriteLine();
         }
         
         public void LoadModule(Type type)
-        {
+        {   
             var ctor = type.GetConstructor(new[] {typeof(ICliEngine), typeof(INodeManager)});
             CliModuleBase module = (CliModuleBase) ctor.Invoke(new object[] {_engine, _client});
             LoadModule(module);
@@ -120,7 +131,7 @@ namespace Nethermind.Cli
         private Dictionary<string, ObjectInstance> _objects = new Dictionary<string, ObjectInstance>();
 
         private void AddMethod(ObjectInstance instance, string name, DelegateWrapper delegateWrapper)
-        {
+        {   
             instance.FastAddProperty(name, delegateWrapper, true, false, true);
         }
 

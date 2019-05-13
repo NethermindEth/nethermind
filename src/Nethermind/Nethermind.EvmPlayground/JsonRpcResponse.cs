@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
 
 namespace Nethermind.EvmPlayground
@@ -15,7 +16,7 @@ namespace Nethermind.EvmPlayground
         public string Error { get; set; }
 
         [JsonProperty(PropertyName = "id", Order = 0)]
-        public BigInteger Id { get; set; }
+        public UInt256 Id { get; set; }
     }
     
     public class JsonRpcResponse<T>
@@ -27,6 +28,6 @@ namespace Nethermind.EvmPlayground
         [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
         public string Error { get; set; }
         [JsonProperty(PropertyName = "id", Order = 0)]
-        public BigInteger Id { get; set; }
+        public UInt256 Id { get; set; }
     }
 }

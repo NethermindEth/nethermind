@@ -87,7 +87,14 @@ namespace Nethermind.Core.Json
                 return UInt256.Parse(withZero, NumberStyles.AllowHexSpecifier);
             }
 
-            return UInt256.Parse(s, NumberStyles.Integer);
+            try
+            {
+                return UInt256.Parse(s, NumberStyles.Integer);
+            }
+            catch (Exception)
+            {
+                return UInt256.Parse(s, NumberStyles.AllowHexSpecifier);
+            }
         }
     }
 }

@@ -268,7 +268,7 @@ namespace Nethermind.Runner.Runners
             DebugModule debugModule = new DebugModule(_configProvider, _logManager, debugBridge, _jsonSerializer);
             _rpcModuleProvider.Register<IDebugModule>(debugModule);
 
-            if (_sealer is CliqueSealer)
+            if (_sealValidator is CliqueSealValidator)
             {
                 CliqueModule cliqueModule = new CliqueModule(_configProvider, _logManager, _jsonSerializer, new CliqueBridge(_blockProducer as ICliqueBlockProducer, _snapshotManager, _blockTree));
                 _rpcModuleProvider.Register<ICliqueModule>(cliqueModule);

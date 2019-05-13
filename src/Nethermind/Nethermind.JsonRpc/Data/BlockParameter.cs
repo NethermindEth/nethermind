@@ -35,12 +35,7 @@ namespace Nethermind.JsonRpc.Data
         public BlockParameter()
         {
         }
-
-        public BlockParameter(BigInteger blockNumber)
-        {
-            BlockId = new Quantity(blockNumber);
-        }
-
+        
         public BlockParameter(BlockParameterType type)
         {
             Type = type;

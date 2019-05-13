@@ -171,7 +171,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 var result = GetAccountBalance(address, blockParameter);
                 if (result.Result.ResultType == ResultType.Failure)
                 {
-                    return ResultWrapper<BigInteger?>.Fail("Internal error", ErrorType.InternalError, null);
+                    return ResultWrapper<BigInteger?>.Fail($"Could not find balance of {address} at {blockParameter}", ErrorType.InternalError, null);
                 }
 
                 if (Logger.IsTrace) Logger.Trace($"eth_getBalance request {address}, {blockParameter}, result: {result.Data}");
@@ -504,10 +504,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             try
             {
                 _readerWriterLockSlim.EnterReadLock();
-                (Core.TransactionReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
+                (TransactionReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
                 if (transaction == null)
                 {
-                    return ResultWrapper<TransactionForRpc>.Fail($"Cannot find transaction for hash: {transactionHash}", ErrorType.NotFound);
+                    return ResultWrapper<TransactionForRpc>.Success(null);
                 }
 
                 var transactionModel = new TransactionForRpc(receipt.BlockHash, receipt.BlockNumber, receipt.Index, transaction);

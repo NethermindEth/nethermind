@@ -26,7 +26,7 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Cli.Modules
 {
-    [CliModule]
+    [CliModule("net")]
     public class NetCliModule : CliModuleBase
     {   
         [CliProperty("net", "localEnode")]

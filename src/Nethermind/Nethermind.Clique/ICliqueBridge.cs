@@ -18,6 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Clique
 {
@@ -25,7 +26,12 @@ namespace Nethermind.Clique
     {
         void CastVote(Address signer, bool vote);
         void UncastVote(Address signer);
+        Snapshot GetSnapshot();
+        Snapshot GetSnapshot(Keccak hash);
         Address[] GetSigners();
         Address[] GetSigners(Keccak hash);
+        Address[] GetSigners(long number);
+        string[] GetSignersAnnotated();
+        string[] GetSignersAnnotated(Keccak hash);
     }
 }

@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -46,20 +47,12 @@ namespace Nethermind.JsonRpc.Client
 
         public async Task<string> Post(string method, params object[] parameters)
         {
-            try
-            {
-                string request = GetJsonRequest(method, parameters);
-                HttpResponseMessage response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
-                string content = await response.Content.ReadAsStringAsync();
-                return content;
-            }
-            catch (Exception e)
-            {
-                _logger.Error($"Error during execution of {method}", e);
-                return $"Error: {e.Message}";
-            }
+            string request = GetJsonRequest(method, parameters);
+            HttpResponseMessage response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
+            string content = await response.Content.ReadAsStringAsync();
+            return content;
         }
-        
+
         public async Task<T> Post<T>(string method, params object[] parameters)
         {
             string responseString = string.Empty;
@@ -68,15 +61,31 @@ namespace Nethermind.JsonRpc.Client
                 string request = GetJsonRequest(method, parameters);
                 HttpResponseMessage response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
                 responseString = await response.Content.ReadAsStringAsync();
-                _logger.Trace(responseString);
-                return _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString).Result;
+                if(_logger.IsTrace) _logger.Trace(responseString);
+
+                JsonRpcResponse<T> jsonResponse = _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString);
+                if (jsonResponse.Error != null)
+                {
+                    if(_logger.IsError) _logger.Error(jsonResponse.Error.Message);
+                }
+                
+                return jsonResponse.Result;
+            }
+            catch (NotImplementedException)
+            {
+                throw;
+            }
+            catch (NotSupportedException)
+            {
+                throw;
+            }
+            catch (HttpRequestException)
+            {
+                throw;
             }
             catch (Exception e)
             {
-                _logger.Error($"Error during execution of {method}", e);
-                _logger.Warn($"Response:");
-                _logger.Warn(responseString);
-                return default(T);
+                throw new DataException($"Cannot deserialize {responseString}");
             }
         }
 

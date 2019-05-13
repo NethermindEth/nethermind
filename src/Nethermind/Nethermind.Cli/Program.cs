@@ -19,26 +19,17 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Numerics;
-using System.Threading.Tasks;
-using Jint;
+using System.Linq;
 using Jint.Native;
-using Jint.Runtime.Interop;
 using Nethermind.Cli.Modules;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Client;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Trace;
+using Console = Colorful.Console;
 
 namespace Nethermind.Cli
-{   
+{
     static class Program
     {
         private static IJsonSerializer _serializer = new EthereumJsonSerializer();
@@ -49,29 +40,119 @@ namespace Nethermind.Cli
         // ReSharper disable once InconsistentNaming
         private static CliModuleLoader ModuleLoader;
 
+        private const string _historyFilePath = "cli.cmd.history";
+
+        private static void CurrentDomainOnProcessExit(object sender, EventArgs e)
+        {
+            File.WriteAllLines(_historyFilePath, ReadLine.GetHistory().TakeLast(60));
+        }
+
+        private static ColorScheme _colorScheme = new DraculaColorScheme();
+        
         static void Main(string[] args)
         {
+            CliConsole.Init(_colorScheme);
+
+            AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
+
             Setup();
             LoadModules();
+            Test();
+
             RunEvalLoop();
-            
-            
         }
+
+        private static void Test()
+        {
+            CliConsole.WriteLine($"Connecting to {_nodeManager.CurrentUri}");
+            JsValue result = _engine.Execute("web3.clientVersion");
+            if (result != JsValue.Null)
+            {
+                CliConsole.WriteGood("Connected");
+            }
+//            Console.WriteLine(_serializer.Serialize(result.ToObject(), true));
+            CliConsole.WriteLine();
+        }
+
+        class AutoCompletionHandler : IAutoCompleteHandler
+        {
+            // characters to start completion from
+            public char[] Separators { get; set; } = new char[] {' ', '.', '/'};
+
+            // text - The current text entered in the console
+            // index - The index of the terminal cursor within {text}
+            public string[] GetSuggestions(string text, int index)
+            {
+                if (text.IndexOf('.') == -1)
+                {
+                    return ModuleLoader.ModuleNames.OrderBy(x => x).Where(x => x.StartsWith(text)).ToArray();
+                }
+
+                foreach (string moduleName in ModuleLoader.ModuleNames)
+                {
+                    if (text.StartsWith($"{moduleName}."))
+                    {
+                        string methodPart = text.Substring(text.IndexOf('.') + 1);
+                        return ModuleLoader.MethodsByModules[moduleName].Where(x => x.StartsWith(methodPart)).OrderBy(x => x).ToArray();
+                    }
+                }
+
+                return null;
+            }
+        }
+
+        private static IEnumerable<string> SecuredCommands
+        {
+            get
+            {
+                yield return "unlockAccount";
+                yield return "newAccount";
+            }
+        }
+
+        private const string _removedString = "*removed*";
 
         private static void RunEvalLoop()
         {
+            try
+            {
+                if (File.Exists(_historyFilePath))
+                {
+                    foreach (string line in File.ReadLines(_historyFilePath).TakeLast(60))
+                    {
+                        if (line != _removedString)
+                        {
+                            ReadLine.AddHistory(line);
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                CliConsole.WriteErrorLine($"Could not load cmd history from {_historyFilePath} {e.Message}");
+            }
+
+            ReadLine.AutoCompletionHandler = new AutoCompletionHandler();
+
             while (true)
             {
                 try
                 {
-                    Console.Write("> ");
-                    
                     int bufferSize = 1024 * 16;
                     string statement;
-                    using (Stream inStream = Console.OpenStandardInput(bufferSize))
+                    using (Stream inStream = System.Console.OpenStandardInput(bufferSize))
                     {
                         Console.SetIn(new StreamReader(inStream, Console.InputEncoding, false, bufferSize));
-                        statement = Console.ReadLine();
+                        CliConsole.WriteLessImportant("nethermind> ");
+                        statement = ReadLine.Read();
+                        if (!SecuredCommands.Any(sc => statement.Contains(sc)))
+                        {
+                            ReadLine.AddHistory(statement);
+                        }
+                        else
+                        {
+                            ReadLine.AddHistory(_removedString);
+                        }
                     }
 
                     if (statement == "exit")
@@ -80,19 +161,70 @@ namespace Nethermind.Cli
                     }
 
                     JsValue result = _engine.Execute(statement);
-                    Console.WriteLine(_serializer.Serialize(result.ToObject(), true)); 
-                    
-                    bool isNull = result.IsNull();
-                    Console.WriteLine(isNull ? "null" : result);
+                    if (result.IsObject() && result.AsObject().Class == "Function")
+                    {
+                        CliConsole.WriteGood(result.ToString());
+                        CliConsole.WriteLine();
+                    }
+                    else if (!result.IsNull())
+                    {
+                        CliConsole.WriteGood(_serializer.Serialize(result.ToObject(), true));
+                    }
+                    else
+                    {
+                        CliConsole.WriteLessImportant("null");
+                        CliConsole.WriteLine();
+                    }
+
+//                    bool isNull = result.IsNull();
+//                    if (!isNull)
+//                    {
+//                        CliConsole.WriteString(result);
+//                    }
                 }
                 catch (Exception e)
                 {
-                    var color = Console.ForegroundColor;
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine(e);
-                    Console.ForegroundColor = color;
+                    CliConsole.WriteException(e);
                 }
             }
+        }
+
+        private class CliLogger : ILogger
+        {
+            public void Info(string text)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void Warn(string text)
+            {
+                CliConsole.WriteLessImportant(text);
+            }
+
+            public void Debug(string text)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void Trace(string text)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void Error(string text, Exception ex = null)
+            {
+                CliConsole.WriteErrorLine(text);
+                if (ex != null)
+                {
+                    CliConsole.WriteException(ex);
+                }
+            }
+
+            public bool IsInfo => false;
+            public bool IsWarn => true;
+            public bool IsDebug => false;
+            public bool IsTrace => false;
+            public bool IsError => true;
         }
 
         private static void Setup()
@@ -101,8 +233,9 @@ namespace Nethermind.Cli
             _serializer.RegisterConverter(new ParityAccountStateChangeConverter());
             _serializer.RegisterConverter(new ParityTraceActionConverter());
             _serializer.RegisterConverter(new ParityTraceResultConverter());
+
             
-            _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace));
+            _logManager = new OneLoggerLogManager(new CliLogger());
             _nodeManager = new NodeManager(_serializer, _logManager);
             _nodeManager.SwitchUri(new Uri("http://localhost:8545"));
             _engine = new CliEngine();
@@ -111,14 +244,14 @@ namespace Nethermind.Cli
         private static void LoadModules()
         {
             ModuleLoader = new CliModuleLoader(_engine, _nodeManager);
-            ModuleLoader.LoadModule(typeof(PersonalCliModule));
-            ModuleLoader.LoadModule(typeof(EthCliModule));
-            ModuleLoader.LoadModule(typeof(NetCliModule));
-            ModuleLoader.LoadModule(typeof(Web3CliModule));
-            ModuleLoader.LoadModule(typeof(NodeCliModule));
             ModuleLoader.LoadModule(typeof(CliqueCliModule));
             ModuleLoader.LoadModule(typeof(DebugCliModule));
+            ModuleLoader.LoadModule(typeof(EthCliModule));
+            ModuleLoader.LoadModule(typeof(NetCliModule));
+            ModuleLoader.LoadModule(typeof(NodeCliModule));
             ModuleLoader.LoadModule(typeof(ParityCliModule));
+            ModuleLoader.LoadModule(typeof(PersonalCliModule));
+            ModuleLoader.LoadModule(typeof(Web3CliModule));
         }
     }
 }

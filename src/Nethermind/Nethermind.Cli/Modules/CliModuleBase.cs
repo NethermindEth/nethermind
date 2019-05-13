@@ -16,8 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Cli.Modules
 {
+    public class CliArgumentParserException : Exception
+    {
+        public CliArgumentParserException(string message)
+            : base(message)
+        {
+        }
+    }
+
     public abstract class CliModuleBase
     {
         protected ICliEngine Engine { get; }
@@ -28,8 +40,6 @@ namespace Nethermind.Cli.Modules
             Engine = engine;
             NodeManager = nodeManager;
         }
-<<<<<<< Updated upstream
-=======
 
         public Address CliParseAddress(string addressHex)
         {
@@ -53,9 +63,8 @@ namespace Nethermind.Cli.Modules
             }
             catch (Exception)
             {
-                throw new CliArgumentParserException($"Invalid hash format \"{hashHex}\". Expected format: \"0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\"");
+                throw new CliArgumentParserException($"Invalid hash format \"{hashHex}\". Expected format: \"0x000102030405060708090a0b0c0d00e0f101112131415161718191a1b1c1d1e1f\"");
             }
         }
->>>>>>> Stashed changes
     }
 }

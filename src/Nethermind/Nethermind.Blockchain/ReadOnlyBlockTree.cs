@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(LoadBlocksFromDb)} calls");
         }
 
-        public AddBlockResult SuggestBlock(Block block)
+        public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true)
         {
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
         }

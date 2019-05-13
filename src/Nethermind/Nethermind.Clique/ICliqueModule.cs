@@ -25,10 +25,13 @@ namespace Nethermind.Clique
 {
     public interface ICliqueModule : IModule
     {
-        ResultWrapper<bool> clique_getSnapshot();
-        ResultWrapper<bool> clique_getSnapshotAtHash(Keccak hash);
+        ResultWrapper<Snapshot> clique_getSnapshot();
+        ResultWrapper<Snapshot> clique_getSnapshotAtHash(Keccak hash);
         ResultWrapper<Address[]> clique_getSigners();
         ResultWrapper<Address[]> clique_getSignersAtHash(Keccak hash);
+        ResultWrapper<Address[]> clique_getSignersAtNumber(long number);
+        ResultWrapper<string[]> clique_getSignersAnnotated();
+        ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Keccak hash);
         ResultWrapper<bool> clique_propose(Address signer, bool vote);
         ResultWrapper<bool> clique_discard(Address signer);
     }

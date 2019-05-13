@@ -16,8 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Jint;
 using Jint.Native;
+using Jint.Parser;
+using Nethermind.Cli.Modules;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Cli
@@ -34,7 +37,24 @@ namespace Nethermind.Cli
         
         public JsValue Execute(string statement)
         {
-            return JintEngine.Execute(statement).GetCompletionValue();
+            try
+            {
+                return JintEngine.Execute(statement).GetCompletionValue();
+            }
+            catch (ParserException e)
+            {
+                CliConsole.WriteErrorLine(e.Message);
+            }
+            catch (CliArgumentParserException e)
+            {
+                CliConsole.WriteErrorLine(e.Message);
+            }
+            catch (Exception e)
+            {
+                CliConsole.WriteException(e);
+            }
+
+            return JsValue.Null;
         }
     }
 }

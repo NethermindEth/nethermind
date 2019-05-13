@@ -18,7 +18,7 @@
 
 namespace Nethermind.Cli.Modules
 {
-    [CliModule]
+    [CliModule("debug")]
     public class DebugCliModule : CliModuleBase
     {
         [CliFunction("debug", "traceBlock")]

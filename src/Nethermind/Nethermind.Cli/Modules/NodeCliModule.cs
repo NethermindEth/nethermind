@@ -18,13 +18,14 @@
 
 using System;
 using System.IO;
+using System.Reflection;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network;
 
 namespace Nethermind.Cli.Modules
 {
-    [CliModule]
+    [CliModule("node")]
     public class NodeCliModule : CliModuleBase
     {
         [CliFunction("node", "setNodeKey")]
@@ -76,18 +77,6 @@ namespace Nethermind.Cli.Modules
         
         [CliProperty("node", "uri")]
         public string Uri()
-        {
-            return NodeManager.CurrentUri;
-        }
-        
-        [CliFunction("node", "testConnection")]
-        public string TestConnection()
-        {
-            return NodeManager.CurrentUri;
-        }
-        
-        [CliProperty("node", "cliVersion")]
-        public string CliVersion()
         {
             return NodeManager.CurrentUri;
         }

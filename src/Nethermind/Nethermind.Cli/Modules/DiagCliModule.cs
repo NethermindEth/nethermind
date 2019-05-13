@@ -16,26 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.IO;
+using System.Reflection;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Network;
+
 namespace Nethermind.Cli.Modules
 {
-    [CliModule("trace")]
-    public class ParityCliModule : CliModuleBase
+    [CliModule("diag")]
+    public class DiagCliModule : CliModuleBase
     {
-        [CliFunction("trace", "replayTransaction")]
-        public string ReplayTransaction(string txHash, string[] traceTypes)
+        [CliProperty("diag", "cliVersion")]
+        public string CliVersion()
         {
-            string parityLikeTxTrace = NodeManager.Post<string>("trace_replayTransaction", txHash, traceTypes).Result;
-            return parityLikeTxTrace;
-        }
-        
-        [CliFunction("trace", "replayBlockTransactions")]
-        public string ReplayBlockTransactions(string blockNumber, string[] traceTypes)
-        {
-            string parityLikeTxTrace = NodeManager.Post<string>("trace_replayBlockTransactions", blockNumber, traceTypes).Result;
-            return parityLikeTxTrace;
+            return this.GetType().Assembly.FullName;
         }
 
-        public ParityCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
+        public DiagCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {
         }
     }

@@ -18,7 +18,7 @@
 
 namespace Nethermind.Cli.Modules
 {
-    [CliModule]
+    [CliModule("web3")]
     public class Web3CliModule : CliModuleBase
     {
         public Web3CliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)

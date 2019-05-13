@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Modules;
 using Newtonsoft.Json;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
@@ -80,6 +81,8 @@ namespace Nethermind.JsonRpc
 
         public JsonRpcResponse SendRequest(JsonRpcRequest rpcRequest)
         {
+            if (_logger.IsInfo) _logger.Info($"Handling JSON RPC request {rpcRequest.Id} {rpcRequest.Method}");
+            
             try
             {
                 (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
@@ -230,7 +233,7 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private JsonRpcResponse GetSuccessResponse(object result, ulong id)
+        private JsonRpcResponse GetSuccessResponse(object result, UInt256 id)
         {
             var response = new JsonRpcResponse
             {
@@ -249,7 +252,7 @@ namespace Nethermind.JsonRpc
 
         public IList<JsonConverter> Converters { get; } = new List<JsonConverter>();
 
-        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, ulong id, string methodName, object result = null)
+        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, UInt256 id, string methodName, object result = null)
         {
             if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
             var response = new JsonRpcResponse

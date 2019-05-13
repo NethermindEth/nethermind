@@ -211,9 +211,9 @@ namespace Nethermind.PerfTest
                 await _blockTree.LoadBlocksFromDb(cancellationToken, startBlockNumber, batchSize, maxBlocksToLoad);
             }
 
-            public AddBlockResult SuggestBlock(Block block)
+            public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true)
             {
-                return _blockTree.SuggestBlock(block);
+                return _blockTree.SuggestBlock(block, shouldProcess);
             }
 
             public AddBlockResult SuggestHeader(BlockHeader header)
