@@ -245,7 +245,8 @@ namespace Nethermind.Blockchain.Synchronization
                 switch (_syncMode.Current)
                 {
                     case SyncMode.Headers:
-                        syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false);
+//                        syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false);
+                        syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                         break;
                     case SyncMode.StateNodes:
                         syncProgressTask = DownloadStateNodes(_syncLoopCancellation.Token);

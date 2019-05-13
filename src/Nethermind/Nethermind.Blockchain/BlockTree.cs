@@ -143,7 +143,7 @@ namespace Nethermind.Blockchain
             int batchSize = DbLoadBatchSize,
             int maxBlocksToLoad = int.MaxValue)
         {
-            return;
+//            return; // use for fast sync blocks download
             
             try
             {
