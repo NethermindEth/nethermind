@@ -32,6 +32,13 @@ Create a new user
 
  sudo useradd -m -s /bin/bash nethermind
 
+increase the maximum number of open files
+
+::
+
+ sudo bash -c 'echo "nethermind soft nofile 1000000" > /etc/security/limits.d/nethermind.conf'
+ sudo bash -c 'echo "nethermind hard nofile 1000000" >> /etc/security/limits.d/nethermind.conf'
+
 switch to the new user
 
 ::
