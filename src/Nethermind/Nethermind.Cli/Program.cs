@@ -161,7 +161,20 @@ namespace Nethermind.Cli
                     }
 
                     JsValue result = _engine.Execute(statement);
-                    CliConsole.WriteGood(_serializer.Serialize(result.ToObject(), true));
+                    if (result.IsObject() && result.AsObject().Class == "Function")
+                    {
+                        CliConsole.WriteGood(result.ToString());
+                        CliConsole.WriteLine();
+                    }
+                    else if (!result.IsNull())
+                    {
+                        CliConsole.WriteGood(_serializer.Serialize(result.ToObject(), true));
+                    }
+                    else
+                    {
+                        CliConsole.WriteLessImportant("null");
+                        CliConsole.WriteLine();
+                    }
 
 //                    bool isNull = result.IsNull();
 //                    if (!isNull)

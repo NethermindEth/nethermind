@@ -31,14 +31,14 @@ namespace Nethermind.Cli.Modules
     {
         private string SendEth(Address from, Address address, UInt256 amountInWei)
         {
-            UInt256 blockNumber = NodeManager.Post<UInt256>("eth_blockNumber").Result;
+            long blockNumber = NodeManager.Post<long>("eth_blockNumber").Result;
 
             TransactionForRpc tx = new TransactionForRpc();
             tx.Value = amountInWei;
             tx.Gas = 21000;
             tx.GasPrice = (UInt256) Engine.JintEngine.GetValue("gasPrice").AsNumber();
             tx.To = address;
-            tx.Nonce = (ulong) NodeManager.Post<BigInteger>("eth_getTransactionCount", address, blockNumber).Result;
+            tx.Nonce = (ulong) NodeManager.Post<long>("eth_getTransactionCount", address, blockNumber).Result;
             tx.From = from;
 
             Keccak keccak = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;
@@ -58,9 +58,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliProperty("eth", "blockNumber")]
-        public BigInteger BlockNumber()
+        public long BlockNumber()
         {
-            return NodeManager.Post<BigInteger>("eth_blockNumber").Result;
+            return NodeManager.Post<long>("eth_blockNumber").Result;
         }
 
         [CliFunction("eth", "getCode")]

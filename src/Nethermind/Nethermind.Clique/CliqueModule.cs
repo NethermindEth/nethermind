@@ -22,6 +22,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
@@ -56,6 +57,21 @@ namespace Nethermind.Clique
         public ResultWrapper<Address[]> clique_getSignersAtHash(Keccak hash)
         {
             return ResultWrapper<Address[]>.Success(_cliqueBridge.GetSigners(hash).ToArray());
+        }
+        
+        public ResultWrapper<Address[]> clique_getSignersAtNumber(long number)
+        {
+            return ResultWrapper<Address[]>.Success(_cliqueBridge.GetSigners(number).ToArray());
+        }
+        
+        public ResultWrapper<string[]> clique_getSignersAnnotated()
+        {
+            return ResultWrapper<string[]>.Success(_cliqueBridge.GetSignersAnnotated().ToArray());
+        }
+
+        public ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Keccak hash)
+        {
+            return ResultWrapper<string[]>.Success(_cliqueBridge.GetSignersAnnotated(hash).ToArray());
         }
 
         public ResultWrapper<bool> clique_propose(Address signer, bool vote)

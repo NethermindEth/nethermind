@@ -16,6 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+using Nethermind.Core;
+
 namespace Nethermind.Cli.Modules
 {
     [CliModule("clique")]
@@ -30,31 +33,49 @@ namespace Nethermind.Cli.Modules
         [CliFunction("clique", "getSnapshotAtHash")]
         public string GetSnapshotAtHash(string hash)
         {
-            return NodeManager.Post<string>("clique_getSnapshotAtHash", hash).Result;
+            return NodeManager.Post<string>("clique_getSnapshotAtHash", CliParseHash(hash)).Result;
         }
         
         [CliFunction("clique", "getSigners")]
         public string[] GetSigners()
         {
-            return NodeManager.Post<string[]>("clique_gitSigners").Result;
+            return NodeManager.Post<string[]>("clique_getSigners").Result;
+        }
+
+        [CliFunction("clique", "getSignersAtNumber")]
+        public Address[] GetSignersAtNumber(long number)
+        {
+            return NodeManager.Post<Address[]>("clique_getSignersAtNumber", number.ToString()).Result;
         }
         
         [CliFunction("clique", "getSignersAtHash")]
-        public string[] GetSignersAtHash()
+        public string[] GetSignersAtHash(string hash)
         {
-            return NodeManager.Post<string[]>("clique_gitSignersAtHash").Result;
+            return NodeManager.Post<string[]>("clique_getSignersAtHash", CliParseHash(hash)).Result;
+        }
+        
+        [CliFunction("clique", "getSignersAnnotated")]
+        public string[] GetSignersAnnotated()
+        {
+            return NodeManager.Post<string[]>("clique_getSignersAnnotated").Result;
+        }
+        
+        [CliFunction("clique", "getSignersAtHashAnnotated")]
+        public string[] GetSignersAtHashAnnotated(string hash)
+        {
+            return NodeManager.Post<string[]>("clique_getSignersAtHashAnnotated", CliParseHash(hash)).Result;
         }
         
         [CliFunction("clique", "propose")]
         public bool Propose(string address, bool vote)
         {
-            return NodeManager.Post<bool>("clique_propose", address, vote).Result;
+            return NodeManager.Post<bool>("clique_propose", CliParseAddress(address), vote).Result;
         }
         
         [CliFunction("clique", "discard")]
         public bool Propose(string address)
         {
-            return NodeManager.Post<bool>("clique_discard", address).Result;
+            return NodeManager.Post<bool>("clique_discard", CliParseAddress(address)).Result;
         }
 
         public CliqueCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)

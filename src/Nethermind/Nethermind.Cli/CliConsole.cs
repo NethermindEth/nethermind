@@ -36,6 +36,8 @@ namespace Nethermind.Cli
             Console.WriteLine("**********************************************", _colorScheme.Comment);
             Console.WriteLine();
             Console.WriteLine("Nethermind CLI", _colorScheme.Good);
+            Console.WriteLine("  https://github.com/NethermindEth/nethermind", _colorScheme.Interesting);
+            Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/", _colorScheme.Interesting);
             Console.WriteLine();
             Console.WriteLine("powered by:", _colorScheme.Text);
             Console.WriteLine("  https://github.com/sebastienros/jint", _colorScheme.Interesting);

@@ -17,16 +17,18 @@
  */
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Clique
 {
     public class CliqueBridge : ICliqueBridge
     {
-        private const string CannotVoteOnNonValidatorMessage = "Cannot vote on non-validator node";
+        private const string CannotVoteOnNonValidatorMessage = "Not a signer node - cannot vote";
         
         private readonly ICliqueBlockProducer _cliqueBlockProducer;
         private readonly ISnapshotManager _snapshotManager;
@@ -34,7 +36,7 @@ namespace Nethermind.Clique
 
         public CliqueBridge(ICliqueBlockProducer cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockTree blockTree)
         {
-            _cliqueBlockProducer = cliqueBlockProducer ?? throw new ArgumentNullException(nameof(cliqueBlockProducer));
+            _cliqueBlockProducer = cliqueBlockProducer;
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
@@ -73,14 +75,32 @@ namespace Nethermind.Clique
 
         public Address[] GetSigners()
         {
-            BlockHeader header = _blockTree.Head;
-            return ExtractSigners(header);
+            BlockHeader head = _blockTree.Head;
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => s.Key).ToArray();
+        }
+
+        public Address[] GetSigners(long number)
+        {
+            BlockHeader head = _blockTree.FindHeader(number);
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => s.Key).ToArray();
+        }
+
+        public string[] GetSignersAnnotated()
+        {
+            BlockHeader head = _blockTree.Head;
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
         
         public Address[] GetSigners(Keccak hash)
         {
-            Block block = _blockTree.FindBlock(hash, false);
-            return ExtractSigners(block.Header);
+            BlockHeader head = _blockTree.FindHeader(hash);
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => s.Key).ToArray();
+        }
+        
+        public string[] GetSignersAnnotated(Keccak hash)
+        {
+            BlockHeader head = _blockTree.FindHeader(hash);
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
     }
 }
