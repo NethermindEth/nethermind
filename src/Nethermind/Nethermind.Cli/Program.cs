@@ -101,6 +101,17 @@ namespace Nethermind.Cli
                 return null;
             }
         }
+
+        private static IEnumerable<string> SecuredCommands
+        {
+            get
+            {
+                yield return "unlockAccount";
+                yield return "newAccount";    
+            }
+        }
+
+        private const string _removedString = "*removed*";
         
         private static void RunEvalLoop()
         {
@@ -110,7 +121,10 @@ namespace Nethermind.Cli
                 {
                     foreach (string line in File.ReadLines(_historyFilePath).TakeLast(60))
                     {
-                        ReadLine.AddHistory(line);
+                        if (line != _removedString)
+                        {
+                            ReadLine.AddHistory(line);
+                        }
                     }
                 }
             }
@@ -131,7 +145,14 @@ namespace Nethermind.Cli
                     {
                         Console.SetIn(new StreamReader(inStream, Console.InputEncoding, false, bufferSize));
                         statement = ReadLine.Read("nethermind> ");
-                        ReadLine.AddHistory(statement);
+                        if (!SecuredCommands.Any(sc => statement.Contains(sc)))
+                        {
+                            ReadLine.AddHistory(statement);
+                        }
+                        else
+                        {
+                            ReadLine.AddHistory(_removedString);
+                        }
                     }
 
                     if (statement == "exit")
