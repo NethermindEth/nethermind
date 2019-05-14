@@ -74,6 +74,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             batch.HeadersSyncBatch = new HeadersSyncBatch();
             batch.HeadersSyncBatch.StartNumber = isReorg ? maxNumber - RequestSize + 1 : _bestRequestedHeader - 1;
             batch.HeadersSyncBatch.RequestSize = (1 + maxNumber - batch.HeadersSyncBatch.StartNumber.Value) < RequestSize ? (int) (1 + maxNumber - batch.HeadersSyncBatch.StartNumber.Value) : RequestSize;
+            batch.IsReorgBatch = isReorg;
             _bestRequestedHeader = Math.Max(batch.HeadersSyncBatch.StartNumber + batch.HeadersSyncBatch.RequestSize ?? 0, _bestRequestedHeader);
             _sentBatches.Add(batch);
             return batch;
@@ -98,16 +99,23 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             try
             {
                 var headersSyncBatch = syncBatch.HeadersSyncBatch;
+                if (headersSyncBatch.Response == null)
+                {
+                    _pendingBatches.Enqueue(syncBatch);
+                    return 0;
+                }
+                
                 int added = 0;
                 foreach (BlockHeader header in headersSyncBatch.Response)
                 {
                     AddBlockResult addBlockResult = SuggestHeader(header);
                     if (addBlockResult == AddBlockResult.UnknownParent && added == 0)
                     {
-                        if ((_blockTree.BestSuggested?.Number ?? 0) >= header.Number)
+                        if ((_blockTree.BestSuggested?.Number ?? 0) >= header.Number || syncBatch.IsReorgBatch)
                         {
                             // reorg
                             BlockSyncBatch reorgBatch = new BlockSyncBatch();
+                            reorgBatch.IsReorgBatch = true;
                             reorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
                             if (syncBatch.HeadersSyncBatch.StartNumber == null)
                             {

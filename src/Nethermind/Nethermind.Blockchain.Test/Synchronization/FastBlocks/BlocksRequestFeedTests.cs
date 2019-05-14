@@ -35,7 +35,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
     [TestFixture]
     public class BlocksRequestFeedTests
     {
-        private BlockTree _validTree;
+        private BlockTree _validTree2048;
+        private BlockTree _validTree1024;
+        private BlockTree _validTree8;
         private BlockTree _badTreeAfter1024;
         private List<LatencySyncPeerMock> _syncPeers;
         private Dictionary<LatencySyncPeerMock, IBlockTree> _peerTrees;
@@ -46,7 +48,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
         public BlocksRequestFeedTests()
         {
-            _validTree = Build.A.BlockTree().OfChainLength(2048).TestObject;
+            _validTree2048 = Build.A.BlockTree().OfChainLength(2048).TestObject;
+            _validTree1024 = Build.A.BlockTree().OfChainLength(1024).TestObject;
+            _validTree8 = Build.A.BlockTree().OfChainLength(8).TestObject;
             _badTreeAfter1024 = Build.A.BlockTree().OfChainLength(2048, 1, 1024).TestObject;
         }
 
@@ -69,40 +73,79 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         [Test]
         public void One_peer_with_valid_chain()
         {
-            LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree);
+            LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree2048);
             SetupSyncPeers(syncPeer);
             RunFeed();
-            Assert.AreEqual(_validTree.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+            Assert.AreEqual(_validTree2048.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+        }
+        
+        [Test]
+        public void One_peer_with_short_valid_chain()
+        {
+            LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree2048);
+            SetupSyncPeers(syncPeer);
+            RunFeed();
+            Assert.AreEqual(_validTree2048.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
         [Test]
         public void Two_peers_with_valid_chain()
         {
-            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree);
-            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree);
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(_validTree.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+            Assert.AreEqual(_validTree2048.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
         [Test]
         public void Two_peers_with_valid_chain_but_varying_latencies()
         {
-            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree, 5);
-            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree, 100);
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 5);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048, 100);
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(_validTree.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+            Assert.AreEqual(_validTree2048.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
         [Test]
-        public void Two_peers__one_with_invalid_chain()
+        public void Two_peers_one_with_invalid_chain()
         {
-            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree, 100);
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 100);
             LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_badTreeAfter1024, 5);
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(_validTree.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+            Assert.AreEqual(_validTree2048.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+        }
+        
+        [Test]
+        public void Two_peers_one_with_invalid_chain_same_latencies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 5);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_badTreeAfter1024, 5);
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(_validTree2048.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+        }
+        
+        [Test]
+        public void Two_peers_one_slow_with_invalid_chain()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 5);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_badTreeAfter1024, 100);
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(_validTree2048.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+        }
+        
+        [Test]
+        public void Two_valid_peers_various_lengths()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 5);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree1024, 5);
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(_validTree2048.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
         private void RunFeed()
@@ -119,15 +162,22 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
                     if (batch != null)
                     {
+                        bool wasAssigned = false;
                         foreach (LatencySyncPeerMock syncPeer in _syncPeers)
                         {
-                            if (syncPeer.BusyUntil == null)
+                            if (syncPeer.BusyUntil == null  && _peerTrees[syncPeer].Head.Number >= (batch.HeadersSyncBatch.StartNumber ?? 0) + batch.HeadersSyncBatch.RequestSize - 1)
                             {
                                 syncPeer.BusyUntil = _time + syncPeer.Latency;
                                 _pendingResponses.Add(syncPeer, batch);
                                 TestContext.WriteLine($"{_time,6} |SENDING {batch} REQUEST TO {syncPeer.Node:s}");
+                                wasAssigned = true;
                                 break;
                             }
+                        }
+
+                        if (!wasAssigned)
+                        {
+                            _feed.HandleResponse(batch);
                         }
                     }
                 }
