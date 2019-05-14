@@ -5,9 +5,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public interface IBlockRequestFeed
     {
-        BlockSyncBatch PrepareRequest(int length);
+        BlockSyncBatch PrepareRequest();
 
-        (NodeDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch syncBatch);
+        (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch syncBatch);
         
         bool IsFullySynced(Keccak stateRoot);
         
