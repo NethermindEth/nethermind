@@ -29,17 +29,16 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 {
-    public class IntSyncPeerMock : ISyncPeer
+    public class LatencySyncPeerMock : ISyncPeer
     {
-        private readonly IBlockTree _remoteTree;
-        private readonly PublicKey _localPublicKey;
-        private readonly ISyncServer _remoteSyncServer;
+        public IBlockTree Tree { get; }
 
-        public int? BusyUntil { get; set; }
-        public int Latency { get; set; } = 5;
+        public long? BusyUntil { get; set; }
+        public int Latency { get; set; }
         
-        public IntSyncPeerMock(IBlockTree remoteTree, PublicKey localPublicKey = null, string localClientId = "", ISyncServer remoteSyncServer = null, PublicKey remotePublicKey = null, string remoteClientId = "")
+        public LatencySyncPeerMock(IBlockTree tree, int latency = 5, PublicKey localPublicKey = null, string localClientId = "", ISyncServer remoteSyncServer = null, PublicKey remotePublicKey = null, string remoteClientId = "")
         {
+            Latency = latency;
             string localHost = "127.0.0.1";
             if (int.TryParse(localClientId.Replace("PEER", string.Empty), out int localIndex))
             {
@@ -52,114 +51,66 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 remoteHost = $"127.0.0.{remoteIndex}";    
             }
             
-            _remoteTree = remoteTree;
-            _localPublicKey = localPublicKey;
-            _remoteSyncServer = remoteSyncServer;
+            Tree = tree;
             Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, remoteHost, 1234);
             LocalNode = new Node(localPublicKey ?? TestItem.PublicKeyB, localHost, 1235);
             Node.ClientId = remoteClientId;
             LocalNode.ClientId = localClientId;
-
-            Task.Factory.StartNew(RunQueue, TaskCreationOptions.LongRunning);
-        }
-
-        private void RunQueue()
-        {
-            foreach (Action action in _sendQueue.GetConsumingEnumerable())
-            {
-                action();
-            }
         }
 
         public Guid SessionId { get; } = Guid.NewGuid();
+        
         public bool IsFastSyncSupported => false;
         public Node Node { get; }
         
         public Node LocalNode { get; }
+        
         public string ClientId => Node.ClientId;
-        public UInt256 TotalDifficultyOnSessionStart => _remoteTree.Head.TotalDifficulty ?? 0;
+        public UInt256 TotalDifficultyOnSessionStart => Tree.Head.TotalDifficulty ?? 0;
 
         public void Disconnect(DisconnectReason reason, string details)
         {
+            throw new NotImplementedException();
         }
 
         public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
-            Block[] result = new Block[blockHashes.Length];
-            for (int i = 0; i < blockHashes.Length; i++)
-            {
-                result[i] = _remoteTree.FindBlock(blockHashes[i], true);
-            }
-            
-            return Task.FromResult(result);
+            throw new NotImplementedException();
         }
 
         public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
-            BlockHeader[] result = new BlockHeader[maxBlocks];
-            long? firstNumber = _remoteTree.FindHeader(blockHash, true)?.Number;
-            if (!firstNumber.HasValue)
-            {
-                return Task.FromResult(result);
-            }  
-            
-            for (int i = 0; i < maxBlocks; i++)
-            {
-                result[i] = _remoteTree.FindHeader(firstNumber.Value + i + skip);
-            }
-            
-            return Task.FromResult(result);
+            throw new NotImplementedException();
         }
         
         public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
-            BlockHeader[] result = new BlockHeader[maxBlocks];
-            long? firstNumber = _remoteTree.FindHeader(number)?.Number;
-            if (!firstNumber.HasValue)
-            {
-                return Task.FromResult(result);
-            }  
-            
-            for (int i = 0; i < maxBlocks; i++)
-            {
-                long blockNumber = firstNumber.Value + i + skip;
-                if (blockNumber > (_remoteTree.Head?.Number ?? 0))
-                {
-                    result[i] = null;
-                }
-                else
-                {
-                    result[i] = _remoteTree.FindBlock(blockNumber).Header;
-                }
-            }
-            
-            return Task.FromResult(result);
+            throw new NotImplementedException();
         }
 
         public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
-            return Task.FromResult(_remoteTree.Head);
+            throw new NotImplementedException();
         }
-
-        private BlockingCollection<Action> _sendQueue = new BlockingCollection<Action>();
         
         public void SendNewBlock(Block block)
         {
-            _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, LocalNode));
+            throw new NotImplementedException();
         }
 
         public void SendNewTransaction(Transaction transaction)
         {
+            throw new NotImplementedException();
         }
 
         public Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
         {
-            return Task.FromResult(_remoteSyncServer.GetReceipts(blockHash));
+            throw new NotImplementedException();
         }
 
         public Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
         {
-            return Task.FromResult(_remoteSyncServer.GetNodeData(hashes));
+            throw new NotImplementedException();
         }
     }
 }

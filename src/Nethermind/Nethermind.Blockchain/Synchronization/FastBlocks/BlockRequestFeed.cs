@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
@@ -28,7 +29,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public BlockSyncBatch PrepareRequest()
         {
-            if (_syncPeerPool.AllPeers.Max(p => p.TotalDifficulty) <= (_blockTree.BestSuggested?.TotalDifficulty ?? 0))
+            UInt256 maxDifficulty = _syncPeerPool.AllPeers.Max(p => p.TotalDifficulty);
+            long maxNumber = _syncPeerPool.AllPeers.Max(p => p.HeadNumber);
+            if (maxDifficulty <= (_blockTree.BestSuggested?.TotalDifficulty ?? 0))
+            {
+                return null;
+            }
+            
+            if (maxNumber <= _bestRequestedHeader)
             {
                 return null;
             }
