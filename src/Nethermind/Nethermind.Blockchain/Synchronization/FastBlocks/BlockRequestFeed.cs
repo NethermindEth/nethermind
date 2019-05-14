@@ -104,53 +104,56 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     _pendingBatches.Enqueue(syncBatch);
                     return 0;
                 }
-                
+
                 int added = 0;
                 foreach (BlockHeader header in headersSyncBatch.Response)
                 {
-                    AddBlockResult addBlockResult = SuggestHeader(header);
-                    if (addBlockResult == AddBlockResult.UnknownParent && added == 0)
+                    AddBlockResult? addBlockResult = null;
+                    if (header != null)
                     {
-                        if ((_blockTree.BestSuggested?.Number ?? 0) >= header.Number || syncBatch.IsReorgBatch)
+                        addBlockResult = SuggestHeader(header);
+                        if (addBlockResult == AddBlockResult.UnknownParent && added == 0)
                         {
-                            // reorg
-                            BlockSyncBatch reorgBatch = new BlockSyncBatch();
-                            reorgBatch.IsReorgBatch = true;
-                            reorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                            if (syncBatch.HeadersSyncBatch.StartNumber == null)
+                            if ((_blockTree.BestSuggested?.Number ?? 0) >= header.Number || syncBatch.IsReorgBatch)
                             {
-                                throw new InvalidOperationException();
+                                // reorg
+                                BlockSyncBatch reorgBatch = new BlockSyncBatch();
+                                reorgBatch.IsReorgBatch = true;
+                                reorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
+                                if (syncBatch.HeadersSyncBatch.StartNumber == null)
+                                {
+                                    throw new InvalidOperationException();
+                                }
+
+                                reorgBatch.HeadersSyncBatch.StartNumber = Math.Max(0, syncBatch.HeadersSyncBatch.StartNumber.Value - RequestSize);
+                                reorgBatch.HeadersSyncBatch.RequestSize = RequestSize;
+                                _pendingBatches.Enqueue(reorgBatch);
+                            }
+                            else
+                            {
+                                if (!_headerDependencies.ContainsKey(header.Number - 1))
+                                {
+                                    _headerDependencies[header.Number - 1] = new List<BlockSyncBatch>();
+                                }
+
+                                _headerDependencies[header.Number - 1].Add(syncBatch);
                             }
 
-                            reorgBatch.HeadersSyncBatch.StartNumber = Math.Max(0, syncBatch.HeadersSyncBatch.StartNumber.Value - RequestSize);
-                            reorgBatch.HeadersSyncBatch.RequestSize = RequestSize;
-                            _pendingBatches.Enqueue(reorgBatch);
+                            break;
                         }
-                        else
-                        {
-                            if (!_headerDependencies.ContainsKey(header.Number - 1))
-                            {
-                                _headerDependencies[header.Number - 1] = new List<BlockSyncBatch>();
-                            }
-
-                            _headerDependencies[header.Number - 1].Add(syncBatch);
-                        }
-
-                        break;
                     }
 
-                    if (addBlockResult == AddBlockResult.InvalidBlock || addBlockResult == AddBlockResult.UnknownParent)
+                    if (addBlockResult == null || addBlockResult.Value == AddBlockResult.InvalidBlock || addBlockResult.Value == AddBlockResult.UnknownParent)
                     {
                         BlockSyncBatch fixedSyncBatch = new BlockSyncBatch();
                         fixedSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                        fixedSyncBatch.HeadersSyncBatch.StartNumber = syncBatch.HeadersSyncBatch.StartNumber + added;
-                        fixedSyncBatch.HeadersSyncBatch.RequestSize = RequestSize - added;
+                        fixedSyncBatch.HeadersSyncBatch.StartNumber = syncBatch.HeadersSyncBatch.StartNumber + added - 1;
+                        fixedSyncBatch.HeadersSyncBatch.RequestSize = syncBatch.HeadersSyncBatch.RequestSize - added + 1;
                         _pendingBatches.Enqueue(fixedSyncBatch);
+                        break;
                     }
-                    else
-                    {
-                        added++;
-                    }
+
+                    added++;
                 }
 
                 return added;
@@ -163,6 +166,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private AddBlockResult SuggestHeader(BlockHeader header)
         {
+            if (header.IsGenesis)
+            {
+                return AddBlockResult.AlreadyKnown;
+            }
+            
             AddBlockResult addBlockResult = _blockTree.SuggestHeader(header);
             if (addBlockResult == AddBlockResult.InvalidBlock)
             {

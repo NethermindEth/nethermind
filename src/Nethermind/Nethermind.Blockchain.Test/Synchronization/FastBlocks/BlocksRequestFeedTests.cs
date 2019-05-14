@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Synchronization;
@@ -40,6 +41,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private BlockTree _validTree8;
         private BlockTree _badTreeAfter1024;
         private List<LatencySyncPeerMock> _syncPeers;
+        private Dictionary<LatencySyncPeerMock, int> _peerMaxResponseSizes;
         private Dictionary<LatencySyncPeerMock, IBlockTree> _peerTrees;
         private Dictionary<LatencySyncPeerMock, BlockSyncBatch> _pendingResponses;
         private BlockTree _localBlockTree;
@@ -59,7 +61,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         {
             _syncPeers = new List<LatencySyncPeerMock>();
             _peerTrees = new Dictionary<LatencySyncPeerMock, IBlockTree>();
+            _peerMaxResponseSizes = new Dictionary<LatencySyncPeerMock, int>();
             _pendingResponses = new Dictionary<LatencySyncPeerMock, BlockSyncBatch>();
+
             LatencySyncPeerMock.RemoteIndex = 1;
             _time = 0;
             IEthSyncPeerPool peerPool = Substitute.For<IEthSyncPeerPool>();
@@ -67,6 +71,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 .Do(ci => ((LatencySyncPeerMock) ci.Arg<SyncPeerAllocation>().Current.SyncPeer).BusyUntil = _time + 5000);
             peerPool.AllPeers.Returns((ci) => _syncPeers.Select(sp => new PeerInfo(sp) {HeadNumber = sp.Tree.Head.Number}));
             _localBlockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            _localBlockTree.SuggestBlock(_validTree8.FindBlock(0));
+            
             _feed = new BlocksRequestFeed(_localBlockTree, peerPool);
         }
 
@@ -147,11 +153,44 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             RunFeed();
             Assert.AreEqual(_validTree2048.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
+        
+        [Test]
+        public void Two_peers_but_with_response_size_limits()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 5);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048, 5);
 
-        private void RunFeed()
+            _peerMaxResponseSizes[syncPeer1] = 7;
+            _peerMaxResponseSizes[syncPeer2] = 13;
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(_validTree2048.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+        }
+        
+        [Test]
+        public void ManyValidPeers()
+        {
+            LatencySyncPeerMock[] peers = new LatencySyncPeerMock[100];
+            for (int i = 0; i < peers.Length; i++)
+            {
+                peers[i] = new LatencySyncPeerMock(_validTree2048, 5);
+            }
+            
+            SetupSyncPeers(peers);
+            RunFeed();
+            Assert.AreEqual(_validTree2048.Head.Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+        }
+
+        private void RunFeed(int timeLimit = 5000)
         {
             while (true)
             {
+                if (_time > timeLimit)
+                {
+                    TestContext.WriteLine($"TIMEOUT AT {_time}");
+                    throw new TimeoutException();
+                }
+                
                 if (_pendingResponses.Count < _syncPeers.Count)
                 {
                     BlockSyncBatch batch = _feed.PrepareRequest();
@@ -236,7 +275,19 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
                 BlockHeader[] headers = tree.FindHeaders(hash, headersSyncBatch.RequestSize, headersSyncBatch.Skip, headersSyncBatch.Reverse);
                 responseBatch.HeadersSyncBatch.Response = headers;
-                TestContext.WriteLine($"{_time,6} |SYNC PEER {syncPeer.Node:s} RESPONDING TO {headersSyncBatch.StartNumber} + {headersSyncBatch.RequestSize}");
+                if (_peerMaxResponseSizes.ContainsKey(syncPeer))
+                {
+                    int maxResponseSize = _peerMaxResponseSizes[syncPeer];
+                    for (int i = 0; i < headers.Length; i++)
+                    {
+                        if (i >= maxResponseSize)
+                        {
+                            headers[i] = null;
+                        }
+                    }
+                }
+                
+                TestContext.WriteLine($"{_time,6} |SYNC PEER {syncPeer.Node:s} RESPONDING TO [{headersSyncBatch.StartNumber},{headersSyncBatch.StartNumber + headersSyncBatch.RequestSize - 1}]");
             }
 
             if (responseBatch.BodiesSyncBatch != null)
