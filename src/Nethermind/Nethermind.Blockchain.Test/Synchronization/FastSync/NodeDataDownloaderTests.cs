@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -33,7 +34,7 @@ using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization
+namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 {
     public class NodeDataDownloaderTests
     {

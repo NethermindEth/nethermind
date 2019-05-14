@@ -20,7 +20,7 @@ using System;
 using System.Text;
 using Nethermind.Logging;
 
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Blockchain.Synchronization.FastSync
 {
     internal class NodeSyncProgress
     {

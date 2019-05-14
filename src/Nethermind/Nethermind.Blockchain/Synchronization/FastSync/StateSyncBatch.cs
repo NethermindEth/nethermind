@@ -16,20 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
+using System.Diagnostics;
 
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Blockchain.Synchronization.FastSync
 {
-    public interface INodeDataFeed
+    [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
+    public class StateSyncBatch
     {
-        StateSyncBatch PrepareRequest(int length);
+        public StateSyncItem[] RequestedNodes { get; set; }
         
-        void SetNewStateRoot(long number, Keccak stateRoot);
+        public byte[][] Responses { get; set; }
         
-        (NodeDataHandlerResult Result, int NodesConsumed) HandleResponse(StateSyncBatch syncBatch);
-        
-        bool IsFullySynced(Keccak stateRoot);
-        
-        int TotalNodesPending { get; }
+        public SyncPeerAllocation AssignedPeer { get; set; }
     }
 }

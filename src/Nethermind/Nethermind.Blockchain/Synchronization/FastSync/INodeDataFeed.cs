@@ -16,35 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Diagnostics;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Blockchain.Synchronization.FastSync
 {
-    [DebuggerDisplay("{Level} {NodeDataType} {Hash}")]
-    public class StateSyncItem
+    public interface INodeDataFeed
     {
-        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level, uint rightness)
-        {
-            Hash = hash;
-            NodeDataType = nodeType;
-            Level = (byte)level;
-            Rightness = rightness;
-        }
-
-        public Keccak Hash { get; }
-
-        public NodeDataType NodeDataType { get; }
-
-        public byte Level { get; }
-
-        public short ParentBranchChildIndex { get; set; } = (short) -1;
-
-        public short BranchChildIndex { get; set; } = (short) -1;
-
-        public uint Rightness { get; }
-
-        public bool IsRoot => Level == 0 && NodeDataType == NodeDataType.State;
+        StateSyncBatch PrepareRequest(int length);
+        
+        void SetNewStateRoot(long number, Keccak stateRoot);
+        
+        (NodeDataHandlerResult Result, int NodesConsumed) HandleResponse(StateSyncBatch syncBatch);
+        
+        bool IsFullySynced(Keccak stateRoot);
+        
+        int TotalNodesPending { get; }
     }
 }

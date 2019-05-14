@@ -16,16 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Logging;
-using NSubstitute;
+using Nethermind.Blockchain.Synchronization.FastSync;
+using Nethermind.Core.Logging;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization
+namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 {
     [TestFixture]
     public class NodeSyncProgressTests

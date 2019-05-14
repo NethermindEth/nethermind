@@ -17,14 +17,11 @@
  */
 
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -32,18 +29,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Store;
 
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Blockchain.Synchronization.FastSync
 {
-    public enum NodeDataHandlerResult
-    {
-        OK,
-        NoData,
-        InvalidFormat,
-        NotAssigned,
-        BadQuality,
-        Emptish
-    }
-
     public class NodeDataFeed : INodeDataFeed
     {
         private static AccountDecoder _accountDecoder = new AccountDecoder();

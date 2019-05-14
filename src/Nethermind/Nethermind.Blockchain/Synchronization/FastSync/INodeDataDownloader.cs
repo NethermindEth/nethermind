@@ -21,7 +21,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Blockchain.Synchronization.FastSync
 {
     public interface INodeDataDownloader
     {

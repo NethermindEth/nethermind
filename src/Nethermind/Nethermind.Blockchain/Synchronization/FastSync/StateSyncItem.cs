@@ -17,16 +17,33 @@
  */
 
 using System.Diagnostics;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Blockchain.Synchronization.FastSync
 {
-    [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
-    public class StateSyncBatch
+    [DebuggerDisplay("{Level} {NodeDataType} {Hash}")]
+    public class StateSyncItem
     {
-        public StateSyncItem[] RequestedNodes { get; set; }
-        
-        public byte[][] Responses { get; set; }
-        
-        public SyncPeerAllocation AssignedPeer { get; set; }
+        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level, uint rightness)
+        {
+            Hash = hash;
+            NodeDataType = nodeType;
+            Level = (byte)level;
+            Rightness = rightness;
+        }
+
+        public Keccak Hash { get; }
+
+        public NodeDataType NodeDataType { get; }
+
+        public byte Level { get; }
+
+        public short ParentBranchChildIndex { get; set; } = (short) -1;
+
+        public short BranchChildIndex { get; set; } = (short) -1;
+
+        public uint Rightness { get; }
+
+        public bool IsRoot => Level == 0 && NodeDataType == NodeDataType.State;
     }
 }
