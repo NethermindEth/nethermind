@@ -16,13 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Numerics;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Client;
-using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Cli.Modules
 {
