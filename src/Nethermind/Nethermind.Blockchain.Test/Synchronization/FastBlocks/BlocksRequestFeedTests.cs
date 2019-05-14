@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.TxPools;
@@ -7,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Stats;
 using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
@@ -18,69 +18,101 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
     public class BlocksRequestFeedTests
     {
         private BlockTree _validTree;
-        private SyncConfig _syncConfig = new SyncConfig();
-        private INodeStatsManager _statsManager = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+        private IEthSyncPeerPool _peerPool;
+        private List<IntSyncPeerMock> _syncPeers = new List<IntSyncPeerMock>();
+        private Dictionary<IntSyncPeerMock, BlockTree> _peerTrees = new Dictionary<IntSyncPeerMock, BlockTree>();
+        private Dictionary<IntSyncPeerMock, BlockSyncBatch> _pendingResponses = new Dictionary<IntSyncPeerMock, BlockSyncBatch>();
 
         public BlocksRequestFeedTests()
         {
             _validTree = Build.A.BlockTree().OfChainLength(512).TestObject;
+            _peerPool = Substitute.For<IEthSyncPeerPool>();
+            _peerPool.AllPeers.Returns((ci) => _syncPeers.Select(sp => new PeerInfo(sp)));
         }
 
-        private List<PeerInfo> _peers = new List<PeerInfo>();
-        
         [Test]
         public void One_peer_with_valid_chain()
         {
             BlockTree localBlockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
-            IEthSyncPeerPool peerPool = Substitute.For<IEthSyncPeerPool>();
-            BlocksRequestFeed feed = new BlocksRequestFeed(localBlockTree, peerPool);
-
-            ISyncPeer syncPeer = new SyncPeerMock(_validTree);
-            _peers.Add(new PeerInfo(syncPeer));
-            peerPool.AllPeers.Returns(_peers);
             
+            BlocksRequestFeed feed = new BlocksRequestFeed(localBlockTree, _peerPool);
+
+            IntSyncPeerMock syncPeer = new IntSyncPeerMock(_validTree);
+            _syncPeers.Add(syncPeer);
+            _peerTrees[syncPeer] = _validTree;
+            
+            int time = 0;
             while (true)
             {
-                BlockSyncBatch batch = feed.PrepareRequest();
-                if (batch == null)
+                if (_pendingResponses.Count < _syncPeers.Count)
                 {
-                    break;
+                    BlockSyncBatch batch = feed.PrepareRequest();
+                    if (batch == null && _pendingResponses.Count == 0)
+                    {
+                        break;
+                    }
+
+                    if (batch != null)
+                    {
+                        foreach (IntSyncPeerMock intSyncPeerMock in _syncPeers)
+                        {
+                            if (intSyncPeerMock.BusyUntil == null)
+                            {
+                                intSyncPeerMock.BusyUntil = time + intSyncPeerMock.Latency;
+                                _pendingResponses.Add(intSyncPeerMock, batch);
+                            }
+                        }
+                    }
                 }
                 
-                FillValidBatch(batch);
-                feed.HandleResponse(batch);
+                foreach (IntSyncPeerMock intSyncPeerMock in _syncPeers)
+                {
+                    if (intSyncPeerMock.BusyUntil == time)
+                    {
+                        intSyncPeerMock.BusyUntil = null;
+                        BlockSyncBatch responseBatch = CreateResponse(intSyncPeerMock);
+                        feed.HandleResponse(responseBatch);
+                    }
+                }
+                
+                time++;
             }
 
             Assert.AreEqual(_validTree.Head.Hash, localBlockTree.BestSuggested.Hash);
         }
 
-        private void FillValidBatch(BlockSyncBatch batch)
+        private BlockSyncBatch CreateResponse(IntSyncPeerMock syncPeer)
         {
-            if (batch.HeadersSyncBatch != null)
+            BlockTree tree = _peerTrees[syncPeer];
+            BlockSyncBatch responseBatch = _pendingResponses[syncPeer];
+            _pendingResponses.Remove(syncPeer);
+            if (responseBatch.HeadersSyncBatch != null)
             {
-                var headersSyncBatch = batch.HeadersSyncBatch;
+                var headersSyncBatch = responseBatch.HeadersSyncBatch;
                 Keccak hash = headersSyncBatch.StartHash;
                 if (headersSyncBatch.StartNumber != null)
                 {
-                    hash = _validTree.FindHeader(headersSyncBatch.StartNumber.Value)?.Hash;    
+                    hash = tree.FindHeader(headersSyncBatch.StartNumber.Value)?.Hash;    
                 }
 
                 if (hash == null)
                 {
-                    return;
+                    return responseBatch;
                 }
                 
-                BlockHeader[] headers = _validTree.FindHeaders(hash, headersSyncBatch.RequestSize, headersSyncBatch.Skip, headersSyncBatch.Reverse);
-                batch.HeadersSyncBatch.Response = headers;
+                BlockHeader[] headers = tree.FindHeaders(hash, headersSyncBatch.RequestSize, headersSyncBatch.Skip, headersSyncBatch.Reverse);
+                responseBatch.HeadersSyncBatch.Response = headers;
             }
 
-            if (batch.BodiesSyncBatch != null)
+            if (responseBatch.BodiesSyncBatch != null)
             {
-                for (int i = 0; i < batch.BodiesSyncBatch.Request.Length; i++)
+                for (int i = 0; i < responseBatch.BodiesSyncBatch.Request.Length; i++)
                 {
-                    batch.BodiesSyncBatch.Response[i] = _validTree.FindBlock(batch.BodiesSyncBatch.Request[i], false);
+                    responseBatch.BodiesSyncBatch.Response[i] = tree.FindBlock(responseBatch.BodiesSyncBatch.Request[i], false);
                 }
             }
+
+            return responseBatch;
         }
     }
 }
