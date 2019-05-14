@@ -50,6 +50,12 @@ namespace Nethermind.Blockchain.Synchronization
         private Task _refreshLoopTask;
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
+        
+        public void ReportInvalid(SyncPeerAllocation syncPeerAllocation)
+        {
+            syncPeerAllocation.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "SYNC BREACH");
+        }
+
         public event EventHandler<SyncEventArgs> SyncEvent;
 
         private ConcurrentDictionary<PeerInfo, DateTime> _sleepingPeers = new ConcurrentDictionary<PeerInfo, DateTime>();

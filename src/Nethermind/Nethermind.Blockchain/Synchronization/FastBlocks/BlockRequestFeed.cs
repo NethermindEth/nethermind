@@ -106,11 +106,24 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 int added = 0;
-                foreach (BlockHeader header in headersSyncBatch.Response)
+
+                for (int i = 0; i < headersSyncBatch.Response.Length; i++)
                 {
+                    BlockHeader header = headersSyncBatch.Response[i];
                     AddBlockResult? addBlockResult = null;
                     if (header != null)
                     {
+                        if (i != 0 && header.ParentHash != headersSyncBatch.Response[i - 1].Hash)
+                        {
+                            _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
+                            BlockSyncBatch fixedSyncBatch = new BlockSyncBatch();
+                            fixedSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
+                            fixedSyncBatch.HeadersSyncBatch.StartNumber = syncBatch.HeadersSyncBatch.StartNumber + added - 1;
+                            fixedSyncBatch.HeadersSyncBatch.RequestSize = syncBatch.HeadersSyncBatch.RequestSize - added + 1;
+                            _pendingBatches.Enqueue(fixedSyncBatch);
+                            break;
+                        }
+                        
                         addBlockResult = SuggestHeader(header);
                         if (addBlockResult == AddBlockResult.UnknownParent && added == 0)
                         {
