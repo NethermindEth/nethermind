@@ -35,27 +35,22 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
         public long? BusyUntil { get; set; }
         public int Latency { get; set; }
-        
-        public LatencySyncPeerMock(IBlockTree tree, int latency = 5, PublicKey localPublicKey = null, string localClientId = "", ISyncServer remoteSyncServer = null, PublicKey remotePublicKey = null, string remoteClientId = "")
+
+        public static int RemoteIndex { get; set; } = 1;
+
+        public LatencySyncPeerMock(IBlockTree tree, int latency = 5)
         {
             Latency = latency;
-            string localHost = "127.0.0.1";
-            if (int.TryParse(localClientId.Replace("PEER", string.Empty), out int localIndex))
-            {
-                localHost = $"127.0.0.{localIndex}";    
-            }
-            
-            string remoteHost = "127.0.0.1";
-            if (int.TryParse(remoteClientId.Replace("PEER", string.Empty), out int remoteIndex))
-            {
-                remoteHost = $"127.0.0.{remoteIndex}";    
-            }
-            
+            string localHost = "0.0.0.0";
+
+            string remoteHost = $"{RemoteIndex}.{RemoteIndex}.{RemoteIndex}.{RemoteIndex}";
+
             Tree = tree;
-            Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, remoteHost, 1234);
-            LocalNode = new Node(localPublicKey ?? TestItem.PublicKeyB, localHost, 1235);
-            Node.ClientId = remoteClientId;
-            LocalNode.ClientId = localClientId;
+            Node = new Node(TestItem.PrivateKeys[RemoteIndex].PublicKey, remoteHost, 30303);
+            LocalNode = new Node(TestItem.PrivateKeys[0].PublicKey, localHost, 30303);
+            Node.ClientId = $"remote {RemoteIndex}";
+            LocalNode.ClientId = "local nethermind";
+            RemoteIndex++;
         }
 
         public Guid SessionId { get; } = Guid.NewGuid();
