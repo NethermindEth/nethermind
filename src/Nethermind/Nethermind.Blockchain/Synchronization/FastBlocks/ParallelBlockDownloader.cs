@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
@@ -115,14 +116,23 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             if (_logger.IsInfo) _logger.Info($"Headers sync parallelism - {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests} | remaining: {_semaphore.CurrentCount}).");
             if (difference > 0)
             {
+                if (_logger.IsDebug) _logger.Debug($"Releasing semaphore");
                 _semaphore.Release(difference);
             }
             else
             {
+                HashSet<Task<bool>> allSemaphoreTasks = new HashSet<Task<bool>>();
                 for (int i = 0; i < -difference; i++)
                 {
-                    if (!await _semaphore.WaitAsync(5000))
+                    allSemaphoreTasks.Add(_semaphore.WaitAsync(5000));
+                }
+
+                foreach (Task<bool> semaphoreTask in allSemaphoreTasks)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Set semaphore");
+                    if (! await semaphoreTask)
                     {
+                        if (_logger.IsDebug) _logger.Debug($"Faile to set semaphore");
                         newUsefulPeerCount++;
                     }
                 }
@@ -151,7 +161,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 //                if (_logger.IsInfo) _logger.Info($"Successful semaphore wait");
 
                 BlockSyncBatch request = PrepareRequest();
-                if (request.HeadersSyncBatch != null)
+                if (request?.HeadersSyncBatch != null)
                 {
 //                    if (_logger.IsInfo) _logger.Info($"Creating new headers request {request} with current semaphore count {_semaphore.CurrentCount} and pending requests {_pendingRequests}");
                     Interlocked.Increment(ref _pendingRequests);
