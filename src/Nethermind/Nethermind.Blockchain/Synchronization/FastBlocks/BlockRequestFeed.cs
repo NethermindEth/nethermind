@@ -41,6 +41,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private ConcurrentDictionary<long, List<BlockSyncBatch>> _headerDependencies = new ConcurrentDictionary<long, List<BlockSyncBatch>>();
         private ConcurrentStack<BlockSyncBatch> _pendingBatches = new ConcurrentStack<BlockSyncBatch>();
         private ConcurrentDictionary<BlockSyncBatch, object> _sentBatches = new ConcurrentDictionary<BlockSyncBatch, object>();
+        public int RequestSize { get; set; } = 256;
+        private object _handlerLock = new object();
+        private SyncStats _syncStats;
 
         public BlocksRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, ILogManager logManager)
         {
@@ -156,11 +159,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             return batch;
         }
 
-        public int RequestSize { get; set; } = 256;
-
-        private object _handlerLock = new object();
-        private SyncStats _syncStats;
-
         public (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch syncBatch)
         {
             lock (_handlerLock)
@@ -180,6 +178,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         {
             _bestRequestedHeader = _blockTree.BestSuggested?.Number ?? 0;
             _pendingBatches.Clear();
+            _headerDependencies.Clear();
+            _sentBatches.Clear();
         }
 
         private int SuggestBatch(BlockSyncBatch syncBatch)

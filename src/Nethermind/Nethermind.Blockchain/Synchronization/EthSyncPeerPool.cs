@@ -41,7 +41,6 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ILogger _logger;
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
-
         private ConcurrentDictionary<SyncPeerAllocation, object> _allocations = new ConcurrentDictionary<SyncPeerAllocation, object>();
         private const int AllocationsUpgradeInterval = 1000;
         private System.Timers.Timer _upgradeTimer;
