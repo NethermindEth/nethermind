@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.TxPools;
@@ -53,15 +54,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 batch.AssignedPeer = nodeSyncAllocation;
                 if (peer != null)
                 {
-//                    _logger.Warn( $"PENDING: {_pendingRequests} NODE WAS NOT NULL");
-_logger.Warn($"Sending GetBlockHeaders {batch}");
                     Task<BlockHeader[]> getHeadersTask = peer.GetBlockHeaders(batch.HeadersSyncBatch.StartNumber.Value, batch.HeadersSyncBatch.RequestSize, 0, token);
                     await getHeadersTask.ContinueWith(
                         t =>
                         {
                             if (t.IsCompletedSuccessfully)
                             {
-                                _logger.Warn($"Completed GetBlockHeaders {batch}");
                                 batch.HeadersSyncBatch.Response = getHeadersTask.Result;
                             }
                             else
@@ -73,7 +71,6 @@ _logger.Warn($"Sending GetBlockHeaders {batch}");
                 }
                 else
                 {
-//                    _logger.Error( $"PENDING: {_pendingRequests} NODE WAS NULL NODE WAS NULL NODE WAS NULL NODE WAS NULL NODE WAS NULL NODE WAS NULL NODE WAS NULL ");
                     await Task.Delay(50);
                 }
 
@@ -101,8 +98,6 @@ _logger.Warn($"Sending GetBlockHeaders {batch}");
             {
                 if (nodeSyncAllocation != null)
                 {
-//                    _logger.Warn($"Free {nodeSyncAllocation?.Current}");
-//                    if (_logger.IsInfo) _logger.Warn($"FREED ALLOCATION");
                     _syncPeerPool.Free(nodeSyncAllocation);
                 }
             }
@@ -112,14 +107,12 @@ _logger.Warn($"Sending GetBlockHeaders {batch}");
         {
             int newUsefulPeerCount = _syncPeerPool.UsefulPeerCount;
             int difference = newUsefulPeerCount - _lastUsefulPeerCount;
-            if (_logger.IsInfo) _logger.Info($"Node sync parallelism - {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests} | remaining: {_semaphore.CurrentCount}).");
             if (difference == 0)
             {
                 return;
             }
 
             if (_logger.IsInfo) _logger.Info($"Node sync parallelism - {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests} | remaining: {_semaphore.CurrentCount}).");
-
             if (difference > 0)
             {
                 _semaphore.Release(difference);
@@ -154,7 +147,7 @@ _logger.Warn($"Sending GetBlockHeaders {batch}");
 //                    if (_logger.IsInfo) _logger.Info($"Failed semaphore wait");
                     continue;
                 }
-                
+
 //                if (_logger.IsInfo) _logger.Info($"Successful semaphore wait");
 
                 BlockSyncBatch request = PrepareRequest();
@@ -191,7 +184,7 @@ _logger.Warn($"Sending GetBlockHeaders {batch}");
         }
 
         private int _threshold;
-        
+
         public async Task<long> SyncHeaders(int threshold, CancellationToken token)
         {
             _threshold = threshold;

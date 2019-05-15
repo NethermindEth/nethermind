@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.ComponentModel.Design;
 using System.IO.Enumeration;
 using System.Linq;
@@ -27,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
@@ -67,7 +69,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_pendingBatches.TryPop(out BlockSyncBatch stackedBatch))
             {
-//                _logger.Warn($"POPPING {stackedBatch}");
+                stackedBatch.AssignedPeer = null;
                 _sentBatches.Add(stackedBatch);
                 return stackedBatch;
             }
@@ -93,7 +95,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (isReorg)
             {
-                _logger.Error($"REORG REORG REORG REORG");
                 foreach (KeyValuePair<long, List<BlockSyncBatch>> headerDependency in _headerDependencies.OrderByDescending(hd => hd.Key))
                 {
                     BlockSyncBatch reorgBatch = new BlockSyncBatch();
@@ -104,6 +105,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     reorgBatch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
                     if (!_headerDependencies.ContainsKey(reorgBatch.HeadersSyncBatch.StartNumber.Value - 1))
                     {
+                        reorgBatch.AssignedPeer = null;
                         _pendingBatches.Push(reorgBatch);
                     }
                 }
@@ -116,13 +118,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     firstReorgBatch.HeadersSyncBatch.RequestSize = 1;
                     firstReorgBatch.IsReorgBatch = true;
                     firstReorgBatch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
+                    firstReorgBatch.AssignedPeer = null;
                     _pendingBatches.Push(firstReorgBatch);
                 }
             }
 
             if (_pendingBatches.TryPop(out stackedBatch))
             {
-//                _logger.Warn($"POPPING {stackedBatch}");
+                stackedBatch.AssignedPeer = null;
                 _sentBatches.Add(stackedBatch);
                 return stackedBatch;
             }
@@ -131,7 +134,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 throw new InvalidOperationException("Unexpected reorg true");
             }
-            
+
             BlockSyncBatch batch = new BlockSyncBatch();
             batch.HeadersSyncBatch = new HeadersSyncBatch();
             batch.HeadersSyncBatch.StartNumber = _bestRequestedHeader;
@@ -143,7 +146,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 return null;
             }
 
-//            _logger.Warn($"PREPARED {batch}");
             _sentBatches.Add(batch);
             return batch;
         }
@@ -175,12 +177,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 var headersSyncBatch = syncBatch.HeadersSyncBatch;
                 if (headersSyncBatch.Response == null)
                 {
-//                    _logger.Error($"RESPONSE IS NULL ON {syncBatch}");
+                    syncBatch.AssignedPeer = null;
                     _pendingBatches.Push(syncBatch);
                     return 0;
                 }
 
-//                _logger.Warn($"PROCESSING {syncBatch}");
                 bool stackRemaining = true;
                 int added = 0;
                 for (int i = 0; i < headersSyncBatch.Response.Length && i < headersSyncBatch.RequestSize; i++)
@@ -213,6 +214,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                     _headerDependencies[header.Number - 1] = new List<BlockSyncBatch>();
                                 }
 
+                                syncBatch.AssignedPeer = null;
                                 _headerDependencies[header.Number - 1].Add(syncBatch);
                                 stackRemaining = false;
                             }
@@ -227,6 +229,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                     _headerDependencies[header.Number - 1] = new List<BlockSyncBatch>();
                                 }
 
+                                syncBatch.AssignedPeer = null;
                                 _headerDependencies[header.Number - 1].Add(syncBatch);
                                 stackRemaining = false;
                             }
@@ -242,18 +245,15 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                     if (header.Number == _bestRequestedHeader)
                     {
-                        _totalDifficultyOfBestHeaderProvider = UInt256.Max(_totalDifficultyOfBestHeaderProvider, syncBatch.AssignedPeer.Current.TotalDifficulty);
+                        _totalDifficultyOfBestHeaderProvider = UInt256.Max(_totalDifficultyOfBestHeaderProvider, syncBatch.AssignedPeer?.Current?.TotalDifficulty ?? 0);
                     }
 
                     if (addBlockResult == AddBlockResult.Added)
                     {
                         _syncStats.ReportBlocksDownload(header.Number, _bestRequestedHeader);
                     }
-                    
-//                    if (addBlockResult == AddBlockResult.Added)
-//                    {
+
                     added++;
-//                    }
                 }
 
                 if (added < syncBatch.HeadersSyncBatch.RequestSize && stackRemaining)
@@ -267,12 +267,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     fixedSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
                     fixedSyncBatch.HeadersSyncBatch.StartNumber = syncBatch.HeadersSyncBatch.StartNumber + added;
                     fixedSyncBatch.HeadersSyncBatch.RequestSize = syncBatch.HeadersSyncBatch.RequestSize - added;
+                    fixedSyncBatch.AssignedPeer = null;
                     _pendingBatches.Push(fixedSyncBatch);
                 }
 
-                if (added == 0 && stackRemaining)
+                if (added == 0 && stackRemaining && syncBatch.AssignedPeer != null)
                 {
                     _syncPeerPool.ReportNoSyncProgress(syncBatch.AssignedPeer);
+                }
+                else
+                {
+                    added = syncBatch.HeadersSyncBatch.RequestSize;
                 }
 
                 return added;
@@ -305,6 +310,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 foreach (BlockSyncBatch batch in _headerDependencies[header.Number].ToArray())
                 {
+                    batch.AssignedPeer = null;
                     SuggestBatch(batch);
                     _headerDependencies[header.Number].Remove(batch);
                 }
