@@ -118,10 +118,10 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         [Test]
         public void One_peer_with_short_valid_chain()
         {
-            LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree8);
             SetupSyncPeers(syncPeer);
             RunFeed();
-            Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+            Assert.AreEqual(_validTree2048.FindBlock(0).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
         [Test]
@@ -344,6 +344,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     BlockSyncBatch batch = _feed.PrepareRequest(SyncModeSelector.FullSyncThreshold);
                     if (batch == null && _pendingResponses.Count == 0)
                     {
+                        TestContext.WriteLine($"STOP - NULL BATCH AND NO PENDING");
                         break;
                     }
 
@@ -372,6 +373,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
                         if (!wasAssigned)
                         {
+                            TestContext.WriteLine($"{_time,6} | {batch} WAS NOT ASSIGNED");
                             _feed.HandleResponse(batch);
                         }
                     }
