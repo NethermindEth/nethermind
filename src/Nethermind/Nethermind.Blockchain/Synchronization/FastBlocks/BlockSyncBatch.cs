@@ -22,6 +22,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class BlockSyncBatch
     {
+        public bool IsSpecialWaitBatch { get; set; }
         public bool IsReorgBatch { get; set; }
         public HeadersSyncBatch HeadersSyncBatch { get; set; }
         public BodiesSyncBatch BodiesSyncBatch { get; set; }
@@ -33,5 +34,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         {
             return HeadersSyncBatch == null ? $"BODIES {BodiesSyncBatch.Request.Length}" : $"HEADERS [{HeadersSyncBatch.StartNumber}, {HeadersSyncBatch.StartNumber + HeadersSyncBatch.RequestSize - 1}]";
         }
+
+        public static BlockSyncBatch SpecialWait = new BlockSyncBatch() {IsSpecialWaitBatch = true};
     }
 }

@@ -120,6 +120,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree2048);
             SetupSyncPeers(syncPeer);
             RunFeed();
+            Assert.AreEqual(48, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
         
@@ -130,6 +131,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree2048);
             SetupSyncPeers(syncPeer);
             RunFeed();
+            Assert.AreEqual(36, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
@@ -169,6 +171,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_badTreeAfter1024, 5);
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
+            Assert.AreEqual(289, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
@@ -179,6 +182,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_badTreeAfter1024, 5);
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
+            Assert.AreEqual(36, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
@@ -191,6 +195,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed(20000);
+            Assert.AreEqual(5013, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
@@ -224,6 +229,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _peerMaxResponseSizes[syncPeer2] = 13;
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
+            Assert.AreEqual(1956, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
@@ -236,6 +242,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _invalidBlocks[syncPeer1] = new HashSet<long> {1720};
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
+            Assert.AreEqual(37, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
@@ -247,6 +254,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1);
             RunFeed();
+            Assert.AreEqual(5001, _time);
             Assert.AreEqual(_validTree2048.FindBlock(253).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
@@ -271,6 +279,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
+            Assert.AreEqual(708, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
@@ -283,6 +292,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
+            Assert.AreEqual(809, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
@@ -295,6 +305,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
+            Assert.AreEqual(1609, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
@@ -306,6 +317,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1);
             RunFeed();
+            Assert.AreEqual(48, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
@@ -320,6 +332,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(peers);
             RunFeed();
+            Assert.AreEqual(13, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
         
@@ -341,6 +354,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(peers);
             RunFeed();
+            Assert.AreEqual(49, _time);
             Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
         }
 
