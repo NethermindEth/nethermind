@@ -52,6 +52,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncStats = new SyncStats(logManager);
 
+            _startNumber = _blockTree.BestSuggested?.Number ?? 0;
+            _totalHeadersReceived = 0;
             StartNewRound();
         }
 
@@ -59,6 +61,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private long _bestRequestedHeader;
         private long _bestRequestedBody;
         private long _maxKnownNumber;
+        private long _startNumber;
         private object _empty = new object();
         
         public BlockSyncBatch PrepareRequest(int threshold)
@@ -160,10 +163,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             return batch;
         }
 
+        private int _totalHeadersReceived = 0;
+        
         public (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch syncBatch)
         {
             lock (_handlerLock)
             {
+                _totalHeadersReceived += syncBatch.HeadersSyncBatch.Response?.Count(r => r != null) ?? 0;
                 if (syncBatch.HeadersSyncBatch != null)
                 {
                     int added = SuggestBatch(syncBatch);
@@ -178,6 +184,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public void StartNewRound()
         {
             _bestRequestedHeader = _blockTree.BestSuggested?.Number ?? 0;
+
             _pendingBatches.Clear();
             _headerDependencies.Clear();
             _sentBatches.Clear();
@@ -195,7 +202,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     return 0;
                 }
 
-                if(_logger.IsInfo) _logger.Info($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0}");
+                if(_logger.IsDebug) _logger.Debug($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0} | {(decimal)((_blockTree.BestSuggested?.Number ?? 0) - _startNumber) / _totalHeadersReceived:p2}");
                 
                 bool stackRemaining = true;
                 int added = 0;
