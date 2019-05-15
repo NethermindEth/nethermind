@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -115,9 +116,15 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             }
             else
             {
+                HashSet<Task<bool>> allSemaphoreTasks = new HashSet<Task<bool>>();
                 for (int i = 0; i < -difference; i++)
                 {
-                    if (!await _semaphore.WaitAsync(5000))
+                    allSemaphoreTasks.Add(_semaphore.WaitAsync(5000));
+                }
+
+                foreach (Task<bool> semaphoreTask in allSemaphoreTasks)
+                {
+                    if (! await semaphoreTask)
                     {
                         newUsefulPeerCount++;
                     }
