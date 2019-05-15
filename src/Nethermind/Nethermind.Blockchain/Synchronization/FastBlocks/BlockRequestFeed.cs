@@ -39,26 +39,25 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private readonly IEthSyncPeerPool _syncPeerPool;
 
         private ConcurrentDictionary<long, List<BlockSyncBatch>> _headerDependencies = new ConcurrentDictionary<long, List<BlockSyncBatch>>();
+        private ConcurrentStack<BlockSyncBatch> _pendingBatches = new ConcurrentStack<BlockSyncBatch>();
+        private ConcurrentDictionary<BlockSyncBatch, object> _sentBatches = new ConcurrentDictionary<BlockSyncBatch, object>();
 
         public BlocksRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-//            _bestRequestedHeader = blockTree.BestSuggested.Hash;
             _syncStats = new SyncStats(logManager);
 
             StartNewRound();
         }
 
         private UInt256 _totalDifficultyOfBestHeaderProvider = UInt256.Zero;
-        private long _bestRequestedHeader = 0;
-        private long _bestRequestedBody = 0;
-        private long _maxKnownNumber = 0;
-
-        private Stack<BlockSyncBatch> _pendingBatches = new Stack<BlockSyncBatch>();
-        private HashSet<BlockSyncBatch> _sentBatches = new HashSet<BlockSyncBatch>();
-
+        private long _bestRequestedHeader;
+        private long _bestRequestedBody;
+        private long _maxKnownNumber;
+        private object _empty = new object();
+        
         public BlockSyncBatch PrepareRequest(int threshold)
         {
             UInt256 maxDifficulty = _syncPeerPool.AllPeers.Max(p => p.TotalDifficulty);
@@ -72,7 +71,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             if (_pendingBatches.TryPop(out BlockSyncBatch stackedBatch))
             {
                 stackedBatch.AssignedPeer = null;
-                _sentBatches.Add(stackedBatch);
+                _sentBatches[stackedBatch] = _empty;
                 return stackedBatch;
             }
 
@@ -128,7 +127,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             if (_pendingBatches.TryPop(out stackedBatch))
             {
                 stackedBatch.AssignedPeer = null;
-                _sentBatches.Add(stackedBatch);
+                _sentBatches[stackedBatch] = _empty;
                 return stackedBatch;
             }
 
@@ -137,7 +136,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 throw new InvalidOperationException("Unexpected reorg true");
             }
 
-            if (_bestRequestedHeader > (_blockTree.BestSuggested?.Number ?? 0) + 512 * 40)
+            if (_bestRequestedHeader > (_blockTree.BestSuggested?.Number ?? 0) + 512 * 128)
             {
                 return null;
             }
@@ -153,7 +152,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 return null;
             }
 
-            _sentBatches.Add(batch);
+            _sentBatches[batch] = _empty;
             return batch;
         }
 
@@ -195,6 +194,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     return 0;
                 }
 
+                if(_logger.IsInfo) _logger.Info($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested}");
+                
                 bool stackRemaining = true;
                 int added = 0;
                 for (int i = 0; i < headersSyncBatch.Response.Length && i < headersSyncBatch.RequestSize; i++)
@@ -294,7 +295,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
             finally
             {
-                _sentBatches.Remove(syncBatch);
+                _sentBatches.Remove(syncBatch, out _);
             }
         }
 
