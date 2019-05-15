@@ -194,7 +194,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     return 0;
                 }
 
-                if(_logger.IsInfo) _logger.Info($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested}");
+                if(_logger.IsInfo) _logger.Info($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0}");
                 
                 bool stackRemaining = true;
                 int added = 0;
