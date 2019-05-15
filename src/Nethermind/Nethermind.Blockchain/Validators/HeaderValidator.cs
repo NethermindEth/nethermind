@@ -43,14 +43,8 @@ namespace Nethermind.Blockchain.Validators
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _daoBlockNumber = specProvider.DaoBlockNumber;
         }
-        
-        /// <summary>
-        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
-        /// </summary>
-        /// <param name="header">Block header to validate</param>
-        /// <param name="isOmmer"><value>True</value> if the <paramref name="header"/> is an ommer, otherwise <value>False</value></param>
-        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public bool Validate(BlockHeader header, bool isOmmer = false)
+
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer = false)
         {
             // the rule here is to validate the seal first (avoid any cheap attacks on validation logic)
             // then validate whatever does not need to load parent from disk (the most expensive operation)
@@ -77,7 +71,6 @@ namespace Nethermind.Blockchain.Validators
                 _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
             }
             
-            BlockHeader parent = _blockTree.FindHeader(header.ParentHash, false);
             if (parent == null)
             {
                 if (header.Number == 0)
@@ -150,6 +143,18 @@ namespace Nethermind.Blockchain.Validators
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid;
+        }
+        
+        /// <summary>
+        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
+        /// </summary>
+        /// <param name="header">Block header to validate</param>
+        /// <param name="isOmmer"><value>True</value> if the <paramref name="header"/> is an ommer, otherwise <value>False</value></param>
+        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
+        public bool Validate(BlockHeader header, bool isOmmer = false)
+        {
+            BlockHeader parent = _blockTree.FindHeader(header.ParentHash, false);
+            return Validate(header, parent, isOmmer);
         }
 
         private static bool ValidateGenesis(BlockHeader header)

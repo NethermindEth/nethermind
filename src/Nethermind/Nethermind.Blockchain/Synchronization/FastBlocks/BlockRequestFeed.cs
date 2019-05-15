@@ -211,7 +211,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         return (BlocksDataHandlerResult.BadQuality, 0);
                     }
-                    
+
                     int added = SuggestBatch(syncBatch);
 
                     return (BlocksDataHandlerResult.OK, added);
@@ -275,7 +275,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             break;
                         }
 
-                        addBlockResult = _blockValidator.ValidateHeader(header, false) ? SuggestHeader(header) : AddBlockResult.InvalidBlock;
+                        bool isValid = i == 0 ? _blockValidator.ValidateHeader(header, false) : _blockValidator.ValidateHeader(header, headersSyncBatch.Response[i - 1], false);
+                        addBlockResult = isValid ? SuggestHeader(header) : AddBlockResult.InvalidBlock;
 //                        addBlockResult = SuggestHeader(header);
                         if ((addBlockResult == AddBlockResult.InvalidBlock || addBlockResult == AddBlockResult.UnknownParent) && added == 0)
                         {
