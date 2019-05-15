@@ -54,6 +54,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private UInt256 _totalDifficultyOfBestHeaderProvider = UInt256.Zero;
         private long _bestRequestedHeader = 0;
         private long _bestRequestedBody = 0;
+        private long _maxKnownNumber = 0;
 
         private Stack<BlockSyncBatch> _pendingBatches = new Stack<BlockSyncBatch>();
         private HashSet<BlockSyncBatch> _sentBatches = new HashSet<BlockSyncBatch>();
@@ -62,6 +63,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         {
             UInt256 maxDifficulty = _syncPeerPool.AllPeers.Max(p => p.TotalDifficulty);
             long maxNumber = _syncPeerPool.AllPeers.Max(p => p.HeadNumber);
+            _maxKnownNumber = maxNumber;
             if (maxDifficulty <= (_blockTree.BestSuggested?.TotalDifficulty ?? 0))
             {
                 return null;
@@ -190,6 +192,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     AddBlockResult? addBlockResult = null;
                     if (header != null)
                     {
+                        _syncStats.ReportBlocksDownload(_blockTree.BestSuggested?.Number ?? 0, _maxKnownNumber);
+                        
                         if (i != 0 && header.ParentHash != headersSyncBatch.Response[i - 1].Hash)
                         {
                             _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
@@ -246,11 +250,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     if (header.Number == _bestRequestedHeader)
                     {
                         _totalDifficultyOfBestHeaderProvider = UInt256.Max(_totalDifficultyOfBestHeaderProvider, syncBatch.AssignedPeer?.Current?.TotalDifficulty ?? 0);
-                    }
-
-                    if (addBlockResult == AddBlockResult.Added)
-                    {
-                        _syncStats.ReportBlocksDownload(header.Number, _bestRequestedHeader);
                     }
 
                     added++;

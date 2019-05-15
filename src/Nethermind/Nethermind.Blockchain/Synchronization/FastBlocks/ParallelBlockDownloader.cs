@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             }
                             else
                             {
-                                _logger.Error($"{t.Exception}");
+                                _syncPeerPool.ReportNoSyncProgress(batch.AssignedPeer);
                             }
                         }
                     );
@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Node sync parallelism - {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests} | remaining: {_semaphore.CurrentCount}).");
+            if (_logger.IsInfo) _logger.Info($"Headers sync parallelism - {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests} | remaining: {_semaphore.CurrentCount}).");
             if (difference > 0)
             {
                 _semaphore.Release(difference);
