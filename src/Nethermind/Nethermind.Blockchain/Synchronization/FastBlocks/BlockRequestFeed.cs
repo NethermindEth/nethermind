@@ -77,10 +77,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 return null;
             }
-
-            // if just because of sent batches then just signal to wait?
-
-//            bool isReorg = false;
+            
             bool isReorg = maxNumber == (_blockTree.BestSuggested?.Number ?? 0) && maxDifficulty > _totalDifficultyOfBestHeaderProvider;
             if (isReorg && _sentBatches.Count > 0)
             {
@@ -97,16 +94,22 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     reorgBatch.HeadersSyncBatch.RequestSize = (int) Math.Min(headerDependency.Key + 1, RequestSize);
                     reorgBatch.IsReorgBatch = true;
                     reorgBatch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
-                    _pendingBatches.Push(reorgBatch);
+                    if (!_headerDependencies.ContainsKey(reorgBatch.HeadersSyncBatch.StartNumber.Value - 1))
+                    {
+                        _pendingBatches.Push(reorgBatch);
+                    }
                 }
-                
-                BlockSyncBatch firstReorgBatch = new BlockSyncBatch();
-                firstReorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                firstReorgBatch.HeadersSyncBatch.StartNumber = maxNumber;
-                firstReorgBatch.HeadersSyncBatch.RequestSize = 1;
-                firstReorgBatch.IsReorgBatch = true;
-                firstReorgBatch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
-                _pendingBatches.Push(firstReorgBatch);
+
+                if (_pendingBatches.Count == 0)
+                {
+                    BlockSyncBatch firstReorgBatch = new BlockSyncBatch();
+                    firstReorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
+                    firstReorgBatch.HeadersSyncBatch.StartNumber = maxNumber;
+                    firstReorgBatch.HeadersSyncBatch.RequestSize = 1;
+                    firstReorgBatch.IsReorgBatch = true;
+                    firstReorgBatch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
+                    _pendingBatches.Push(firstReorgBatch);
+                }
             }
 
             if (_pendingBatches.TryPop(out enqueuedBatch))
