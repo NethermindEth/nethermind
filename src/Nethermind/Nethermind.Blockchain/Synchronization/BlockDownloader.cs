@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Received {currentHeader} from {bestPeer:s}");
-                    bool isValid = i > 1 ? _blockValidator.ValidateHeader(currentHeader, headers[i - 1], false) : _blockValidator.ValidateHeader(currentHeader, false)  
+                    bool isValid = i > 1 ? _blockValidator.ValidateHeader(currentHeader, headers[i - 1], false) : _blockValidator.ValidateHeader(currentHeader, false); 
                     if (!isValid)
                     {
                         throw new EthSynchronizationException($"{bestPeer} sent a block {currentHeader.ToString(BlockHeader.Format.Short)} with an invalid header");
