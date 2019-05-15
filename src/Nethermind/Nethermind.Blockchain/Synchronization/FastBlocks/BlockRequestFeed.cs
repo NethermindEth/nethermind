@@ -209,13 +209,22 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         
                         if (i != 0 && header.ParentHash != headersSyncBatch.Response[i - 1].Hash)
                         {
-                            _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
+                            if (syncBatch.AssignedPeer != null)
+                            {
+                                _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
+                            }
+
                             break;
+                            
                         }
 
                         if (added == 0 && header.Number != headersSyncBatch.StartNumber)
                         {
-                            _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
+                            if (syncBatch.AssignedPeer != null)
+                            {
+                                _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
+                            }
+
                             break;
                         }
 
@@ -283,9 +292,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     _pendingBatches.Push(fixedSyncBatch);
                 }
 
-                if (added == 0 && stackRemaining && syncBatch.AssignedPeer != null)
+                if (added == 0 && stackRemaining)
                 {
-                    _syncPeerPool.ReportNoSyncProgress(syncBatch.AssignedPeer);
+                    if (syncBatch.AssignedPeer != null)
+                    {
+                        _syncPeerPool.ReportNoSyncProgress(syncBatch.AssignedPeer);
+                    }
                 }
                 else
                 {
