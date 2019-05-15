@@ -61,6 +61,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_pendingBatches.TryPop(out BlockSyncBatch enqueuedBatch))
             {
+                _sentBatches.Add(enqueuedBatch);
                 return enqueuedBatch;
             }
 
@@ -81,6 +82,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
 //            bool isReorg = false;
             bool isReorg = maxNumber == (_blockTree.BestSuggested?.Number ?? 0) && maxDifficulty > _totalDifficultyOfBestHeaderProvider;
+            if (isReorg && _sentBatches.Count > 0)
+            {
+                return null;
+            }
+            
             if (isReorg)
             {
                 foreach (KeyValuePair<long, List<BlockSyncBatch>> headerDependency in _headerDependencies.OrderByDescending(hd => hd.Key))
@@ -105,6 +111,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_pendingBatches.TryPop(out enqueuedBatch))
             {
+                _sentBatches.Add(enqueuedBatch);
                 return enqueuedBatch;
             }
 

@@ -373,7 +373,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
                         if (!wasAssigned)
                         {
-                            TestContext.WriteLine($"{_time,6} | {batch} WAS NOT ASSIGNED");
+//                            TestContext.WriteLine($"{_time,6} | {batch} WAS NOT ASSIGNED");
                             _feed.HandleResponse(batch);
                         }
                     }
