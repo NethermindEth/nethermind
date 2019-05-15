@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Dirichlet.Numerics;
+
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class BlockSyncBatch
@@ -24,6 +26,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public HeadersSyncBatch HeadersSyncBatch { get; set; }
         public BodiesSyncBatch BodiesSyncBatch { get; set; }
         public SyncPeerAllocation AssignedPeer { get; set; }
+
+        public UInt256? MinTotalDifficulty { get; set; }
 
         public override string ToString()
         {

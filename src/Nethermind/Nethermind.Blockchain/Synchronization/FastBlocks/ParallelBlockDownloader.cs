@@ -19,6 +19,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 
@@ -165,13 +166,16 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private BlockSyncBatch PrepareRequest()
         {
-            BlockSyncBatch request = _blockRequestFeed.PrepareRequest();
+            BlockSyncBatch request = _blockRequestFeed.PrepareRequest(_threshold);
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             return request;
         }
 
-        public async Task<long> SyncHeaders(CancellationToken token)
+        private int _threshold;
+        
+        public async Task<long> SyncHeaders(int threshold, CancellationToken token)
         {
+            _threshold = threshold;
             _downloadedHeaders = 0;
             await KeepSyncing(token);
             return _downloadedHeaders;

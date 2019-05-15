@@ -43,13 +43,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 //            _bestRequestedHeader = blockTree.BestSuggested.Hash;
         }
 
-        private long _bestRequestedHeader = 1;
+        private UInt256 _totalDifficultyOfBestHeaderProvider = UInt256.Zero;
+        private long _bestRequestedHeader = 0;
         private long _bestRequestedBody = 0;
 
         private ConcurrentQueue<BlockSyncBatch> _pendingBatches = new ConcurrentQueue<BlockSyncBatch>();
         private HashSet<BlockSyncBatch> _sentBatches = new HashSet<BlockSyncBatch>();
 
-        public BlockSyncBatch PrepareRequest()
+        public BlockSyncBatch PrepareRequest(int threshold)
         {
             UInt256 maxDifficulty = _syncPeerPool.AllPeers.Max(p => p.TotalDifficulty);
             long maxNumber = _syncPeerPool.AllPeers.Max(p => p.HeadNumber);
@@ -58,24 +59,53 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 return null;
             }
 
-            if (maxNumber <= _bestRequestedHeader && _sentBatches.Count != 0)
+            if (_pendingBatches.TryDequeue(out BlockSyncBatch enqueuedBatch))
+            {
+                return enqueuedBatch;
+            }
+
+            maxNumber -= threshold;
+            if (maxNumber <= _bestRequestedHeader
+                && _pendingBatches.Count == 0
+                && maxDifficulty <= _totalDifficultyOfBestHeaderProvider)
             {
                 return null;
             }
 
-            bool isReorg = maxNumber <= _bestRequestedHeader;
+            // if just because of sent batches then just signal to wait?
 
-            if (_pendingBatches.TryDequeue(out BlockSyncBatch enqueuedBatch))
+//            bool isReorg = false;
+            bool isReorg = maxNumber == (_blockTree.BestSuggested?.Number ?? 0) && maxDifficulty > _totalDifficultyOfBestHeaderProvider;
+            if (isReorg)
+            {
+                foreach (KeyValuePair<long, List<BlockSyncBatch>> headerDependency in _headerDependencies.OrderBy(hd => hd.Key))
+                {
+                    BlockSyncBatch reorgBatch = new BlockSyncBatch();
+                    reorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
+                    reorgBatch.HeadersSyncBatch.StartNumber = Math.Max(0, headerDependency.Key - RequestSize + 1);
+                    reorgBatch.HeadersSyncBatch.RequestSize = (int)Math.Min(headerDependency.Key + 1, RequestSize);
+                    reorgBatch.IsReorgBatch = true;
+                    reorgBatch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
+                    _pendingBatches.Enqueue(reorgBatch);
+                }
+            }
+            
+            if (_pendingBatches.TryDequeue(out enqueuedBatch))
             {
                 return enqueuedBatch;
             }
 
             BlockSyncBatch batch = new BlockSyncBatch();
             batch.HeadersSyncBatch = new HeadersSyncBatch();
-            batch.HeadersSyncBatch.StartNumber = isReorg ? maxNumber - RequestSize + 1 : _bestRequestedHeader - 1;
+            batch.HeadersSyncBatch.StartNumber = isReorg ? maxNumber - RequestSize + 1 : _bestRequestedHeader;
             batch.HeadersSyncBatch.RequestSize = (1 + maxNumber - batch.HeadersSyncBatch.StartNumber.Value) < RequestSize ? (int) (1 + maxNumber - batch.HeadersSyncBatch.StartNumber.Value) : RequestSize;
             batch.IsReorgBatch = isReorg;
-            _bestRequestedHeader = Math.Max(batch.HeadersSyncBatch.StartNumber + batch.HeadersSyncBatch.RequestSize ?? 0, _bestRequestedHeader);
+            if (isReorg)
+            {
+                batch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
+            }
+
+            _bestRequestedHeader = Math.Max(batch.HeadersSyncBatch.EndNumber ?? 0, _bestRequestedHeader);
             _sentBatches.Add(batch);
             return batch;
         }
@@ -107,7 +137,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                 bool enqueueRemaining = true;
                 int added = 0;
-                for (int i = 0; i < headersSyncBatch.Response.Length; i++)
+                for (int i = 0; i < headersSyncBatch.Response.Length && i < headersSyncBatch.RequestSize; i++)
                 {
                     BlockHeader header = headersSyncBatch.Response[i];
                     AddBlockResult? addBlockResult = null;
@@ -128,20 +158,21 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         addBlockResult = SuggestHeader(header);
                         if (addBlockResult == AddBlockResult.UnknownParent && added == 0)
                         {
-                            if ((_blockTree.BestSuggested?.Number ?? 0) >= header.Number || syncBatch.IsReorgBatch)
+                            BlockHeader alternative = _blockTree.FindHeader(header.Number);
+                            if (alternative?.TotalDifficulty != null && header.Difficulty > alternative.Difficulty
+                                || syncBatch.IsReorgBatch)
                             {
-                                // reorg
-                                BlockSyncBatch reorgBatch = new BlockSyncBatch();
-                                reorgBatch.IsReorgBatch = true;
-                                reorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                                if (syncBatch.HeadersSyncBatch.StartNumber == null)
+                                if (!_headerDependencies.ContainsKey(header.Number - 1))
                                 {
-                                    throw new InvalidOperationException();
+                                    _headerDependencies[header.Number - 1] = new List<BlockSyncBatch>();
                                 }
 
-                                reorgBatch.HeadersSyncBatch.StartNumber = Math.Max(0, syncBatch.HeadersSyncBatch.StartNumber.Value - RequestSize);
-                                reorgBatch.HeadersSyncBatch.RequestSize = RequestSize;
-                                _pendingBatches.Enqueue(reorgBatch);
+                                _headerDependencies[header.Number - 1].Add(syncBatch);
+                                enqueueRemaining = false;
+                            }
+                            else if (alternative?.TotalDifficulty != null && header.Difficulty < alternative.Difficulty)
+                            {
+                                enqueueRemaining = true;
                             }
                             else
                             {
@@ -151,9 +182,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 }
 
                                 _headerDependencies[header.Number - 1].Add(syncBatch);
+                                enqueueRemaining = false;
                             }
 
-                            enqueueRemaining = false;
                             break;
                         }
                     }
@@ -163,7 +194,15 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         break;
                     }
 
+                    if (header.Number == _bestRequestedHeader)
+                    {
+                        _totalDifficultyOfBestHeaderProvider = UInt256.Max(_totalDifficultyOfBestHeaderProvider, syncBatch.AssignedPeer.Current.TotalDifficulty);
+                    }
+
+//                    if (addBlockResult == AddBlockResult.Added)
+//                    {
                     added++;
+//                    }
                 }
 
                 if (added < syncBatch.HeadersSyncBatch.RequestSize && enqueueRemaining)
@@ -172,7 +211,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         added--;
                     }
-                    
+
                     BlockSyncBatch fixedSyncBatch = new BlockSyncBatch();
                     fixedSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
                     fixedSyncBatch.HeadersSyncBatch.StartNumber = syncBatch.HeadersSyncBatch.StartNumber + added;

@@ -33,6 +33,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
     {
         public IBlockTree Tree { get; }
 
+        public bool IsReported { get; set; } = false;
         public long? BusyUntil { get; set; }
         public int Latency { get; set; }
 

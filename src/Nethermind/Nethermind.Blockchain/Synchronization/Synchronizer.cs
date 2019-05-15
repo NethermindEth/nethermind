@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
+using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -40,6 +41,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly INodeDataDownloader _nodeDataDownloader;
         private readonly IBlockTree _blockTree;
         private readonly BlockDownloader _blockDownloader;
+        private readonly ParallelBlocksDownloader _parellelBlockDownloader;
 
         private System.Timers.Timer _syncTimer;
         private SyncPeerAllocation _blocksSyncAllocation;
@@ -73,6 +75,9 @@ namespace Nethermind.Blockchain.Synchronization
 
             // make ctor parameter?
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
+            
+            BlocksRequestFeed feed = new BlocksRequestFeed(_blockTree, _syncPeerPool);
+            _parellelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, feed, logManager);
         }
 
         public SyncMode SyncMode => _syncMode.Current;
@@ -247,7 +252,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     case SyncMode.Headers:
 //                        syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false);
-                        syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
+                        syncProgressTask = _parellelBlockDownloader.SyncHeaders(SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                         break;
                     case SyncMode.StateNodes:
                         syncProgressTask = DownloadStateNodes(_syncLoopCancellation.Token);
