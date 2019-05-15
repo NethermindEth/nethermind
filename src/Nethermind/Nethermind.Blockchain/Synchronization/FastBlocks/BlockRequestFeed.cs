@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 //            _bestRequestedHeader = blockTree.BestSuggested.Hash;
             _syncStats = new SyncStats(logManager);
 
-            _bestRequestedHeader = _blockTree.BestSuggested?.Number ?? 0;
+            StartNewRound();
         }
 
         private UInt256 _totalDifficultyOfBestHeaderProvider = UInt256.Zero;
@@ -175,6 +175,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                 return (BlocksDataHandlerResult.InvalidFormat, 0);
             }
+        }
+
+        public void StartNewRound()
+        {
+            _bestRequestedHeader = _blockTree.BestSuggested?.Number ?? 0;
+            _pendingBatches.Clear();
         }
 
         private int SuggestBatch(BlockSyncBatch syncBatch)
@@ -327,12 +333,5 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             return addBlockResult;
         }
-
-        public bool IsFullySynced(Keccak stateRoot)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public int TotalBlocksPending { get; }
     }
 }

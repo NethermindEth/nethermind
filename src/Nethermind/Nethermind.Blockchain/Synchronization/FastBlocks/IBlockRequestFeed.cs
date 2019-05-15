@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public interface IBlockRequestFeed
@@ -26,8 +24,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch syncBatch);
         
-        bool IsFullySynced(Keccak stateRoot);
-        
-        int TotalBlocksPending { get; }
+        void StartNewRound();
     }
 }

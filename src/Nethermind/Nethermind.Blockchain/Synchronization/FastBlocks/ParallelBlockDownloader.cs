@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
                 else
                 {
-                    await Task.Delay(50);
+                    await Task.Delay(10);
                 }
 
                 (BlocksDataHandlerResult Result, int NodesConsumed) result = (BlocksDataHandlerResult.InvalidFormat, 0);
@@ -167,9 +167,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
                 else
                 {
-                    await Task.Delay(50);
+                    await Task.Delay(10);
                     _semaphore.Release();
-                    if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_blockRequestFeed.TotalBlocksPending} pending blocks");
+                    if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests.");
                 }
             } while (_pendingRequests != 0);
 
@@ -187,6 +187,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public async Task<long> SyncHeaders(int threshold, CancellationToken token)
         {
+            _blockRequestFeed.StartNewRound();
             _threshold = threshold;
             _downloadedHeaders = 0;
             await KeepSyncing(token);
