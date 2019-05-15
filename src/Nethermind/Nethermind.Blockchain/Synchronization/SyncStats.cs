@@ -28,9 +28,9 @@ namespace Nethermind.Blockchain.Synchronization
         private DateTime _lastSyncNotificationTime = DateTime.MinValue;
         private long _lastCurrent;
         private long _lastTotal;
-        
+
         private ILogger _logger;
-        
+
         public SyncStats(ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -38,14 +38,14 @@ namespace Nethermind.Blockchain.Synchronization
 
         private decimal _average = 0;
         private bool isFirst = true;
-        
-        public void ReportBlocksDownload(long current,  long total)
+
+        public void ReportBlocksDownload(long current, long total)
         {
             // create sync stats like processing stats?
             if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1)
                 && (_lastCurrent != current || _lastTotal != total))
             {
-                if (_logger.IsInfo) _logger.Info($"Blocks download        {string.Empty.PadLeft(9 - current.ToString().Length, ' ')}{current}/{total} | {(current - _firstCurrent)/(DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps");
+                if (_logger.IsInfo) _logger.Info($"Blocks download        {string.Empty.PadLeft(9 - current.ToString().Length, ' ')}{current}/{total} | {(current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps");
                 _lastSyncNotificationTime = DateTime.UtcNow;
                 _lastCurrent = current;
                 _lastTotal = total;
@@ -58,14 +58,14 @@ namespace Nethermind.Blockchain.Synchronization
                 isFirst = false;
             }
         }
-        
-        public void ReportBlocksDownload(long current, long requested, long total)
+
+        public void ReportBlocksDownload(long current, long requested, long total, decimal? ratio = null)
         {
             // create sync stats like processing stats?
             if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1)
                 && (_lastCurrent != current || _lastTotal != total))
             {
-                if (_logger.IsInfo) _logger.Info($"Blocks download        S:{string.Empty.PadLeft(9 - current.ToString().Length, ' ')}{current}/R:{string.Empty.PadLeft(9 - requested.ToString().Length, ' ')}{requested}/T:{total} | {(current - _firstCurrent)/(DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps");
+                if (_logger.IsInfo) _logger.Info($"Blocks download        S:{string.Empty.PadLeft(9 - current.ToString().Length, ' ')}{current}/R:{string.Empty.PadLeft(9 - requested.ToString().Length, ' ')}{requested}/T:{total} | {(current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps | {ratio:p2}");
                 _lastSyncNotificationTime = DateTime.UtcNow;
                 _lastCurrent = current;
                 _lastTotal = total;

@@ -202,7 +202,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     return 0;
                 }
 
-                if(_logger.IsDebug) _logger.Debug($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0} | {(decimal)((_blockTree.BestSuggested?.Number ?? 0) - _startNumber) / _totalHeadersReceived:p2}");
+                decimal ratio = (decimal) ((_blockTree.BestSuggested?.Number ?? 0) - _startNumber) / _totalHeadersReceived;
+                if(_logger.IsDebug) _logger.Debug($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0} | {ratio:p2}");
                 
                 bool stackRemaining = true;
                 int added = 0;
@@ -212,7 +213,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     AddBlockResult? addBlockResult = null;
                     if (header != null)
                     {
-                        _syncStats.ReportBlocksDownload(_blockTree.BestSuggested?.Number ?? 0, _bestRequestedHeader, _maxKnownNumber);
+                        _syncStats.ReportBlocksDownload(_blockTree.BestSuggested?.Number ?? 0, _bestRequestedHeader, _maxKnownNumber, ratio);
                         
                         if (i != 0 && header.ParentHash != headersSyncBatch.Response[i - 1].Hash)
                         {
