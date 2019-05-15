@@ -23,11 +23,15 @@ using System.ComponentModel;
 using System.ComponentModel.Design;
 using System.IO.Enumeration;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization.FastSync;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Mining;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
@@ -37,6 +41,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
         private readonly IEthSyncPeerPool _syncPeerPool;
+        private readonly IBlockValidator _blockValidator;
+        private readonly ISealValidator _sealValidator;
 
         private ConcurrentDictionary<long, List<BlockSyncBatch>> _headerDependencies = new ConcurrentDictionary<long, List<BlockSyncBatch>>();
         private ConcurrentStack<BlockSyncBatch> _pendingBatches = new ConcurrentStack<BlockSyncBatch>();
@@ -45,11 +51,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private object _handlerLock = new object();
         private SyncStats _syncStats;
 
-        public BlocksRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, ILogManager logManager)
+        public BlocksRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, IBlockValidator blockValidator, ISealValidator sealValidator, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
+            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
+            _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncStats = new SyncStats(logManager);
 
             _startNumber = _blockTree.BestSuggested?.Number ?? 0;
@@ -63,7 +71,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private long _maxKnownNumber;
         private long _startNumber;
         private object _empty = new object();
-        
+
         public BlockSyncBatch PrepareRequest(int threshold)
         {
             if (_logger.IsDebug) _logger.Debug($"Preparing a request - current best suggested {_blockTree.BestSuggested?.Number ?? 0}, best requested - {_bestRequestedHeader}");
@@ -159,14 +167,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         _pendingBatches.Push(reorgBatch);
                     }
                 }
-                
+
                 if (_pendingBatches.TryPop(out stackedBatch))
                 {
                     stackedBatch.AssignedPeer = null;
                     _sentBatches[stackedBatch] = _empty;
                     return stackedBatch;
                 }
-                
+
                 return null;
             }
 
@@ -186,7 +194,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         }
 
         private int _totalHeadersReceived = 0;
-        
+
         public (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch syncBatch)
         {
             lock (_handlerLock)
@@ -194,6 +202,16 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 _totalHeadersReceived += syncBatch.HeadersSyncBatch.Response?.Count(r => r != null) ?? 0;
                 if (syncBatch.HeadersSyncBatch != null)
                 {
+                    try
+                    {
+//                        ValidateSeals(CancellationToken.None, syncBatch.HeadersSyncBatch.Response);
+//                        ValidateBatchConsistency(syncBatch.AssignedPeer.Current, syncBatch.HeadersSyncBatch.Response);
+                    }
+                    catch (Exception)
+                    {
+                        return (BlocksDataHandlerResult.BadQuality, 0);
+                    }
+                    
                     int added = SuggestBatch(syncBatch);
 
                     return (BlocksDataHandlerResult.OK, added);
@@ -225,8 +243,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 decimal ratio = (decimal) ((_blockTree.BestSuggested?.Number ?? 0) - _startNumber) / _totalHeadersReceived;
-                if(_logger.IsDebug) _logger.Debug($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0} | {ratio:p2}");
-                
+                if (_logger.IsDebug) _logger.Debug($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0} | {ratio:p2}");
+
                 bool stackRemaining = true;
                 int added = 0;
                 for (int i = 0; i < headersSyncBatch.Response.Length && i < headersSyncBatch.RequestSize; i++)
@@ -236,7 +254,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     if (header != null)
                     {
                         _syncStats.ReportBlocksDownload(_blockTree.BestSuggested?.Number ?? 0, _bestRequestedHeader, _maxKnownNumber, ratio);
-                        
+
                         if (i != 0 && header.ParentHash != headersSyncBatch.Response[i - 1].Hash)
                         {
                             if (syncBatch.AssignedPeer != null)
@@ -245,7 +263,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             }
 
                             break;
-                            
                         }
 
                         if (added == 0 && header.Number != headersSyncBatch.StartNumber)
@@ -258,8 +275,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             break;
                         }
 
-                        addBlockResult = SuggestHeader(header);
-                        if (addBlockResult == AddBlockResult.UnknownParent && added == 0)
+                        addBlockResult = _blockValidator.ValidateHeader(header, false) ? SuggestHeader(header) : AddBlockResult.InvalidBlock;
+//                        addBlockResult = SuggestHeader(header);
+                        if ((addBlockResult == AddBlockResult.InvalidBlock || addBlockResult == AddBlockResult.UnknownParent) && added == 0)
                         {
                             BlockHeader alternative = _blockTree.FindHeader(header.Number);
                             if (alternative?.TotalDifficulty != null && header.Difficulty > alternative.Difficulty
@@ -339,6 +357,62 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             finally
             {
                 _sentBatches.Remove(syncBatch, out _);
+            }
+        }
+
+        private void ValidateBatchConsistency(PeerInfo bestPeer, BlockHeader[] headers)
+        {
+            // Parity 1.11 non canonical blocks when testing on 27/06
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (i != 0 && headers[i] != null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
+                    throw new EthSynchronizationException("Peer sent an inconsistent block list");
+                }
+            }
+        }
+
+        private void ValidateSeals(CancellationToken cancellation, BlockHeader[] headers)
+        {
+            if (_logger.IsTrace) _logger.Trace("Starting seal validation");
+            var exceptions = new ConcurrentQueue<Exception>();
+            Parallel.For(0, headers.Length, (i, state) =>
+            {
+                if (cancellation.IsCancellationRequested)
+                {
+                    if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
+                    state.Stop();
+                    return;
+                }
+
+                BlockHeader header = headers[i];
+                if (header == null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    if (!_sealValidator.ValidateSeal(headers[i]))
+                    {
+                        if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
+                        throw new EthSynchronizationException("Peer sent a block with an invalid seal");
+                    }
+                }
+                catch (Exception e)
+                {
+                    exceptions.Enqueue(e);
+                    state.Stop();
+                }
+            });
+
+            if (_logger.IsTrace) _logger.Trace("Seal validation complete");
+
+            if (exceptions.Count > 0)
+            {
+                if (_logger.IsDebug) _logger.Debug("Seal validation failure");
+                throw new AggregateException(exceptions);
             }
         }
 

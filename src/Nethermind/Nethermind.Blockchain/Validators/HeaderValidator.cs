@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Validators
                     return isGenesisValid;
                 }
                 
-                if(_logger.IsWarn) _logger.Warn($"Orphan block, could not find parent ({header.Hash})");
+                if(_logger.IsDebug) _logger.Debug($"Orphan block, could not find parent ({header.Hash})");
                 return false;
             }
 
@@ -154,12 +154,14 @@ namespace Nethermind.Blockchain.Validators
 
         private static bool ValidateGenesis(BlockHeader header)
         {
-            return
-                header.GasUsed < header.GasLimit &&
-                // header.GasLimit > 125000 && 
-                header.Timestamp > 0 &&
-                header.Number == 0 &&
-                header.ExtraData.Length <= 32;
+            return true; // it was useless anyway
+            
+//            return
+//                header.GasUsed < header.GasLimit &&
+//                // header.GasLimit > 125000 && 
+//                header.Timestamp > 0 &&
+//                header.Number == 0 &&
+//                header.ExtraData.Length <= 32;
         }
     }
 }

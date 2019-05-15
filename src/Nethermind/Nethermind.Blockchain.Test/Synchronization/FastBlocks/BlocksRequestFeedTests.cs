@@ -22,6 +22,7 @@ using System.Linq;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.TxPools;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -111,7 +112,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 _localBlockTree.SuggestBlock(_validTree2048.FindBlock(i));    
             }
 
-            _feed = new BlocksRequestFeed(_localBlockTree, _syncPeerPool, LimboLogs.Instance);
+            HeaderValidator headerValidator = new HeaderValidator(_localBlockTree, TestSealValidator.AlwaysValid, MainNetSpecProvider.Instance, LimboLogs.Instance);
+            OmmersValidator ommersValidator = new OmmersValidator(_localBlockTree, headerValidator, LimboLogs.Instance);
+            _feed = new BlocksRequestFeed(_localBlockTree, _syncPeerPool, new BlockValidator(new TxValidator(MainNetSpecProvider.Instance.ChainId), headerValidator, ommersValidator, MainNetSpecProvider.Instance, LimboLogs.Instance), TestSealValidator.AlwaysValid, LimboLogs.Instance);
         }
 
         [Test]

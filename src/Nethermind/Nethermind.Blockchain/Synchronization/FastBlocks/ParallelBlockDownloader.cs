@@ -81,7 +81,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     result = _blockRequestFeed.HandleResponse(batch);
                     if (result.Result == BlocksDataHandlerResult.BadQuality)
                     {
-                        _syncPeerPool.ReportBadPeer(batch.AssignedPeer);
+                        if (batch.AssignedPeer?.Current != null)
+                        {
+                            _syncPeerPool.ReportBadPeer(batch.AssignedPeer);
+                        }
                     }
                 }
                 catch (Exception e)
