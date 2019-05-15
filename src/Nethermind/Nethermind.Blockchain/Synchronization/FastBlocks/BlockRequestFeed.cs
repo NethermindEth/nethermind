@@ -137,6 +137,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 throw new InvalidOperationException("Unexpected reorg true");
             }
 
+            if (_bestRequestedHeader > (_blockTree.BestSuggested?.Number ?? 0) + 512 * 40)
+            {
+                return null;
+            }
+
             BlockSyncBatch batch = new BlockSyncBatch();
             batch.HeadersSyncBatch = new HeadersSyncBatch();
             batch.HeadersSyncBatch.StartNumber = _bestRequestedHeader;
@@ -192,7 +197,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     AddBlockResult? addBlockResult = null;
                     if (header != null)
                     {
-                        _syncStats.ReportBlocksDownload(_blockTree.BestSuggested?.Number ?? 0, _maxKnownNumber);
+                        _syncStats.ReportBlocksDownload(_blockTree.BestSuggested?.Number ?? 0, _bestRequestedHeader, _maxKnownNumber);
                         
                         if (i != 0 && header.ParentHash != headersSyncBatch.Response[i - 1].Hash)
                         {
