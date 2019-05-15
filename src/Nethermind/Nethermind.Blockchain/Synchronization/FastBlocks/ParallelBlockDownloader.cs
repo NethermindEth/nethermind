@@ -53,16 +53,28 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 batch.AssignedPeer = nodeSyncAllocation;
                 if (peer != null)
                 {
+//                    _logger.Warn( $"PENDING: {_pendingRequests} NODE WAS NOT NULL");
+_logger.Warn($"Sending GetBlockHeaders {batch}");
                     Task<BlockHeader[]> getHeadersTask = peer.GetBlockHeaders(batch.HeadersSyncBatch.StartNumber.Value, batch.HeadersSyncBatch.RequestSize, 0, token);
                     await getHeadersTask.ContinueWith(
                         t =>
                         {
                             if (t.IsCompletedSuccessfully)
                             {
+                                _logger.Warn($"Completed GetBlockHeaders {batch}");
                                 batch.HeadersSyncBatch.Response = getHeadersTask.Result;
+                            }
+                            else
+                            {
+                                _logger.Error($"{t.Exception}");
                             }
                         }
                     );
+                }
+                else
+                {
+//                    _logger.Error( $"PENDING: {_pendingRequests} NODE WAS NULL NODE WAS NULL NODE WAS NULL NODE WAS NULL NODE WAS NULL NODE WAS NULL NODE WAS NULL ");
+                    await Task.Delay(50);
                 }
 
                 (BlocksDataHandlerResult Result, int NodesConsumed) result = (BlocksDataHandlerResult.InvalidFormat, 0);
@@ -90,6 +102,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 if (nodeSyncAllocation != null)
                 {
 //                    _logger.Warn($"Free {nodeSyncAllocation?.Current}");
+//                    if (_logger.IsInfo) _logger.Warn($"FREED ALLOCATION");
                     _syncPeerPool.Free(nodeSyncAllocation);
                 }
             }
@@ -99,6 +112,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         {
             int newUsefulPeerCount = _syncPeerPool.UsefulPeerCount;
             int difference = newUsefulPeerCount - _lastUsefulPeerCount;
+            if (_logger.IsInfo) _logger.Info($"Node sync parallelism - {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests} | remaining: {_semaphore.CurrentCount}).");
             if (difference == 0)
             {
                 return;
@@ -134,16 +148,20 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 await UpdateParallelism();
+//                if (_logger.IsInfo) _logger.Info($"Waiting for semaphore");
                 if (!await _semaphore.WaitAsync(1000, token))
                 {
+//                    if (_logger.IsInfo) _logger.Info($"Failed semaphore wait");
                     continue;
                 }
+                
+//                if (_logger.IsInfo) _logger.Info($"Successful semaphore wait");
 
                 BlockSyncBatch request = PrepareRequest();
                 if (request.HeadersSyncBatch != null)
                 {
+//                    if (_logger.IsInfo) _logger.Info($"Creating new headers request {request} with current semaphore count {_semaphore.CurrentCount} and pending requests {_pendingRequests}");
                     Interlocked.Increment(ref _pendingRequests);
-                    if (_logger.IsTrace) _logger.Trace($"Creating new headers request [{request.HeadersSyncBatch.StartNumber}, {request.HeadersSyncBatch.StartNumber + request.HeadersSyncBatch.RequestSize - 1}]");
                     Task task = ExecuteRequest(token, request);
 #pragma warning disable 4014
                     task.ContinueWith(t =>
@@ -151,6 +169,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         Interlocked.Decrement(ref _pendingRequests);
                         _semaphore.Release();
+//                        if (_logger.IsInfo) _logger.Info($"Released semaphore - now at semaphore count {_semaphore.CurrentCount} and pending requests {_pendingRequests}");
                     });
                 }
                 else

@@ -82,8 +82,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             LatencySyncPeerMock.RemoteIndex = 1;
             _time = 0;
-            IEthSyncPeerPool peerPool = Substitute.For<IEthSyncPeerPool>();
-            peerPool.WhenForAnyArgs(p => p.ReportNoSyncProgress(Arg.Any<SyncPeerAllocation>()))
+            _syncPeerPool = Substitute.For<IEthSyncPeerPool>();
+            _syncPeerPool.WhenForAnyArgs(p => p.ReportNoSyncProgress(Arg.Any<SyncPeerAllocation>()))
                 .Do(ci =>
                 {
                     LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<SyncPeerAllocation>().Current.SyncPeer);
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     mock.IsReported = true;
                 });
 
-            peerPool.WhenForAnyArgs(p => p.ReportInvalid(Arg.Any<SyncPeerAllocation>()))
+            _syncPeerPool.WhenForAnyArgs(p => p.ReportInvalid(Arg.Any<SyncPeerAllocation>()))
                 .Do(ci =>
                 {
                     LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<SyncPeerAllocation>().Current.SyncPeer);
@@ -99,16 +99,34 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     mock.IsReported = true;
                 });
 
-            peerPool.AllPeers.Returns((ci) => _syncPeers.Select(sp => new PeerInfo(sp) {HeadNumber = sp.Tree.Head.Number}));
-            _localBlockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
-            _localBlockTree.SuggestBlock(_validTree8.FindBlock(0));
+            _syncPeerPool.AllPeers.Returns((ci) => _syncPeers.Select(sp => new PeerInfo(sp) {HeadNumber = sp.Tree.Head.Number}));
+            SetupLocalTree();
+        }
 
-            _feed = new BlocksRequestFeed(_localBlockTree, peerPool);
+        private void SetupLocalTree(int length = 1)
+        {
+            _localBlockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            for (int i = 0; i < length; i++)
+            {
+                _localBlockTree.SuggestBlock(_validTree2048.FindBlock(i));    
+            }
+
+            _feed = new BlocksRequestFeed(_localBlockTree, _syncPeerPool, LimboLogs.Instance);
         }
 
         [Test]
         public void One_peer_with_valid_chain()
         {
+            LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree2048);
+            SetupSyncPeers(syncPeer);
+            RunFeed();
+            Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+        }
+        
+        [Test]
+        public void One_peer_with_valid_chain_when_already_partially_synced()
+        {
+            SetupLocalTree(512);
             LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree2048);
             SetupSyncPeers(syncPeer);
             RunFeed();
@@ -328,6 +346,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
 
         private int _timeoutTime = 5000;
+        private IEthSyncPeerPool _syncPeerPool;
 
         private void RunFeed(int timeLimit = 5000)
         {

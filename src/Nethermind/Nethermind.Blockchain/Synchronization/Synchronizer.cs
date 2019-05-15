@@ -76,7 +76,9 @@ namespace Nethermind.Blockchain.Synchronization
             // make ctor parameter?
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
             
-            BlocksRequestFeed feed = new BlocksRequestFeed(_blockTree, _syncPeerPool);
+            BlocksRequestFeed feed = new BlocksRequestFeed(_blockTree, _syncPeerPool, logManager);
+            feed.RequestSize = 512;
+            
             _parellelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, feed, logManager);
         }
 
@@ -252,6 +254,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     case SyncMode.Headers:
 //                        syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false);
+                        FreeBlocksSyncAllocation();
                         syncProgressTask = _parellelBlockDownloader.SyncHeaders(SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                         break;
                     case SyncMode.StateNodes:

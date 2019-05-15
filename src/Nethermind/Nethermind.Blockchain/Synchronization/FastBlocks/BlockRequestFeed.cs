@@ -25,22 +25,28 @@ using System.Linq;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class BlocksRequestFeed : IBlockRequestFeed
     {
+        private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
         private readonly IEthSyncPeerPool _syncPeerPool;
 
         private ConcurrentDictionary<long, List<BlockSyncBatch>> _headerDependencies = new ConcurrentDictionary<long, List<BlockSyncBatch>>();
 
-        public BlocksRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool)
+        public BlocksRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
 //            _bestRequestedHeader = blockTree.BestSuggested.Hash;
+            _syncStats = new SyncStats(logManager);
+
+            _bestRequestedHeader = _blockTree.BestSuggested?.Number ?? 0;
         }
 
         private UInt256 _totalDifficultyOfBestHeaderProvider = UInt256.Zero;
@@ -59,10 +65,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 return null;
             }
 
-            if (_pendingBatches.TryPop(out BlockSyncBatch enqueuedBatch))
+            if (_pendingBatches.TryPop(out BlockSyncBatch stackedBatch))
             {
-                _sentBatches.Add(enqueuedBatch);
-                return enqueuedBatch;
+//                _logger.Warn($"POPPING {stackedBatch}");
+                _sentBatches.Add(stackedBatch);
+                return stackedBatch;
             }
 
             maxNumber -= threshold;
@@ -70,22 +77,23 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 return null;
             }
-            
+
             if (maxNumber <= _bestRequestedHeader
                 && _pendingBatches.Count == 0
                 && maxDifficulty <= _totalDifficultyOfBestHeaderProvider)
             {
                 return null;
             }
-            
+
             bool isReorg = maxNumber == (_blockTree.BestSuggested?.Number ?? 0) && maxDifficulty > _totalDifficultyOfBestHeaderProvider;
             if (isReorg && _sentBatches.Count > 0)
             {
                 return null;
             }
-            
+
             if (isReorg)
             {
+                _logger.Error($"REORG REORG REORG REORG");
                 foreach (KeyValuePair<long, List<BlockSyncBatch>> headerDependency in _headerDependencies.OrderByDescending(hd => hd.Key))
                 {
                     BlockSyncBatch reorgBatch = new BlockSyncBatch();
@@ -112,10 +120,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
             }
 
-            if (_pendingBatches.TryPop(out enqueuedBatch))
+            if (_pendingBatches.TryPop(out stackedBatch))
             {
-                _sentBatches.Add(enqueuedBatch);
-                return enqueuedBatch;
+//                _logger.Warn($"POPPING {stackedBatch}");
+                _sentBatches.Add(stackedBatch);
+                return stackedBatch;
             }
 
             if (isReorg)
@@ -134,22 +143,29 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 return null;
             }
 
+//            _logger.Warn($"PREPARED {batch}");
             _sentBatches.Add(batch);
             return batch;
         }
 
-        private const int RequestSize = 256;
+        public int RequestSize { get; set; } = 256;
+
+        private object _handlerLock = new object();
+        private SyncStats _syncStats;
 
         public (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch syncBatch)
         {
-            if (syncBatch.HeadersSyncBatch != null)
+            lock (_handlerLock)
             {
-                int added = SuggestBatch(syncBatch);
+                if (syncBatch.HeadersSyncBatch != null)
+                {
+                    int added = SuggestBatch(syncBatch);
 
-                return (BlocksDataHandlerResult.OK, added);
+                    return (BlocksDataHandlerResult.OK, added);
+                }
+
+                return (BlocksDataHandlerResult.InvalidFormat, 0);
             }
-
-            return (BlocksDataHandlerResult.InvalidFormat, 0);
         }
 
         private int SuggestBatch(BlockSyncBatch syncBatch)
@@ -159,11 +175,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 var headersSyncBatch = syncBatch.HeadersSyncBatch;
                 if (headersSyncBatch.Response == null)
                 {
+//                    _logger.Error($"RESPONSE IS NULL ON {syncBatch}");
                     _pendingBatches.Push(syncBatch);
                     return 0;
                 }
 
-                bool enqueueRemaining = true;
+//                _logger.Warn($"PROCESSING {syncBatch}");
+                bool stackRemaining = true;
                 int added = 0;
                 for (int i = 0; i < headersSyncBatch.Response.Length && i < headersSyncBatch.RequestSize; i++)
                 {
@@ -196,11 +214,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 }
 
                                 _headerDependencies[header.Number - 1].Add(syncBatch);
-                                enqueueRemaining = false;
+                                stackRemaining = false;
                             }
                             else if (alternative?.TotalDifficulty != null && header.Difficulty < alternative.Difficulty)
                             {
-                                enqueueRemaining = true;
+                                stackRemaining = true;
                             }
                             else
                             {
@@ -210,7 +228,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 }
 
                                 _headerDependencies[header.Number - 1].Add(syncBatch);
-                                enqueueRemaining = false;
+                                stackRemaining = false;
                             }
 
                             break;
@@ -227,13 +245,18 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         _totalDifficultyOfBestHeaderProvider = UInt256.Max(_totalDifficultyOfBestHeaderProvider, syncBatch.AssignedPeer.Current.TotalDifficulty);
                     }
 
+                    if (addBlockResult == AddBlockResult.Added)
+                    {
+                        _syncStats.ReportBlocksDownload(header.Number, _bestRequestedHeader);
+                    }
+                    
 //                    if (addBlockResult == AddBlockResult.Added)
 //                    {
                     added++;
 //                    }
                 }
 
-                if (added < syncBatch.HeadersSyncBatch.RequestSize && enqueueRemaining)
+                if (added < syncBatch.HeadersSyncBatch.RequestSize && stackRemaining)
                 {
                     if (added != 0)
                     {
@@ -247,7 +270,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     _pendingBatches.Push(fixedSyncBatch);
                 }
 
-                if (added == 0 && enqueueRemaining)
+                if (added == 0 && stackRemaining)
                 {
                     _syncPeerPool.ReportNoSyncProgress(syncBatch.AssignedPeer);
                 }
@@ -285,8 +308,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     SuggestBatch(batch);
                     _headerDependencies[header.Number].Remove(batch);
                 }
-                
-                if(_headerDependencies[header.Number].Count == 0)
+
+                if (_headerDependencies[header.Number].Count == 0)
                 {
                     _headerDependencies.Remove(header.Number, out _);
                 }

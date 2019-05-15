@@ -53,6 +53,7 @@ namespace Nethermind.Blockchain.Synchronization
         
         public void ReportInvalid(SyncPeerAllocation syncPeerAllocation)
         {
+            _logger.Warn($"INVALID {syncPeerAllocation}");
             syncPeerAllocation.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "SYNC BREACH");
         }
 
@@ -483,16 +484,19 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < _blockTree.BestKnownNumber + allocation.MinBlocksAhead.Value)
                 {
+                    if (_logger.IsWarn) _logger.Warn($"MIN BLOCKS AHEAD FAILED");
                     continue;
                 }
 
                 if (!info.IsInitialized || info.TotalDifficulty <= (_blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero))
                 {
+                    if (_logger.IsWarn) _logger.Warn($"INITIALIZED FAILED");
                     continue;
                 }
 
                 if (info.IsAllocated && info != allocation.Current)
                 {
+                    if (_logger.IsWarn) _logger.Warn($"IS ALLOCATED");
                     continue;
                 }
 
@@ -508,6 +512,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (info.TotalDifficulty - (_blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.SyncPeer.ClientId.Contains("Parity"))
                 {
+                    if (_logger.IsWarn) _logger.Warn($"TOTAL DIFFICULTY");
                     // Parity advertises a better block but never sends it back and then it disconnects after a few conversations like this
                     // Geth responds all fine here
                     // note this is only 2 difficulty difference which means that is just for the POA / Clique chains
@@ -524,6 +529,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (bestPeer.Info == null)
             {
+                if (_logger.IsWarn) _logger.Warn($"JUST NO PEER OUT OF {_peers.Count}");
                 if (_logger.IsTrace) _logger.Trace($"[{reason}] No peer found for ETH sync");
             }
             else
@@ -624,6 +630,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void ReportNoSyncProgress(SyncPeerAllocation allocation)
         {
+            _logger.Warn($"NO SYNC PROGRESS {allocation}");
             PeerInfo peer = allocation?.Current;
             if (peer == null)
             {
