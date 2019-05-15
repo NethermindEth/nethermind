@@ -107,8 +107,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     BlockSyncBatch reorgBatch = new BlockSyncBatch();
                     reorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                    reorgBatch.HeadersSyncBatch.StartNumber = Math.Max(0, headerDependency.Key - RequestSize + 1);
-                    reorgBatch.HeadersSyncBatch.RequestSize = (int) Math.Min(headerDependency.Key + 1, RequestSize);
+                    reorgBatch.HeadersSyncBatch.StartNumber = Math.Max(0, headerDependency.Key - RequestSize + 2); // 2 because of the strange way we store them
+                    reorgBatch.HeadersSyncBatch.RequestSize = (int) Math.Min(headerDependency.Key + 2, RequestSize);
                     reorgBatch.IsReorgBatch = true;
                     reorgBatch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
                     if (!_headerDependencies.ContainsKey(reorgBatch.HeadersSyncBatch.StartNumber.Value - 1))
@@ -145,6 +145,28 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_bestRequestedHeader > (_blockTree.BestSuggested?.Number ?? 0) + 512 * 128)
             {
+                foreach (KeyValuePair<long, List<BlockSyncBatch>> headerDependency in _headerDependencies.OrderByDescending(hd => hd.Key))
+                {
+                    BlockSyncBatch reorgBatch = new BlockSyncBatch();
+                    reorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
+                    reorgBatch.HeadersSyncBatch.StartNumber = Math.Max(0, headerDependency.Key - RequestSize + 2); // 2 because of the strange way we store them
+                    reorgBatch.HeadersSyncBatch.RequestSize = (int) Math.Min(headerDependency.Key + 2, RequestSize);
+                    reorgBatch.IsReorgBatch = true;
+                    reorgBatch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
+                    if (!_headerDependencies.ContainsKey(reorgBatch.HeadersSyncBatch.StartNumber.Value - 1))
+                    {
+                        reorgBatch.AssignedPeer = null;
+                        _pendingBatches.Push(reorgBatch);
+                    }
+                }
+                
+                if (_pendingBatches.TryPop(out stackedBatch))
+                {
+                    stackedBatch.AssignedPeer = null;
+                    _sentBatches[stackedBatch] = _empty;
+                    return stackedBatch;
+                }
+                
                 return null;
             }
 
