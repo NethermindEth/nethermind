@@ -105,8 +105,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     return 0;
                 }
 
+                bool enqueueRemaining = true;
                 int added = 0;
-
                 for (int i = 0; i < headersSyncBatch.Response.Length; i++)
                 {
                     BlockHeader header = headersSyncBatch.Response[i];
@@ -116,14 +116,15 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         if (i != 0 && header.ParentHash != headersSyncBatch.Response[i - 1].Hash)
                         {
                             _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
-                            BlockSyncBatch fixedSyncBatch = new BlockSyncBatch();
-                            fixedSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                            fixedSyncBatch.HeadersSyncBatch.StartNumber = syncBatch.HeadersSyncBatch.StartNumber + added - 1;
-                            fixedSyncBatch.HeadersSyncBatch.RequestSize = syncBatch.HeadersSyncBatch.RequestSize - added + 1;
-                            _pendingBatches.Enqueue(fixedSyncBatch);
                             break;
                         }
-                        
+
+                        if (added == 0 && header.Number != headersSyncBatch.StartNumber)
+                        {
+                            _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
+                            break;
+                        }
+
                         addBlockResult = SuggestHeader(header);
                         if (addBlockResult == AddBlockResult.UnknownParent && added == 0)
                         {
@@ -152,21 +153,36 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 _headerDependencies[header.Number - 1].Add(syncBatch);
                             }
 
+                            enqueueRemaining = false;
                             break;
                         }
                     }
 
                     if (addBlockResult == null || addBlockResult.Value == AddBlockResult.InvalidBlock || addBlockResult.Value == AddBlockResult.UnknownParent)
                     {
-                        BlockSyncBatch fixedSyncBatch = new BlockSyncBatch();
-                        fixedSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                        fixedSyncBatch.HeadersSyncBatch.StartNumber = syncBatch.HeadersSyncBatch.StartNumber + added - 1;
-                        fixedSyncBatch.HeadersSyncBatch.RequestSize = syncBatch.HeadersSyncBatch.RequestSize - added + 1;
-                        _pendingBatches.Enqueue(fixedSyncBatch);
                         break;
                     }
 
                     added++;
+                }
+
+                if (added < syncBatch.HeadersSyncBatch.RequestSize && enqueueRemaining)
+                {
+                    if (added != 0)
+                    {
+                        added--;
+                    }
+                    
+                    BlockSyncBatch fixedSyncBatch = new BlockSyncBatch();
+                    fixedSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
+                    fixedSyncBatch.HeadersSyncBatch.StartNumber = syncBatch.HeadersSyncBatch.StartNumber + added;
+                    fixedSyncBatch.HeadersSyncBatch.RequestSize = syncBatch.HeadersSyncBatch.RequestSize - added;
+                    _pendingBatches.Enqueue(fixedSyncBatch);
+                }
+
+                if (added == 0 && enqueueRemaining)
+                {
+                    _syncPeerPool.ReportNoSyncProgress(syncBatch.AssignedPeer);
                 }
 
                 return added;
@@ -183,7 +199,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 return AddBlockResult.AlreadyKnown;
             }
-            
+
             AddBlockResult addBlockResult = _blockTree.SuggestHeader(header);
             if (addBlockResult == AddBlockResult.InvalidBlock)
             {
