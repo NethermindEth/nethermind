@@ -187,6 +187,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public async Task<long> SyncHeaders(int threshold, CancellationToken token)
         {
+            if (_logger.IsDebug) _logger.Debug($"Sync headers - pending: {_pendingRequests} - semaphore: {_semaphore.CurrentCount}");
             _blockRequestFeed.StartNewRound();
             _threshold = threshold;
             _downloadedHeaders = 0;

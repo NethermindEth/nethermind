@@ -63,6 +63,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         
         public BlockSyncBatch PrepareRequest(int threshold)
         {
+            if (_logger.IsDebug) _logger.Debug($"Preparing a request - current best suggested {_blockTree.BestSuggested?.Number ?? 0}, best requested - {_bestRequestedHeader}");
             UInt256 maxDifficulty = _syncPeerPool.AllPeers.Max(p => p.TotalDifficulty);
             long maxNumber = _syncPeerPool.AllPeers.Max(p => p.HeadNumber);
             _maxKnownNumber = maxNumber;
