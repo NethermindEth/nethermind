@@ -113,10 +113,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         reorgBatch.AssignedPeer = null;
                         _pendingBatches.Push(reorgBatch);
                     }
-                    else
-                    {
-                        _logger.Error("YAY");
-                    }
                 }
 
                 if (_pendingBatches.Count == 0)
@@ -146,7 +142,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_bestRequestedHeader > (_blockTree.BestSuggested?.Number ?? 0) + 512 * 128)
             {
-                foreach (KeyValuePair<long, List<BlockSyncBatch>> headerDependency in _headerDependencies.OrderByDescending(hd => hd.Key))
+                foreach (KeyValuePair<long, List<BlockSyncBatch>> headerDependency in _headerDependencies.OrderBy(hd => hd.Key))
                 {
                     BlockSyncBatch reorgBatch = new BlockSyncBatch();
                     reorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
@@ -158,10 +154,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         reorgBatch.AssignedPeer = null;
                         _pendingBatches.Push(reorgBatch);
-                    }
-                    else
-                    {
-                        _logger.Error("YAY");
                     }
 
                     break;
