@@ -255,7 +255,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         }
 
                         
-                        BlockHeader parent = header.Number == 0 ? null : i == 0 ? _blockTree.FindHeader(header.Number - 1) : headersSyncBatch.Response[i - 1];
+                        BlockHeader parent = header.Number == 0 ? null : i == 0 ? _blockTree.FindHeader(header.ParentHash) : headersSyncBatch.Response[i - 1];
                         bool isValid = _blockValidator.ValidateHeader(header, parent, false);
 //                        bool isValid = true;
                         addBlockResult = isValid ? SuggestHeader(header) : AddBlockResult.InvalidBlock;

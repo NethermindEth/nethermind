@@ -346,6 +346,20 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
         
         [Test]
+        public void Many_slow_valid_peers()
+        {
+            LatencySyncPeerMock[] peers = new LatencySyncPeerMock[100];
+            for (int i = 0; i < peers.Length; i++)
+            {
+                peers[i] = new LatencySyncPeerMock(_validTree2048, 200);
+            }
+
+            SetupSyncPeers(peers);
+            RunFeed();
+            Assert.AreEqual(_validTree2048.FindBlock(2015).Hash, _localBlockTree.BestSuggested.Hash, _localBlockTree.BestSuggested.ToString());
+        }
+        
+        [Test]
         public void ManyInvalidPeers()
         {
             LatencySyncPeerMock[] peers = new LatencySyncPeerMock[100];
