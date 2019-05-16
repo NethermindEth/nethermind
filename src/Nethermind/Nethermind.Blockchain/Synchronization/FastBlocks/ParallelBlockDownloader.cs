@@ -119,13 +119,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private void ValidateSeals(CancellationToken cancellation, BlockHeader[] headers)
         {
             if (_logger.IsTrace) _logger.Trace("Starting seal validation");
-            var exceptions = new ConcurrentQueue<Exception>();
-            Parallel.For(0, headers.Length, (i, state) =>
+
+            for (int i = 0; i < headers.Length; i++)
             {
                 if (cancellation.IsCancellationRequested)
                 {
                     if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
-                    state.Stop();
                     return;
                 }
 
@@ -135,30 +134,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     return;
                 }
 
-                try
+                if (!_sealValidator.ValidateSeal(headers[i]))
                 {
-                    if (!_sealValidator.ValidateSeal(headers[i]))
-                    {
-                        if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
-                        throw new EthSynchronizationException("Peer sent a block with an invalid seal");
-                    }
+                    if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
+                    throw new EthSynchronizationException("Peer sent a block with an invalid seal");
                 }
-                catch (Exception e)
-                {
-                    exceptions.Enqueue(e);
-                    state.Stop();
-                }
-            });
-
-            if (_logger.IsTrace) _logger.Trace("Seal validation complete");
-
-            if (exceptions.Count > 0)
-            {
-                if (_logger.IsDebug) _logger.Debug("Seal validation failure");
-                throw new AggregateException(exceptions);
             }
         }
-        
+
         private async Task UpdateParallelism()
         {
             int newUsefulPeerCount = _syncPeerPool.UsefulPeerCount;
@@ -185,7 +168,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 foreach (Task<bool> semaphoreTask in allSemaphoreTasks)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Set semaphore");
-                    if (! await semaphoreTask)
+                    if (!await semaphoreTask)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Faile to set semaphore");
                         newUsefulPeerCount++;

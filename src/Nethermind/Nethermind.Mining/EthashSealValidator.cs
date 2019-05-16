@@ -27,8 +27,24 @@ namespace Nethermind.Mining
                 return true;
             }
 
-            return _ethash.Validate(header);
+            lock (_sealCache)
+            {
+                if (_sealCache.Get(header.Hash))
+                {
+                    return true;
+                }
+            }
+
+            bool result = _ethash.Validate(header);
+            lock (_sealCache)
+            {
+                _sealCache.Set(header.Hash, result);
+            }
+
+            return result;
         }
+        
+        private LruCache<Keccak, bool> _sealCache = new LruCache<Keccak, bool>(2048);
         
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {   
