@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Synchronization
             BlocksRequestFeed feed = new BlocksRequestFeed(_blockTree, _syncPeerPool, blockValidator, sealValidator, logManager);
             feed.RequestSize = 512;
             
-            _parellelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, feed, logManager);
+            _parellelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, feed, sealValidator, logManager);
         }
 
         public SyncMode SyncMode => _syncMode.Current;

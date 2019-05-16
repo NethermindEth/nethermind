@@ -49,17 +49,20 @@ namespace Nethermind.Blockchain.Validators
             // the rule here is to validate the seal first (avoid any cheap attacks on validation logic)
             // then validate whatever does not need to load parent from disk (the most expensive operation)
             
-            bool areNonceValidAndMixHashValid = header.Number == 0 || header.SealEngineType == SealEngineType.None || _sealValidator.ValidateSeal(header);
-            if (!areNonceValidAndMixHashValid)
-            {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
-            }
+            /* moving it entirely to seal validator now */
+            bool areNonceValidAndMixHashValid = true;
+            bool hashAsExpected = true;
+//            bool areNonceValidAndMixHashValid = header.Number == 0 || header.SealEngineType == SealEngineType.None || _sealValidator.ValidateSeal(header);
+//            if (!areNonceValidAndMixHashValid)
+//            {
+//                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+//            }
             
-            bool hashAsExpected = header.Hash == BlockHeader.CalculateHash(header);
-            if (!hashAsExpected)
-            {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
-            }
+//            bool hashAsExpected = header.Hash == BlockHeader.CalculateHash(header);
+//            if (!hashAsExpected)
+//            {
+//                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
+//            }
             
             bool extraDataValid = isOmmer
                                   || _daoBlockNumber == null

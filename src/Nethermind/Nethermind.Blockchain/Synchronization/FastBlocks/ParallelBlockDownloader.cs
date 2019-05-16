@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading;
@@ -24,6 +25,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
+using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
@@ -31,14 +33,16 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
     {
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly IBlockRequestFeed _blockRequestFeed;
+        private readonly ISealValidator _sealValidator;
         private int _pendingRequests;
         private int _downloadedHeaders;
         private ILogger _logger;
 
-        public ParallelBlocksDownloader(IEthSyncPeerPool syncPeerPool, IBlockRequestFeed nodeDataFeed, ILogManager logManager)
+        public ParallelBlocksDownloader(IEthSyncPeerPool syncPeerPool, IBlockRequestFeed nodeDataFeed, ISealValidator sealValidator, ILogManager logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _blockRequestFeed = nodeDataFeed ?? throw new ArgumentNullException(nameof(nodeDataFeed));
+            _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -78,6 +82,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 (BlocksDataHandlerResult Result, int NodesConsumed) result = (BlocksDataHandlerResult.InvalidFormat, 0);
                 try
                 {
+                    ValidateSeals(token, batch.HeadersSyncBatch.Response);
                     result = _blockRequestFeed.HandleResponse(batch);
                     if (result.Result == BlocksDataHandlerResult.BadQuality)
                     {
@@ -107,6 +112,49 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
+        private void ValidateSeals(CancellationToken cancellation, BlockHeader[] headers)
+        {
+            if (_logger.IsTrace) _logger.Trace("Starting seal validation");
+            var exceptions = new ConcurrentQueue<Exception>();
+            Parallel.For(0, headers.Length, (i, state) =>
+            {
+                if (cancellation.IsCancellationRequested)
+                {
+                    if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
+                    state.Stop();
+                    return;
+                }
+
+                BlockHeader header = headers[i];
+                if (header == null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    if (!_sealValidator.ValidateSeal(headers[i]))
+                    {
+                        if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
+                        throw new EthSynchronizationException("Peer sent a block with an invalid seal");
+                    }
+                }
+                catch (Exception e)
+                {
+                    exceptions.Enqueue(e);
+                    state.Stop();
+                }
+            });
+
+            if (_logger.IsTrace) _logger.Trace("Seal validation complete");
+
+            if (exceptions.Count > 0)
+            {
+                if (_logger.IsDebug) _logger.Debug("Seal validation failure");
+                throw new AggregateException(exceptions);
+            }
+        }
+        
         private async Task UpdateParallelism()
         {
             int newUsefulPeerCount = _syncPeerPool.UsefulPeerCount;
