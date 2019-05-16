@@ -113,6 +113,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         reorgBatch.AssignedPeer = null;
                         _pendingBatches.Push(reorgBatch);
                     }
+                    else
+                    {
+                        _logger.Error("YAY");
+                    }
                 }
 
                 if (_pendingBatches.Count == 0)
@@ -155,6 +159,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         reorgBatch.AssignedPeer = null;
                         _pendingBatches.Push(reorgBatch);
                     }
+                    else
+                    {
+                        _logger.Error("YAY");
+                    }
+
+                    break;
                 }
 
                 if (_pendingBatches.TryPop(out stackedBatch))
