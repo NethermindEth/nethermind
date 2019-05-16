@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core.Specs
 {
     public class GoerliSpecProvider : ISpecProvider
@@ -34,6 +36,10 @@ namespace Nethermind.Core.Specs
         }
 
         public long? DaoBlockNumber { get; } = null;
+
+        public long PivotBlockNumber => 0;
+
+        public Keccak PivotBlockHash => KnownHashes.GoerliGenesis;
 
         public int ChainId => 0x5;
     }

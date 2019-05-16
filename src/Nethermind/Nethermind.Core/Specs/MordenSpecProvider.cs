@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core.Specs
 {
     public class MordenSpecProvider : ISpecProvider
@@ -38,6 +40,10 @@ namespace Nethermind.Core.Specs
         }
         
         public long? DaoBlockNumber { get; } = null;
+
+        public long PivotBlockNumber { get; } = 0L;
+
+        public Keccak PivotBlockHash { get; } = null;
 
         public int ChainId => 2;
     }

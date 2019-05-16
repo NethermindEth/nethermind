@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core.Specs
 {
     public class FrontierSpecProvider : ISpecProvider
@@ -28,7 +30,11 @@ namespace Nethermind.Core.Specs
         }
         
         public long? DaoBlockNumber { get; } = null;
+
+        public long PivotBlockNumber { get; } = 0;
         
+        public Keccak PivotBlockHash { get; } = KnownHashes.MainnetGenesis;
+
         public int ChainId => Core.ChainId.MainNet;
 
         private FrontierSpecProvider()

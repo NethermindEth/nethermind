@@ -19,6 +19,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs
@@ -70,6 +71,9 @@ namespace Nethermind.Core.Specs
                 return daoRelease != null ? blockNumber : (long?)null;
             }
         }
+
+        public long PivotBlockNumber { get; } = 0;
+        public Keccak PivotBlockHash { get; } = null;
 
         public int ChainId => 0;
     }

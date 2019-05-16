@@ -17,10 +17,11 @@
  */
 
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Core
+namespace Nethermind.Evm.Precompiles
 {
     public static class AddressExtensions
     {

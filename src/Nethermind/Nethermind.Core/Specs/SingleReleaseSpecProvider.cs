@@ -16,10 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core.Specs
 {
     public class SingleReleaseSpecProvider : ISpecProvider
     {
+        public Keccak PivotBlockHash { get; } = null;
         public int ChainId { get; }
         
         private readonly IReleaseSpec _releaseSpec;
@@ -42,5 +45,7 @@ namespace Nethermind.Core.Specs
         }
         
         public long? DaoBlockNumber { get; }
+
+        public long PivotBlockNumber { get; } = 0;
     }
 }

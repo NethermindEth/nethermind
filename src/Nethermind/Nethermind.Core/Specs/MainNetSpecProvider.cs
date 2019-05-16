@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core.Specs
 {
     public class MainNetSpecProvider : ISpecProvider
@@ -59,6 +61,9 @@ namespace Nethermind.Core.Specs
 
         public static long HomesteadBlockNumber { get; } = 1150000;
         public long? DaoBlockNumber { get; } = 1920000;
+
+        public long PivotBlockNumber { get; } = ConstantinopleFixBlockNumber;
+        public Keccak PivotBlockHash { get; } = KnownHashes.MainnetConstantinopleFix;
         public static long TangerineWhistleBlockNumber { get; } = 2463000;
         public static long SpuriousDragonBlockNumber { get; } = 2675000;
         public static long ByzantiumBlockNumber { get; } = 4370000;

@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core.Specs
 {
     public class RinkebySpecProvider : ISpecProvider
@@ -48,6 +50,10 @@ namespace Nethermind.Core.Specs
         }
 
         public long? DaoBlockNumber { get; } = null;
+
+        public long PivotBlockNumber { get; } = ConstantinopleFixBlockNumber;
+
+        public Keccak PivotBlockHash { get; } = KnownHashes.RinkebyConstantinopleFix;
         public static long SpuriousDragonBlockNumber { get; } = 3;
         public static long ByzantiumBlockNumber { get; } = 1035301;
         

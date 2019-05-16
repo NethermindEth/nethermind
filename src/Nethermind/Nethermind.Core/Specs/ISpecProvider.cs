@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core.Specs
 {
     public interface ISpecProvider
@@ -25,6 +27,10 @@ namespace Nethermind.Core.Specs
         IReleaseSpec GetSpec(long blockNumber);
 
         long? DaoBlockNumber { get; }
+        
+        long PivotBlockNumber { get; }
+        
+        Keccak PivotBlockHash { get; }
         
         int ChainId { get; }
     }

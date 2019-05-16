@@ -21,7 +21,6 @@ using System.Globalization;
 using System.Numerics;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
 namespace Nethermind.Core.Crypto
