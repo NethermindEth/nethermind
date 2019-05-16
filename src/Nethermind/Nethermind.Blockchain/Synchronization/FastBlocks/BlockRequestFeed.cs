@@ -19,20 +19,11 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.ComponentModel.Design;
-using System.IO.Enumeration;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Mining;
-using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
@@ -42,7 +33,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private readonly IBlockTree _blockTree;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly IBlockValidator _blockValidator;
-        private readonly ISealValidator _sealValidator;
 
         private ConcurrentDictionary<long, List<BlockSyncBatch>> _headerDependencies = new ConcurrentDictionary<long, List<BlockSyncBatch>>();
         private ConcurrentStack<BlockSyncBatch> _pendingBatches = new ConcurrentStack<BlockSyncBatch>();
@@ -51,13 +41,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private object _handlerLock = new object();
         private SyncStats _syncStats;
 
-        public BlocksRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, IBlockValidator blockValidator, ISealValidator sealValidator, ILogManager logManager)
+        public BlocksRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, IBlockValidator blockValidator, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncStats = new SyncStats(logManager);
 
             _startNumber = _blockTree.BestSuggested?.Number ?? 0;
@@ -202,16 +191,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 _totalHeadersReceived += syncBatch.HeadersSyncBatch.Response?.Count(r => r != null) ?? 0;
                 if (syncBatch.HeadersSyncBatch != null)
                 {
-                    try
-                    {
-//                        ValidateSeals(CancellationToken.None, syncBatch.HeadersSyncBatch.Response);
-//                        ValidateBatchConsistency(syncBatch.AssignedPeer.Current, syncBatch.HeadersSyncBatch.Response);
-                    }
-                    catch (Exception)
-                    {
-                        return (BlocksDataHandlerResult.BadQuality, 0);
-                    }
-
                     int added = SuggestBatch(syncBatch);
 
                     return (BlocksDataHandlerResult.OK, added);
@@ -276,6 +255,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         }
 
                         bool isValid = i == 0 ? _blockValidator.ValidateHeader(header, false) : _blockValidator.ValidateHeader(header, headersSyncBatch.Response[i - 1], false);
+//                        bool isValid = true;
                         addBlockResult = isValid ? SuggestHeader(header) : AddBlockResult.InvalidBlock;
 //                        addBlockResult = SuggestHeader(header);
                         if ((addBlockResult == AddBlockResult.InvalidBlock || addBlockResult == AddBlockResult.UnknownParent) && added == 0)
@@ -358,19 +338,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             finally
             {
                 _sentBatches.Remove(syncBatch, out _);
-            }
-        }
-
-        private void ValidateBatchConsistency(PeerInfo bestPeer, BlockHeader[] headers)
-        {
-            // Parity 1.11 non canonical blocks when testing on 27/06
-            for (int i = 0; i < headers.Length; i++)
-            {
-                if (i != 0 && headers[i] != null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
-                    throw new EthSynchronizationException("Peer sent an inconsistent block list");
-                }
             }
         }
 
