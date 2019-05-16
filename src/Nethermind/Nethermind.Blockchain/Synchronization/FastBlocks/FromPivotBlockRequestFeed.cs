@@ -50,6 +50,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public long? BestDownwardSyncNumber { get; set; }
 
+        public long? BestDownwardRequestedNumber { get; set; }
+
         private Keccak NextHash;
 
         public FromPivotBlockRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, IBlockValidator blockValidator, ILogManager logManager)
@@ -60,12 +62,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _syncStats = new SyncStats(logManager);
 
-            _startNumber = _blockTree.BestSuggested?.Number ?? 0;
             _totalHeadersReceived = 0;
             StartNewRound();
         }
 
-        private long _startNumber;
+        private long _requestsSent = 0;
+        private long _itemsSaved = 0;
         private object _empty = new object();
 
         public BlockSyncBatch PrepareRequest(int threshold)
@@ -75,16 +77,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 NextHash = PivotHash;
             }
 
-            if (BestDownwardSyncNumber == null)
-            {
-                BestDownwardSyncNumber = PivotNumber;
-            }
-
-            if (BestDownwardSyncNumber == 0L)
-            {
-                return null;
-            }
-
             BlockSyncBatch blockSyncBatch;
             if (_pendingBatches.Any())
             {
@@ -92,13 +84,19 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
             else
             {
+                if (BestDownwardSyncNumber == 0L || BestDownwardRequestedNumber == 0L)
+                {
+                    return null;
+                }
+                
                 blockSyncBatch = new BlockSyncBatch();
-                blockSyncBatch.MinNumber = BestDownwardSyncNumber;
+                blockSyncBatch.MinNumber = BestDownwardRequestedNumber ?? PivotNumber;
 
                 blockSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                blockSyncBatch.HeadersSyncBatch.StartHash = NextHash;
+                blockSyncBatch.HeadersSyncBatch.StartNumber = BestDownwardRequestedNumber - 1 ?? PivotNumber;
                 blockSyncBatch.HeadersSyncBatch.Reverse = true;
                 blockSyncBatch.HeadersSyncBatch.RequestSize = RequestSize;
+                BestDownwardRequestedNumber = Math.Max(0L, blockSyncBatch.HeadersSyncBatch.StartNumber.Value - RequestSize + 1);
             }
 
             _sentBatches[blockSyncBatch] = _empty;
@@ -141,7 +139,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     return 0;
                 }
 
-                decimal ratio = (decimal) (_startNumber - BestDownwardSyncNumber) / (_totalHeadersReceived == 0 ? 1 : _totalHeadersReceived);
+                decimal ratio = (decimal) _itemsSaved / (_requestsSent == 0 ? 1 : _requestsSent);
+                _requestsSent += syncBatch.HeadersSyncBatch.RequestSize;
+
                 if (_logger.IsDebug) _logger.Debug($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0} | {ratio:p2}");
 
                 int added = 0;
@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     if (i == 0)
                     {
                         // response does not carry expected data
-                        if (header.Hash != headersSyncBatch.StartHash)
+                        if (header.Number == BestDownwardSyncNumber && header.Hash != _blockTree.FindHeader(BestDownwardSyncNumber.Value).Hash)
                         {
                             if (syncBatch.AssignedPeer != null)
                             {
@@ -214,6 +214,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         BestDownwardSyncNumber = Math.Min(BestDownwardSyncNumber ?? PivotNumber, header.Number);
                         NextHash = header.ParentHash;
+                        if (addBlockResult == AddBlockResult.Added)
+                        {
+                            _itemsSaved++;
+                        }
                     }
 
                     added++;
@@ -233,7 +237,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     return added;
                 }
-                
+
                 if (added < syncBatch.HeadersSyncBatch.RequestSize && stackRemaining)
                 {
                     BlockSyncBatch fixedSyncBatch = new BlockSyncBatch();

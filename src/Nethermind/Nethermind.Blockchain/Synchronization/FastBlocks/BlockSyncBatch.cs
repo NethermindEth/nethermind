@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             return HeadersSyncBatch == null
                 ? $"BODIES {BodiesSyncBatch.Request.Length}"
                 : HeadersSyncBatch.StartHash == null
-                    ? $"HEADERS [{HeadersSyncBatch.StartNumber}, {HeadersSyncBatch.StartNumber + HeadersSyncBatch.RequestSize - 1}]"
+                    ? $"HEADERS [{HeadersSyncBatch.StartNumber}, {HeadersSyncBatch.StartNumber + (HeadersSyncBatch.Reverse ? -1 : 1) * (HeadersSyncBatch.RequestSize - 1)}]"
                     : $"HEADERS [{HeadersSyncBatch.StartHash} - {HeadersSyncBatch.RequestSize - 1}]";
         }
     }

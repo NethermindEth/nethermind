@@ -128,6 +128,23 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             RunFeed();
 //            Assert.AreEqual(48, _time);
 
+            AssertTreeSynced();
+        }
+        
+        [Test]
+        public void Two_peers_with_valid_chain()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+//            Assert.AreEqual(48, _time);
+
+            AssertTreeSynced();
+        }
+
+        private void AssertTreeSynced()
+        {
             Keccak nextHash = _validTree2048.Head.Hash;
             for (int i = 0; i < _validTree2048.Head.Number; i++)
             {
@@ -166,7 +183,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                         foreach (LatencySyncPeerMock syncPeer in _syncPeers)
                         {
                             if (syncPeer.BusyUntil == null
-                                && _peerTrees[syncPeer].Head.Number >= (batch.HeadersSyncBatch.StartNumber ?? 0) + batch.HeadersSyncBatch.RequestSize - 1
+                                && _peerTrees[syncPeer].Head.Number >= batch.MinNumber
                                 && (syncPeer.TotalDifficultyOnSessionStart >= (batch.MinTotalDifficulty ?? 0)))
                             {
                                 syncPeer.BusyUntil = _time + syncPeer.Latency;
