@@ -21,6 +21,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

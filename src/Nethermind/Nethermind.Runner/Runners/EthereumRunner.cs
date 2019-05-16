@@ -385,10 +385,6 @@ namespace Nethermind.Runner.Runners
             {
                 _specProvider = GoerliSpecProvider.Instance;
             }
-            else if (_chainSpec.ChainId == SturebySpecProvider.Instance.ChainId)
-            {
-                _specProvider = SturebySpecProvider.Instance;
-            }
             else
             {
                 _specProvider = new SingleReleaseSpecProvider(LatestRelease.Instance, _chainSpec.ChainId);
