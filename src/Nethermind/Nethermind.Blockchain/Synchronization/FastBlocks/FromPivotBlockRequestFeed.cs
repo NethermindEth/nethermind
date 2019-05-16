@@ -194,6 +194,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             dependentBatch.HeadersSyncBatch.RequestSize = added;
                             dependentBatch.AssignedPeer = null;
                             dependentBatch.MinNumber = syncBatch.MinNumber;
+                            dependentBatch.HeadersSyncBatch.Response = syncBatch.HeadersSyncBatch.Response.Take(added).ToArray(); // perf
                             _headerDependencies[header.Hash] = dependentBatch;
 
                             // but we cannot do anything with it yet

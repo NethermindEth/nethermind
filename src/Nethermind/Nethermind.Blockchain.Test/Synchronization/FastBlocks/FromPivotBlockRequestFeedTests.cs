@@ -180,7 +180,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             
             RunFeed();
             
-            Assert.AreEqual(6, _time);
+            Assert.AreEqual(432, _time);
 
             AssertTreeSynced(_validTree2048);
         }
