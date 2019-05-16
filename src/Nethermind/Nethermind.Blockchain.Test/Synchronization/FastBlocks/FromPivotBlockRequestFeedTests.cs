@@ -126,9 +126,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree2048);
             SetupSyncPeers(syncPeer);
             RunFeed();
-//            Assert.AreEqual(48, _time);
+            Assert.AreEqual(48, _time);
 
-            AssertTreeSynced();
+            AssertTreeSynced(_validTree2048);
         }
         
         [Test]
@@ -138,18 +138,45 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-//            Assert.AreEqual(48, _time);
+            Assert.AreEqual(25, _time);
 
-            AssertTreeSynced();
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
+        public void Two_peers_with_valid_chain_one_shorter()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree1024);
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(37, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
+        public void Short_chain()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree1024);
+            SetupSyncPeers(syncPeer1, syncPeer2);
+
+            _feed.PivotNumber = _validTree8.Head.Number;
+            _feed.PivotHash = _validTree8.Head.Hash;
+            RunFeed();
+            Assert.AreEqual(6, _time);
+
+            AssertTreeSynced(_validTree8);
         }
 
-        private void AssertTreeSynced()
+        private void AssertTreeSynced(IBlockTree tree)
         {
-            Keccak nextHash = _validTree2048.Head.Hash;
-            for (int i = 0; i < _validTree2048.Head.Number; i++)
+            Keccak nextHash = tree.Head.Hash;
+            for (int i = 0; i < tree.Head.Number; i++)
             {
                 BlockHeader header = _localBlockTree.FindHeader(nextHash);
-                Assert.NotNull(header, $"{2048 - i - 1}");
+                Assert.NotNull(header, $"{tree.Head.Number - i}");
                 nextHash = header.ParentHash;
             }
         }

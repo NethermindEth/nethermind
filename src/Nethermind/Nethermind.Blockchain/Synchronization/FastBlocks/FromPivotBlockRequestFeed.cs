@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 blockSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
                 blockSyncBatch.HeadersSyncBatch.StartNumber = BestDownwardRequestedNumber - 1 ?? PivotNumber;
                 blockSyncBatch.HeadersSyncBatch.Reverse = true;
-                blockSyncBatch.HeadersSyncBatch.RequestSize = RequestSize;
+                blockSyncBatch.HeadersSyncBatch.RequestSize = (int)Math.Min(RequestSize, blockSyncBatch.HeadersSyncBatch.StartNumber.Value + 1);
                 BestDownwardRequestedNumber = Math.Max(0L, blockSyncBatch.HeadersSyncBatch.StartNumber.Value - RequestSize + 1);
             }
 
