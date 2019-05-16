@@ -69,6 +69,13 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="header">Header to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        AddBlockResult Insert(BlockHeader header);
+        
+        /// <summary>
+        /// Suggests a block header (without body)
+        /// </summary>
+        /// <param name="header">Header to add</param>
+        /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult SuggestHeader(BlockHeader header);
         
         /// <summary>

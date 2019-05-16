@@ -17,9 +17,7 @@
  */
 
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using NSubstitute;
@@ -60,7 +58,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncConfig.FastSync = true;
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
+            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, GoerliSpecProvider.Instance, LimboLogs.Instance);
             Assert.AreEqual(SyncMode.Headers, selector.Current);
 
             (long BestRemote, long BestLocalHeader, long BestLocalFullBlock, long BestLocalState, SyncMode ExpectedState, string Description)[] states =
@@ -155,7 +153,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncProgressResolver.FindBestFullBlock().Returns(bestBlock);
             syncProgressResolver.FindBestFullState().Returns(bestLocalState);
             
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
+            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, GoerliSpecProvider.Instance, LimboLogs.Instance);
             return selector;
         }
 
@@ -169,7 +167,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncConfig.FastSync = fastSyncEnabled;
             
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
+            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, GoerliSpecProvider.Instance, LimboLogs.Instance);
             return selector;
         }
     }

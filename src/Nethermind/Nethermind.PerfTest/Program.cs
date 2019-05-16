@@ -216,6 +216,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.SuggestBlock(block, shouldProcess);
             }
 
+            public AddBlockResult Insert(BlockHeader header)
+            {
+                return _blockTree.Insert(header);
+            }
+
             public AddBlockResult SuggestHeader(BlockHeader header)
             {
                 return _blockTree.SuggestHeader(header);

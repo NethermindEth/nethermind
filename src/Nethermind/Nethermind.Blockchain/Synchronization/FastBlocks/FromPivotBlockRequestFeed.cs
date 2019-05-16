@@ -22,9 +22,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
@@ -35,16 +35,23 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly IBlockValidator _blockValidator;
 
-        private ConcurrentDictionary<long, List<BlockSyncBatch>> _headerDependencies = new ConcurrentDictionary<long, List<BlockSyncBatch>>();
+        private ConcurrentDictionary<Keccak, BlockSyncBatch> _headerDependencies = new ConcurrentDictionary<Keccak, BlockSyncBatch>();
         private ConcurrentStack<BlockSyncBatch> _pendingBatches = new ConcurrentStack<BlockSyncBatch>();
         private ConcurrentDictionary<BlockSyncBatch, object> _sentBatches = new ConcurrentDictionary<BlockSyncBatch, object>();
-        public int RequestSize { get; set; } = 256;
-        private object _handlerLock = new object();
+
+        private object _handlerLock = new object(); // probably no need for handler lock here
         private SyncStats _syncStats;
 
-        private long PivotNumber = MainNetSpecProvider.Instance.PivotBlockNumber;
-        private long BestDownwardSyncNumber = MainNetSpecProvider.Instance.PivotBlockNumber; 
-        
+        public int RequestSize { get; set; } = 256;
+
+        public long PivotNumber { get; set; } = MainNetSpecProvider.Instance.PivotBlockNumber;
+
+        public Keccak PivotHash { get; set; } = MainNetSpecProvider.Instance.PivotBlockHash;
+
+        public long? BestDownwardSyncNumber { get; set; }
+
+        private Keccak NextHash;
+
         public FromPivotBlockRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, IBlockValidator blockValidator, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -58,134 +65,44 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             StartNewRound();
         }
 
-        private UInt256 _totalDifficultyOfBestHeaderProvider = UInt256.Zero;
-        private long _bestRequestedHeader;
-        private long _bestRequestedBody;
-        private long _maxKnownNumber;
         private long _startNumber;
         private object _empty = new object();
 
         public BlockSyncBatch PrepareRequest(int threshold)
         {
-            if (_logger.IsDebug) _logger.Debug($"Preparing a request - current best suggested {_blockTree.BestSuggested?.Number ?? 0}, best requested - {_bestRequestedHeader}");
-            UInt256 maxDifficulty = _syncPeerPool.AllPeers.Max(p => p.TotalDifficulty);
-            long maxNumber = _syncPeerPool.AllPeers.Max(p => p.HeadNumber);
-            _maxKnownNumber = maxNumber;
-            if (maxDifficulty <= (_blockTree.BestSuggested?.TotalDifficulty ?? 0))
+            if (NextHash == null)
+            {
+                NextHash = PivotHash;
+            }
+
+            if (BestDownwardSyncNumber == null)
+            {
+                BestDownwardSyncNumber = PivotNumber;
+            }
+
+            if (BestDownwardSyncNumber == 0L)
             {
                 return null;
             }
 
-            if (_pendingBatches.TryPop(out BlockSyncBatch stackedBatch))
+            BlockSyncBatch blockSyncBatch;
+            if (_pendingBatches.Any())
             {
-                stackedBatch.AssignedPeer = null;
-                _sentBatches[stackedBatch] = _empty;
-                return stackedBatch;
+                _pendingBatches.TryPop(out blockSyncBatch);
+            }
+            else
+            {
+                blockSyncBatch = new BlockSyncBatch();
+                blockSyncBatch.MinNumber = BestDownwardSyncNumber;
+
+                blockSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
+                blockSyncBatch.HeadersSyncBatch.StartHash = NextHash;
+                blockSyncBatch.HeadersSyncBatch.Reverse = true;
+                blockSyncBatch.HeadersSyncBatch.RequestSize = RequestSize;
             }
 
-            maxNumber -= threshold;
-            if (maxNumber <= 0)
-            {
-                return null;
-            }
-
-            if (maxNumber <= _bestRequestedHeader
-                && _pendingBatches.Count == 0
-                && maxDifficulty <= _totalDifficultyOfBestHeaderProvider)
-            {
-                return null;
-            }
-
-            bool isReorg = maxNumber == (_blockTree.BestSuggested?.Number ?? 0) && maxDifficulty > _totalDifficultyOfBestHeaderProvider;
-            if (isReorg && _sentBatches.Count > 0)
-            {
-                return null;
-            }
-
-            if (isReorg)
-            {
-                foreach (KeyValuePair<long, List<BlockSyncBatch>> headerDependency in _headerDependencies.OrderByDescending(hd => hd.Key))
-                {
-                    BlockSyncBatch reorgBatch = new BlockSyncBatch();
-                    reorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                    reorgBatch.HeadersSyncBatch.StartNumber = Math.Max(0, headerDependency.Key - RequestSize + 2); // 2 because of the strange way we store them
-                    reorgBatch.HeadersSyncBatch.RequestSize = (int) Math.Min(headerDependency.Key + 2, RequestSize);
-                    reorgBatch.IsReorgBatch = true;
-                    reorgBatch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
-                    if (!_headerDependencies.ContainsKey(reorgBatch.HeadersSyncBatch.StartNumber.Value - 1))
-                    {
-                        reorgBatch.AssignedPeer = null;
-                        _pendingBatches.Push(reorgBatch);
-                    }
-                }
-
-                if (_pendingBatches.Count == 0)
-                {
-                    BlockSyncBatch firstReorgBatch = new BlockSyncBatch();
-                    firstReorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                    firstReorgBatch.HeadersSyncBatch.StartNumber = maxNumber;
-                    firstReorgBatch.HeadersSyncBatch.RequestSize = 1;
-                    firstReorgBatch.IsReorgBatch = true;
-                    firstReorgBatch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
-                    firstReorgBatch.AssignedPeer = null;
-                    _pendingBatches.Push(firstReorgBatch);
-                }
-            }
-
-            if (_pendingBatches.TryPop(out stackedBatch))
-            {
-                stackedBatch.AssignedPeer = null;
-                _sentBatches[stackedBatch] = _empty;
-                return stackedBatch;
-            }
-
-            if (isReorg)
-            {
-                throw new InvalidOperationException("Unexpected reorg true");
-            }
-
-            if (_bestRequestedHeader > (_blockTree.BestSuggested?.Number ?? 0) + 512 * 128)
-            {
-                foreach (KeyValuePair<long, List<BlockSyncBatch>> headerDependency in _headerDependencies.OrderBy(hd => hd.Key))
-                {
-                    BlockSyncBatch reorgBatch = new BlockSyncBatch();
-                    reorgBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                    reorgBatch.HeadersSyncBatch.StartNumber = Math.Max(0, headerDependency.Key - RequestSize + 2); // 2 because of the strange way we store them
-                    reorgBatch.HeadersSyncBatch.RequestSize = (int) Math.Min(headerDependency.Key + 2, RequestSize);
-                    reorgBatch.IsReorgBatch = true;
-                    reorgBatch.MinTotalDifficulty = _totalDifficultyOfBestHeaderProvider + 1;
-                    if (!_headerDependencies.ContainsKey(reorgBatch.HeadersSyncBatch.StartNumber.Value - 1))
-                    {
-                        reorgBatch.AssignedPeer = null;
-                        _pendingBatches.Push(reorgBatch);
-                    }
-
-                    break;
-                }
-
-                if (_pendingBatches.TryPop(out stackedBatch))
-                {
-                    stackedBatch.AssignedPeer = null;
-                    _sentBatches[stackedBatch] = _empty;
-                    return stackedBatch;
-                }
-
-                return null;
-            }
-
-            BlockSyncBatch batch = new BlockSyncBatch();
-            batch.HeadersSyncBatch = new HeadersSyncBatch();
-            batch.HeadersSyncBatch.StartNumber = _bestRequestedHeader;
-            batch.HeadersSyncBatch.RequestSize = (1 + maxNumber - batch.HeadersSyncBatch.StartNumber.Value) < RequestSize ? (int) (1 + maxNumber - batch.HeadersSyncBatch.StartNumber.Value) : RequestSize;
-            _bestRequestedHeader = Math.Max(batch.HeadersSyncBatch.EndNumber ?? 0, _bestRequestedHeader);
-
-            if (_sentBatches.Count > 0 && batch.HeadersSyncBatch.RequestSize == 1)
-            {
-                return null;
-            }
-
-            _sentBatches[batch] = _empty;
-            return batch;
+            _sentBatches[blockSyncBatch] = _empty;
+            return blockSyncBatch;
         }
 
         private int _totalHeadersReceived = 0;
@@ -198,7 +115,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 if (syncBatch.HeadersSyncBatch != null)
                 {
                     int added = SuggestBatch(syncBatch);
-
                     return (BlocksDataHandlerResult.OK, added);
                 }
 
@@ -208,8 +124,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public void StartNewRound()
         {
-            _bestRequestedHeader = _blockTree.BestSuggested?.Number ?? 0;
-
             _pendingBatches.Clear();
             _headerDependencies.Clear();
             _sentBatches.Clear();
@@ -227,118 +141,111 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     return 0;
                 }
 
-                decimal ratio = (decimal) ((_blockTree.BestSuggested?.Number ?? 0) - _startNumber) / _totalHeadersReceived;
+                decimal ratio = (decimal) (_startNumber - BestDownwardSyncNumber) / (_totalHeadersReceived == 0 ? 1 : _totalHeadersReceived);
                 if (_logger.IsDebug) _logger.Debug($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0} | {ratio:p2}");
 
-                bool stackRemaining = true;
                 int added = 0;
+                bool stackRemaining = true;
+                Keccak continuationHash = syncBatch.HeadersSyncBatch.StartHash;
+
                 for (int i = 0; i < headersSyncBatch.Response.Length && i < headersSyncBatch.RequestSize; i++)
                 {
                     BlockHeader header = headersSyncBatch.Response[i];
-                    AddBlockResult? addBlockResult = null;
-                    if (header != null)
-                    {
-                        _syncStats.ReportBlocksDownload(_blockTree.BestSuggested?.Number ?? 0, _bestRequestedHeader, _maxKnownNumber, ratio);
-
-                        if (i != 0 && header.ParentHash != headersSyncBatch.Response[i - 1].Hash)
-                        {
-                            if (syncBatch.AssignedPeer != null)
-                            {
-                                _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
-                            }
-
-                            break;
-                        }
-
-                        if (added == 0 && header.Number != headersSyncBatch.StartNumber)
-                        {
-                            if (syncBatch.AssignedPeer != null)
-                            {
-                                _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
-                            }
-
-                            break;
-                        }
-
-                        
-                        BlockHeader parent = header.Number == 0 ? null : i == 0 ? _blockTree.FindHeader(header.ParentHash) : headersSyncBatch.Response[i - 1];
-                        bool isValid = _blockValidator.ValidateHeader(header, parent, false);
-//                        bool isValid = true;
-                        addBlockResult = isValid ? SuggestHeader(header) : AddBlockResult.InvalidBlock;
-//                        addBlockResult = SuggestHeader(header);
-                        if ((addBlockResult == AddBlockResult.InvalidBlock || addBlockResult == AddBlockResult.UnknownParent) && added == 0)
-                        {
-                            BlockHeader alternative = _blockTree.FindHeader(header.Number);
-                            if (alternative?.TotalDifficulty != null && header.Difficulty > alternative.Difficulty
-                                || syncBatch.IsReorgBatch)
-                            {
-                                if (!_headerDependencies.ContainsKey(header.Number - 1))
-                                {
-                                    _headerDependencies[header.Number - 1] = new List<BlockSyncBatch>();
-                                }
-
-                                syncBatch.AssignedPeer = null;
-                                _headerDependencies[header.Number - 1].Add(syncBatch);
-                                stackRemaining = false;
-                            }
-                            else if (alternative?.TotalDifficulty != null && header.Difficulty < alternative.Difficulty)
-                            {
-                                stackRemaining = true;
-                            }
-                            else
-                            {
-                                if (!_headerDependencies.ContainsKey(header.Number - 1))
-                                {
-                                    _headerDependencies[header.Number - 1] = new List<BlockSyncBatch>();
-                                }
-
-                                syncBatch.AssignedPeer = null;
-                                _headerDependencies[header.Number - 1].Add(syncBatch);
-                                stackRemaining = false;
-                            }
-
-                            break;
-                        }
-                        
-                        if (addBlockResult == AddBlockResult.InvalidBlock)
-                        {
-                            if (syncBatch.AssignedPeer != null)
-                            {
-                                _syncPeerPool.ReportBadPeer(syncBatch.AssignedPeer);
-                            }
-
-                            break;
-                        }
-                    }
-
-                    if (addBlockResult == null || addBlockResult.Value == AddBlockResult.InvalidBlock || addBlockResult.Value == AddBlockResult.UnknownParent)
+                    if (header == null)
                     {
                         break;
                     }
 
-                    if (header.Number == _bestRequestedHeader)
+                    if (i == 0)
                     {
-                        _totalDifficultyOfBestHeaderProvider = UInt256.Max(_totalDifficultyOfBestHeaderProvider, syncBatch.AssignedPeer?.Current?.TotalDifficulty ?? 0);
+                        // response does not carry expected data
+                        if (header.Hash != headersSyncBatch.StartHash)
+                        {
+                            if (syncBatch.AssignedPeer != null)
+                            {
+                                _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
+                            }
+
+                            break;
+                        }
+
+                        // response needs to be cached until predecessors arrive
+                        if (header.Hash != NextHash)
+                        {
+                            if (_headerDependencies.ContainsKey(header.Hash))
+                            {
+                                throw new InvalidOperationException("Only one header dependency expected");
+                            }
+
+                            _headerDependencies[header.Hash] = syncBatch;
+
+                            // we do not need to request it again (it is probably a valid response)
+                            stackRemaining = false;
+
+                            // but we cannot do anything with it yet
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        if (header.Hash != headersSyncBatch.Response[i - 1].ParentHash)
+                        {
+                            if (syncBatch.AssignedPeer != null)
+                            {
+                                _syncPeerPool.ReportInvalid(syncBatch.AssignedPeer);
+                            }
+
+                            break;
+                        }
+
+                        continuationHash = header.Hash;
+                    }
+
+                    _syncStats.ReportBlocksDownload(PivotNumber - (BestDownwardSyncNumber ?? PivotNumber), PivotNumber, PivotNumber, ratio);
+
+
+                    // validate hash only
+                    bool isValid = true;
+
+                    // override unknown parent here
+                    // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                    AddBlockResult addBlockResult = isValid ? SuggestHeader(header) : AddBlockResult.InvalidBlock;
+                    if (addBlockResult == AddBlockResult.Added || addBlockResult == AddBlockResult.AlreadyKnown)
+                    {
+                        BestDownwardSyncNumber = Math.Min(BestDownwardSyncNumber ?? PivotNumber, header.Number);
+                        NextHash = header.ParentHash;
                     }
 
                     added++;
+
+                    if (addBlockResult == AddBlockResult.InvalidBlock)
+                    {
+                        if (syncBatch.AssignedPeer != null)
+                        {
+                            _syncPeerPool.ReportBadPeer(syncBatch.AssignedPeer);
+                        }
+
+                        break;
+                    }
                 }
 
+                if (BestDownwardSyncNumber == 0)
+                {
+                    return added;
+                }
+                
                 if (added < syncBatch.HeadersSyncBatch.RequestSize && stackRemaining)
                 {
-                    if (added != 0)
-                    {
-                        added--;
-                    }
-
                     BlockSyncBatch fixedSyncBatch = new BlockSyncBatch();
                     fixedSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                    fixedSyncBatch.HeadersSyncBatch.StartNumber = syncBatch.HeadersSyncBatch.StartNumber + added;
+                    fixedSyncBatch.HeadersSyncBatch.StartHash = continuationHash;
                     fixedSyncBatch.HeadersSyncBatch.RequestSize = syncBatch.HeadersSyncBatch.RequestSize - added;
+                    fixedSyncBatch.HeadersSyncBatch.Reverse = true;
                     fixedSyncBatch.AssignedPeer = null;
                     _pendingBatches.Push(fixedSyncBatch);
                 }
 
+                // if not stackRemaining then it was just held for later
                 if (added == 0 && stackRemaining)
                 {
                     if (syncBatch.AssignedPeer != null)
@@ -348,6 +255,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
                 else
                 {
+                    // if it was just held for later then let us not report any issues with it
                     added = syncBatch.HeadersSyncBatch.RequestSize;
                 }
 
@@ -366,7 +274,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 return AddBlockResult.AlreadyKnown;
             }
 
-            AddBlockResult addBlockResult = _blockTree.SuggestHeader(header);
+            AddBlockResult addBlockResult = _blockTree.Insert(header);
             if (addBlockResult == AddBlockResult.InvalidBlock)
             {
                 return addBlockResult;
@@ -377,18 +285,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 return addBlockResult;
             }
 
-            if (_headerDependencies.ContainsKey(header.Number))
+            if (_headerDependencies.ContainsKey(header.ParentHash))
             {
-                foreach (BlockSyncBatch batch in _headerDependencies[header.Number].ToArray())
+                BlockSyncBatch batch = _headerDependencies[header.ParentHash];
                 {
                     batch.AssignedPeer = null;
                     SuggestBatch(batch);
-                    _headerDependencies[header.Number].Remove(batch);
-                }
-
-                if (_headerDependencies[header.Number].Count == 0)
-                {
-                    _headerDependencies.Remove(header.Number, out _);
+                    _headerDependencies.Remove(header.ParentHash, out _);
                 }
             }
 

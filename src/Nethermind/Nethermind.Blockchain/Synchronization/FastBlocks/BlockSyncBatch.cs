@@ -29,9 +29,15 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public UInt256? MinTotalDifficulty { get; set; }
 
+        public long? MinNumber { get; set; }
+
         public override string ToString()
         {
-            return HeadersSyncBatch == null ? $"BODIES {BodiesSyncBatch.Request.Length}" : $"HEADERS [{HeadersSyncBatch.StartNumber}, {HeadersSyncBatch.StartNumber + HeadersSyncBatch.RequestSize - 1}]";
+            return HeadersSyncBatch == null
+                ? $"BODIES {BodiesSyncBatch.Request.Length}"
+                : HeadersSyncBatch.StartHash == null
+                    ? $"HEADERS [{HeadersSyncBatch.StartNumber}, {HeadersSyncBatch.StartNumber + HeadersSyncBatch.RequestSize - 1}]"
+                    : $"HEADERS [{HeadersSyncBatch.StartHash} - {HeadersSyncBatch.RequestSize - 1}]";
         }
     }
 }

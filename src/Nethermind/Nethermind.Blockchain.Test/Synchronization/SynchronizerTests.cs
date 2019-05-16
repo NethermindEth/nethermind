@@ -293,7 +293,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 Synchronizer = new Synchronizer(BlockTree,
                     TestBlockValidator.AlwaysValid,
                     TestSealValidator.AlwaysValid,
-                    SyncPeerPool, syncConfig, nodeDataDownloader, _logManager); 
+                    SyncPeerPool, syncConfig, nodeDataDownloader, GoerliSpecProvider.Instance, _logManager); 
                 
                 SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, _logManager);
                 SyncPeerPool.Start();

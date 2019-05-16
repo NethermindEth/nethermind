@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Mining;
@@ -59,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
             _pool = new EthSyncPeerPool(_blockTree, stats, quickConfig, LimboLogs.Instance);
-            _synchronizer = new Synchronizer(_blockTree, blockValidator, sealValidator, _pool, quickConfig, Substitute.For<INodeDataDownloader>(), LimboLogs.Instance);
+            _synchronizer = new Synchronizer(_blockTree, blockValidator, sealValidator, _pool, quickConfig, Substitute.For<INodeDataDownloader>(), GoerliSpecProvider.Instance, LimboLogs.Instance);
             _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, sealValidator, _pool, _synchronizer, LimboLogs.Instance);
         }
 

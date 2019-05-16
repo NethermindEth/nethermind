@@ -297,6 +297,66 @@ namespace Nethermind.Blockchain
         public long BestKnownNumber { get; private set; }
         public int ChainId => _specProvider.ChainId;
 
+        public AddBlockResult Insert(BlockHeader header)
+        {
+            #if DEBUG
+            /* this is just to make sure that we do not fall into this trap when creating tests */
+            if (header.StateRoot == null && !header.IsGenesis)
+            {
+                throw new InvalidDataException($"State root is null in {header.ToString(BlockHeader.Format.Short)}");
+            }
+#endif
+
+            if (!CanAcceptNewBlocks)
+            {
+                return AddBlockResult.CannotAccept;
+            }
+
+            if (_invalidBlocks.ContainsKey(header.Number) && _invalidBlocks[header.Number].Contains(header.Hash))
+            {
+                return AddBlockResult.InvalidBlock;
+            }
+
+            if (header.Number == 0)
+            {
+                if (BestSuggested != null)
+                {
+                    throw new InvalidOperationException("Genesis block should be added only once");
+                }
+            }
+            else if (IsKnownBlock(header.Number, header.Hash))
+            {
+                if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Block {header.Hash} already known.");
+                }
+
+                return AddBlockResult.AlreadyKnown;
+            }
+            
+            // validate hash here
+            using (MemoryStream stream = Rlp.BorrowStream())
+            {
+                Rlp.Encode(stream, header);
+                byte[] newRlp = stream.ToArray();
+                _headerDb.Set(header.Hash, newRlp);
+            }
+
+            BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
+
+            try
+            {
+                _blockInfoLock.EnterWriteLock();
+                UpdateOrCreateLevel(header.Number, blockInfo);
+            }
+            finally
+            {
+                _blockInfoLock.ExitWriteLock();
+            }
+            
+            return AddBlockResult.Added;
+        }
+        
         private AddBlockResult Suggest(Block block, BlockHeader header, bool shouldProcess = true)
         {
 #if DEBUG
