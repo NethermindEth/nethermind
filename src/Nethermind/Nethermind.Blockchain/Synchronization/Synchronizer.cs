@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly INodeDataDownloader _nodeDataDownloader;
         private readonly IBlockTree _blockTree;
         private readonly BlockDownloader _blockDownloader;
-        private readonly ParallelBlocksDownloader _parellelBlockDownloader;
+        private readonly ParallelBlocksDownloader _parallelBlockDownloader;
 
         private System.Timers.Timer _syncTimer;
         private SyncPeerAllocation _blocksSyncAllocation;
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Synchronization
             BlocksRequestFeed feed = new BlocksRequestFeed(_blockTree, _syncPeerPool, blockValidator, logManager);
             feed.RequestSize = 512;
             
-            _parellelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, feed, sealValidator, logManager);
+            _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, feed, sealValidator, logManager);
         }
 
         public SyncMode SyncMode => _syncMode.Current;
@@ -253,10 +253,10 @@ namespace Nethermind.Blockchain.Synchronization
                 switch (_syncMode.Current)
                 {
                     case SyncMode.Headers:
-                        syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
+//                        syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
 //                        syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false);
-//                        FreeBlocksSyncAllocation();
-//                        syncProgressTask = _parellelBlockDownloader.SyncHeaders(SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
+                        FreeBlocksSyncAllocation();
+                        syncProgressTask = _parallelBlockDownloader.SyncHeaders(SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                         break;
                     case SyncMode.StateNodes:
                         syncProgressTask = DownloadStateNodes(_syncLoopCancellation.Token);
