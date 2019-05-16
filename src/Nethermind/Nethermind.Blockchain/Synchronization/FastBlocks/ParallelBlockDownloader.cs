@@ -82,7 +82,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 (BlocksDataHandlerResult Result, int NodesConsumed) result = (BlocksDataHandlerResult.InvalidFormat, 0);
                 try
                 {
-                    ValidateSeals(token, batch.HeadersSyncBatch.Response);
+                    if (batch.HeadersSyncBatch?.Response != null)
+                    {
+                        ValidateSeals(token, batch.HeadersSyncBatch.Response);
+                    }
+
                     result = _blockRequestFeed.HandleResponse(batch);
                     if (result.Result == BlocksDataHandlerResult.BadQuality)
                     {
