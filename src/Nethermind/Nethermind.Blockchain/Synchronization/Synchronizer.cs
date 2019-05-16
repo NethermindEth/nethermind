@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Synchronization
             // make ctor parameter?
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
             
-            BlocksRequestFeed feed = new BlocksRequestFeed(_blockTree, _syncPeerPool, blockValidator, sealValidator, logManager);
+            BlocksRequestFeed feed = new BlocksRequestFeed(_blockTree, _syncPeerPool, blockValidator, logManager);
             feed.RequestSize = 512;
             
             _parellelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, feed, sealValidator, logManager);
