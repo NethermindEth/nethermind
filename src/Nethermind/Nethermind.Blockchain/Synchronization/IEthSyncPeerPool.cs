@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
         
-        SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description = "");
+        SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description = "", long? minNumber = null);
         
         SyncPeerAllocation Borrow(string description = "");
         

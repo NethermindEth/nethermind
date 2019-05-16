@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private async Task ExecuteRequest(CancellationToken token, BlockSyncBatch batch)
         {
-            SyncPeerAllocation nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, "fast blocks");
+            SyncPeerAllocation nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, "fast blocks", batch.MinNumber);
             try
             {
                 ISyncPeer peer = nodeSyncAllocation?.Current?.SyncPeer;

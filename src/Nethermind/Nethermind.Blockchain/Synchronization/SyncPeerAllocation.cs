@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Synchronization
 {   
     public class SyncPeerAllocation
     {
-        public int? MinBlocksAhead { get; set; }
+        public long? MinBlocksAhead { get; set; }
         
         public bool CanBeReplaced { get; set; } = true;
         

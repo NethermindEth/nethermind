@@ -79,7 +79,9 @@ namespace Nethermind.Blockchain.Synchronization
             // make ctor parameter?
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
             
-            FromGenesisBlockRequestFeed feed = new FromGenesisBlockRequestFeed(_blockTree, _syncPeerPool, blockValidator, logManager);
+            FromPivotBlockRequestFeed feed = new FromPivotBlockRequestFeed(_blockTree, _syncPeerPool, blockValidator, logManager);
+            feed.PivotNumber = _specProvider.PivotBlockNumber;
+            feed.PivotHash = _specProvider.PivotBlockHash;
             feed.RequestSize = 512;
             
             _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, feed, sealValidator, logManager);
@@ -255,11 +257,15 @@ namespace Nethermind.Blockchain.Synchronization
                 Task<long> syncProgressTask;
                 switch (_syncMode.Current)
                 {
-                    case SyncMode.Headers:
+                    case SyncMode.AncientBlocks:
 //                        syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
 //                        syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false);
                         FreeBlocksSyncAllocation();
                         syncProgressTask = _parallelBlockDownloader.SyncHeaders(SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
+                        break;
+                    case SyncMode.Headers:
+                        syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
+//                        syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false);
                         break;
                     case SyncMode.StateNodes:
                         syncProgressTask = DownloadStateNodes(_syncLoopCancellation.Token);

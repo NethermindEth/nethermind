@@ -169,6 +169,21 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             AssertTreeSynced(_validTree8);
         }
+        
+        [Test]
+        public void Shorter_responses()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            SetupSyncPeers(syncPeer1);
+
+            _incorrectByTooShortMessages.Add(syncPeer1);
+            
+            RunFeed();
+            
+            Assert.AreEqual(6, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
 
         private void AssertTreeSynced(IBlockTree tree)
         {
@@ -210,7 +225,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                         foreach (LatencySyncPeerMock syncPeer in _syncPeers)
                         {
                             if (syncPeer.BusyUntil == null
-                                && _peerTrees[syncPeer].Head.Number >= batch.MinNumber
+                                && _peerTrees[syncPeer].Head.Number >= (batch.MinNumber ?? 0)
                                 && (syncPeer.TotalDifficultyOnSessionStart >= (batch.MinTotalDifficulty ?? 0)))
                             {
                                 syncPeer.BusyUntil = _time + syncPeer.Latency;
