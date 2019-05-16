@@ -254,7 +254,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             break;
                         }
 
-                        bool isValid = i == 0 ? _blockValidator.ValidateHeader(header, false) : _blockValidator.ValidateHeader(header, headersSyncBatch.Response[i - 1], false);
+                        
+                        BlockHeader parent = header.Number == 0 ? null : i == 0 ? _blockTree.FindHeader(header.Number - 1) : headersSyncBatch.Response[i - 1];
+                        bool isValid = _blockValidator.ValidateHeader(header, parent, false);
 //                        bool isValid = true;
                         addBlockResult = isValid ? SuggestHeader(header) : AddBlockResult.InvalidBlock;
 //                        addBlockResult = SuggestHeader(header);
@@ -293,6 +295,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         }
                     }
 
+                    if (addBlockResult == AddBlockResult.InvalidBlock)
+                    {
+                        if (syncBatch.AssignedPeer != null)
+                        {
+                            _syncPeerPool.ReportBadPeer(syncBatch.AssignedPeer);
+                        }
+                    }
+                    
                     if (addBlockResult == null || addBlockResult.Value == AddBlockResult.InvalidBlock || addBlockResult.Value == AddBlockResult.UnknownParent)
                     {
                         break;
