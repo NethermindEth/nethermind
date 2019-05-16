@@ -300,7 +300,7 @@ namespace Nethermind.Blockchain.Synchronization
             cancellation.ThrowIfCancellationRequested();
 
             var headers = headersRequest.Result;
-            ValidateSeals(cancellation, headers);
+//            ValidateSeals(cancellation, headers);
             ValidateBatchConsistency(bestPeer, headers);
             return headers;
         }
