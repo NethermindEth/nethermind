@@ -293,16 +293,18 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                             break;
                         }
-                    }
-
-                    if (addBlockResult == AddBlockResult.InvalidBlock)
-                    {
-                        if (syncBatch.AssignedPeer != null)
+                        
+                        if (addBlockResult == AddBlockResult.InvalidBlock)
                         {
-                            _syncPeerPool.ReportBadPeer(syncBatch.AssignedPeer);
+                            if (syncBatch.AssignedPeer != null)
+                            {
+                                _syncPeerPool.ReportBadPeer(syncBatch.AssignedPeer);
+                            }
+
+                            break;
                         }
                     }
-                    
+
                     if (addBlockResult == null || addBlockResult.Value == AddBlockResult.InvalidBlock || addBlockResult.Value == AddBlockResult.UnknownParent)
                     {
                         break;
