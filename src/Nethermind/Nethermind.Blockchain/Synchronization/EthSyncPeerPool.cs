@@ -52,7 +52,6 @@ namespace Nethermind.Blockchain.Synchronization
         
         public void ReportInvalid(SyncPeerAllocation syncPeerAllocation)
         {
-            _logger.Warn($"INVALID {syncPeerAllocation}");
             syncPeerAllocation.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "SYNC BREACH");
         }
 
