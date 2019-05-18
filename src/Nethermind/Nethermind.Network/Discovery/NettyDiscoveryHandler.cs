@@ -22,6 +22,7 @@ using System.Net.Sockets;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -141,7 +142,13 @@ namespace Nethermind.Network.Discovery
             {
                 if ((ulong)message.ExpirationTime < _timestamp.EpochSeconds)
                 {
-                    if(_logger.IsError) _logger.Error($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
+                    if(_logger.IsTrace) _logger.Trace($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
+                    return;
+                }
+
+                if (!message.FarAddress.Equals((IPEndPoint)packet.Sender))
+                {
+                    if(_logger.IsTrace) _logger.Trace($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
                     return;
                 }
                 

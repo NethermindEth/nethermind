@@ -77,9 +77,9 @@ namespace Nethermind.Network.Discovery
             ILogManager logManager,
             IPerfService perfService)
         {
-            _logManager = logManager;
-            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager.GetClassLogger();
+            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
             _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
