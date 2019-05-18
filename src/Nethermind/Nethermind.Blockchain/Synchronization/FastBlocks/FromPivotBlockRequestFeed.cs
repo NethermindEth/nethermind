@@ -98,6 +98,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 BestDownwardRequestedNumber = blockSyncBatch.HeadersSyncBatch.StartNumber.Value;
             }
 
+            _logger.Info($"Sending request {blockSyncBatch}");
             _sentBatches[blockSyncBatch] = _empty;
             return blockSyncBatch;
         }

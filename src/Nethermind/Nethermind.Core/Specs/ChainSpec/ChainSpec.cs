@@ -35,6 +35,10 @@ namespace Nethermind.Core.Specs.ChainSpec
         public NetworkNode[] Bootnodes { get; set; }
         public Block Genesis { get; set; }
 
+        public int MaxCodeSize { get; set; }
+        
+        public int MinimumDifficulty { get; set; }
+        
         /// <summary>
         /// Not used in Nethermind
         /// </summary>

@@ -46,6 +46,7 @@ namespace Nethermind.Network.Discovery
     public class DiscoveryApp : IDiscoveryApp
     {
         private readonly INetworkConfig _networkConfig;
+        private readonly ITimestamp _timestamp;
         private readonly INodesLocator _nodesLocator;
         private readonly IDiscoveryManager _discoveryManager;
         private readonly INodeTable _nodeTable;
@@ -57,7 +58,6 @@ namespace Nethermind.Network.Discovery
         private readonly IPerfService _perfService;
 
         private Timer _discoveryTimer;
-        //private Timer _refreshTimer;
         private Timer _discoveryPersistenceTimer;
 
         private IChannel _channel;
@@ -73,18 +73,21 @@ namespace Nethermind.Network.Discovery
             ICryptoRandom cryptoRandom,
             INetworkStorage discoveryStorage,
             INetworkConfig networkConfig,
-            ILogManager logManager, IPerfService perfService)
+            ITimestamp timestamp,
+            ILogManager logManager,
+            IPerfService perfService)
         {
             _logManager = logManager;
-            _perfService = perfService;
+            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _logger = _logManager.GetClassLogger();
-            _networkConfig = networkConfig;
-            _nodesLocator = nodesLocator;
-            _discoveryManager = discoveryManager;
-            _nodeTable = nodeTable;
-            _messageSerializationService = messageSerializationService;
-            _cryptoRandom = cryptoRandom;
-            _discoveryStorage = discoveryStorage;
+            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
+            _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
+            _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+            _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
+            _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
+            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+            _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
             _discoveryStorage.StartBatch();
         }
 
@@ -168,7 +171,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeChannel(IDatagramChannel channel)
         {
-            _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService, _logManager);
+            _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService, _timestamp, _logManager);
             _discoveryManager.MessageSender = _discoveryHandler;
             _discoveryHandler.OnChannelActivated += OnChannelActivated;
             channel.Pipeline

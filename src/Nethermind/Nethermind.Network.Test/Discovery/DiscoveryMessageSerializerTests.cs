@@ -64,7 +64,7 @@ namespace Nethermind.Network.Test.Discovery
                 SourceAddress = _farAddress,
                 Version = _config.PingMessageVersion,
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long) _timestamp.EpochMilliseconds
+                ExpirationTime = 60 + (long) _timestamp.EpochMilliseconds
             };
 
             var data = _messageSerializationService.Serialize(message);
@@ -89,7 +89,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _farAddress,
                 PingMdc = new byte[] {1, 2, 3},
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long) _timestamp.EpochMilliseconds
+                ExpirationTime = 60 + (long) _timestamp.EpochMilliseconds
             };
 
             var data = _messageSerializationService.Serialize(message);
@@ -130,7 +130,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _farAddress,
                 SearchedNodeId = new byte[] {1, 2, 3},
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long) _timestamp.EpochMilliseconds
+                ExpirationTime = 60 + (long) _timestamp.EpochMilliseconds
             };
 
             var data = _messageSerializationService.Serialize(message);
@@ -156,7 +156,7 @@ namespace Nethermind.Network.Test.Discovery
                     new Node("192.168.1.4", 3)
                 },
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long) _timestamp.EpochMilliseconds
+                ExpirationTime = 60 + (long) _timestamp.EpochMilliseconds
             };
 
             var data = _messageSerializationService.Serialize(message);

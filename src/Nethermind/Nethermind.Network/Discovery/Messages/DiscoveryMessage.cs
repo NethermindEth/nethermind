@@ -23,11 +23,13 @@ namespace Nethermind.Network.Discovery.Messages
 {
     public abstract class DiscoveryMessage : MessageBase
     {
-        //public byte[] Payload { get; set; } = Bytes.Empty;
-        //public Signature Signature { get; set; }
         public IPEndPoint FarAddress { get; set; }
+        
         public PublicKey FarPublicKey { get; set; }
-        //time in seconds x seconds from now
+        
+        /// <summary>
+        /// Message expiry time as Unix epoch seconds
+        /// </summary>
         public long ExpirationTime { get; set; }     
 
         public override string ToString()

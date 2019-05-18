@@ -107,12 +107,7 @@ namespace Nethermind.Core.Specs
         /// Byzantium Embedding transaction return data in receipts
         /// </summary>
         bool IsEip658Enabled { get; }
-        
-        /// <summary>
-        /// Not Used (Blockhash refactoring)
-        /// </summary>
-        bool IsEip210Enabled { get; }
-        
+
         /// <summary>
         /// Constantinople SHL, SHR, SAR instructions
         /// </summary>

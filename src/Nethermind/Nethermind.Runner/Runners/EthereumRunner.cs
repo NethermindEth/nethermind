@@ -332,7 +332,7 @@ namespace Nethermind.Runner.Runners
 
             if (_logger.IsInfo) _logger.Info("Stopping synchronizer...");
             var synchronizerTask = (_synchronizer?.StopAsync() ?? Task.CompletedTask)
-            .ContinueWith(t => _synchronizer?.Dispose());
+                .ContinueWith(t => _synchronizer?.Dispose());
 
             if (_logger.IsInfo) _logger.Info("Stopping sync peer pool...");
             var peerPoolTask = _syncPeerPool?.StopAsync() ?? Task.CompletedTask;
@@ -570,6 +570,7 @@ namespace Nethermind.Runner.Runners
                             _blockTree, _timestamp, _cryptoRandom, producerChain.StateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
                         break;
                     }
+
                     case SealEngineType.NethDev:
                     {
                         if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
@@ -577,6 +578,7 @@ namespace Nethermind.Runner.Runners
                             _timestamp, _logManager);
                         break;
                     }
+
                     default:
                         throw new NotSupportedException($"Mining in {_chainSpec.SealEngineType} mode is not supported");
                 }
@@ -631,7 +633,7 @@ namespace Nethermind.Runner.Runners
             IReceiptStorage receiptStorage,
             ISealValidator sealValidator,
             TxValidator txValidator)
-        {   
+        {
             ISyncConfig syncConfig = _configProvider.GetConfig<ISyncConfig>();
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
@@ -813,7 +815,7 @@ namespace Nethermind.Runner.Runners
             networkConfig.MasterPort = _initConfig.DiscoveryPort;
 
             var privateKeyProvider = new SameKeyGenerator(_nodeKey);
-            var discoveryMessageFactory = new DiscoveryMessageFactory(networkConfig, _timestamp);
+            var discoveryMessageFactory = new DiscoveryMessageFactory(_timestamp);
             var nodeIdResolver = new NodeIdResolver(_ecdsa);
 
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
@@ -872,6 +874,7 @@ namespace Nethermind.Runner.Runners
                 _cryptoRandom,
                 discoveryStorage,
                 networkConfig,
+                _timestamp,
                 _logManager, _perfService);
 
             _discoveryApp.Initialize(_nodeKey.PublicKey);

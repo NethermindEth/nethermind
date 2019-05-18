@@ -51,11 +51,11 @@ namespace Nethermind.Network.Discovery.Serializers
 
             context.ReadSequenceLength();
             var searchedNodeId = context.DecodeByteArray();
-            var expireTime = context.DecodeLong();
+            var expirationTime = context.DecodeLong();
 
             var message = results.Message;
             message.SearchedNodeId = searchedNodeId;
-            message.ExpirationTime = expireTime;
+            message.ExpirationTime = expirationTime;
 
             return message;
         }

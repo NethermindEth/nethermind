@@ -22,6 +22,7 @@ using System.Net.Sockets;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
@@ -34,13 +35,15 @@ namespace Nethermind.Network.Discovery
         private readonly IDiscoveryManager _discoveryManager;
         private readonly IDatagramChannel _channel;
         private readonly IMessageSerializationService _messageSerializationService;
+        private readonly ITimestamp _timestamp;
 
-        public NettyDiscoveryHandler(IDiscoveryManager discoveryManager, IDatagramChannel channel, IMessageSerializationService messageSerializationService, ILogManager logManager)
+        public NettyDiscoveryHandler(IDiscoveryManager discoveryManager, IDatagramChannel channel, IMessageSerializationService messageSerializationService, ITimestamp timestamp, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
+            _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
         }
 
         public override void ChannelActive(IChannelHandlerContext context)
@@ -136,6 +139,12 @@ namespace Nethermind.Network.Discovery
 
             try
             {
+                if ((ulong)message.ExpirationTime < _timestamp.EpochSeconds)
+                {
+                    if(_logger.IsError) _logger.Error($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
+                    return;
+                }
+                
                 _discoveryManager.OnIncomingMessage(message);
             }
             catch (Exception e)
