@@ -32,8 +32,8 @@ namespace Nethermind.Network.Discovery.Serializers
         private readonly PrivateKey _privateKey;
         private readonly IEcdsa _ecdsa;
 
-        protected readonly IDiscoveryMessageFactory MessageFactory;
-        protected readonly INodeIdResolver NodeIdResolver;
+        private readonly IDiscoveryMessageFactory _messageFactory;
+        private readonly INodeIdResolver _nodeIdResolver;
 
         protected DiscoveryMessageSerializerBase(
             IEcdsa ecdsa,
@@ -43,8 +43,8 @@ namespace Nethermind.Network.Discovery.Serializers
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _privateKey = privateKeyGenerator.Generate() ?? throw new ArgumentNullException(nameof(_privateKey));
-            MessageFactory = messageFactory ?? throw new ArgumentNullException(nameof(messageFactory));
-            NodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
+            _messageFactory = messageFactory ?? throw new ArgumentNullException(nameof(messageFactory));
+            _nodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
         }
 
         protected byte[] Serialize(byte[] type, byte[] data)
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Discovery.Serializers
 
             var mdc = msg.Slice(0, 32);
             var signature = msg.Slice(32, 65);
-            var type = new[] { msg[97] };
+            // var type = new[] { msg[97] };
             var data = msg.Slice(98, msg.Length - 98);
             var computedMdc = Keccak.Compute(msg.Slice(32)).Bytes;
 
@@ -75,8 +75,8 @@ namespace Nethermind.Network.Discovery.Serializers
                 throw new NetworkingException("Invalid MDC", NetworkExceptionType.Validation);
             }
 
-            var nodeId = NodeIdResolver.GetNodeId(signature.Slice(0, 64), signature[64], type, data);
-            var message = MessageFactory.CreateIncomingMessage<T>(nodeId);
+            var nodeId = _nodeIdResolver.GetNodeId(signature.Slice(0, 64), signature[64], msg.Slice(97, msg.Length - 97));
+            var message = _messageFactory.CreateIncomingMessage<T>(nodeId);
             return (message, mdc, data);
         }
 
@@ -103,7 +103,7 @@ namespace Nethermind.Network.Discovery.Serializers
             );
         }
 
-        protected IPEndPoint GetAddress(byte[] ip, int port)
+        protected static IPEndPoint GetAddress(byte[] ip, int port)
         {
             IPAddress ipAddress;
             try

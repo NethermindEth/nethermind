@@ -143,15 +143,24 @@ namespace Nethermind.Network.Discovery
                 if ((ulong)message.ExpirationTime < _timestamp.EpochSeconds)
                 {
                     if(_logger.IsTrace) _logger.Trace($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
+                    ctx.DisconnectAsync();
                     return;
                 }
 
                 if (!message.FarAddress.Equals((IPEndPoint)packet.Sender))
                 {
                     if(_logger.IsTrace) _logger.Trace($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                    ctx.DisconnectAsync();
                     return;
                 }
                 
+                if (message.FarPublicKey == null)
+                {
+                    if(_logger.IsError) _logger.Error($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                    ctx.DisconnectAsync();
+                    return;
+                }
+
                 _discoveryManager.OnIncomingMessage(message);
             }
             catch (Exception e)

@@ -16,12 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Messages
 {
     public interface INodeIdResolver
     {
-        PublicKey GetNodeId(byte[] signature, int recoveryId, byte[] messageType, byte[] data);
+        PublicKey GetNodeId(byte[] signature, int recoveryId, Span<byte> typeAndData);
     }
 }
