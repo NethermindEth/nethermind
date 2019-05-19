@@ -22,21 +22,21 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Core.Json
 {
-    public class NullableUInt256Converter : JsonConverter<UInt256?>
+    public class NullableLongConverter : JsonConverter<long?>
     {
-        private UInt256Converter _uInt256Converter;
+        private LongConverter _longConverter;
         
-        public NullableUInt256Converter()
+        public NullableLongConverter()
             : this(NumberConversion.Hex)
         {
         }
 
-        public NullableUInt256Converter(NumberConversion conversion)
+        public NullableLongConverter(NumberConversion conversion)
         {
-            _uInt256Converter = new UInt256Converter(conversion);
+            _longConverter = new LongConverter(conversion);
         }
 
-        public override void WriteJson(JsonWriter writer, UInt256? value, Newtonsoft.Json.JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, long? value, Newtonsoft.Json.JsonSerializer serializer)
         {
             if (!value.HasValue)
             {
@@ -44,17 +44,17 @@ namespace Nethermind.Core.Json
                 return;
             }
             
-            _uInt256Converter.WriteJson(writer, value.Value, serializer);
+            _longConverter.WriteJson(writer, value.Value, serializer);
         }
 
-        public override UInt256? ReadJson(JsonReader reader, Type objectType, UInt256? existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        public override long? ReadJson(JsonReader reader, Type objectType, long? existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
         {
             if (reader.TokenType == JsonToken.Null)
             {
                 return null;
             }
             
-            return _uInt256Converter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
+            return _longConverter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
         }
     }
 }

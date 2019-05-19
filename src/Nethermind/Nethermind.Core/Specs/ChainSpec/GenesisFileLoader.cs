@@ -71,9 +71,10 @@ namespace Nethermind.Core.Specs.ChainSpec
             if (genesisJson.Config.Clique != null)
             {
                 chainSpec.SealEngineType = SealEngineType.Clique;
-                chainSpec.CliquePeriod = genesisJson.Config.Clique.Period;
-                chainSpec.CliqueEpoch = genesisJson.Config.Clique.Epoch;
-                chainSpec.CliqueReward = 0;
+                chainSpec.Clique = new ChainSpec.CliqueParameters();
+                chainSpec.Clique.Period = genesisJson.Config.Clique.Period;
+                chainSpec.Clique.Epoch = genesisJson.Config.Clique.Epoch;
+                chainSpec.Clique.Reward = 0;
             }
             else
             {

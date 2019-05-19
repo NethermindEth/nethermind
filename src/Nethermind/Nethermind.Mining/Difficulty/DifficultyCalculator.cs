@@ -34,7 +34,9 @@ namespace Nethermind.Mining.Difficulty
         }
 
         private const long OfGenesisBlock = 131_072;
-
+        
+        [Todo(Improve.MissingFunctionality, "Use ChainSpec file for DifficultyBoundDivisor")]
+        [Todo(Improve.MissingFunctionality, "Use ChainSpec file for DifficultyBoundDivisor")]
         public UInt256 Calculate(
             UInt256 parentDifficulty,
             UInt256 parentTimestamp,
@@ -53,7 +55,7 @@ namespace Nethermind.Mining.Difficulty
                 timeBomb);
         }
 
-        protected internal virtual BigInteger TimeAdjustment(
+        private BigInteger TimeAdjustment(
             IReleaseSpec spec,
             BigInteger parentTimestamp,
             BigInteger currentTimestamp,
@@ -77,6 +79,7 @@ namespace Nethermind.Mining.Difficulty
             return currentTimestamp < parentTimestamp + 7 ? BigInteger.One : BigInteger.MinusOne;
         }
 
+        [Todo(Improve.MissingFunctionality, "Use ChainSpec file for DifficultyBombDelays")]
         private BigInteger TimeBomb(IReleaseSpec spec, long blockNumber)
         {   
             if (spec.IsEip1234Enabled)

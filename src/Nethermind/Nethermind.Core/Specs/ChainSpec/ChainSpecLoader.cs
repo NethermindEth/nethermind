@@ -68,14 +68,14 @@ namespace Nethermind.Core.Specs.ChainSpec
         {
             if (chainSpecJson.Engine?.Ethash != null)
             {
-                chainSpec.HomesteadBlockNumber = (UInt256?) chainSpecJson.Engine.Ethash.HomesteadTransition;
-                chainSpec.DaoForkBlockNumber = (UInt256?) chainSpecJson.Engine.Ethash.DaoHardForkTransition;
+                chainSpec.HomesteadBlockNumber = chainSpecJson.Engine.Ethash.HomesteadTransition;
+                chainSpec.DaoForkBlockNumber = chainSpecJson.Engine.Ethash.DaoHardForkTransition;
             }
             
-            chainSpec.TangerineWhistleBlockNumber = (UInt256?) chainSpecJson.Params.Eip150Transition;
-            chainSpec.SpuriousDragonBlockNumber = (UInt256?) chainSpecJson.Params.Eip160Transition;
-            chainSpec.ByzantiumBlockNumber = (UInt256?) chainSpecJson.Params.Eip140Transition;
-            chainSpec.ConstantinopleBlockNumber = (UInt256?) chainSpecJson.Params.Eip145Transition;
+            chainSpec.TangerineWhistleBlockNumber = chainSpecJson.Params.Eip150Transition;
+            chainSpec.SpuriousDragonBlockNumber = chainSpecJson.Params.Eip160Transition;
+            chainSpec.ByzantiumBlockNumber = chainSpecJson.Params.Eip140Transition;
+            chainSpec.ConstantinopleBlockNumber = chainSpecJson.Params.Eip145Transition;
         }
 
         private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
@@ -87,13 +87,35 @@ namespace Nethermind.Core.Specs.ChainSpec
             else if (chainSpecJson.Engine?.Clique != null)
             {
                 chainSpec.SealEngineType = SealEngineType.Clique;
-                chainSpec.CliqueEpoch = chainSpecJson.Engine.Clique.Epoch;
-                chainSpec.CliquePeriod = chainSpecJson.Engine.Clique.Period;
-                chainSpec.CliqueReward = chainSpecJson.Engine.Clique.BlockReward ?? UInt256.Zero;
+                chainSpec.Clique = new ChainSpec.CliqueParameters();
+                chainSpec.Clique.Epoch = chainSpecJson.Engine.Clique.Epoch;
+                chainSpec.Clique.Period = chainSpecJson.Engine.Clique.Period;
+                chainSpec.Clique.Reward = chainSpecJson.Engine.Clique.BlockReward ?? UInt256.Zero;
             }
             else if (chainSpecJson.Engine?.Ethash != null)
             {
                 chainSpec.SealEngineType = SealEngineType.Ethash;
+                chainSpec.Ethash = new ChainSpec.EthashParameters();
+                chainSpec.Ethash.MinimumDifficulty = chainSpecJson.Engine.Ethash.MinimumDifficulty ?? UInt256.Zero;
+                chainSpec.Ethash.DifficultyBoundDivisor = chainSpecJson.Engine.Ethash.DifficultyBoundDivisor ?? UInt256.One;
+                chainSpec.Ethash.DurationLimit = chainSpecJson.Engine.Ethash.DurationLimit ?? 13L;
+                chainSpec.Ethash.HomesteadTransition = chainSpecJson.Engine.Ethash.HomesteadTransition ?? 0;
+                chainSpec.Ethash.DaoHardforkTransition = chainSpecJson.Engine.Ethash.DaoHardforkTransition;
+                chainSpec.Ethash.DaoHardforkBeneficiary = chainSpecJson.Engine.Ethash.DaoHardforkBeneficiary;
+                chainSpec.Ethash.DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? new Address[0];
+                chainSpec.Ethash.Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L;
+                
+                chainSpec.Ethash.BlockRewards = new Dictionary<long, UInt256>();
+                foreach (KeyValuePair<long,UInt256> reward in chainSpecJson.Engine.Ethash.BlockReward)
+                {
+                    chainSpec.Ethash.BlockRewards.Add(reward.Key, reward.Value);
+                }
+                
+                chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
+                foreach (KeyValuePair<long,long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
+                {
+                    chainSpec.Ethash.DifficultyBombDelays.Add(reward.Key, reward.Value);
+                }
             }
             else if (chainSpecJson.Engine?.NethDev != null)
             {

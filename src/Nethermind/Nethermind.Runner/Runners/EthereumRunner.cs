@@ -438,8 +438,8 @@ namespace Nethermind.Runner.Runners
                 case SealEngineType.Clique:
                     _rewardCalculator = NoBlockRewards.Instance;
                     cliqueConfig = new CliqueConfig();
-                    cliqueConfig.BlockPeriod = _chainSpec.CliquePeriod;
-                    cliqueConfig.Epoch = _chainSpec.CliqueEpoch;
+                    cliqueConfig.BlockPeriod = _chainSpec.Clique.Period;
+                    cliqueConfig.Epoch = _chainSpec.Clique.Epoch;
                     _snapshotManager = new SnapshotManager(cliqueConfig, _dbProvider.BlocksDb, _blockTree, _ethereumEcdsa, _logManager);
                     _sealValidator = new CliqueSealValidator(cliqueConfig, _snapshotManager, _logManager);
                     _recoveryStep = new CompositeDataRecoveryStep(_recoveryStep, new AuthorRecoveryStep(_snapshotManager));

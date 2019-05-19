@@ -60,9 +60,9 @@ namespace Nethermind.Core.Test.Specs
                 "account 20b2e4bb8688a44729780d15dc64adb42f9f5a0a");
             
             Assert.AreEqual(SealEngineType.Clique, chainSpec.SealEngineType, "engine");
-            Assert.AreEqual(15UL, chainSpec.CliquePeriod, "Clique.period");
-            Assert.AreEqual(30000UL, chainSpec.CliqueEpoch, "Clique.epoch");
-            Assert.AreEqual((UInt256?)UInt256.Zero, chainSpec.CliqueReward, "Clique.reward");
+            Assert.AreEqual(15UL, chainSpec.Clique.Period, "Clique.period");
+            Assert.AreEqual(30000UL, chainSpec.Clique.Epoch, "Clique.epoch");
+            Assert.AreEqual((UInt256?)UInt256.Zero, chainSpec.Clique.Reward, "Clique.reward");
             
             Assert.AreEqual((UInt256?)1, chainSpec.HomesteadBlockNumber, "homestead no");
             Assert.AreEqual((UInt256?)2, chainSpec.TangerineWhistleBlockNumber, "tw no");

@@ -16,17 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
-using System.Numerics;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpec
 {
     /// <summary>
-    /// TODO: ChainSpec files (.json) were copied from Parity repository (https://github.com/paritytech/parity), need to review 
+    /// https://github.com/ethereum/wiki/wiki/Ethereum-Chain-Spec-Format
+    /// https://wiki.parity.io/Chain-specification 
     /// </summary>
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
@@ -35,10 +33,48 @@ namespace Nethermind.Core.Specs.ChainSpec
         public NetworkNode[] Bootnodes { get; set; }
         public Block Genesis { get; set; }
 
-        public int MaxCodeSize { get; set; }
+        public class EthashParameters
+        {
+            public UInt256 MinimumDifficulty { get; set; }
         
-        public int MinimumDifficulty { get; set; }
+            public UInt256 DifficultyBoundDivisor { get; set; }
+            
+            public long DurationLimit { get; set; }
+            
+            public long HomesteadTransition { get; set; }
+            
+            public long? DaoHardforkTransition { get; set; }
+            
+            /// <summary>
+            /// This is stored in the Nethermind.Blockchain.DaoData class instead.
+            /// </summary>
+            public Address DaoHardforkBeneficiary { get; set; }
+            
+            /// <summary>
+            /// This is stored in the Nethermind.Blockchain.DaoData class instead.
+            /// </summary>
+            public Address[] DaoHardforkAccounts { get; set; }
+            
+            public long Eip100bTransition { get; set; }
+
+            public Dictionary<long, UInt256> BlockRewards { get; set; }
+            
+            public Dictionary<long, long> DifficultyBombDelays { get; set; }
+        }
+
+        public class CliqueParameters
+        {
+            public ulong Epoch { get; set; }
         
+            public ulong Period { get; set; }
+        
+            public UInt256? Reward { get; set; }
+        }
+
+        public CliqueParameters Clique { get; set; }
+        
+        public EthashParameters Ethash { get; set; }
+
         /// <summary>
         /// Not used in Nethermind
         /// </summary>
@@ -46,23 +82,19 @@ namespace Nethermind.Core.Specs.ChainSpec
 
         public SealEngineType SealEngineType { get; set; }
 
-        public ulong CliqueEpoch { get; set; }
+        public long? DaoForkBlockNumber { get; set; }
         
-        public ulong CliquePeriod { get; set; }
+        public long? HomesteadBlockNumber { get; set; }
         
-        public UInt256? CliqueReward { get; set; }
+        public long? TangerineWhistleBlockNumber { get; set; }
+        
+        public long? SpuriousDragonBlockNumber { get; set; }
+        
+        public long? ByzantiumBlockNumber { get; set; }
+        
+        public long? ConstantinopleBlockNumber { get; set; }
 
-        public UInt256? DaoForkBlockNumber { get; set; }
-        
-        public UInt256? HomesteadBlockNumber { get; set; }
-        
-        public UInt256? TangerineWhistleBlockNumber { get; set; }
-        
-        public UInt256? SpuriousDragonBlockNumber { get; set; }
-        
-        public UInt256? ByzantiumBlockNumber { get; set; }
-        
-        public UInt256? ConstantinopleBlockNumber { get; set; }
+        public UInt256 MaxCodeSize { get; set; }
         
         public string Name { get; set; }
 

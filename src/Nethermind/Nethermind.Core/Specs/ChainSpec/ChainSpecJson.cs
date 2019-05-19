@@ -17,11 +17,15 @@
  */
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpec
 {
+    [SuppressMessage("ReSharper", "ClassNeverInstantiated.Global")]
+    [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
+    [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
     internal class ChainSpecJson
     {
         public string Name { get; set; }
@@ -34,15 +38,32 @@ namespace Nethermind.Core.Specs.ChainSpec
         
         internal class EthashEngineJson
         {
-            public UInt256? HomesteadTransition => Params?.HomesteadTransition;
-            public UInt256? DaoHardForkTransition => Params?.DaoHardForkTransition;
+            public long? HomesteadTransition => Params?.HomesteadTransition;
+            public long? DaoHardforkTransition => Params?.DaoHardforkTransition;
+            public Address DaoHardforkBeneficiary => Params?.DaoHardforkBeneficiary;
+            public Address[] DaoHardforkAccounts => Params?.DaoHardforkAccounts;
+            public long? DaoHardForkTransition => Params?.DaoHardforkTransition;
+            public long? Eip100bTransition => Params?.Eip100bTransition;
+            public UInt256? DifficultyBoundDivisor => Params?.DifficultyBoundDivisor;
+            public long? DurationLimit => Params?.DurationLimit;
+            public UInt256? MinimumDifficulty => Params?.MinimumDifficulty;
+            public Dictionary<long, UInt256> BlockReward => Params?.BlockReward;
+            public Dictionary<long, long> DifficultyBombDelays => Params?.DifficultyBombDelays;
             public EthashEngineParamsJson Params { get; set; }
         }
         
         internal class EthashEngineParamsJson
         {
-            public UInt256? HomesteadTransition { get; set; }
-            public UInt256? DaoHardForkTransition { get; set; }
+            public UInt256? MinimumDifficulty { get; set; }
+            public UInt256? DifficultyBoundDivisor { get; set; }
+            public long? DurationLimit { get; set; }
+            public long HomesteadTransition { get; set; }
+            public long? DaoHardforkTransition { get; set; }
+            public Address DaoHardforkBeneficiary { get; set; }
+            public Address[] DaoHardforkAccounts { get; set; }
+            public long Eip100bTransition { get; set; }
+            public Dictionary<long, UInt256> BlockReward { get; set; }
+            public Dictionary<long, long> DifficultyBombDelays { get; set; }
         }
     
         internal class CliqueEngineJson
@@ -50,7 +71,6 @@ namespace Nethermind.Core.Specs.ChainSpec
             public ulong Period => Params.Period;
             public ulong Epoch => Params.Epoch;
             public UInt256? BlockReward => Params.BlockReward;
-            
             public CliqueEngineParamsJson Params { get; set; }
         }
         
@@ -73,11 +93,8 @@ namespace Nethermind.Core.Specs.ChainSpec
         internal class EngineJson
         {
             public EthashEngineJson Ethash { get; set; }
-        
             public CliqueEngineJson Clique { get; set; }
-            
             public AuraEngineJson AuthorityRound { get; set; }
-            
             public NethDevJson NethDev { get; set; }
         }
     }
