@@ -41,7 +41,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         {
             SortedSet<long> transitionBlocks = new SortedSet<long>();
             transitionBlocks.Add(0L);
-            
+
             if (_chainSpec.Ethash != null)
             {
                 foreach ((long BlockNumber, _) in _chainSpec.Ethash.BlockRewards)
@@ -50,19 +50,27 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 }
             }
 
-            var transitionProperties = _chainSpec.Parameters.GetType()
+
+            var baseTransitions = _chainSpec.Parameters.GetType()
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
                 .Where(p => p.Name.Contains("Transition"));
 
+            var ethashTransitions = _chainSpec.Ethash?.GetType()
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.Name.Contains("Transition")) ?? Enumerable.Empty<PropertyInfo>();
+
+            var transitionProperties =
+                baseTransitions.Union(ethashTransitions);
+
             foreach (PropertyInfo propertyInfo in transitionProperties)
             {
-                if(propertyInfo.PropertyType == typeof(long))
+                if (propertyInfo.PropertyType == typeof(long))
                 {
-                    transitionBlocks.Add((long)propertyInfo.GetValue(_chainSpec.Parameters));
+                    transitionBlocks.Add((long) propertyInfo.GetValue(_chainSpec.Parameters));
                 }
                 else if (propertyInfo.PropertyType == typeof(long?))
                 {
-                    var optionalTransition = (long?)propertyInfo.GetValue(_chainSpec.Parameters);
+                    var optionalTransition = (long?) propertyInfo.GetValue(_chainSpec.Parameters);
                     if (optionalTransition != null)
                     {
                         transitionBlocks.Add(optionalTransition.Value);
@@ -71,7 +79,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             }
 
             _transitions = new (long BlockNumber, IReleaseSpec Release)[transitionBlocks.Count];
-            
+
             int index = 0;
             foreach (long releaseStartBlock in transitionBlocks)
             {
@@ -90,7 +98,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             {
                 return null;
             }
-            
+
             IReleaseSpec spec = _transitions[0].Release;
             for (int i = 1; i < _transitions.Length; i++)
             {
