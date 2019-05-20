@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpec
@@ -29,75 +30,65 @@ namespace Nethermind.Core.Specs.ChainSpec
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
     {
-        public Dictionary<Address, UInt256> Allocations { get; set; }
-        public NetworkNode[] Bootnodes { get; set; }
-        public Block Genesis { get; set; }
-
-        public class EthashParameters
-        {
-            public UInt256 MinimumDifficulty { get; set; }
+        public string Name { get; set; }
         
-            public UInt256 DifficultyBoundDivisor { get; set; }
-            
-            public long DurationLimit { get; set; }
-            
-            public long HomesteadTransition { get; set; }
-            
-            public long? DaoHardforkTransition { get; set; }
-            
-            /// <summary>
-            /// This is stored in the Nethermind.Blockchain.DaoData class instead.
-            /// </summary>
-            public Address DaoHardforkBeneficiary { get; set; }
-            
-            /// <summary>
-            /// This is stored in the Nethermind.Blockchain.DaoData class instead.
-            /// </summary>
-            public Address[] DaoHardforkAccounts { get; set; }
-            
-            public long Eip100bTransition { get; set; }
-
-            public Dictionary<long, UInt256> BlockRewards { get; set; }
-            
-            public Dictionary<long, long> DifficultyBombDelays { get; set; }
-        }
-
-        public class CliqueParameters
-        {
-            public ulong Epoch { get; set; }
-        
-            public ulong Period { get; set; }
-        
-            public UInt256? Reward { get; set; }
-        }
-
-        public CliqueParameters Clique { get; set; }
-        
-        public EthashParameters Ethash { get; set; }
-
         /// <summary>
         /// Not used in Nethermind
         /// </summary>
         public string DataDir { get; set; }
+        
+        public int ChainId { get; set; }
 
+        public NetworkNode[] Bootnodes { get; set; }
+        
+        public Block Genesis { get; set; }
+        
         public SealEngineType SealEngineType { get; set; }
+        
+        public CliqueParameters Clique { get; set; }
+        
+        public EthashParameters Ethash { get; set; }
+        
+        public ChainParameters Parameters { get; set; }
+
+        public Dictionary<Address, UInt256> Allocations { get; set; }
 
         public long? DaoForkBlockNumber { get; set; }
-        
+
         public long? HomesteadBlockNumber { get; set; }
-        
+
         public long? TangerineWhistleBlockNumber { get; set; }
-        
+
         public long? SpuriousDragonBlockNumber { get; set; }
-        
+
         public long? ByzantiumBlockNumber { get; set; }
-        
+
         public long? ConstantinopleBlockNumber { get; set; }
+    }
 
-        public UInt256 MaxCodeSize { get; set; }
-        
-        public string Name { get; set; }
-
-        public int ChainId { get; set; }
+    public class ChainParameters
+    {
+        public long MaxCodeSize { get; set; }
+        public long MaxCodeSizeTransition { get; set; }
+        public long GasLimitBoundDivisor { get; set; }
+        public Address Registrar { get; set; }
+        public UInt256 AccountStartNonce { get; set; }
+        public long MaximumExtraDataSize { get; set; }
+        public long MinGasLimit { get; set; }
+        public Keccak ForkCanonHash { get; set; }
+        public long? ForkBlock { get; set; }
+        public long? Eip150Transition { get; set; }
+        public long? Eip160Transition { get; set; }
+        public long? Eip161abcTransition { get; set; }
+        public long? Eip161dTransition { get; set; }
+        public long? Eip155Transition { get; set; }
+        public long? Eip140Transition { get; set; }
+        public long? Eip211Transition { get; set; }
+        public long? Eip214Transition { get; set; }
+        public long? Eip658Transition { get; set; }
+        public long? Eip145Transition { get; set; }
+        public long? Eip1014Transition { get; set; }
+        public long? Eip1052Transition { get; set; }
+        public long? Eip1283Transition { get; set; }
     }
 }

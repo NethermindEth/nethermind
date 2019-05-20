@@ -23,6 +23,9 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface IReleaseSpec
     {
+        /// <summary>
+        /// In chainspec as duration
+        /// </summary>
         bool IsTimeAdjustmentPostOlympic { get; }
 
         /// <summary>
@@ -30,16 +33,22 @@ namespace Nethermind.Core.Specs
         /// Failing init does not create an empty code contract
         /// Difficulty adjustment changed
         /// Transaction signature uniqueness (s-value has to be less or equal than than secp256k1n/2)
+        /// ---
+        /// in chainspec as homestead transition
         /// </summary>
         bool IsEip2Enabled { get; }
 
         /// <summary>
         /// Homestead DELEGATECALL instruction added
+        /// ---
+        /// in chainspec as homestead transition
         /// </summary>
         bool IsEip7Enabled { get; }
 
         /// <summary>
         /// Byzantium Change difficulty adjustment to target mean block time including uncles
+        /// ---
+        /// in chainspec in the ethash
         /// </summary>
         bool IsEip100Enabled { get; }
 
@@ -60,6 +69,8 @@ namespace Nethermind.Core.Specs
 
         /// <summary>
         /// Spurious Dragon State clearing
+        /// ---
+        /// also known as EIP-161
         /// </summary>
         bool IsEip158Enabled { get; }
 
@@ -70,21 +81,28 @@ namespace Nethermind.Core.Specs
 
         /// <summary>
         /// Spurious Dragon Code size limit
+        /// also known as MaxCodeSize
         /// </summary>
         bool IsEip170Enabled { get; }
 
         /// <summary>
         /// Byzantium Precompiled contracts for addition and scalar multiplication on the elliptic curve alt_bn128
+        /// ---
+        /// in chainspec on the list of built-in accounts
         /// </summary>
         bool IsEip196Enabled { get; }
 
         /// <summary>
         /// Byzantium Precompiled contracts for optimal ate pairing check on the elliptic curve alt_bn128
+        /// ---
+        /// in chainspec on the list of built-in accounts
         /// </summary>
         bool IsEip197Enabled { get; }
 
         /// <summary>
         /// Byzantium Precompiled contract for bigint modular exponentiation
+        /// ---
+        /// in chainspec on the list of built-in accounts
         /// </summary>
         bool IsEip198Enabled { get; }
 
@@ -100,6 +118,8 @@ namespace Nethermind.Core.Specs
 
         /// <summary>
         /// Byzantium Difficulty Bomb Delay and Block Reward Reduction
+        /// ---
+        /// in chainspec as TimeBombDelays and BlockReward
         /// </summary>
         bool IsEip649Enabled { get; }
 
@@ -130,6 +150,8 @@ namespace Nethermind.Core.Specs
         
         /// <summary>
         /// Constantinople Difficulty Bomb Delay and Block Reward Adjustment
+        /// ---
+        /// in chainspec as TimeBombDelays
         /// </summary>
         bool IsEip1234Enabled { get; }
     }

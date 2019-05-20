@@ -19,7 +19,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Specs.ChainSpec
+namespace Nethermind.Core.Specs.ChainSpec.Json
 {
     internal class ChainSpecEthereumSealJson
     {

@@ -87,6 +87,32 @@ namespace Nethermind.Core.Test.Specs
             Assert.AreEqual((long?)0, chainSpec.ByzantiumBlockNumber, "byzantium transition");
             Assert.AreEqual((long?)1920000, chainSpec.DaoForkBlockNumber, "dao transition");
             Assert.AreEqual((long?)7080000, chainSpec.ConstantinopleBlockNumber, "constantinople transition");
+            
+            Assert.AreEqual((long?)24576L, chainSpec.Parameters.MaxCodeSize, "max code size");
+            Assert.AreEqual((long?)0L, chainSpec.Parameters.MaxCodeSizeTransition, "max code size transition");
+            Assert.AreEqual((long?)0x1388L, chainSpec.Parameters.MinGasLimit, "min gas limit");
+            Assert.AreEqual(new Address("0xe3389675d0338462dC76C6f9A3e432550c36A142"), chainSpec.Parameters.Registrar, "registrar");
+            Assert.AreEqual((long?)0x1d4c00L, chainSpec.Parameters.ForkBlock, "fork block");
+            Assert.AreEqual(new Keccak("0x4985f5ca3d2afbec36529aa96f74de3cc10a2a4a6c44f2157a57d2c6059a11bb"), chainSpec.Parameters.ForkCanonHash, "fork block");
+            
+            Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip150Transition, "eip150");
+            Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip160Transition, "eip160");
+            Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip161abcTransition, "eip161abc");
+            Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip161dTransition, "eip161d");
+            Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip155Transition, "eip155");
+            Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip140Transition, "eip140");
+            Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip211Transition, "eip211");
+            Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip214Transition, "eip214");
+            Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip658Transition, "eip658");
+            Assert.AreEqual((long?)7080000L, chainSpec.Parameters.Eip145Transition, "eip145");
+            Assert.AreEqual((long?)7080000L, chainSpec.Parameters.Eip1014Transition, "eip1014");
+            Assert.AreEqual((long?)7080000L, chainSpec.Parameters.Eip1052Transition, "eip1052");
+            Assert.AreEqual((long?)7080000L, chainSpec.Parameters.Eip1283Transition, "eip1283");
+            
+            Assert.AreEqual((long)32, chainSpec.Parameters.MaximumExtraDataSize, "extra data");
+            Assert.AreEqual((long)0x0400, chainSpec.Parameters.GasLimitBoundDivisor, "gas limit bound divisor");
+            Assert.AreEqual((UInt256)0x0, chainSpec.Parameters.AccountStartNonce, "account start nonce");
+            
         }
 
         private static ChainSpec LoadChainSpec(string path)

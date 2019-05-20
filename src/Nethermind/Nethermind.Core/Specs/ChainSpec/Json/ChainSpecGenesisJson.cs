@@ -16,32 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Specs.ChainSpec
+namespace Nethermind.Core.Specs.ChainSpec.Json
 {
-    [SuppressMessage("ReSharper", "ClassNeverInstantiated.Global")]
-    [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
-    internal class GenesisFileConfigJson
+    internal class ChainSpecGenesisJson
     {
-        public UInt256 ChainId { get; set; }
-        
-        public long? HomesteadBlock { get; set; }
-        
-        public long? Eip150Block { get; set; }
-        
-        public Keccak Eip150Hash { get; set; }
-        
-        public long? Eip155Block { get; set; }
-        
-        public long? Eip158Block { get; set; }
-        
-        public long? ByzantiumBlock { get; set; }
-        
-        public long? ConstantinopleBlock { get; set; }
-        
-        public GenesisFileConfigCliqueJson Clique { get; set; }
+        public string Name { get; set; }
+        public string DataDir { get; set; }
+        public ChainSpecSealJson Seal { get; set; }
+        public UInt256 Difficulty { get; set; }
+        public Address Author { get; set; }
+        public UInt256 Timestamp { get; set; }
+        public Keccak ParentHash { get; set; }
+        public byte[] ExtraData { get; set; }
+        public UInt256 GasLimit { get; set; }
+        public Keccak StateRoot { get; set; }
     }
 }

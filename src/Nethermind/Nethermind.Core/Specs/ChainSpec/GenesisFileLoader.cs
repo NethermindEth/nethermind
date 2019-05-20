@@ -23,6 +23,7 @@ using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs.ChainSpec.Json;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpec
@@ -71,7 +72,7 @@ namespace Nethermind.Core.Specs.ChainSpec
             if (genesisJson.Config.Clique != null)
             {
                 chainSpec.SealEngineType = SealEngineType.Clique;
-                chainSpec.Clique = new ChainSpec.CliqueParameters();
+                chainSpec.Clique = new CliqueParameters();
                 chainSpec.Clique.Period = genesisJson.Config.Clique.Period;
                 chainSpec.Clique.Epoch = genesisJson.Config.Clique.Epoch;
                 chainSpec.Clique.Reward = 0;

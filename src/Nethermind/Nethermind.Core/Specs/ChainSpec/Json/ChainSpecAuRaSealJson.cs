@@ -16,11 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Specs.ChainSpec
+namespace Nethermind.Core.Specs.ChainSpec.Json
 {
-    internal class ChainSpecSealJson
+    internal class ChainSpecAuRaSealJson
     {
-        public ChainSpecEthereumSealJson Ethereum { get; set; }
-        public ChainSpecEthereumSealJson AuthorityRound { get; set; }
+        public string Step { get; set; }
+        public string Signer { get; set; }
     }
 }

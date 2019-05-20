@@ -17,38 +17,40 @@
  */
 
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
 
-namespace Nethermind.Core.Specs.ChainSpec
+namespace Nethermind.Core.Specs.ChainSpec.Json
 {
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
+    [SuppressMessage("ReSharper", "InconsistentNaming")]
     internal class ChainSpecParamsJson
     {
-        public UInt256 NetworkId { get; set; }
+        public long NetworkId { get; set; }
         
         [JsonProperty(PropertyName = "registrar")]
-        public string EnsRegistrar { get; set; }
+        public Address EnsRegistrar { get; set; }
         
-        public UInt256? GasLimitBoundDivisor { get; set; }
+        public long? GasLimitBoundDivisor { get; set; }
         
         public UInt256? AccountStartNonce { get; set; }
         
-        public UInt256? MaximumExtraDataSize { get; set; }
+        public long? MaximumExtraDataSize { get; set; }
         
-        public string MinGasLimit { get; set; }
+        public long? MinGasLimit { get; set; }
         
         public long? ForkBlock { get; set; }
         
-        public string ForkCanonHash { get; set; }
+        public Keccak ForkCanonHash { get; set; }
         
         public long? Eip150Transition { get; set; }
         
         public long? Eip160Transition { get; set; }
         
-        public long? Eip161AbcTransition { get; set; }
+        public long? Eip161abcTransition { get; set; }
         
-        public long? Eip161DTransition { get; set; }
+        public long? Eip161dTransition { get; set; }
         
         public long? Eip155Transition { get; set; }
         
