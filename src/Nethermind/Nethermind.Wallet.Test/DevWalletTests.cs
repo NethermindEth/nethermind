@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.Releases;
 using Nethermind.Core.Test.Builders;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
@@ -103,7 +104,7 @@ namespace Nethermind.Wallet.Test
         public void Can_sign_on_networks_with_chain_id(DevWalletType walletType)
         {
             const int networkId = 40000;
-            EthereumEcdsa ecdsa = new EthereumEcdsa(new SingleReleaseSpecProvider(LatestRelease.Instance, networkId), NullLogManager.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(new SingleReleaseSpecProvider(Latest.Release, networkId), NullLogManager.Instance);
             IWallet wallet = SetupWallet(walletType);
 
             for (int i = 1; i <= (walletType == DevWalletType.Memory ? 10 : 3); i++)

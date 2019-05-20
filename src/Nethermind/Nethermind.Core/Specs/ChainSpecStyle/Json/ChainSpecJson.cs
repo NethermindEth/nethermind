@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Specs.ChainSpec.Json
+namespace Nethermind.Core.Specs.ChainSpecStyle.Json
 {
     [SuppressMessage("ReSharper", "ClassNeverInstantiated.Global")]
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]

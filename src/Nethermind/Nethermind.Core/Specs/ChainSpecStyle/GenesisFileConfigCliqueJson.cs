@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,11 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Specs.ChainSpec.Json
+namespace Nethermind.Core.Specs.ChainSpecStyle
 {
-    internal class AllocationJson
+    internal class GenesisFileConfigCliqueJson
     {
-        public string Balance { get; set; }
-        // TODO: other data
+        public ulong Period { get; set; }
+        public ulong Epoch { get; set; }
     }
 }

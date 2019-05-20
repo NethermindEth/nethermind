@@ -23,6 +23,7 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.Releases;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Mining;

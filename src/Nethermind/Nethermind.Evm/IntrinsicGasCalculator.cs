@@ -18,6 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.Releases;
 
 namespace Nethermind.Evm
 {

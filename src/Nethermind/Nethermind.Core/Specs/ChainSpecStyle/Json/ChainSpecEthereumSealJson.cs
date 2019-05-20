@@ -16,36 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Specs.ChainSpec.Json
+namespace Nethermind.Core.Specs.ChainSpecStyle.Json
 {
-    internal class GenesisFileJson
-    {   
-        public UInt256 Difficulty { get; set; }
-        
-        public Address Author { get; set; }
-        
-        public UInt256 Timestamp { get; set; }
-        
-        public Keccak ParentHash { get; set; }
-        
-        public byte[] ExtraData { get; set; }
-        
-        public UInt256 GasLimit { get; set; }
-        
+    internal class ChainSpecEthereumSealJson
+    {
         public UInt256 Nonce { get; set; }
-        
         public Keccak MixHash { get; set; }
-        
-        public UInt256 GasUsed { get; set; }
-        
-        public Address Coinbase { get; set; }
-        
-        public Dictionary<string, AllocationJson> Alloc { get; set; }
-
-        public GenesisFileConfigJson Config { get; set; }
     }
 }

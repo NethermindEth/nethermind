@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Specs.ChainSpec
+namespace Nethermind.Core.Specs.ChainSpecStyle
 {
     public class EthashParameters
     {

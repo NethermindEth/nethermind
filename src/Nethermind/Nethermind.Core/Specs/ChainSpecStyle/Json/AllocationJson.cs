@@ -16,11 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Specs.ChainSpec.Json
+namespace Nethermind.Core.Specs.ChainSpecStyle.Json
 {
-    internal class ChainSpecAuRaSealJson
+    internal class AllocationJson
     {
-        public string Step { get; set; }
-        public string Signer { get; set; }
+        public string Balance { get; set; }
+        // TODO: other data
     }
 }

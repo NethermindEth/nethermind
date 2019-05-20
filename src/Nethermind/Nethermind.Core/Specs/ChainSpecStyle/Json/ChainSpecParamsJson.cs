@@ -21,7 +21,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
 
-namespace Nethermind.Core.Specs.ChainSpec.Json
+namespace Nethermind.Core.Specs.ChainSpecStyle.Json
 {
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
     [SuppressMessage("ReSharper", "InconsistentNaming")]

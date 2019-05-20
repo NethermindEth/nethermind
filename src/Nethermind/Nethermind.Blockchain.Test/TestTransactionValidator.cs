@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.Releases;
 
 namespace Nethermind.Blockchain.Test
 {

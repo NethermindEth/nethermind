@@ -21,6 +21,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.Releases;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain

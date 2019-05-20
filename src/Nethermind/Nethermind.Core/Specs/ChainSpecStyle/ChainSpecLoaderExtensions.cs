@@ -20,7 +20,7 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace Nethermind.Core.Specs.ChainSpec
+namespace Nethermind.Core.Specs.ChainSpecStyle
 {
     public static class ChainSpecLoaderExtensions
     {

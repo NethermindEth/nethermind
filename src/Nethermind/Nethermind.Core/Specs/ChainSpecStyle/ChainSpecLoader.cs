@@ -23,10 +23,10 @@ using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs.ChainSpec.Json;
+using Nethermind.Core.Specs.ChainSpecStyle.Json;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Specs.ChainSpec
+namespace Nethermind.Core.Specs.ChainSpecStyle
 {
     /// <summary>
     /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it. 

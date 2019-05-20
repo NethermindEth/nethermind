@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs.Releases;
 
 namespace Nethermind.Core.Specs
 {

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,11 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Specs.ChainSpec
+namespace Nethermind.Core.Specs.ChainSpecStyle.Json
 {
-    internal class GenesisFileConfigCliqueJson
+    internal class ChainSpecAuRaSealJson
     {
-        public ulong Period { get; set; }
-        public ulong Epoch { get; set; }
+        public string Step { get; set; }
+        public string Signer { get; set; }
     }
 }

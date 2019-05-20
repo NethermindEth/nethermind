@@ -40,7 +40,8 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Json;
 using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Core.Specs.Releases;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
@@ -387,7 +388,7 @@ namespace Nethermind.Runner.Runners
             }
             else
             {
-                _specProvider = new SingleReleaseSpecProvider(LatestRelease.Instance, _chainSpec.ChainId);
+                _specProvider = new SingleReleaseSpecProvider(Latest.Release, _chainSpec.ChainId);
             }
 
             /* sync */

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,10 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Specs
+namespace Nethermind.Core.Specs.ChainSpecStyle
 {
-    public class LatestRelease
+    public interface IChainSpecLoader
     {
-        public static IReleaseSpec Instance => Byzantium.Instance;
+        ChainSpec Load(byte[] data);
     }
 }

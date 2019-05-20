@@ -18,10 +18,9 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
-using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Specs.ChainSpec
+namespace Nethermind.Core.Specs.ChainSpecStyle
 {
     /// <summary>
     /// https://github.com/ethereum/wiki/wiki/Ethereum-Chain-Spec-Format
@@ -64,31 +63,5 @@ namespace Nethermind.Core.Specs.ChainSpec
         public long? ByzantiumBlockNumber { get; set; }
 
         public long? ConstantinopleBlockNumber { get; set; }
-    }
-
-    public class ChainParameters
-    {
-        public long MaxCodeSize { get; set; }
-        public long MaxCodeSizeTransition { get; set; }
-        public long GasLimitBoundDivisor { get; set; }
-        public Address Registrar { get; set; }
-        public UInt256 AccountStartNonce { get; set; }
-        public long MaximumExtraDataSize { get; set; }
-        public long MinGasLimit { get; set; }
-        public Keccak ForkCanonHash { get; set; }
-        public long? ForkBlock { get; set; }
-        public long? Eip150Transition { get; set; }
-        public long? Eip160Transition { get; set; }
-        public long? Eip161abcTransition { get; set; }
-        public long? Eip161dTransition { get; set; }
-        public long? Eip155Transition { get; set; }
-        public long? Eip140Transition { get; set; }
-        public long? Eip211Transition { get; set; }
-        public long? Eip214Transition { get; set; }
-        public long? Eip658Transition { get; set; }
-        public long? Eip145Transition { get; set; }
-        public long? Eip1014Transition { get; set; }
-        public long? Eip1052Transition { get; set; }
-        public long? Eip1283Transition { get; set; }
     }
 }
