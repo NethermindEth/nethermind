@@ -56,7 +56,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private UInt256 _totalDifficultyOfBestHeaderProvider = UInt256.Zero;
         private long _bestRequestedHeader;
-        private long _bestRequestedBody;
         private long _maxKnownNumber;
         private long _startNumber;
         private object _empty = new object();

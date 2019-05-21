@@ -390,6 +390,8 @@ namespace Nethermind.Runner.Runners
             {
                 _specProvider = new SingleReleaseSpecProvider(Latest.Release, _chainSpec.ChainId);
             }
+            
+            Account.AccountStartNonce = _chainSpec.Parameters.AccountStartNonce; 
 
             /* sync */
             IDbConfig dbConfig = _configProvider.GetConfig<IDbConfig>();

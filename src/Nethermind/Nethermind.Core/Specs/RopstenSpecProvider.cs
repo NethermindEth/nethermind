@@ -17,7 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs.Releases;
+using Nethermind.Core.Specs.Forks;
 
 namespace Nethermind.Core.Specs
 {
@@ -62,11 +62,12 @@ namespace Nethermind.Core.Specs
         public static long ConstantinopleFixBlockNumber { get; } = 4939394;
         
         public int ChainId => 3;
-
+        
         private RopstenSpecProvider()
         {
         }
         
         public static readonly RopstenSpecProvider Instance = new RopstenSpecProvider();
+        public static long HomesteadBlockNumber { get; } = 1150000;
     }
 }

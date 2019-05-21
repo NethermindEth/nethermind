@@ -63,7 +63,7 @@ namespace Nethermind.Core.Specs
         public static long ConstantinopleFixBlockNumber { get; } = 4321234;
         
         public int ChainId => 4;
-
+        
         private RinkebySpecProvider()
         {
         }

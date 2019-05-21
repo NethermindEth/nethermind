@@ -17,7 +17,6 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
@@ -25,6 +24,17 @@ namespace Nethermind.Core
     public class Account
     {
         public static Account TotallyEmpty = new Account();
+
+        private static UInt256 _accountStartNonce = UInt256.Zero;
+        
+        public static UInt256 AccountStartNonce
+        {
+            set
+            {
+                _accountStartNonce = value;
+                TotallyEmpty = new Account();
+            }
+        } 
 
         public Account(UInt256 balance)
         {
@@ -38,7 +48,7 @@ namespace Nethermind.Core
         private Account()
         {
             Balance = UInt256.Zero;
-            Nonce = UInt256.Zero;
+            Nonce = _accountStartNonce;
             CodeHash = Keccak.OfAnEmptyString;
             StorageRoot = Keccak.EmptyTreeHash;
             IsTotallyEmpty = true;
@@ -50,7 +60,7 @@ namespace Nethermind.Core
             Balance = balance;
             StorageRoot = storageRoot;
             CodeHash = codeHash;
-            IsTotallyEmpty = Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
+            IsTotallyEmpty = Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
         }
 
         private Account(UInt256 nonce, UInt256 balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
@@ -71,7 +81,7 @@ namespace Nethermind.Core
         public Keccak StorageRoot { get; }
         public Keccak CodeHash { get; }
         public bool IsTotallyEmpty { get; }
-        public bool IsEmpty => IsTotallyEmpty || (Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString);
+        public bool IsEmpty => IsTotallyEmpty || (Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString);
 
         public Account WithChangedBalance(UInt256 newBalance)
         {
@@ -80,7 +90,7 @@ namespace Nethermind.Core
 
         public Account WithChangedNonce(UInt256 newNonce)
         {
-            return new Account(newNonce, Balance, StorageRoot, CodeHash, IsTotallyEmpty && newNonce.IsZero);
+            return new Account(newNonce, Balance, StorageRoot, CodeHash, IsTotallyEmpty && newNonce == _accountStartNonce);
         }
 
         public Account WithChangedStorageRoot(Keccak newStorageRoot)

@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             var result = Execute(code);
-            AssertGas(result, GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SSet + GasCostOf.ExtCodeHash);
+            AssertGas(result, 21000 + GasCostOf.VeryLow * 2 + GasCostOf.SSet + GasCostOf.ExtCodeHash);
             AssertStorage(UInt256.Zero, Keccak.OfAnEmptyString.Bytes);
         }
 
@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
             AssertGas(result,
-                GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SStoreEip1283 + GasCostOf.ExtCodeHash);
+                21000 + GasCostOf.VeryLow * 2 + GasCostOf.SStoreEip1283 + GasCostOf.ExtCodeHash);
             AssertStorage(UInt256.Zero, Keccak.Zero);
         }
 

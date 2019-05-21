@@ -36,7 +36,6 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private decimal _average = 0;
         private bool isFirst = true;
 
         public void ReportBlocksDownload(long current, long total)

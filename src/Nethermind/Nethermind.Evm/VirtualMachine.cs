@@ -197,7 +197,7 @@ namespace Nethermind.Evm
                             _returnDataBuffer = previousCallOutput = Bytes.Empty;
                             
                             long codeDepositGasCost = GasCostOf.CodeDeposit * callResult.Output.Length;
-                            if (spec.IsEip170Enabled && callResult.Output.Length > 0x6000)
+                            if (spec.IsEip170Enabled && callResult.Output.Length > spec.MaxCodeSize)
                             {
                                 codeDepositGasCost = long.MaxValue;
                             }
