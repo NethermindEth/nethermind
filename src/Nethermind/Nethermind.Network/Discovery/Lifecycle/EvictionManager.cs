@@ -19,7 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Network.Discovery.Lifecycle

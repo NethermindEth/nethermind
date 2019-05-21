@@ -29,9 +29,9 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore.Config;
+using Nethermind.Logging;
 
 [assembly:InternalsVisibleTo("Nethermind.KeyStore.Test")]
 namespace Nethermind.KeyStore

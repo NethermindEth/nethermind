@@ -24,8 +24,8 @@ using System.Timers;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Stats.Model;
 

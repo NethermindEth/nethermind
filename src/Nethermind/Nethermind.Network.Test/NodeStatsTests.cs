@@ -17,7 +17,6 @@
  */
 
 using System.Threading.Tasks;
-using Nethermind.Core.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NUnit.Framework;

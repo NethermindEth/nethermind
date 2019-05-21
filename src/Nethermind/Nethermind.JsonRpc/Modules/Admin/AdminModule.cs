@@ -18,7 +18,7 @@
 
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {

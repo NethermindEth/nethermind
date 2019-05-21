@@ -18,8 +18,8 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 
 namespace Nethermind.Runner
 {

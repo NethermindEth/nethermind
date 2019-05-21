@@ -21,8 +21,8 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Client;
+using Nethermind.Logging;
 
 namespace Nethermind.Cli
 {

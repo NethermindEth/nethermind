@@ -20,8 +20,8 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Json;
-using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Client;
+using Nethermind.Logging;
 
 namespace Nethermind.Runner.TestClient
 {

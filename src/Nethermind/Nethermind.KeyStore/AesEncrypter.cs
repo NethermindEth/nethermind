@@ -19,8 +19,8 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
-using Nethermind.Core.Logging;
 using Nethermind.KeyStore.Config;
+using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {

@@ -19,10 +19,9 @@
 using System;
 using System.IO;
 using System.Linq;
-using Nethermind.Core.Utils;
 using NLog.Targets;
 
-namespace Nethermind.Core.Logging
+namespace Nethermind.Logging
 {
     public class NLogLogger : ILogger
     {

@@ -19,7 +19,7 @@
 using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 

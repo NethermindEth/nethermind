@@ -19,51 +19,53 @@
 using System;
 using System.Threading;
 
-namespace Nethermind.Core.Logging
+namespace Nethermind.Logging
 {
-    public class SimpleConsoleLogger : ILogger
+    /// <summary>
+    /// LimboLogs redirects logs to nowhere (limbo) and it should be always used in tests as it guarantees that
+    /// we test any potential issues with the log message construction.
+    /// Imagine that we have a construction like if(_logger.IsTrace) _logger.Trace("somethingThatIsNull.ToString()")
+    /// This would not be tested until we switched the logger to Trace level and this, in turn,
+    /// would slow down the tests and increase memory construction due to the log files generation.
+    /// Instead we use LimboLogs that returns a logger that always causes the log message to be created and so we can
+    /// detect somethingThatIsNull.ToString() throwing an error.
+    /// </summary>
+    public class LimboNoErrorLogger : ILogger
     {
-        private readonly bool _warnPlusOnly;
-
-        public SimpleConsoleLogger(bool warnPlusOnly = false)
+        private static LimboNoErrorLogger _instance;
+        
+        public static LimboNoErrorLogger Instance
         {
-            _warnPlusOnly = warnPlusOnly;
+            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new LimboNoErrorLogger()); }
         }
         
-        public void Log(string text)
-        {
-            Console.WriteLine($"{DateTime.Now.ToLongTimeString()} [{Thread.CurrentThread.ManagedThreadId}] {text}");
-        }
-
         public void Info(string text)
         {
-            Log(text);
         }
 
         public void Warn(string text)
         {
-            Log(text);
         }
 
         public void Debug(string text)
         {
-            Log(text);
         }
 
         public void Trace(string text)
         {
-            Log(text);
         }
 
         public void Error(string text, Exception ex = null)
         {
-            Log(ex != null ? $"{text}, Exception: {ex}" : text);
+            Console.WriteLine(text);
+            Console.WriteLine(ex);
+            throw new Exception(text);
         }
-        
-        public bool IsInfo => !_warnPlusOnly;
+
+        public bool IsInfo => true;
         public bool IsWarn => true;
-        public bool IsDebug => !_warnPlusOnly;
-        public bool IsTrace => !_warnPlusOnly;
+        public bool IsDebug => true;
+        public bool IsTrace => true;
         public bool IsError => true;
     }
 }

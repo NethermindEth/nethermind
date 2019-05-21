@@ -19,10 +19,10 @@
 using System.IO;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
+using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;

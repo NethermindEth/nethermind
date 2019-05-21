@@ -21,7 +21,7 @@ using System.IO;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;

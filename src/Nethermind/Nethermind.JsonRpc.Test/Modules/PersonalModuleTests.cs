@@ -19,9 +19,9 @@
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core.Json;
-using Nethermind.Core.Logging;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Personal;
+using Nethermind.Logging;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;

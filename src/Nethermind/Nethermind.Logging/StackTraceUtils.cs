@@ -1,16 +1,15 @@
-﻿namespace Nethermind.Core.Logging
+﻿using System;
+using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using NLog.Config;
+
+namespace Nethermind.Logging
 {
 // Decompiled with JetBrains decompiler
 // Type: NLog.Internal.StackTraceUsageUtils
 // Assembly: NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c
 // MVID: A2EA6CB6-1E12-422B-8404-0D46451CF9D2
-
-    using NLog.Config;
-    using System;
-    using System.Diagnostics;
-    using System.Reflection;
-    using System.Runtime.CompilerServices;
-
     /// <summary>
     /// Utilities for dealing with <see cref="T:NLog.Config.StackTraceUsage" /> values.
     /// Copied from NLog internals to skip one more class

@@ -19,9 +19,9 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Validators

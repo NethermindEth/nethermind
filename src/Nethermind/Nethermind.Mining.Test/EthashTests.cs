@@ -20,7 +20,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test

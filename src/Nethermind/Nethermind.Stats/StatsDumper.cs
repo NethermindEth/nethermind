@@ -21,10 +21,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
-using Nethermind.Core.Utils;
+using Nethermind.Logging;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats

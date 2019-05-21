@@ -20,7 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;

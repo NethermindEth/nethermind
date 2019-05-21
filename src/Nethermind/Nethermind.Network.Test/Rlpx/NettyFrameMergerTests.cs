@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
 using NUnit.Framework;

@@ -19,45 +19,51 @@
 using System;
 using System.Threading;
 
-namespace Nethermind.Core.Logging
+namespace Nethermind.Logging
 {
-    public class NullLogger : ILogger
+    public class SimpleConsoleLogger : ILogger
     {
-        private static NullLogger _instance;
+        private readonly bool _warnPlusOnly;
 
-        public static NullLogger Instance
+        public SimpleConsoleLogger(bool warnPlusOnly = false)
         {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogger()); }
+            _warnPlusOnly = warnPlusOnly;
         }
-
-        private NullLogger()
+        
+        public void Log(string text)
         {
+            Console.WriteLine($"{DateTime.Now.ToLongTimeString()} [{Thread.CurrentThread.ManagedThreadId}] {text}");
         }
 
         public void Info(string text)
         {
+            Log(text);
         }
 
         public void Warn(string text)
         {
+            Log(text);
         }
 
         public void Debug(string text)
         {
+            Log(text);
         }
 
         public void Trace(string text)
         {
+            Log(text);
         }
 
         public void Error(string text, Exception ex = null)
         {
+            Log(ex != null ? $"{text}, Exception: {ex}" : text);
         }
         
-        public bool IsInfo { get; } = false;
-        public bool IsWarn { get; } = false;
-        public bool IsDebug { get; } = false;
-        public bool IsTrace { get; } = false;
-        public bool IsError { get; } = false;
+        public bool IsInfo => !_warnPlusOnly;
+        public bool IsWarn => true;
+        public bool IsDebug => !_warnPlusOnly;
+        public bool IsTrace => !_warnPlusOnly;
+        public bool IsError => true;
     }
 }

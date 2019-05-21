@@ -1,5 +1,5 @@
 ﻿using DotNetty.Transport.Channels;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using NSubstitute;

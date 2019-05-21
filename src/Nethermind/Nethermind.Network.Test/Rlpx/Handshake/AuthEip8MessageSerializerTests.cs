@@ -20,8 +20,8 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Logging;
 using Nethermind.Network.Rlpx.Handshake;
 using NUnit.Framework;
 

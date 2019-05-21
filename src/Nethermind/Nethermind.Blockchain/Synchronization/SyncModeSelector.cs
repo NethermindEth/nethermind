@@ -19,7 +19,7 @@
 using System;
 using System.IO;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization

@@ -17,8 +17,8 @@
  */
 
 using Nethermind.Core;
-using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Client;
+using Nethermind.Logging;
 
 namespace Nethermind.Store.Rpc
 {

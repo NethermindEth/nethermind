@@ -25,8 +25,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 

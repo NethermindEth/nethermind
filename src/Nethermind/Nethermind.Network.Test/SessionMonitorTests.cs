@@ -20,8 +20,8 @@
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;

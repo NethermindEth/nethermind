@@ -23,8 +23,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Wallet;
 

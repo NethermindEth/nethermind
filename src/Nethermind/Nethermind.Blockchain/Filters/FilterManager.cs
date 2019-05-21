@@ -22,8 +22,8 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Filters
 {

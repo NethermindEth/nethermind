@@ -20,7 +20,7 @@ using System;
 using System.Collections.Generic;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Snappy;
 
 namespace Nethermind.Network.Rlpx

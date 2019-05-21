@@ -19,10 +19,10 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto

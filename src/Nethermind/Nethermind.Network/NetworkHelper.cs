@@ -19,7 +19,7 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 
 namespace Nethermind.Network
 {

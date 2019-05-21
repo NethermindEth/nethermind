@@ -17,36 +17,47 @@
  */
 
 using System;
+using System.Threading;
 
-namespace Nethermind.Core.Logging
+namespace Nethermind.Logging
 {
-    public class OneLoggerLogManager : ILogManager
+    public class NullLogger : ILogger
     {
-        private readonly ILogger _logger;
+        private static NullLogger _instance;
 
-        public OneLoggerLogManager(ILogger logger)
+        public static NullLogger Instance
         {
-            _logger = logger;
+            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogger()); }
         }
 
-        public ILogger GetClassLogger(Type type)
+        private NullLogger()
         {
-            return _logger;
         }
 
-        public ILogger GetClassLogger<T>()
+        public void Info(string text)
         {
-            return _logger;
         }
 
-        public ILogger GetClassLogger()
+        public void Warn(string text)
         {
-            return _logger;
         }
 
-        public ILogger GetLogger(string loggerName)
+        public void Debug(string text)
         {
-            return _logger;
         }
+
+        public void Trace(string text)
+        {
+        }
+
+        public void Error(string text, Exception ex = null)
+        {
+        }
+        
+        public bool IsInfo { get; } = false;
+        public bool IsWarn { get; } = false;
+        public bool IsDebug { get; } = false;
+        public bool IsTrace { get; } = false;
+        public bool IsError { get; } = false;
     }
 }

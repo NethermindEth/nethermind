@@ -21,9 +21,9 @@ using System.IO;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
+using Nethermind.Logging;
 
 namespace Nethermind.Wallet
 {

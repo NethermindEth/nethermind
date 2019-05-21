@@ -18,8 +18,8 @@
 
 using System.IO;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 

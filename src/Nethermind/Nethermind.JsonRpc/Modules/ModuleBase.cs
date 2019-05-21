@@ -20,7 +20,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules

@@ -17,7 +17,7 @@
  */
 
 
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Discovery

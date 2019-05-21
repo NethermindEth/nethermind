@@ -21,9 +21,9 @@ using System.Security;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Personal
 {

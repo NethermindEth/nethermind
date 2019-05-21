@@ -23,10 +23,10 @@ using System.Linq;
 using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Json;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 using Newtonsoft.Json;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 

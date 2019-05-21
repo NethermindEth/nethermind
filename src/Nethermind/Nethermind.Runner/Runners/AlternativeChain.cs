@@ -21,9 +21,9 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Logging;
 using Nethermind.Store;
 
 namespace Nethermind.Runner.Runners

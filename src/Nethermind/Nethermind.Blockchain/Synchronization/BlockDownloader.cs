@@ -26,7 +26,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Synchronization

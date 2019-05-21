@@ -20,8 +20,8 @@ using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
