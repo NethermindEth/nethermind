@@ -52,6 +52,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core.Test", "Net
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Abi", "Nethermind.Abi\Nethermind.Abi.csproj", "{88A49490-B265-47F8-9917-83788F9CE1F6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Logging", "Nethermind.Logging\Nethermind.Logging.csproj", "{83965DEB-BE40-4485-879A-383756AE7441}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -162,5 +164,9 @@ Global
 		{88A49490-B265-47F8-9917-83788F9CE1F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{88A49490-B265-47F8-9917-83788F9CE1F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{88A49490-B265-47F8-9917-83788F9CE1F6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{83965DEB-BE40-4485-879A-383756AE7441}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{83965DEB-BE40-4485-879A-383756AE7441}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{83965DEB-BE40-4485-879A-383756AE7441}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{83965DEB-BE40-4485-879A-383756AE7441}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
