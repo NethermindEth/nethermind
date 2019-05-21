@@ -17,7 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 
 namespace Nethermind.Store
 {

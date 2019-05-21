@@ -24,8 +24,8 @@ using Jint.Native;
 using Nethermind.Cli.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Json;
-using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Logging;
 using Console = Colorful.Console;
 
 namespace Nethermind.Cli

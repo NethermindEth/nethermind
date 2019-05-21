@@ -25,11 +25,11 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain

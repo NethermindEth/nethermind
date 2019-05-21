@@ -23,7 +23,7 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
 
 namespace Nethermind.Network.Discovery

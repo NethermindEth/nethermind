@@ -24,9 +24,9 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 

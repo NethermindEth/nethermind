@@ -17,9 +17,9 @@
  */
 
 using Nethermind.Core;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;

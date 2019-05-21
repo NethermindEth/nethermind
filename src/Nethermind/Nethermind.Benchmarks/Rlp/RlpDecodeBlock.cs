@@ -19,10 +19,10 @@
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 
 namespace Nethermind.Benchmarks.Rlp
 {

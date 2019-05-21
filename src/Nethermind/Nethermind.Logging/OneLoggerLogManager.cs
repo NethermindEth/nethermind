@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,37 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Logging
+using System;
+
+namespace Nethermind.Logging
 {
-    public enum LogLevel
+    public class OneLoggerLogManager : ILogManager
     {
-        Error = 0,
-        Warn = 1,
-        Info = 2,
-        Debug = 3,
-        Trace = 4
+        private readonly ILogger _logger;
+
+        public OneLoggerLogManager(ILogger logger)
+        {
+            _logger = logger;
+        }
+
+        public ILogger GetClassLogger(Type type)
+        {
+            return _logger;
+        }
+
+        public ILogger GetClassLogger<T>()
+        {
+            return _logger;
+        }
+
+        public ILogger GetClassLogger()
+        {
+            return _logger;
+        }
+
+        public ILogger GetLogger(string loggerName)
+        {
+            return _logger;
+        }
     }
 }

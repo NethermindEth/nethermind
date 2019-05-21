@@ -21,7 +21,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner

@@ -23,26 +23,28 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Nethermind.Config;
-using Log = Nethermind.Core.Logging;
 using Nethermind.Runner.Config;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core.Model;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 using Nethermind.Runner.LogBridge;
+using ILogger = Nethermind.Logging.ILogger;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Runner.Runners
 {
     public class JsonRpcRunner : IRunner
     {
-        private readonly Log.ILogger _logger;
+        private readonly ILogger _logger;
         private readonly IRpcModuleProvider _moduleProvider;
-        private readonly Log.ILogManager _logManager;
+        private readonly ILogManager _logManager;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IInitConfig _initConfig;
         private IWebHost _webHost;
 
-        public JsonRpcRunner(IConfigProvider configurationProvider, IRpcModuleProvider moduleProvider, Log.ILogManager logManager)
+        public JsonRpcRunner(IConfigProvider configurationProvider, IRpcModuleProvider moduleProvider, ILogManager logManager)
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _initConfig = configurationProvider.GetConfig<IInitConfig>();

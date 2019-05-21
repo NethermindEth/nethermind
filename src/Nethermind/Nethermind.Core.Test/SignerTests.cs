@@ -19,9 +19,9 @@
 using System;
 using System.IO;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

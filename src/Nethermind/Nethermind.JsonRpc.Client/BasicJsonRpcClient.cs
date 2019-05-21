@@ -25,7 +25,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Client
 {

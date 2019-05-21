@@ -23,9 +23,9 @@ namespace Nethermind.Runner.LogBridge
 {
     public class CustomMicrosoftLogger : ILogger
     {
-        private readonly Core.Logging.ILogger _logger;
+        private readonly Logging.ILogger _logger;
 
-        public CustomMicrosoftLogger(Core.Logging.ILogger logger)
+        public CustomMicrosoftLogger(Logging.ILogger logger)
         {
             _logger = logger;
         }

@@ -22,7 +22,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Synchronization
 {

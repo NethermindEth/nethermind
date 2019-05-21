@@ -19,7 +19,7 @@
 using System.IO;
 using System.Reflection;
 
-namespace Nethermind.Core.Utils
+namespace Nethermind.Logging
 {
     public static class PathUtils
     {

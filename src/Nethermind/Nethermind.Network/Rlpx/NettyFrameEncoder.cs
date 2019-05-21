@@ -21,7 +21,7 @@ using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {

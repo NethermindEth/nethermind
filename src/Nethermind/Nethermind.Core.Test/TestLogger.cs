@@ -18,7 +18,7 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 
 namespace Nethermind.Core.Test
 {

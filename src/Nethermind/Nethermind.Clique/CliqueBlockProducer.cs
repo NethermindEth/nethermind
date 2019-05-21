@@ -31,9 +31,9 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Store;
 

@@ -17,9 +17,9 @@
  */
 
 using Nethermind.Blockchain;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Logging;
 using Nethermind.Store;
 
 namespace Nethermind.Runner.Runners

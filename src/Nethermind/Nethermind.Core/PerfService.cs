@@ -19,7 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 
 namespace Nethermind.Core
 {

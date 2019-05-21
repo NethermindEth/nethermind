@@ -17,38 +17,46 @@
  */
 
 using System;
-using System.Threading;
+using System.Collections.Concurrent;
 
-namespace Nethermind.Core.Logging
+namespace Nethermind.Logging
 {
-    public class NullLogManager : ILogManager
+    public class NLogManager : ILogManager
     {
-        private NullLogManager()
+        private readonly string _logFileName;
+        private readonly string _logDirectory;
+
+        public NLogManager(string logFileName, string logDirectory)
         {
+            _logFileName = logFileName;
+            _logDirectory = logDirectory;
         }
 
-        private static NullLogManager _instance;
-        
-        public static NullLogManager Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogManager());
+        private ConcurrentDictionary<Type, NLogLogger> _loggers = new ConcurrentDictionary<Type, NLogLogger>();
+
+        private NLogLogger BuildLogger(Type type)
+        {
+            return new NLogLogger(type, _logFileName, _logDirectory);
+        }
 
         public ILogger GetClassLogger(Type type)
         {
-            return NullLogger.Instance;
+            return _loggers.GetOrAdd(type, BuildLogger);
         }
 
         public ILogger GetClassLogger<T>()
         {
-            return NullLogger.Instance;
+            return GetClassLogger(typeof(T));
         }
 
         public ILogger GetClassLogger()
         {
-            return NullLogger.Instance;
+            return new NLogLogger(_logFileName, _logDirectory);
         }
 
         public ILogger GetLogger(string loggerName)
         {
-            return NullLogger.Instance;
+            return new NLogLogger(_logFileName, _logDirectory, loggerName);
         }
     }
 }

@@ -21,7 +21,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;

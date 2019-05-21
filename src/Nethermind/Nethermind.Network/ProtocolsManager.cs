@@ -23,7 +23,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;

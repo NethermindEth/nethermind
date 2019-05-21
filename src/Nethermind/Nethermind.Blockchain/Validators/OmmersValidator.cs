@@ -19,7 +19,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Validators
 {

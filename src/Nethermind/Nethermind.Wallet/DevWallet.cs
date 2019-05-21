@@ -24,7 +24,7 @@ using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Secp256k1;
 
 namespace Nethermind.Wallet

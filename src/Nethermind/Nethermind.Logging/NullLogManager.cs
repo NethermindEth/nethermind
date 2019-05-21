@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,21 +17,38 @@
  */
 
 using System;
+using System.Threading;
 
-namespace Nethermind.Core.Logging
+namespace Nethermind.Logging
 {
-    public interface ILogger
-    {    
-        void Info(string text);
-        void Warn(string text);
-        void Debug(string text);
-        void Trace(string text);
-        void Error(string text, Exception ex = null);
+    public class NullLogManager : ILogManager
+    {
+        private NullLogManager()
+        {
+        }
 
-        bool IsInfo { get; }
-        bool IsWarn { get; }
-        bool IsDebug { get; }
-        bool IsTrace { get; }
-        bool IsError { get; }
+        private static NullLogManager _instance;
+        
+        public static NullLogManager Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogManager());
+
+        public ILogger GetClassLogger(Type type)
+        {
+            return NullLogger.Instance;
+        }
+
+        public ILogger GetClassLogger<T>()
+        {
+            return NullLogger.Instance;
+        }
+
+        public ILogger GetClassLogger()
+        {
+            return NullLogger.Instance;
+        }
+
+        public ILogger GetLogger(string loggerName)
+        {
+            return NullLogger.Instance;
+        }
     }
 }

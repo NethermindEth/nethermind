@@ -22,8 +22,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices.WindowsRuntime;
-using Nethermind.Core.Logging;
 using Nethermind.Db.Config;
+using Nethermind.Logging;
 using Nethermind.Store;
 using RocksDbSharp;
 

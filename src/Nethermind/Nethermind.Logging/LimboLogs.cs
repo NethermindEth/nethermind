@@ -19,7 +19,7 @@
 using System;
 using System.Threading;
 
-namespace Nethermind.Core.Logging
+namespace Nethermind.Logging
 {
     /// <summary>
     /// LimboLogs redirects logs to nowhere (limbo) and it should be always used in tests as it guarantees that
@@ -30,39 +30,34 @@ namespace Nethermind.Core.Logging
     /// Instead we use LimboLogs that returns a logger that always causes the log message to be created and so we can
     /// detect somethingThatIsNull.ToString() throwing an error.
     /// </summary>
-    public class LimboTraceLogger : ILogger
+    public class LimboLogs : ILogManager
     {
-        private static LimboTraceLogger _instance;
+        private LimboLogs()
+        {
+        }
+
+        private static LimboLogs _instance;
         
-        public static LimboTraceLogger Instance
+        public static LimboLogs Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new LimboLogs());
+
+        public ILogger GetClassLogger(Type type)
         {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new LimboTraceLogger()); }
-        }
-        
-        public void Info(string text)
-        {
+            return LimboTraceLogger.Instance;
         }
 
-        public void Warn(string text)
+        public ILogger GetClassLogger<T>()
         {
+            return LimboTraceLogger.Instance;
         }
 
-        public void Debug(string text)
+        public ILogger GetClassLogger()
         {
+            return LimboTraceLogger.Instance;
         }
 
-        public void Trace(string text)
+        public ILogger GetLogger(string loggerName)
         {
+            return LimboTraceLogger.Instance;
         }
-
-        public void Error(string text, Exception ex = null)
-        {
-        }
-
-        public bool IsInfo => true;
-        public bool IsWarn => true;
-        public bool IsDebug => true;
-        public bool IsTrace => true;
-        public bool IsError => true;
     }
 }

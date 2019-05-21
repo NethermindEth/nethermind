@@ -17,15 +17,17 @@
  */
 
 using Microsoft.Extensions.Logging;
+using Nethermind.Logging;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Nethermind.Runner.LogBridge
 {
     public class CustomMicrosoftLoggerProvider : ILoggerProvider
     {
-        private readonly Core.Logging.ILogManager _logManager;
+        private readonly ILogManager _logManager;
         private const string WebApiLogNamePrefix = "JsonWebAPI";
 
-        public CustomMicrosoftLoggerProvider(Core.Logging.ILogManager logManager)
+        public CustomMicrosoftLoggerProvider(ILogManager logManager)
         {
             _logManager = logManager;
         }

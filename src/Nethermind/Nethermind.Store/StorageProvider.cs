@@ -21,7 +21,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 
 namespace Nethermind.Store
 {

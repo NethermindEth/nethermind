@@ -22,11 +22,11 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 

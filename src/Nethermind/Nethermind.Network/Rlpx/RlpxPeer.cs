@@ -30,7 +30,7 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;

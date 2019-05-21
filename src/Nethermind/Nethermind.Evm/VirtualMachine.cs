@@ -24,11 +24,11 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.Store;
 
 [assembly:InternalsVisibleTo("Nethermind.Evm.Test")]

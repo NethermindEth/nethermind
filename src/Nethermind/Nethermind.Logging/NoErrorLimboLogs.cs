@@ -19,7 +19,7 @@
 using System;
 using System.Threading;
 
-namespace Nethermind.Core.Logging
+namespace Nethermind.Logging
 {
     /// <summary>
     /// Same as <see cref="LimboLogs"/> but throw on error logs.

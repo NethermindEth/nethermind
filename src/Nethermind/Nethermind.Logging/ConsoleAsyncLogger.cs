@@ -21,7 +21,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Nethermind.Core.Logging
+namespace Nethermind.Logging
 {
     public class ConsoleAsyncLogger : ILogger
     {

@@ -24,8 +24,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Nethermind.Core;
 using Nethermind.Core.Json;
-using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 

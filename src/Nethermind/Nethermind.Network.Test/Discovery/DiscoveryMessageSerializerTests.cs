@@ -20,7 +20,6 @@ using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;

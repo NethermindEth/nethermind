@@ -26,10 +26,10 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.TxPools

@@ -19,9 +19,9 @@
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 

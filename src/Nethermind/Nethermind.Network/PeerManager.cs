@@ -17,7 +17,6 @@
  */
 
 using Nethermind.Core;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
@@ -32,6 +31,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 

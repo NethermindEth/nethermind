@@ -16,15 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using System.Runtime.CompilerServices;
 
-namespace Nethermind.Core.Logging
-{
-    public interface ILogManager
-    {
-        ILogger GetClassLogger(Type type);
-        ILogger GetClassLogger<T>();
-        ILogger GetClassLogger();
-        ILogger GetLogger(string loggerName);
-    }
-}
+[assembly: InternalsVisibleTo("Nethermind.Core.Test")]

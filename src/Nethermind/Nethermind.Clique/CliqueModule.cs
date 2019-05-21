@@ -21,10 +21,10 @@ using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 
 namespace Nethermind.Clique
 {

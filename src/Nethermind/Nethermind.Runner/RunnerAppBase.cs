@@ -24,12 +24,10 @@ using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Json;
-using Nethermind.Core.Logging;
-using Nethermind.Core.Model;
-using Nethermind.Core.Utils;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Web3;
+using Nethermind.Logging;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
 

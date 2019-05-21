@@ -20,15 +20,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
