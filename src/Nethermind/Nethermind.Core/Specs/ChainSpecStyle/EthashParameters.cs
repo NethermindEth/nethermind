@@ -11,6 +11,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
 
         public long DurationLimit { get; set; }
 
+        // why is it here??? (this is what chainspec does)
         public long HomesteadTransition { get; set; }
 
         public long? DaoHardforkTransition { get; set; }

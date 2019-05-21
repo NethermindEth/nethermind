@@ -369,27 +369,7 @@ namespace Nethermind.Runner.Runners
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private async Task InitBlockchain()
         {
-            /* spec */
-            if (_chainSpec.ChainId == RopstenSpecProvider.Instance.ChainId)
-            {
-                _specProvider = RopstenSpecProvider.Instance;
-            }
-            else if (_chainSpec.ChainId == MainNetSpecProvider.Instance.ChainId)
-            {
-                _specProvider = MainNetSpecProvider.Instance;
-            }
-            else if (_chainSpec.ChainId == RinkebySpecProvider.Instance.ChainId)
-            {
-                _specProvider = RinkebySpecProvider.Instance;
-            }
-            else if (_chainSpec.ChainId == GoerliSpecProvider.Instance.ChainId)
-            {
-                _specProvider = GoerliSpecProvider.Instance;
-            }
-            else
-            {
-                _specProvider = new SingleReleaseSpecProvider(Latest.Release, _chainSpec.ChainId);
-            }
+            _specProvider = new ChainSpecBasedSpecProvider(_chainSpec);
             
             Account.AccountStartNonce = _chainSpec.Parameters.AccountStartNonce; 
 

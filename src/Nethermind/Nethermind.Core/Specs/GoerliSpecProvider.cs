@@ -27,9 +27,10 @@ namespace Nethermind.Core.Specs
 
         private GoerliSpecProvider()
         {
+            GenesisSpec = ConstantinopleFix.Instance;
         }
 
-        public IReleaseSpec GenesisSpec => ConstantinopleFix.Instance;
+        public IReleaseSpec GenesisSpec { get; private set; }
 
         public IReleaseSpec GetSpec(long blockNumber)
         {

@@ -72,7 +72,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             chainSpec.Parameters.AccountStartNonce = chainSpecJson.Params.AccountStartNonce ?? UInt256.Zero;
             chainSpec.Parameters.GasLimitBoundDivisor= chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400;
             chainSpec.Parameters.MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32;
-            chainSpec.Parameters.MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 21000;
+            chainSpec.Parameters.MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000;
             chainSpec.Parameters.MaxCodeSize = chainSpecJson.Params.MaxCodeSize ?? 24576;
             chainSpec.Parameters.MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition ?? 0;
             chainSpec.Parameters.Registrar = chainSpecJson.Params.EnsRegistrar;
