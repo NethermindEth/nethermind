@@ -313,7 +313,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (!_alreadySyncedAncient && (_blockTree.LowestInserted?.Number ?? long.MaxValue) <= 1)
                 {
-                    BlockHeader header = _blockTree.FindHeader(_blockDataFeed.StartHash);
+                    BlockHeader header = _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash));
                     _blockTree.SuggestHeader(header);
                     _alreadySyncedAncient = true;
                 }
