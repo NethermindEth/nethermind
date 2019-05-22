@@ -45,5 +45,6 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         public long? Eip1014Transition { get; set; }
         public long? Eip1052Transition { get; set; }
         public long? Eip1283Transition { get; set; }
+        public long? Eip1283DisableTransition { get; set; }
     }
 }

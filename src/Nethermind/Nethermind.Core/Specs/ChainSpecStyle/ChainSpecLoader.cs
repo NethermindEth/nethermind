@@ -91,6 +91,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             chainSpec.Parameters.Eip1014Transition = chainSpecJson.Params.Eip1014Transition;
             chainSpec.Parameters.Eip1052Transition = chainSpecJson.Params.Eip1052Transition;
             chainSpec.Parameters.Eip1283Transition = chainSpecJson.Params.Eip1283Transition;
+            chainSpec.Parameters.Eip1283DisableTransition = chainSpecJson.Params.Eip1283DisableTransition;
         }
 
         private void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

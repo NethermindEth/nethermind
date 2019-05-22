@@ -113,7 +113,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 releaseSpec.IsEip1014Enabled = (_chainSpec.Parameters.Eip1014Transition ?? 0) <= releaseStartBlock;
                 releaseSpec.IsEip1052Enabled = (_chainSpec.Parameters.Eip1052Transition ?? 0) <= releaseStartBlock;
                 releaseSpec.IsEip1234Enabled = (_chainSpec.ConstantinopleBlockNumber ?? 0) <= releaseStartBlock;
-                releaseSpec.IsEip1283Enabled = (_chainSpec.Parameters.Eip1283Transition ?? 0) <= releaseStartBlock;
+                releaseSpec.IsEip1283Enabled = (_chainSpec.Parameters.Eip1283Transition ?? 0) <= releaseStartBlock && (_chainSpec.Parameters.Eip1283DisableTransition ?? 0) > releaseStartBlock;
                 _transitions[index] = (releaseStartBlock, releaseSpec);
                 index++;
             }
