@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain
         long MinAvailableBlockDiffForSyncSwitch { get; }
         long MinDiffPercentageForLatencySwitch { get; }
         long MinDiffForLatencySwitch { get; }
-        long? PivotTotalDifficulty { get; }
+        string PivotTotalDifficulty { get; }
         string PivotNumber { get; }
         string PivotHash { get; }
     }
