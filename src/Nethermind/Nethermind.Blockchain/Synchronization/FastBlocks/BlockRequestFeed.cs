@@ -23,6 +23,7 @@ using System.Linq;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Json;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
@@ -35,6 +36,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private readonly IBlockTree _blockTree;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly IBlockValidator _blockValidator;
+        private readonly ISyncConfig _syncConfig;
 
         private ConcurrentDictionary<Keccak, BlockSyncBatch> _headerDependencies = new ConcurrentDictionary<Keccak, BlockSyncBatch>();
         private ConcurrentStack<BlockSyncBatch> _pendingBatches = new ConcurrentStack<BlockSyncBatch>();
@@ -48,7 +50,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public long StartNumber { get; set; }
 
         public Keccak StartHash { get; set; }
-        
+
         public UInt256 StartTotalDifficulty { get; set; }
 
         public long? BestDownwardSyncNumber { get; set; }
@@ -56,15 +58,16 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public long? BestDownwardRequestedNumber { get; set; }
 
         private Keccak NextHash;
-        
+
         private UInt256? NextTotalDifficulty;
 
-        public BlockRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, IBlockValidator blockValidator, ILogManager logManager)
+        public BlockRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, IBlockValidator blockValidator, ISyncConfig syncConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncStats = new SyncStats(logManager);
 
             StartNewRound();
@@ -80,7 +83,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 NextHash = StartHash;
             }
-            
+
             if (NextTotalDifficulty == null)
             {
                 NextTotalDifficulty = StartTotalDifficulty;
@@ -97,17 +100,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     return null;
                 }
-                
+
                 blockSyncBatch = new BlockSyncBatch();
                 blockSyncBatch.MinNumber = BestDownwardRequestedNumber ?? StartNumber;
 
                 blockSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
                 blockSyncBatch.HeadersSyncBatch.StartNumber = Math.Max(0, (BestDownwardRequestedNumber - 1 ?? StartNumber) - (RequestSize - 1));
-                blockSyncBatch.HeadersSyncBatch.RequestSize = (int)Math.Min(BestDownwardRequestedNumber ?? StartNumber + 1, RequestSize);
+                blockSyncBatch.HeadersSyncBatch.RequestSize = (int) Math.Min(BestDownwardRequestedNumber ?? StartNumber + 1, RequestSize);
                 BestDownwardRequestedNumber = blockSyncBatch.HeadersSyncBatch.StartNumber.Value;
             }
 
-            if(_logger.IsDebug) _logger.Debug($"Sending request {blockSyncBatch}");
+            if (_logger.IsDebug) _logger.Debug($"Sending request {blockSyncBatch}");
             _sentBatches[blockSyncBatch] = _empty;
             return blockSyncBatch;
         }
@@ -194,7 +197,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                     break;
                                 }
                             }
-                            
+
                             BlockSyncBatch dependentBatch = new BlockSyncBatch();
                             dependentBatch.HeadersSyncBatch = new HeadersSyncBatch();
                             dependentBatch.HeadersSyncBatch.StartNumber = syncBatch.HeadersSyncBatch.StartNumber;
@@ -221,7 +224,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         }
                     }
 
-                    _syncStats.ReportBlocksDownload(StartNumber - (BestDownwardSyncNumber ?? StartNumber), StartNumber, StartNumber, ratio);
+                    long pivotNumber = LongConverter.FromString(_syncConfig.PivotNumber ?? "0");
+                    _syncStats.ReportBlocksDownload(pivotNumber - (BestDownwardSyncNumber ?? pivotNumber), pivotNumber, pivotNumber, ratio);
 
 
                     // validate hash only
@@ -301,7 +305,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     _itemsSaved++;
                 }
             }
-            
+
             if (addBlockResult == AddBlockResult.InvalidBlock)
             {
                 return addBlockResult;
