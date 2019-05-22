@@ -73,9 +73,6 @@ namespace Nethermind.Core.Specs
             }
         }
 
-        public long PivotBlockNumber { get; } = 0;
-        public Keccak PivotBlockHash { get; } = null;
-
         public int ChainId => 0;
     }
 }

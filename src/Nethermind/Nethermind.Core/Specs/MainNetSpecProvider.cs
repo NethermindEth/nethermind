@@ -17,54 +17,62 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs.Releases;
+using Nethermind.Core.Specs.Forks;
 
 namespace Nethermind.Core.Specs
 {
-    public class RinkebySpecProvider : ISpecProvider
+    public class MainNetSpecProvider : ISpecProvider
     {
-        public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
+        public IReleaseSpec GenesisSpec => Frontier.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)
         {
+            if (blockNumber < HomesteadBlockNumber)
+            {
+                return Frontier.Instance;
+            }
+
+            if (blockNumber < DaoBlockNumber)
+            {
+                return Homestead.Instance;
+            }
+
+            if (blockNumber < TangerineWhistleBlockNumber)
+            {
+                return Dao.Instance;
+            }
+
             if (blockNumber < SpuriousDragonBlockNumber)
             {
                 return TangerineWhistle.Instance;
             }
-            
+
             if (blockNumber < ByzantiumBlockNumber)
             {
                 return SpuriousDragon.Instance;
             }
-            
-            if (blockNumber < ConstantinopleBlockNumber)
+
+            if (blockNumber < ConstantinopleFixBlockNumber)
             {
                 return Byzantium.Instance;
             }
-            
-            if (blockNumber < ConstantinopleFixBlockNumber)
-            {
-                return Constantinople.Instance;
-            }
-            
+
             return ConstantinopleFix.Instance;
         }
 
-        public long? DaoBlockNumber { get; } = null;
+        public static long HomesteadBlockNumber { get; } = 1150000;
+        public long? DaoBlockNumber { get; } = 1920000;
+        public static long TangerineWhistleBlockNumber { get; } = 2463000;
+        public static long SpuriousDragonBlockNumber { get; } = 2675000;
+        public static long ByzantiumBlockNumber { get; } = 4370000;
+        public static long ConstantinopleFixBlockNumber { get; } = 7280000;
 
-        public static long SpuriousDragonBlockNumber { get; } = 3;
-        public static long ByzantiumBlockNumber { get; } = 1035301;
-        
-        public static long ConstantinopleBlockNumber { get; } = 3660663;
-        
-        public static long ConstantinopleFixBlockNumber { get; } = 4321234;
-        
-        public int ChainId => 4;
-        
-        private RinkebySpecProvider()
+        public int ChainId => 1;
+
+        private MainNetSpecProvider()
         {
         }
-        
-        public static readonly RinkebySpecProvider Instance = new RinkebySpecProvider();
+
+        public static MainNetSpecProvider Instance = new MainNetSpecProvider();
     }
 }

@@ -146,10 +146,6 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
-        public long PivotBlockNumber { get; } = 0;
-        
-        public Keccak PivotBlockHash { get; } = null;
-
         public int ChainId => _chainSpec.ChainId;
     };
 }

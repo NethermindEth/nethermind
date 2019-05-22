@@ -18,6 +18,9 @@
 
 using System;
 using Nethermind.Logging;
+using System.IO;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -28,6 +31,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IEthSyncPeerPool _syncPeerPool;
+        private readonly ISyncConfig _syncConfig;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
@@ -37,6 +41,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -77,7 +82,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             SyncMode newSyncMode;
-            if (bestHeader <= _specProvider.PivotBlockNumber)
+            if (bestHeader <= LongConverter.FromString(_syncConfig.PivotNumber))
             {
                 newSyncMode = SyncMode.AncientBlocks;
             }

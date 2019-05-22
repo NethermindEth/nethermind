@@ -46,8 +46,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle.Json
             public UInt256? DifficultyBoundDivisor => Params?.DifficultyBoundDivisor;
             public long? DurationLimit => Params?.DurationLimit;
             public UInt256? MinimumDifficulty => Params?.MinimumDifficulty;
-            public Dictionary<long, UInt256> BlockReward => Params?.BlockReward;
-            public Dictionary<long, long> DifficultyBombDelays => Params?.DifficultyBombDelays;
+            public Dictionary<string, UInt256> BlockReward => Params?.BlockReward;
+            public Dictionary<string, long> DifficultyBombDelays => Params?.DifficultyBombDelays;
             public EthashEngineParamsJson Params { get; set; }
         }
         
@@ -61,8 +61,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle.Json
             public Address DaoHardforkBeneficiary { get; set; }
             public Address[] DaoHardforkAccounts { get; set; }
             public long Eip100bTransition { get; set; }
-            public Dictionary<long, UInt256> BlockReward { get; set; }
-            public Dictionary<long, long> DifficultyBombDelays { get; set; }
+            public Dictionary<string, UInt256> BlockReward { get; set; }
+            public Dictionary<string, long> DifficultyBombDelays { get; set; }
         }
     
         internal class CliqueEngineJson

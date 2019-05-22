@@ -17,7 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs.Releases;
+using Nethermind.Core.Specs.Forks;
 
 namespace Nethermind.Core.Specs
 {
@@ -31,10 +31,6 @@ namespace Nethermind.Core.Specs
         }
         
         public long? DaoBlockNumber { get; } = null;
-
-        public long PivotBlockNumber { get; } = 0;
-        
-        public Keccak PivotBlockHash { get; } = KnownHashes.MainnetGenesis;
 
         public int ChainId => Core.ChainId.MainNet;
 

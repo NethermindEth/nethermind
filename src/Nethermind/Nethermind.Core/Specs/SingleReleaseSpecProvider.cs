@@ -46,7 +46,5 @@ namespace Nethermind.Core.Specs
         }
         
         public long? DaoBlockNumber { get; }
-
-        public long PivotBlockNumber { get; } = 0;
     }
 }

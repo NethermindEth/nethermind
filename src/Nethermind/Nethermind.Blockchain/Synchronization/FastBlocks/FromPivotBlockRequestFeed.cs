@@ -45,11 +45,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public int RequestSize { get; set; } = 256;
 
-        public long PivotNumber { get; set; } = MainNetSpecProvider.Instance.PivotBlockNumber;
+        public long PivotNumber { get; set; };
 
-        public Keccak PivotHash { get; set; } = MainNetSpecProvider.Instance.PivotBlockHash;
+        public Keccak PivotHash { get; set; };
         
-        public UInt256 PivotTotalDifficulty { get; set; } = UInt256.Zero;
+        public UInt256 PivotTotalDifficulty { get; set; };
 
         public long? BestDownwardSyncNumber { get; set; }
 

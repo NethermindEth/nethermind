@@ -23,6 +23,7 @@ using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Json;
 using Nethermind.Core.Specs.ChainSpecStyle.Json;
 using Nethermind.Dirichlet.Numerics;
 
@@ -136,15 +137,15 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 chainSpec.Ethash.Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L;
 
                 chainSpec.Ethash.BlockRewards = new Dictionary<long, UInt256>();
-                foreach (KeyValuePair<long, UInt256> reward in chainSpecJson.Engine.Ethash.BlockReward)
+                foreach (KeyValuePair<string, UInt256> reward in chainSpecJson.Engine.Ethash.BlockReward)
                 {
-                    chainSpec.Ethash.BlockRewards.Add(reward.Key, reward.Value);
+                    chainSpec.Ethash.BlockRewards.Add(LongConverter.FromString(reward.Key), reward.Value);
                 }
 
                 chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
-                foreach (KeyValuePair<long, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
+                foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
                 {
-                    chainSpec.Ethash.DifficultyBombDelays.Add(reward.Key, reward.Value);
+                    chainSpec.Ethash.DifficultyBombDelays.Add(LongConverter.FromString(reward.Key), reward.Value);
                 }
             }
             else if (chainSpecJson.Engine?.NethDev != null)

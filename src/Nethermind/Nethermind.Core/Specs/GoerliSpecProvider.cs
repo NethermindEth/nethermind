@@ -39,10 +39,6 @@ namespace Nethermind.Core.Specs
 
         public long? DaoBlockNumber { get; } = null;
 
-        public long PivotBlockNumber => 0;
-
-        public Keccak PivotBlockHash => KnownHashes.GoerliGenesis;
-
         public int ChainId => 0x5;
     }
 }

@@ -68,6 +68,11 @@ namespace Nethermind.Core.Json
             }
 
             string s = (string) reader.Value;
+            return FromString(s);
+        }
+
+        public static long FromString(string s)
+        {
             if (s == "0x0")
             {
                 return 0L;

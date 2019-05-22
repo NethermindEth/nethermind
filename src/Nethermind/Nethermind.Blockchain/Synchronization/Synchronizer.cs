@@ -25,6 +25,8 @@ using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
@@ -81,9 +83,9 @@ namespace Nethermind.Blockchain.Synchronization
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
             
             _blockDataFeed = new FromPivotBlockRequestFeed(_blockTree, _syncPeerPool, blockValidator, logManager);
-            _blockDataFeed.PivotNumber = 635949;// _specProvider.PivotBlockNumber;
-            _blockDataFeed.PivotHash = new Keccak("0xc88dd96938b91e323746b294e07776b3bb138f6937f0b7bb2353a4ed94167419");// _specProvider.PivotBlockHash;
-            _blockDataFeed.PivotTotalDifficulty = UInt256.Parse("1020288");
+            _blockDataFeed.PivotNumber = LongConverter.FromString(syncConfig.PivotNumber);
+            _blockDataFeed.PivotHash = new Keccak(syncConfig.PivotHash);
+            _blockDataFeed.PivotTotalDifficulty = UInt256.Parse(syncConfig.PivotNumber);
             _blockDataFeed.RequestSize = 512;
             
             _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, _blockDataFeed, sealValidator, logManager);

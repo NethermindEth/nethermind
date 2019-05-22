@@ -51,10 +51,6 @@ namespace Nethermind.Core.Specs
         }
         
         public long? DaoBlockNumber { get; } = null;
-        
-        public long PivotBlockNumber => ConstantinopleFixBlockNumber;
-        
-        public Keccak PivotBlockHash => KnownHashes.RopstenConstantinopleFix;
         public static long SpuriousDragonBlockNumber { get; } = 10;
         public static long ByzantiumBlockNumber { get; } = 1700000;
         public static long ConstantinopleBlockNumber { get; } = 4230000;
