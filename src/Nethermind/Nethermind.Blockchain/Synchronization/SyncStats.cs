@@ -58,13 +58,21 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        public void ReportBlocksDownload(long current, long requested, long total, decimal? ratio = null)
+        public void ReportBlocksDownload(long current, long total, decimal ratio)
         {
             // create sync stats like processing stats?
             if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1)
                 && (_lastCurrent != current || _lastTotal != total))
             {
-                if (_logger.IsInfo) _logger.Info($"Blocks download        S:{string.Empty.PadLeft(9 - current.ToString().Length, ' ')}{current}/R:{string.Empty.PadLeft(9 - requested.ToString().Length, ' ')}{requested}/T:{total} | {(current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps | {ratio:p2}");
+                if (_logger.IsInfo)
+                {
+                    string bps = isFirst ? "N/A" : $"{(current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps";
+                    if (current != _firstCurrent)
+                    {
+                        _logger.Info($"Blocks download        {string.Empty.PadLeft(9 - current.ToString().Length, ' ')}{current}/{total} | {bps} | hit ratio: {ratio:p2}");
+                    }
+                }
+
                 _lastSyncNotificationTime = DateTime.UtcNow;
                 _lastCurrent = current;
                 _lastTotal = total;

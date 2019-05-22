@@ -225,7 +225,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     }
 
                     long pivotNumber = LongConverter.FromString(_syncConfig.PivotNumber ?? "0");
-                    _syncStats.ReportBlocksDownload(pivotNumber - (BestDownwardSyncNumber ?? pivotNumber), pivotNumber, pivotNumber, ratio);
+
+                    if (BestDownwardSyncNumber != null)
+                    {
+                        _syncStats.ReportBlocksDownload(pivotNumber - (BestDownwardSyncNumber ?? pivotNumber), pivotNumber, ratio);
+                    }
 
 
                     // validate hash only
