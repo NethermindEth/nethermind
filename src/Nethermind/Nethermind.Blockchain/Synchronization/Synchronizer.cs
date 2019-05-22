@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             BlockHeader lowestInserted = _blockTree.LowestInserted;
             
-            _blockDataFeed = new BlockRequestFeed(_blockTree, _syncPeerPool, blockValidator, logManager);
+            _blockDataFeed = new BlockRequestFeed(_blockTree, _syncPeerPool, blockValidator, syncConfig, logManager);
             _blockDataFeed.StartNumber = lowestInserted?.Number ?? LongConverter.FromString(syncConfig.PivotNumber);
             _blockDataFeed.StartHash = lowestInserted?.Hash ?? new Keccak(syncConfig.PivotHash);
             _blockDataFeed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? UInt256.Parse(syncConfig.PivotTotalDifficulty);
