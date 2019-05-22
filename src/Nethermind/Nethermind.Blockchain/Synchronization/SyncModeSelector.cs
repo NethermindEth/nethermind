@@ -32,28 +32,23 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
-        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        private bool _fastSyncEnabled;
-
-        public SyncModeSelector(ISyncProgressResolver syncProgressResolver, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISpecProvider specProvider, ILogManager logManager)
+        public SyncModeSelector(ISyncProgressResolver syncProgressResolver, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager)
         {
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-
-            _fastSyncEnabled = syncConfig?.FastSync ?? false;
-            Current = _fastSyncEnabled ? SyncMode.Headers : SyncMode.Full;
+            
+            Current = _syncConfig.FastSync ? SyncMode.AncientBlocks : SyncMode.Full;
         }
 
         public SyncMode Current { get; private set; }
         
         public void Update()
         {
-            if (!_fastSyncEnabled)
+            if (!_syncConfig.FastSync)
             {
                 return;
             }
@@ -62,27 +57,26 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 return;
             }
-
-            long bestFullBlock = _syncProgressResolver.FindBestFullBlock();
+            
             long bestHeader = _syncProgressResolver.FindBestHeader();
+            long bestFullBlock = _syncProgressResolver.FindBestFullBlock();
             long bestFullState = _syncProgressResolver.FindBestFullState();
             long lowestInserted = _syncProgressResolver.FindLowestInserted();
-            if (bestFullBlock < 0 || bestHeader < 0 || bestFullState < 0  || bestFullBlock > bestHeader)
+            long maxBlockNumberAmongPeers = 0;
+            if (lowestInserted < 0 || bestFullBlock < 0 || bestHeader < 0 || bestFullState < 0  || bestFullBlock > bestHeader)
             {
-                string errorMessage = $"Invalid best state calculation: F:{bestFullBlock}|H:{bestHeader}|S:{bestFullState}";
+                string errorMessage = $"Invalid best state calculation: {BuildStateString(bestHeader, bestFullBlock, bestFullBlock,lowestInserted, maxBlockNumberAmongPeers)}";
                 if(_logger.IsError) _logger.Error(errorMessage);
                 throw new InvalidOperationException(errorMessage);
             }
-
             
-            long maxBlockNumberAmongPeers = 0;
             foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
             {
                 maxBlockNumberAmongPeers = Math.Max(maxBlockNumberAmongPeers, peerInfo.HeadNumber);
             }
 
             SyncMode newSyncMode;
-            if (bestHeader < LongConverter.FromString(_syncConfig.PivotNumber))
+            if (bestHeader < LongConverter.FromString(_syncConfig.PivotNumber ?? "0"))
             {
                 newSyncMode = SyncMode.AncientBlocks;
             }
@@ -102,16 +96,21 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (newSyncMode != Current)
             {
-                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} best_header:{bestHeader}|best_full:{bestFullBlock}|best_state:{bestFullState}|best_heard_of:{maxBlockNumberAmongPeers}|lowest_inserted{lowestInserted}.");
+                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullBlock,lowestInserted, maxBlockNumberAmongPeers)}");
                 Current = newSyncMode;
                 Changed?.Invoke(this, EventArgs.Empty);
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} |best header:{bestHeader}|best full block:{bestFullBlock}|best state:{bestFullState}|best peer block:{maxBlockNumberAmongPeers}");
+                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullBlock,lowestInserted, maxBlockNumberAmongPeers)}");
             }
         }
 
+        private string BuildStateString(long bestHeader, long bestFullBlock, long bestFullState, long lowestInserted, long bestAmongPeers)
+        {
+            return $"|best header:{bestHeader}|best full block:{bestFullBlock}|best state:{bestFullState}|lowest inserted:{lowestInserted}|best peer block:{bestAmongPeers}";
+        }
+        
         public event EventHandler Changed;
     }
 }

@@ -16,19 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+using System;
 
-[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 namespace Nethermind.Blockchain.Synchronization
 {
-    internal interface ISyncProgressResolver
+    [Flags]
+    public enum BorrowOptions
     {
-        long FindBestFullState();
-        
-        long FindBestHeader();
-        
-        long FindBestFullBlock();
-
-        long FindLowestInserted();
+        None = 0,
+        DoNotReplace = 1
     }
 }

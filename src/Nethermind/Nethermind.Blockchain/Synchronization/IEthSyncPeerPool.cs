@@ -24,13 +24,6 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    [Flags]
-    public enum BorrowOptions
-    {
-        None = 0,
-        DoNotReplace = 1
-    }
-    
     public interface IEthSyncPeerPool
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);

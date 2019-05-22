@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc.Client
             {
                 throw;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 throw new DataException($"Cannot deserialize {responseString}");
             }

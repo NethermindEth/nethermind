@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Synchronization
         private bool _requestedSyncCancelDueToBetterPeer;
         private readonly ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
         private SyncModeSelector _syncMode;
-        private FromPivotBlockRequestFeed _blockDataFeed;
+        private BlockRequestFeed _blockDataFeed;
         private long _bestSuggestedNumber => _blockTree.BestSuggested?.Number ?? 0;
 
         /* sync events are used mainly for managing sync peers reputation */
@@ -77,16 +77,18 @@ namespace Nethermind.Blockchain.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, _nodeDataDownloader, logManager);
-            _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, specProvider, logManager);
+            _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
 
             // make ctor parameter?
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
+
+            BlockHeader lowestInserted = _blockTree.LowestInserted;
             
-            _blockDataFeed = new FromPivotBlockRequestFeed(_blockTree, _syncPeerPool, blockValidator, logManager);
-            _blockDataFeed.PivotNumber = LongConverter.FromString(syncConfig.PivotNumber);
-            _blockDataFeed.PivotHash = new Keccak(syncConfig.PivotHash);
-            _blockDataFeed.PivotTotalDifficulty = UInt256.Parse(syncConfig.PivotTotalDifficulty);
-            _blockDataFeed.RequestSize = 128;
+            _blockDataFeed = new BlockRequestFeed(_blockTree, _syncPeerPool, blockValidator, logManager);
+            _blockDataFeed.StartNumber = lowestInserted?.Number ?? LongConverter.FromString(syncConfig.PivotNumber);
+            _blockDataFeed.StartHash = lowestInserted?.Hash ?? new Keccak(syncConfig.PivotHash);
+            _blockDataFeed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? UInt256.Parse(syncConfig.PivotTotalDifficulty);
+            _blockDataFeed.RequestSize = 512;
             
             _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, _blockDataFeed, sealValidator, logManager);
         }
@@ -311,7 +313,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (!_alreadySyncedAncient && (_blockTree.LowestInserted?.Number ?? long.MaxValue) <= 1)
                 {
-                    BlockHeader header = _blockTree.FindHeader(_blockDataFeed.PivotHash);
+                    BlockHeader header = _blockTree.FindHeader(_blockDataFeed.StartHash);
                     _blockTree.SuggestHeader(header);
                     _alreadySyncedAncient = true;
                 }

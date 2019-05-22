@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Starts_with_headers_when_fast_sync_is_enabled()
         {
             SyncModeSelector selector = BuildSelector(true);
-            Assert.AreEqual(SyncMode.Headers, selector.Current);
+            Assert.AreEqual(SyncMode.AncientBlocks, selector.Current);
         }
 
         [Test]
@@ -56,10 +56,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
+            syncConfig.PivotNumber = null;
+            syncConfig.PivotHash = null;
+            
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, GoerliSpecProvider.Instance, LimboLogs.Instance);
-            Assert.AreEqual(SyncMode.Headers, selector.Current);
+            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
+            Assert.AreEqual(SyncMode.AncientBlocks, selector.Current);
 
             (long BestRemote, long BestLocalHeader, long BestLocalFullBlock, long BestLocalState, SyncMode ExpectedState, string Description)[] states =
             {
@@ -84,6 +87,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 syncProgressResolver.FindBestFullState().Returns(testCase.BestLocalState);
                 syncProgressResolver.FindBestHeader().Returns(testCase.BestLocalHeader);
                 syncProgressResolver.FindBestFullBlock().Returns(testCase.BestLocalFullBlock);
+                syncProgressResolver.FindLowestInserted().Returns(1L);
                 
                 Assert.GreaterOrEqual(testCase.BestLocalHeader, testCase.BestLocalState, "checking if the test case is correct - local state always less then local header");
                 Assert.GreaterOrEqual(testCase.BestLocalHeader, testCase.BestLocalFullBlock, "checking if the test case is correct - local full block always less then local header");
@@ -118,15 +122,15 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
-        [TestCase(true, 0, 0, 0, SyncMode.Headers)]
-        [TestCase(false, 0, 0, 0, SyncMode.Full)]
-        [TestCase(true, 1000, 0, 0, SyncMode.Headers)]
-        [TestCase(false, 1000, 0, 0, SyncMode.Full)]
-        [TestCase(true, 1000, 0, 1000, SyncMode.Headers)]
-        [TestCase(false, 1000, 0, 1000, SyncMode.Full)]
-        public void Does_not_change_when_no_peers(bool useFastSync, long bestLocalHeader, long bestLocalFullBLock, long bestLocalState, SyncMode expected)
+        [TestCase(true, 1032, 0, 0, 0, SyncMode.AncientBlocks)]
+        [TestCase(false, 1032, 0, 0, 0, SyncMode.Full)]
+        [TestCase(true, 1032, 1000, 0, 0, SyncMode.AncientBlocks)]
+        [TestCase(false, 1032, 1000, 0, 0, SyncMode.Full)]
+        [TestCase(true, 1032, 1000, 0, 1000, SyncMode.AncientBlocks)]
+        [TestCase(false, 1032, 1000, 0, 1000, SyncMode.Full)]
+        public void Does_not_change_when_no_peers(bool useFastSync, long bestRemote, long bestLocalHeader, long bestLocalFullBLock, long bestLocalState, SyncMode expected)
         {
-            SyncModeSelector selector = BuildSelectorNoPeers(useFastSync);
+            SyncModeSelector selector = BuildSelectorNoPeers(useFastSync, bestRemote,  bestLocalHeader, bestLocalFullBLock, bestLocalState);
             selector.Update();
             Assert.AreEqual(expected, selector.Current);
         }
@@ -152,12 +156,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncProgressResolver.FindBestHeader().Returns(bestHeader);
             syncProgressResolver.FindBestFullBlock().Returns(bestBlock);
             syncProgressResolver.FindBestFullState().Returns(bestLocalState);
+            syncProgressResolver.FindLowestInserted().Returns(1L);
             
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, GoerliSpecProvider.Instance, LimboLogs.Instance);
+            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             return selector;
         }
 
-        private static SyncModeSelector BuildSelectorNoPeers(bool fastSyncEnabled)
+        private static SyncModeSelector BuildSelectorNoPeers(bool fastSyncEnabled, long bestRemote = 0L, long bestHeader = 0L, long bestBlock = 0L, long bestLocalState = 0L)
         {
             IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
             syncPeerPool.AllPeers.Returns(new PeerInfo[] { });
@@ -167,7 +172,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncConfig.FastSync = fastSyncEnabled;
             
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, GoerliSpecProvider.Instance, LimboLogs.Instance);
+            syncProgressResolver.FindBestHeader().Returns(bestHeader);
+            syncProgressResolver.FindBestFullBlock().Returns(bestBlock);
+            syncProgressResolver.FindBestFullState().Returns(bestLocalState);
+            syncProgressResolver.FindLowestInserted().Returns(1L);            
+
+            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             return selector;
         }
     }

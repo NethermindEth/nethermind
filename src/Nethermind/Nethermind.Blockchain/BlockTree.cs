@@ -93,6 +93,7 @@ namespace Nethermind.Blockchain
                 }
 
                 LoadBestKnown();
+                LoadLowestInserted();
 
                 if (genesisLevel.BlockInfos[0].WasProcessed)
                 {
@@ -124,15 +125,49 @@ namespace Nethermind.Blockchain
                     left = index + 1;
                 }
             }
-
-
+            
             long result = left - 1;
-            if (result < 0)
-            {
-                throw new InvalidOperationException($"Bets known is {result}");
-            }
 
             BestKnownNumber = result;
+            
+            if (BestKnownNumber < 0)
+            {
+                throw new InvalidOperationException($"Best known is {BestKnownNumber}");
+            }
+        }
+        
+        private void LoadLowestInserted()
+        {
+            long left = 0;
+            long right = BestKnownNumber;
+
+            while (left != right)
+            {
+                long index = left + (right - left) / 2;
+                ChainLevelInfo level = LoadLevel(index, true);
+                if (level == null)
+                {
+                    left = index + 1;
+                }
+                else
+                {
+                    right = index;
+                }
+            }
+
+            long result = right + 1;
+            
+            if (result == 0)
+            {
+                result = long.MaxValue;
+            }
+            
+            if (result <= 0 || result > BestKnownNumber)
+            {
+                throw new InvalidOperationException($"Lowest inserted is is {result} and best known is {BestKnownNumber}");
+            }
+
+            LowestInserted = FindHeader(result);
         }
 
         public bool CanAcceptNewBlocks { get; private set; } = true; // no need to sync it at the moment
@@ -293,9 +328,8 @@ namespace Nethermind.Blockchain
         public BlockHeader Genesis { get; private set; }
         public BlockHeader Head { get; private set; }
         public BlockHeader BestSuggested { get; private set; }
-        
-        public BlockHeader LowestInserted { get; set; }
         public BlockHeader BestSuggestedFullBlock { get; private set; }
+        public BlockHeader LowestInserted { get; private set; }
         public long BestKnownNumber { get; private set; }
         public int ChainId => _specProvider.ChainId;
 

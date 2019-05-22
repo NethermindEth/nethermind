@@ -29,7 +29,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public class FromPivotBlockRequestFeed : IBlockRequestFeed
+    public class BlockRequestFeed : IBlockRequestFeed
     {
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
@@ -45,11 +45,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public int RequestSize { get; set; } = 256;
 
-        public long PivotNumber { get; set; }
+        public long StartNumber { get; set; }
 
-        public Keccak PivotHash { get; set; }
+        public Keccak StartHash { get; set; }
         
-        public UInt256 PivotTotalDifficulty { get; set; }
+        public UInt256 StartTotalDifficulty { get; set; }
 
         public long? BestDownwardSyncNumber { get; set; }
 
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         
         private UInt256? NextTotalDifficulty;
 
-        public FromPivotBlockRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, IBlockValidator blockValidator, ILogManager logManager)
+        public BlockRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, IBlockValidator blockValidator, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -67,7 +67,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _syncStats = new SyncStats(logManager);
 
-            _totalHeadersReceived = 0;
             StartNewRound();
         }
 
@@ -79,12 +78,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         {
             if (NextHash == null)
             {
-                NextHash = PivotHash;
+                NextHash = StartHash;
             }
             
             if (NextTotalDifficulty == null)
             {
-                NextTotalDifficulty = PivotTotalDifficulty;
+                NextTotalDifficulty = StartTotalDifficulty;
             }
 
             BlockSyncBatch blockSyncBatch;
@@ -100,11 +99,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
                 
                 blockSyncBatch = new BlockSyncBatch();
-                blockSyncBatch.MinNumber = BestDownwardRequestedNumber ?? PivotNumber;
+                blockSyncBatch.MinNumber = BestDownwardRequestedNumber ?? StartNumber;
 
                 blockSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
-                blockSyncBatch.HeadersSyncBatch.StartNumber = Math.Max(0, (BestDownwardRequestedNumber - 1 ?? PivotNumber) - (RequestSize - 1));
-                blockSyncBatch.HeadersSyncBatch.RequestSize = (int)Math.Min(BestDownwardRequestedNumber ?? PivotNumber + 1, RequestSize);
+                blockSyncBatch.HeadersSyncBatch.StartNumber = Math.Max(0, (BestDownwardRequestedNumber - 1 ?? StartNumber) - (RequestSize - 1));
+                blockSyncBatch.HeadersSyncBatch.RequestSize = (int)Math.Min(BestDownwardRequestedNumber ?? StartNumber + 1, RequestSize);
                 BestDownwardRequestedNumber = blockSyncBatch.HeadersSyncBatch.StartNumber.Value;
             }
 
@@ -113,13 +112,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             return blockSyncBatch;
         }
 
-        private int _totalHeadersReceived = 0;
-
         public (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch syncBatch)
         {
             lock (_handlerLock)
             {
-                _totalHeadersReceived += syncBatch.HeadersSyncBatch.Response?.Count(r => r != null) ?? 0;
                 if (syncBatch.HeadersSyncBatch != null)
                 {
                     int added = SuggestBatch(syncBatch);
@@ -156,7 +152,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 if (_logger.IsInfo) _logger.Info($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0} | {ratio:p2}");
 
                 int added = 0;
-                bool stackRemaining = true;
 
                 for (int i = headersSyncBatch.Response.Length - 1; i >= 0; i--)
                 {
@@ -226,7 +221,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         }
                     }
 
-                    _syncStats.ReportBlocksDownload(PivotNumber - (BestDownwardSyncNumber ?? PivotNumber), PivotNumber, PivotNumber, ratio);
+                    _syncStats.ReportBlocksDownload(StartNumber - (BestDownwardSyncNumber ?? StartNumber), StartNumber, StartNumber, ratio);
 
 
                     // validate hash only
@@ -255,7 +250,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     return added;
                 }
 
-                if (added < syncBatch.HeadersSyncBatch.RequestSize && stackRemaining)
+                if (added < syncBatch.HeadersSyncBatch.RequestSize)
                 {
                     BlockSyncBatch fixedSyncBatch = new BlockSyncBatch();
                     fixedSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
@@ -267,7 +262,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 // if not stackRemaining then it was just held for later
-                if (added == 0 && stackRemaining)
+                if (added == 0)
                 {
                     if (syncBatch.AssignedPeer != null)
                     {
@@ -298,7 +293,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             AddBlockResult addBlockResult = _blockTree.Insert(header);
             if (addBlockResult == AddBlockResult.Added || addBlockResult == AddBlockResult.AlreadyKnown)
             {
-                BestDownwardSyncNumber = Math.Min(BestDownwardSyncNumber ?? PivotNumber, header.Number);
+                BestDownwardSyncNumber = Math.Min(BestDownwardSyncNumber ?? StartNumber, header.Number);
                 NextHash = header.ParentHash;
                 NextTotalDifficulty = (header.TotalDifficulty ?? 0) - header.Difficulty;
                 if (addBlockResult == AddBlockResult.Added)
