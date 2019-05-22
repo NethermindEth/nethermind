@@ -293,6 +293,8 @@ namespace Nethermind.Blockchain
         public BlockHeader Genesis { get; private set; }
         public BlockHeader Head { get; private set; }
         public BlockHeader BestSuggested { get; private set; }
+        
+        public BlockHeader LowestInserted { get; set; }
         public BlockHeader BestSuggestedFullBlock { get; private set; }
         public long BestKnownNumber { get; private set; }
         public int ChainId => _specProvider.ChainId;
@@ -353,6 +355,11 @@ namespace Nethermind.Blockchain
             {
                 _blockInfoLock.ExitWriteLock();
             }
+
+            if (header.Number < (LowestInserted?.Number ?? long.MaxValue))
+            {
+                LowestInserted = header;
+            }
             
             return AddBlockResult.Added;
         }
@@ -377,6 +384,7 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.InvalidBlock;
             }
 
+            bool isKnown = IsKnownBlock(header.Number, header.Hash);
             if (header.Number == 0)
             {
                 if (BestSuggested != null)
@@ -384,7 +392,7 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("Genesis block should be added only once");
                 }
             }
-            else if (IsKnownBlock(header.Number, header.Hash))
+            else if (isKnown && (BestSuggested?.Number ?? 0) >= header.Number)
             {
                 if (_logger.IsTrace)
                 {
@@ -404,7 +412,8 @@ namespace Nethermind.Blockchain
             }
 
             SetTotalDifficulty(header);
-            if (block != null)
+            
+            if (block != null && !isKnown)
             {
                 using (MemoryStream stream = Rlp.BorrowStream())
                 {
@@ -414,25 +423,27 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            using (MemoryStream stream = Rlp.BorrowStream())
+            if (!isKnown)
             {
-                Rlp.Encode(stream, header);
-                byte[] newRlp = stream.ToArray();
-                _headerDb.Set(header.Hash, newRlp);
-            }
+                using (MemoryStream stream = Rlp.BorrowStream())
+                {
+                    Rlp.Encode(stream, header);
+                    byte[] newRlp = stream.ToArray();
+                    _headerDb.Set(header.Hash, newRlp);
+                }
+                
+                BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
 
-            BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
-
-            try
-            {
-                _blockInfoLock.EnterWriteLock();
-                UpdateOrCreateLevel(header.Number, blockInfo);
+                try
+                {
+                    _blockInfoLock.EnterWriteLock();
+                    UpdateOrCreateLevel(header.Number, blockInfo);
+                }
+                finally
+                {
+                    _blockInfoLock.ExitWriteLock();
+                }
             }
-            finally
-            {
-                _blockInfoLock.ExitWriteLock();
-            }
-
 
             if (header.IsGenesis || header.TotalDifficulty > (BestSuggested?.TotalDifficulty ?? 0))
             {

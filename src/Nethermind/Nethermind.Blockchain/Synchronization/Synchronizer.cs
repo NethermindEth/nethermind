@@ -52,6 +52,7 @@ namespace Nethermind.Blockchain.Synchronization
         private bool _requestedSyncCancelDueToBetterPeer;
         private readonly ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
         private SyncModeSelector _syncMode;
+        private FromPivotBlockRequestFeed _blockDataFeed;
         private long _bestSuggestedNumber => _blockTree.BestSuggested?.Number ?? 0;
 
         /* sync events are used mainly for managing sync peers reputation */
@@ -79,12 +80,12 @@ namespace Nethermind.Blockchain.Synchronization
             // make ctor parameter?
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
             
-            FromPivotBlockRequestFeed feed = new FromPivotBlockRequestFeed(_blockTree, _syncPeerPool, blockValidator, logManager);
-            feed.PivotNumber = _specProvider.PivotBlockNumber;
-            feed.PivotHash = _specProvider.PivotBlockHash;
-            feed.RequestSize = 512;
+            _blockDataFeed = new FromPivotBlockRequestFeed(_blockTree, _syncPeerPool, blockValidator, logManager);
+            _blockDataFeed.PivotNumber = 635949;// _specProvider.PivotBlockNumber;
+            _blockDataFeed.PivotHash = new Keccak("0xc88dd96938b91e323746b294e07776b3bb138f6937f0b7bb2353a4ed94167419");// _specProvider.PivotBlockHash;
+            _blockDataFeed.RequestSize = 512;
             
-            _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, feed, sealValidator, logManager);
+            _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, _blockDataFeed, sealValidator, logManager);
         }
 
         public SyncMode SyncMode => _syncMode.Current;
@@ -304,6 +305,13 @@ namespace Nethermind.Blockchain.Synchronization
                 var source = _peerSyncCancellation;
                 _peerSyncCancellation = null;
                 source?.Dispose();
+
+                if ((_blockTree.LowestInserted?.Number ?? long.MaxValue) <= 1)
+                {
+                    BlockHeader header = _blockTree.FindHeader(_blockDataFeed.PivotHash);
+                    header.TotalDifficulty = UInt256.Parse("1020288");
+                    _blockTree.SuggestHeader(header);
+                }
             }
         }
 

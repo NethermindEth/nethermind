@@ -33,11 +33,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public override string ToString()
         {
-            return HeadersSyncBatch == null
-                ? $"BODIES {BodiesSyncBatch.Request.Length}"
-                : HeadersSyncBatch.StartHash == null
-                    ? $"HEADERS [{HeadersSyncBatch.StartNumber}, {HeadersSyncBatch.StartNumber + (HeadersSyncBatch.Reverse ? -1 : 1) * (HeadersSyncBatch.RequestSize - 1)}]"
-                    : $"HEADERS [{HeadersSyncBatch.StartHash} - {HeadersSyncBatch.RequestSize - 1}]";
+            string bodiesOrHeaders = HeadersSyncBatch != null ? "HEADERS" : "BODIES";
+            string startBlock = HeadersSyncBatch?.StartNumber.ToString() ?? HeadersSyncBatch?.StartHash.ToString();
+            string endBlock = (HeadersSyncBatch?.StartNumber != null ? HeadersSyncBatch.StartNumber + (HeadersSyncBatch.Reverse ? -1 : 1) * (HeadersSyncBatch.RequestSize - 1) : HeadersSyncBatch?.RequestSize - 1).ToString(); 
+            return $"{bodiesOrHeaders} [{startBlock}, {endBlock}] reverse: {HeadersSyncBatch?.Reverse}, size: {HeadersSyncBatch?.RequestSize ?? 0}, skip: {HeadersSyncBatch?.Skip}, min#: {MinNumber}, min diff: {MinTotalDifficulty}";
         }
     }
 }

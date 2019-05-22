@@ -43,6 +43,11 @@ namespace Nethermind.Blockchain
         BlockHeader BestSuggested { get; }
         
         /// <summary>
+        /// Lowest header added in reverse insert
+        /// </summary>
+        BlockHeader LowestInserted { get; }
+        
+        /// <summary>
         /// Best block that has been suggested for processing
         /// </summary>
         BlockHeader BestSuggestedFullBlock { get; }

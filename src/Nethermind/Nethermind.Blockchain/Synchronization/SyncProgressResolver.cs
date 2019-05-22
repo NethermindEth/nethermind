@@ -53,6 +53,11 @@ namespace Nethermind.Blockchain.Synchronization
             return bestFullState;
         }
 
+        public long FindLowestInserted()
+        {
+            return _blockTree.LowestInserted?.Number ?? long.MaxValue;
+        }
+        
         public long FindBestHeader()
         {
             return _blockTree.BestSuggested?.Number ?? 0;

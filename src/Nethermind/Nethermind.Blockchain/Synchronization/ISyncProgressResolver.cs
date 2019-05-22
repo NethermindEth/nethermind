@@ -10,5 +10,7 @@ namespace Nethermind.Blockchain.Synchronization
         long FindBestHeader();
         
         long FindBestFullBlock();
+
+        long FindLowestInserted();
     }
 }

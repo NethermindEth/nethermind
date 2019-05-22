@@ -61,6 +61,7 @@ namespace Nethermind.Blockchain.Synchronization
             long bestFullBlock = _syncProgressResolver.FindBestFullBlock();
             long bestHeader = _syncProgressResolver.FindBestHeader();
             long bestFullState = _syncProgressResolver.FindBestFullState();
+            long lowestInserted = _syncProgressResolver.FindLowestInserted();
             if (bestFullBlock < 0 || bestHeader < 0 || bestFullState < 0  || bestFullBlock > bestHeader)
             {
                 string errorMessage = $"Invalid best state calculation: F:{bestFullBlock}|H:{bestHeader}|S:{bestFullState}";
@@ -76,7 +77,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             SyncMode newSyncMode;
-            if (bestHeader < _specProvider.PivotBlockNumber)
+            if (bestHeader <= _specProvider.PivotBlockNumber)
             {
                 newSyncMode = SyncMode.AncientBlocks;
             }
@@ -96,7 +97,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (newSyncMode != Current)
             {
-                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} H:{bestHeader}|F:{bestFullBlock}|S:{bestFullState}|R:{maxBlockNumberAmongPeers}.");
+                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} best_header:{bestHeader}|best_full:{bestFullBlock}|best_state:{bestFullState}|best_heard_of:{maxBlockNumberAmongPeers}|lowest_inserted{lowestInserted}.");
                 Current = newSyncMode;
                 Changed?.Invoke(this, EventArgs.Empty);
             }

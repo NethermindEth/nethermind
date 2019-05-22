@@ -202,6 +202,7 @@ namespace Nethermind.PerfTest
             public int ChainId => _blockTree.ChainId;
             public BlockHeader Genesis => _blockTree.Genesis;
             public BlockHeader BestSuggested => _blockTree.BestSuggested;
+            public BlockHeader LowestInserted => _blockTree.LowestInserted;
             public BlockHeader BestSuggestedFullBlock => _blockTree.BestSuggestedFullBlock;
             public long BestKnownNumber => _blockTree.BestKnownNumber;
             public BlockHeader Head => _blockTree.Head;
