@@ -307,13 +307,16 @@ namespace Nethermind.Blockchain.Synchronization
                 _peerSyncCancellation = null;
                 source?.Dispose();
 
-                if ((_blockTree.LowestInserted?.Number ?? long.MaxValue) <= 1)
+                if (!_alreadySyncedAncient && (_blockTree.LowestInserted?.Number ?? long.MaxValue) <= 1)
                 {
                     BlockHeader header = _blockTree.FindHeader(_blockDataFeed.PivotHash);
                     _blockTree.SuggestHeader(header);
+                    _alreadySyncedAncient = true;
                 }
             }
         }
+
+        private bool _alreadySyncedAncient = false;
 
         private void HandleSyncRequestResult(Task<long> task, PeerInfo peerInfo)
         {
