@@ -39,6 +39,11 @@ namespace Nethermind.Cli.Modules
         [CliFunction("node", "switch")]
         public string Switch(string uri)
         {
+            if (!uri.Contains(":"))
+            {
+                uri = uri + ":8545";
+            }
+            
             if (!uri.StartsWith("http://"))
             {
                 uri = "http://" + uri;

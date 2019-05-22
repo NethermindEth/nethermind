@@ -45,6 +45,18 @@ namespace Nethermind.Cli.Modules
             return keccak.Bytes.ToHexString();
         }
 
+        [CliFunction("eth", "getBlockByHash")]
+        public object GetBlockByHash(string hash, bool returnFullTransactionObjects)
+        {
+            return NodeManager.Post<object>("eth_getBlockByHash", CliParseHash(hash), returnFullTransactionObjects).Result;
+        }
+        
+        [CliFunction("eth", "getBlockByNumber")]
+        public object GetBlockByNumber(string blockParameter, bool returnFullTransactionObjects)
+        {
+            return NodeManager.Post<object>("eth_getBlockByNumber", blockParameter, returnFullTransactionObjects).Result;
+        }
+
         [CliFunction("eth", "sendEth")]
         public string SendEth(string from, string to, decimal amountInEth)
         {

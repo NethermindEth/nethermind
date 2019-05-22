@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Globalization;
+
 namespace Nethermind.Cli.Modules
 {
     [CliModule("web3")]
@@ -30,5 +32,8 @@ namespace Nethermind.Cli.Modules
 
         [CliFunction("web3", "sha3")]
         public string Sha3(string data) => NodeManager.Post<string>("web3_sha3", data).Result;
+        
+        [CliFunction("web3", "toDecimal")]
+        public int ToDecimal(string hex) => int.Parse(hex.Replace("0x", string.Empty), NumberStyles.AllowHexSpecifier);
     }
 }
