@@ -39,7 +39,7 @@ namespace Nethermind.Core
         public Account(UInt256 balance)
         {
             Balance = balance;
-            Nonce = UInt256.Zero;
+            Nonce = _accountStartNonce;
             CodeHash = Keccak.OfAnEmptyString;
             StorageRoot = Keccak.EmptyTreeHash;
             IsTotallyEmpty = Balance.IsZero;

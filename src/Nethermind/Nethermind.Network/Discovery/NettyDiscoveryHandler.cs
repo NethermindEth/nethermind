@@ -134,7 +134,7 @@ namespace Nethermind.Network.Discovery
             }
             catch (Exception e)
             {
-                if(_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}, {e.Message}");
+                if(_logger.IsError) _logger.Error($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}, {e.Message}");
                 return;
             }
 
@@ -142,14 +142,14 @@ namespace Nethermind.Network.Discovery
             {
                 if ((ulong)message.ExpirationTime < _timestamp.EpochSeconds)
                 {
-                    if(_logger.IsTrace) _logger.Trace($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
+                    if(_logger.IsError) _logger.Error($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
                     ctx.DisconnectAsync();
                     return;
                 }
 
                 if (!message.FarAddress.Equals((IPEndPoint)packet.Sender))
                 {
-                    if(_logger.IsTrace) _logger.Trace($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                    if(_logger.IsError) _logger.Error($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
                     ctx.DisconnectAsync();
                     return;
                 }

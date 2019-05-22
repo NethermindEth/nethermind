@@ -87,6 +87,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             foreach (long releaseStartBlock in transitionBlocks)
             {
                 ReleaseSpec releaseSpec = new ReleaseSpec();
+                releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
                 releaseSpec.Registrar = _chainSpec.Parameters.Registrar;
                 releaseSpec.MaximumExtraDataSize = _chainSpec.Parameters.MaximumExtraDataSize;
                 releaseSpec.MinGasLimit = _chainSpec.Parameters.MinGasLimit;
@@ -143,18 +144,12 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             return spec;
         }
 
-        public long? DaoBlockNumber
-        {
-            get
-            {
-                (long blockNumber, IReleaseSpec daoRelease) = _transitions.SingleOrDefault(t => t.Release == Dao.Instance);
-                return daoRelease != null ? blockNumber : (long?) null;
-            }
-        }
+        public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
         public long PivotBlockNumber { get; } = 0;
+        
         public Keccak PivotBlockHash { get; } = null;
 
-        public int ChainId => 0;
-    }
+        public int ChainId => _chainSpec.ChainId;
+    };
 }

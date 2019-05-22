@@ -28,6 +28,28 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
     public class ChainSpecBasedSpecProviderTests
     {
         [Test]
+        public void Chain_id_is_set_correctly()
+        {
+            ChainSpec chainSpec = new ChainSpec();
+            chainSpec.Parameters = new ChainParameters();
+            chainSpec.ChainId = 5;
+
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
+            Assert.AreEqual(5, provider.ChainId);
+        }
+        
+        [Test]
+        public void Dao_block_number_is_set_correctly()
+        {
+            ChainSpec chainSpec = new ChainSpec();
+            chainSpec.Parameters = new ChainParameters();
+            chainSpec.DaoForkBlockNumber = 23;
+
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
+            Assert.AreEqual(23, provider.DaoBlockNumber);
+        }
+        
+        [Test]
         public void Max_code_transition_loaded_correctly()
         {
             const long maxCodeTransition = 13;
