@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
@@ -47,12 +48,16 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public long PivotNumber { get; set; } = MainNetSpecProvider.Instance.PivotBlockNumber;
 
         public Keccak PivotHash { get; set; } = MainNetSpecProvider.Instance.PivotBlockHash;
+        
+        public UInt256 PivotTotalDifficulty { get; set; } = UInt256.Zero;
 
         public long? BestDownwardSyncNumber { get; set; }
 
         public long? BestDownwardRequestedNumber { get; set; }
 
         private Keccak NextHash;
+        
+        private UInt256? NextTotalDifficulty;
 
         public FromPivotBlockRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, IBlockValidator blockValidator, ILogManager logManager)
         {
@@ -75,6 +80,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             if (NextHash == null)
             {
                 NextHash = PivotHash;
+            }
+            
+            if (NextTotalDifficulty == null)
+            {
+                NextTotalDifficulty = PivotTotalDifficulty;
             }
 
             BlockSyncBatch blockSyncBatch;
@@ -223,6 +233,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                     // override unknown parent here
                     // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                    header.TotalDifficulty = NextTotalDifficulty;
                     AddBlockResult addBlockResult = isValid ? SuggestHeader(header) : AddBlockResult.InvalidBlock;
 
                     added++;
@@ -288,6 +299,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 BestDownwardSyncNumber = Math.Min(BestDownwardSyncNumber ?? PivotNumber, header.Number);
                 NextHash = header.ParentHash;
+                NextTotalDifficulty = (header.TotalDifficulty ?? 0) - header.Difficulty;
                 if (addBlockResult == AddBlockResult.Added)
                 {
                     _itemsSaved++;
