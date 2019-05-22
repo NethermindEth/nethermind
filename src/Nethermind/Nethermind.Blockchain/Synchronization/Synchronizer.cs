@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Synchronization
             _blockDataFeed.PivotNumber = LongConverter.FromString(syncConfig.PivotNumber);
             _blockDataFeed.PivotHash = new Keccak(syncConfig.PivotHash);
             _blockDataFeed.PivotTotalDifficulty = UInt256.Parse(syncConfig.PivotTotalDifficulty);
-            _blockDataFeed.RequestSize = 512;
+            _blockDataFeed.RequestSize = 128;
             
             _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, _blockDataFeed, sealValidator, logManager);
         }

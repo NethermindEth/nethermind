@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             SyncMode newSyncMode;
-            if (bestHeader <= LongConverter.FromString(_syncConfig.PivotNumber))
+            if (bestHeader < LongConverter.FromString(_syncConfig.PivotNumber))
             {
                 newSyncMode = SyncMode.AncientBlocks;
             }

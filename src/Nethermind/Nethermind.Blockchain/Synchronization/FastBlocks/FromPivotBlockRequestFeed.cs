@@ -108,7 +108,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 BestDownwardRequestedNumber = blockSyncBatch.HeadersSyncBatch.StartNumber.Value;
             }
 
-            if(_logger.IsDebug) _logger.Debug($"Sending request {blockSyncBatch}");
+            if(_logger.IsInfo) _logger.Info($"Sending request {blockSyncBatch}");
             _sentBatches[blockSyncBatch] = _empty;
             return blockSyncBatch;
         }
@@ -144,6 +144,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 var headersSyncBatch = syncBatch.HeadersSyncBatch;
                 if (headersSyncBatch.Response == null)
                 {
+                    if (_logger.IsInfo) _logger.Info($"Handling empty batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0}");
                     syncBatch.AssignedPeer = null;
                     _pendingBatches.Push(syncBatch);
                     return 0;
@@ -152,7 +153,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 decimal ratio = (decimal) _itemsSaved / (_requestsSent == 0 ? 1 : _requestsSent);
                 _requestsSent += syncBatch.HeadersSyncBatch.RequestSize;
 
-                if (_logger.IsDebug) _logger.Debug($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0} | {ratio:p2}");
+                if (_logger.IsInfo) _logger.Info($"Handling batch {syncBatch}, now best suggested {_blockTree.BestSuggested?.Number ?? 0} | {ratio:p2}");
 
                 int added = 0;
                 bool stackRemaining = true;
