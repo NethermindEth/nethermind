@@ -157,7 +157,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 decimal ratio = (decimal) _itemsSaved / (_requestsSent == 0 ? 1 : _requestsSent);
                 _requestsSent += blockSyncBatch.HeadersSyncBatch.RequestSize;
 
-                if (_logger.IsInfo) _logger.Info($"{blockSyncBatch} - came back with {blockSyncBatch.HeadersSyncBatch?.Response.Count(r => r != null)} items");
+                if (_logger.IsInfo) _logger.Info($"{blockSyncBatch} - came back with {blockSyncBatch.HeadersSyncBatch?.Response.Count(r => r != null)} items | {blockSyncBatch.AssignedPeer?.Current}");
 
                 int added = 0;
 
@@ -177,6 +177,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         {
                             if (blockSyncBatch.AssignedPeer != null)
                             {
+                                if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID hash - {blockSyncBatch.AssignedPeer?.Current}");
                                 _syncPeerPool.ReportInvalid(blockSyncBatch.AssignedPeer);
                             }
 
@@ -223,6 +224,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         {
                             if (blockSyncBatch.AssignedPeer != null)
                             {
+                                if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID inconsistent - {blockSyncBatch.AssignedPeer?.Current}");
                                 _syncPeerPool.ReportInvalid(blockSyncBatch.AssignedPeer);
                             }
 
@@ -252,6 +254,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         if (blockSyncBatch.AssignedPeer != null)
                         {
+                            if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID bad block - {blockSyncBatch.AssignedPeer?.Current}");
                             _syncPeerPool.ReportBadPeer(blockSyncBatch.AssignedPeer);
                         }
 
@@ -281,6 +284,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     if (blockSyncBatch.AssignedPeer != null)
                     {
+                        if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID no progress - {blockSyncBatch.AssignedPeer?.Current}");
                         _syncPeerPool.ReportNoSyncProgress(blockSyncBatch.AssignedPeer);
                     }
                 }
