@@ -41,7 +41,7 @@ namespace Nethermind.Mining.Difficulty
             bool parentHasUncles)
         {
             IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
-            BigInteger baseIncrease = BigInteger.Divide(parentDifficulty, spec.GasLimitBoundDivisor);
+            BigInteger baseIncrease = BigInteger.Divide(parentDifficulty, spec.DifficultyBoundDivisor);
             BigInteger timeAdjustment = TimeAdjustment(spec, parentTimestamp, currentTimestamp, parentHasUncles);
             BigInteger timeBomb = TimeBomb(spec, blockNumber);
             return (UInt256)BigInteger.Max(
