@@ -43,7 +43,7 @@ namespace Nethermind.Mining
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private readonly LruCache<uint, IEthashDataSet> _cacheCache = new LruCache<uint, IEthashDataSet>(2);
+        private readonly LruCache<uint, IEthashDataSet> _cacheCache = new LruCache<uint, IEthashDataSet>(3);
 
         public const int WordBytes = 4; // bytes in word
         public static uint DataSetBytesInit = (uint) BigInteger.Pow(2, 30); // bytes in dataset at genesis
@@ -231,7 +231,7 @@ namespace Nethermind.Mining
                 if (_logger.IsDebug) _logger.Debug($"Cache for epoch {epoch} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
                 _cacheCache.Set(epoch, dataSet);
             }
-
+            
             uint epochToPrecompute = epoch + 1;
             if (precompute && _epochsRequested.TryAdd(epochToPrecompute, null))
             {
@@ -245,6 +245,23 @@ namespace Nethermind.Mining
                     else
                     {
                         if (_logger.IsDebug) _logger.Debug($"Epoch precompute success at {epochToPrecompute}");
+                    }
+                });
+            }
+            
+            uint epochToPrecomputeLow = epoch - 1;
+            if (precompute && _epochsRequested.TryAdd(epochToPrecomputeLow, null))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Asking to precompute epoch {epochToPrecomputeLow}");
+                PrecomputeCache(epochToPrecomputeLow).ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error($"Precompute failure at epoch {epochToPrecomputeLow}");
+                    }
+                    else
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Epoch precompute success at {epochToPrecomputeLow}");
                     }
                 });
             }

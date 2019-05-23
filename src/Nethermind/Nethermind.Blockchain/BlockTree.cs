@@ -31,6 +31,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Json;
 using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -65,6 +66,7 @@ namespace Nethermind.Blockchain
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly ITxPool _txPool;
+        private readonly ISyncConfig _syncConfig;
 
         public BlockTree(
             IDb blockDb,
@@ -73,6 +75,18 @@ namespace Nethermind.Blockchain
             ISpecProvider specProvider,
             ITxPool txPool,
             ILogManager logManager)
+        : this(blockDb, headerDb, blockInfoDb, specProvider, txPool, new SyncConfig(), logManager)
+        {
+        }
+        
+        public BlockTree(
+            IDb blockDb,
+            IDb headerDb,
+            IDb blockInfoDb,
+            ISpecProvider specProvider,
+            ITxPool txPool,
+            ISyncConfig syncConfig,
+            ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockDb = blockDb ?? throw new ArgumentNullException(nameof(blockDb));
@@ -80,6 +94,7 @@ namespace Nethermind.Blockchain
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _specProvider = specProvider;
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
             ChainLevelInfo genesisLevel = LoadLevel(0, true);
             if (genesisLevel != null)
@@ -92,8 +107,8 @@ namespace Nethermind.Blockchain
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
 
-                LoadBestKnown();
                 LoadLowestInserted();
+                LoadBestKnown();
 
                 if (genesisLevel.BlockInfos[0].WasProcessed)
                 {
@@ -109,7 +124,7 @@ namespace Nethermind.Blockchain
         private void LoadBestKnown()
         {
             long headNumber = Head?.Number ?? -1;
-            long left = headNumber;
+            long left = Math.Max(LowestInserted?.Number ?? 0,  headNumber);
             long right = headNumber + MaxQueueSize;
 
             while (left != right)
@@ -138,14 +153,8 @@ namespace Nethermind.Blockchain
         
         private void LoadLowestInserted()
         {
-            if (BestKnownNumber == 0)
-            {
-                LowestInserted = null;
-                return;
-            }
-            
             long left = 0;
-            long right = BestKnownNumber;
+            long right = LongConverter.FromString(_syncConfig.PivotNumber ?? "0x0");
 
             while (left != right)
             {
@@ -168,7 +177,7 @@ namespace Nethermind.Blockchain
                 result = long.MaxValue;
             }
             
-            if (result <= 0 || result > BestKnownNumber)
+            if (result <= 0)
             {
                 throw new InvalidOperationException($"Lowest inserted is is {result} and best known is {BestKnownNumber}");
             }

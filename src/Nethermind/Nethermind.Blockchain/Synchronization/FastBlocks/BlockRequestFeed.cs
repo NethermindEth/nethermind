@@ -273,6 +273,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     fixedSyncBatch.AssignedPeer = null;
                     fixedSyncBatch.MinNumber = blockSyncBatch.MinNumber;
                     _pendingBatches.Push(fixedSyncBatch);
+                    if (_logger.IsInfo) _logger.Info($"{blockSyncBatch} - ended up creating FILLER with {fixedSyncBatch.HeadersSyncBatch.RequestSize} items");
                 }
 
                 // if not stackRemaining then it was just held for later
@@ -288,6 +289,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     // if it was just held for later then let us not report any issues with it
                     added = blockSyncBatch.HeadersSyncBatch.RequestSize;
                 }
+                
+                if (_logger.IsInfo) _logger.Info($"{blockSyncBatch} - FINISHED with {added} added - LOWEST_INSERTED {_blockTree.LowestInserted?.Number} | BEST_KNOWN {_blockTree.BestKnownNumber}");
 
                 return added;
             }

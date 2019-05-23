@@ -133,6 +133,7 @@ namespace Nethermind.Runner.Runners
         private IEnode _enode;
         private HiveRunner _hiveRunner;
         private ISessionMonitor _sessionMonitor;
+        private ISyncConfig _syncConfig;
 
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
@@ -372,6 +373,8 @@ namespace Nethermind.Runner.Runners
 
             /* sync */
             IDbConfig dbConfig = _configProvider.GetConfig<IDbConfig>();
+            _syncConfig = _configProvider.GetConfig<ISyncConfig>();
+            
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
                 if (_logger.IsDebug) _logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
@@ -402,6 +405,7 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.BlockInfosDb,
                 _specProvider,
                 _txPool,
+                _syncConfig,
                 _logManager);
 
             _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _txPool, _logManager);
@@ -614,11 +618,10 @@ namespace Nethermind.Runner.Runners
             ISealValidator sealValidator,
             TxValidator txValidator)
         {
-            ISyncConfig syncConfig = _configProvider.GetConfig<ISyncConfig>();
-            _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
+            _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
-            _synchronizer = new Synchronizer(_blockTree, _blockValidator, _sealValidator, _syncPeerPool, syncConfig, nodeDataDownloader, _specProvider, _logManager);
+            _synchronizer = new Synchronizer(_blockTree, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _specProvider, _logManager);
 
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,
