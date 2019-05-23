@@ -83,13 +83,16 @@ namespace Nethermind.Blockchain.Synchronization
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
 
             BlockHeader lowestInserted = _blockTree.LowestInserted;
-            
-            _blockDataFeed = new BlockRequestFeed(_blockTree, _syncPeerPool, blockValidator, syncConfig, logManager);
-            _blockDataFeed.StartNumber = lowestInserted?.Number ?? LongConverter.FromString(syncConfig.PivotNumber);
-            _blockDataFeed.StartHash = lowestInserted?.Hash ?? new Keccak(syncConfig.PivotHash);
-            _blockDataFeed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? UInt256.Parse(syncConfig.PivotTotalDifficulty);
-            _blockDataFeed.RequestSize = 512;
-            
+
+            if (syncConfig.EnableExperimentalFastBlocks)
+            {
+                _blockDataFeed = new BlockRequestFeed(_blockTree, _syncPeerPool, blockValidator, syncConfig, logManager);
+                _blockDataFeed.StartNumber = lowestInserted?.Number ?? LongConverter.FromString(syncConfig.PivotNumber ?? "0x0");
+                _blockDataFeed.StartHash = lowestInserted?.Hash ?? (syncConfig.PivotHash == null ? null : new Keccak(syncConfig.PivotHash));
+                _blockDataFeed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? UInt256.Parse(syncConfig.PivotTotalDifficulty ?? "0x0");
+                _blockDataFeed.RequestSize = 512;
+            }
+
             _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, _blockDataFeed, sealValidator, logManager);
         }
 
