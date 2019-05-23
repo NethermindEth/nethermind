@@ -16,16 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class BlockSyncBatch
     {
-        public bool IsReorgBatch { get; set; }
         public HeadersSyncBatch HeadersSyncBatch { get; set; }
         public BodiesSyncBatch BodiesSyncBatch { get; set; }
         public SyncPeerAllocation AssignedPeer { get; set; }
+        
+        public DateTime CreationTimeUtc { get; set; } = DateTime.UtcNow;
 
         public UInt256? MinTotalDifficulty { get; set; }
 
@@ -35,8 +37,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         {
             string bodiesOrHeaders = HeadersSyncBatch != null ? "HEADERS" : "BODIES";
             string startBlock = HeadersSyncBatch?.StartNumber.ToString() ?? HeadersSyncBatch?.StartHash.ToString();
-            string endBlock = (HeadersSyncBatch?.StartNumber != null ? HeadersSyncBatch.StartNumber + (HeadersSyncBatch.Reverse ? -1 : 1) * (HeadersSyncBatch.RequestSize - 1) : HeadersSyncBatch?.RequestSize - 1).ToString(); 
-            return $"{bodiesOrHeaders} [{startBlock}, {endBlock}] reverse: {HeadersSyncBatch?.Reverse}, size: {HeadersSyncBatch?.RequestSize ?? 0}, skip: {HeadersSyncBatch?.Skip}, min#: {MinNumber}, min diff: {MinTotalDifficulty}";
+            string endBlock = (HeadersSyncBatch?.StartNumber != null ? HeadersSyncBatch.StartNumber + (HeadersSyncBatch.Reverse ? -1 : 1) * (HeadersSyncBatch.RequestSize - 1) : HeadersSyncBatch?.RequestSize - 1).ToString();
+            string age = $"{(DateTime.UtcNow - CreationTimeUtc).TotalMilliseconds:F0}ms";
+            return $"{bodiesOrHeaders} [{startBlock}, {endBlock}] age: {age}, reverse: {HeadersSyncBatch?.Reverse}, size: {HeadersSyncBatch?.RequestSize ?? 0}, skip: {HeadersSyncBatch?.Skip}, min#: {MinNumber}, min diff: {MinTotalDifficulty}";
         }
     }
 }

@@ -54,6 +54,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 if (peerInfo.HeadNumber < Math.Max(0, (batch.MinNumber ?? 0) - 1024))
                 {
+                    if (_logger.IsWarn) _logger.Warn($"Made {peerInfo} sleep for a while - no min number satisfied");
                     _syncPeerPool.ReportNoSyncProgress(peerInfo);
                 }
             }
