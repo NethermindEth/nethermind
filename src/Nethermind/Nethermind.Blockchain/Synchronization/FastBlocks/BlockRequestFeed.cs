@@ -109,7 +109,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 blockSyncBatch.HeadersSyncBatch.RequestSize = (int) Math.Min(BestDownwardRequestedNumber ?? StartNumber + 1, RequestSize);
                 BestDownwardRequestedNumber = blockSyncBatch.HeadersSyncBatch.StartNumber.Value;
             }
-            
+
             if (_logger.IsTrace) _logger.Trace($"{blockSyncBatch} - sending REQUEST");
 
             lock (_handlerLock)
@@ -135,8 +135,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                 if (_logger.IsDebug) _logger.Debug($"{builder}");
             }
-            
+
             _sentBatches.TryAdd(blockSyncBatch, _empty);
+
+            if (blockSyncBatch.HeadersSyncBatch.StartNumber >= ((_blockTree.LowestInserted?.Number ?? 0) - 2048))
+            {
+                blockSyncBatch.Prioritized = true;
+            }
+
             return blockSyncBatch;
         }
 
@@ -144,11 +150,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         {
             lock (_handlerLock)
             {
-                while(_headerDependencies.ContainsKey((_blockTree.LowestInserted?.Number ?? 0) - 1))
+                while (_headerDependencies.ContainsKey((_blockTree.LowestInserted?.Number ?? 0) - 1))
                 {
                     SuggestBatch(_headerDependencies[(_blockTree.LowestInserted?.Number ?? 0) - 1]);
                 }
-                
+
                 if (syncBatch.HeadersSyncBatch != null)
                 {
                     int added = SuggestBatch(syncBatch);
@@ -162,7 +168,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public void StartNewRound()
         {
             BestDownwardRequestedNumber = null;
-            
+
             _pendingBatches.Clear();
             _headerDependencies.Clear();
             _sentBatches.Clear();
@@ -219,7 +225,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 if (_logger.IsTrace) _logger.Trace($"{blockSyncBatch} - ended up IGNORED - different branch");
                                 break;
                             }
-                            
+
                             if (_headerDependencies.ContainsKey(header.Number))
                             {
                                 throw new InvalidOperationException("Only one header dependency expected");
@@ -246,7 +252,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             dependentBatch.HeadersSyncBatch.Response = blockSyncBatch.HeadersSyncBatch.Response.AsSpan().Slice(0, added).ToArray();
                             _headerDependencies[header.Number] = dependentBatch;
                             if (_logger.IsTrace) _logger.Trace($"{blockSyncBatch} - ended up creating DEPENDENCY with {dependentBatch.HeadersSyncBatch.RequestSize} items");
-                            
+
                             // but we cannot do anything with it yet
                             break;
                         }
@@ -313,7 +319,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         throw new Exception("BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD BAD ");
                     }
-                    
+
                     _pendingBatches.Push(fixedSyncBatch);
                     if (_logger.IsTrace) _logger.Trace($"{blockSyncBatch} - ended up creating FILLER with {fixedSyncBatch.HeadersSyncBatch.RequestSize} items");
                 }
@@ -332,7 +338,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     // if it was just held for later then let us not report any issues with it
                     added = blockSyncBatch.HeadersSyncBatch.RequestSize;
                 }
-                
+
                 if (_logger.IsTrace) _logger.Trace($"{blockSyncBatch} - FINISHED with {added} added or enqueued - LOWEST_INSERTED {_blockTree.LowestInserted?.Number} | BEST_KNOWN {_blockTree.BestKnownNumber}");
 
                 return added;
@@ -381,7 +387,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     SuggestBatch(batch);
                 }
             }
-            
+
             return addBlockResult;
         }
     }

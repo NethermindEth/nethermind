@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain.Synchronization
     public enum BorrowOptions
     {
         None = 0,
-        DoNotReplace = 1
+        DoNotReplace = 1,
+        LowPriority = 2
     }
 }
