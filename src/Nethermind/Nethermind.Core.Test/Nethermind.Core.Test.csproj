@@ -22,6 +22,10 @@
       <Link>TestRopstenBlocks\%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <None Remove="Specs\hive.json" />
+    <Content Include="Specs\hive.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Content Include="Specs\genesis_test.json">

@@ -21,7 +21,6 @@ namespace Nethermind.Blockchain.Synchronization
     public enum SyncTriggerType
     {
         SyncTimer,
-        SyncModeChange,
         PeerChange,
         NewDistantBlock,
         Reorganization,

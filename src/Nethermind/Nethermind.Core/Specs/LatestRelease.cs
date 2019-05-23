@@ -16,10 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Specs.Forks;
+
 namespace Nethermind.Core.Specs
 {
-    public class LatestRelease
+    public class Latest
     {
-        public static IReleaseSpec Instance => Byzantium.Instance;
+        public static IReleaseSpec Release => ConstantinopleFix.Instance;
     }
 }

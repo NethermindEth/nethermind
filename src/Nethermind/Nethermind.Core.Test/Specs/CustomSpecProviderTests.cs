@@ -18,7 +18,7 @@
 
 using System;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Specs

@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Specs.Forks;
+
 namespace Nethermind.Core.Specs
 {
     public class GoerliSpecProvider : ISpecProvider
@@ -24,9 +26,10 @@ namespace Nethermind.Core.Specs
 
         private GoerliSpecProvider()
         {
+            GenesisSpec = ConstantinopleFix.Instance;
         }
 
-        public IReleaseSpec GenesisSpec => ConstantinopleFix.Instance;
+        public IReleaseSpec GenesisSpec { get; private set; }
 
         public IReleaseSpec GetSpec(long blockNumber)
         {

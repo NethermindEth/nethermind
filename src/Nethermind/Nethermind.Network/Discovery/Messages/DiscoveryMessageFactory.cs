@@ -27,20 +27,23 @@ namespace Nethermind.Network.Discovery.Messages
 {
     public class DiscoveryMessageFactory : IDiscoveryMessageFactory
     {
+        /// <summary>
+        /// This is the value set by other clients based on real network tests.
+        /// </summary>
+        private const int ExpirationTimeInSeconds = 20;
+        
         private readonly ITimestamp _timestamp;
-        private readonly INetworkConfig _networkConfig;
 
-        public DiscoveryMessageFactory(INetworkConfig networkConfig, ITimestamp timestamp)
+        public DiscoveryMessageFactory(ITimestamp timestamp)
         {
             _timestamp = timestamp;
-            _networkConfig = networkConfig;
         }
 
         public T CreateOutgoingMessage<T>(Node destination) where T : DiscoveryMessage
         {
             T message = Activator.CreateInstance<T>();
             message.FarAddress = destination.Address;
-            message.ExpirationTime = _networkConfig.DiscoveryMsgExpiryTime + (long) _timestamp.EpochMilliseconds;
+            message.ExpirationTime = ExpirationTimeInSeconds + (long) _timestamp.EpochSeconds;
             return message;
         }
 

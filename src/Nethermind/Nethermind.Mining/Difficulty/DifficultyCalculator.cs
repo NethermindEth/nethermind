@@ -16,9 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Numerics;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
@@ -34,7 +32,7 @@ namespace Nethermind.Mining.Difficulty
         }
 
         private const long OfGenesisBlock = 131_072;
-
+        
         public UInt256 Calculate(
             UInt256 parentDifficulty,
             UInt256 parentTimestamp,
@@ -43,7 +41,7 @@ namespace Nethermind.Mining.Difficulty
             bool parentHasUncles)
         {
             IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
-            BigInteger baseIncrease = BigInteger.Divide(parentDifficulty, 2048);
+            BigInteger baseIncrease = BigInteger.Divide(parentDifficulty, spec.GasLimitBoundDivisor);
             BigInteger timeAdjustment = TimeAdjustment(spec, parentTimestamp, currentTimestamp, parentHasUncles);
             BigInteger timeBomb = TimeBomb(spec, blockNumber);
             return (UInt256)BigInteger.Max(
@@ -53,7 +51,7 @@ namespace Nethermind.Mining.Difficulty
                 timeBomb);
         }
 
-        protected internal virtual BigInteger TimeAdjustment(
+        private BigInteger TimeAdjustment(
             IReleaseSpec spec,
             BigInteger parentTimestamp,
             BigInteger currentTimestamp,
@@ -78,16 +76,10 @@ namespace Nethermind.Mining.Difficulty
         }
 
         private BigInteger TimeBomb(IReleaseSpec spec, long blockNumber)
-        {   
-            if (spec.IsEip1234Enabled)
-            {
-                blockNumber = blockNumber - Math.Min(blockNumber, 5000000);
-            }
-            else if (spec.IsEip649Enabled)
-            {
-                blockNumber = blockNumber - Math.Min(blockNumber, 3000000);
-            }
+        {
+            blockNumber = blockNumber - spec.DifficultyBombDelay;
 
+            // Note: block 200000 is when the difficulty bomb was introduced but we did not spec it in any release info, just hardcoded it
             return blockNumber < 200000 ? UInt256.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
         }
     }

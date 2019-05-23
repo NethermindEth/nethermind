@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Dirichlet.Numerics;
+
 namespace Nethermind.Core.Specs
 {
     /// <summary>
@@ -23,6 +25,19 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface IReleaseSpec
     {
+        long MaximumExtraDataSize { get; }
+        long MaxCodeSize { get; }
+        long MinGasLimit { get; }
+        long GasLimitBoundDivisor { get; }
+        Address Registrar { get; }
+        UInt256 BlockReward { get; }
+        long DifficultyBombDelay { get; }
+        long DifficultyBoundDivisor { get; }
+        
+        /// <summary>
+        /// ---
+        /// In chainspec - Ethash.Duration
+        /// </summary>
         bool IsTimeAdjustmentPostOlympic { get; }
 
         /// <summary>
@@ -45,6 +60,8 @@ namespace Nethermind.Core.Specs
 
         /// <summary>
         /// Byzantium REVERT instruction in the Ethereum Virtual Machine
+        /// ---
+        /// in chainspec Ethash.Eip100bTransition
         /// </summary>
         bool IsEip140Enabled { get; }
 
@@ -70,21 +87,29 @@ namespace Nethermind.Core.Specs
 
         /// <summary>
         /// Spurious Dragon Code size limit
+        /// ---
+        /// in chainspec MaxCodeSizeTransition
         /// </summary>
         bool IsEip170Enabled { get; }
 
         /// <summary>
         /// Byzantium Precompiled contracts for addition and scalar multiplication on the elliptic curve alt_bn128
+        /// ---
+        /// in chainspec in builtin accounts
         /// </summary>
         bool IsEip196Enabled { get; }
 
         /// <summary>
         /// Byzantium Precompiled contracts for optimal ate pairing check on the elliptic curve alt_bn128
+        /// ---
+        /// in chainspec in builtin accounts
         /// </summary>
         bool IsEip197Enabled { get; }
 
         /// <summary>
         /// Byzantium Precompiled contract for bigint modular exponentiation
+        /// ---
+        /// in chainspec in builtin accounts
         /// </summary>
         bool IsEip198Enabled { get; }
 
@@ -100,6 +125,8 @@ namespace Nethermind.Core.Specs
 
         /// <summary>
         /// Byzantium Difficulty Bomb Delay and Block Reward Reduction
+        /// ---
+        /// in chainspec as DifficultyBombDelays
         /// </summary>
         bool IsEip649Enabled { get; }
 
@@ -107,34 +134,31 @@ namespace Nethermind.Core.Specs
         /// Byzantium Embedding transaction return data in receipts
         /// </summary>
         bool IsEip658Enabled { get; }
-        
-        /// <summary>
-        /// Not Used (Blockhash refactoring)
-        /// </summary>
-        bool IsEip210Enabled { get; }
-        
+
         /// <summary>
         /// Constantinople SHL, SHR, SAR instructions
         /// </summary>
         bool IsEip145Enabled { get; }
-        
+
         /// <summary>
         /// Constantinople Skinny CREATE2
         /// </summary>
         bool IsEip1014Enabled { get; }
-        
+
         /// <summary>
         /// Constantinople EXTCODEHASH instructions
         /// </summary>
         bool IsEip1052Enabled { get; }
-        
+
         /// <summary>
         /// Constantinople Net gas metering for SSTORE operations
         /// </summary>
         bool IsEip1283Enabled { get; }
-        
+
         /// <summary>
         /// Constantinople Difficulty Bomb Delay and Block Reward Adjustment
+        /// ---
+        /// in chainspec as DifficultyBombDelays and BlockReward
         /// </summary>
         bool IsEip1234Enabled { get; }
     }

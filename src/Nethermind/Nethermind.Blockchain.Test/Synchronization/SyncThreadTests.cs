@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
@@ -31,6 +32,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -293,7 +295,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 tree,
                 blockValidator,
                 sealValidator,
-                syncPeerPool, syncConfig, downloader, logManager);
+                syncPeerPool, syncConfig, downloader, GoerliSpecProvider.Instance, logManager);
             var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, logManager);
 
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();

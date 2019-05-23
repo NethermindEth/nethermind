@@ -24,24 +24,21 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    [Flags]
-    public enum BorrowOptions
-    {
-        None = 0,
-        DoNotReplace = 1
-    }
-    
     public interface IEthSyncPeerPool
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
         
-        SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description = "");
+        SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description = "", long? minNumber = null);
         
         SyncPeerAllocation Borrow(string description = "");
         
         void Free(SyncPeerAllocation syncPeerAllocation);
         
         void ReportNoSyncProgress(SyncPeerAllocation syncPeerAllocation);
+        
+        void ReportNoSyncProgress(PeerInfo peerInfo);
+        
+        void ReportInvalid(SyncPeerAllocation syncPeerAllocation);
         
         event EventHandler<SyncEventArgs> SyncEvent;
         

@@ -19,7 +19,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Specs.Forks;
 
 namespace Nethermind.Core.Specs
 {
@@ -42,7 +42,7 @@ namespace Nethermind.Core.Specs
             }
         }
 
-        public IReleaseSpec GenesisSpec => _transitions.First().Release;
+        public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
         
         public IReleaseSpec GetSpec(long blockNumber)
         {

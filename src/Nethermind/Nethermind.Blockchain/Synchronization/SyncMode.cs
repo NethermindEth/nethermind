@@ -20,6 +20,7 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public enum SyncMode
     {
+        AncientBlocks,
         Headers,
         StateNodes,
         Full,

@@ -27,9 +27,12 @@ namespace Nethermind.Blockchain
         public bool FastSync { get; set; } = false;
         public int SyncTimerInterval { get; set; } = 1000;
         public int SyncPeersMaxCount { get; set; } = 25;
-        
         public long MinAvailableBlockDiffForSyncSwitch { get; } = 100;
         public long MinDiffPercentageForLatencySwitch { get; } = 10;
         public long MinDiffForLatencySwitch { get; } = 5;
+        public bool EnableExperimentalFastBlocks { get; set; } = false;
+        public string PivotTotalDifficulty { get; set; } = null;
+        public string PivotNumber { get; set;} = null;
+        public string PivotHash { get; set;} = null;
     }
 }

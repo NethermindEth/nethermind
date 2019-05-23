@@ -40,6 +40,11 @@ namespace Nethermind.Blockchain.Test
             _alwaysSameResult = validationResult;
         }
 
+        public bool Validate(BlockHeader blockHeader, BlockHeader parent, bool isOmmer = false)
+        {
+            return _alwaysSameResult ?? _validationResults.Dequeue();
+        }
+
         public bool Validate(BlockHeader blockHeader, bool isOmmer = false)
         {
             return _alwaysSameResult ?? _validationResults.Dequeue();

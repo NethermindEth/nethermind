@@ -41,11 +41,16 @@ namespace Nethermind.Blockchain
         /// Best header that has been suggested
         /// </summary>
         BlockHeader BestSuggested { get; }
-        
+
         /// <summary>
         /// Best block that has been suggested for processing
         /// </summary>
         BlockHeader BestSuggestedFullBlock { get; }
+        
+        /// <summary>
+        /// Lowest header added in reverse insert
+        /// </summary>
+        BlockHeader LowestInserted { get; }
         
         /// <summary>
         /// Best downloaded block number
@@ -58,12 +63,19 @@ namespace Nethermind.Blockchain
         BlockHeader Head { get; }
         
         /// <summary>
+        /// Suggests a block header (without body)
+        /// </summary>
+        /// <param name="header">Header to add</param>
+        /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        AddBlockResult Insert(BlockHeader header);
+        
+        /// <summary>
         /// Suggests block for inclusion in the block tree.
         /// </summary>
         /// <param name="block">Block to be included</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult SuggestBlock(Block block, bool shouldProcess = true);
-        
+
         /// <summary>
         /// Suggests a block header (without body)
         /// </summary>
@@ -99,21 +111,29 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="processedBlocks">Blocks that will now be at the top of the chain</param>
         void UpdateMainChain(Block[] processedBlocks);
+
+        bool CanAcceptNewBlocks { get; }
+        
+        Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue);
+        
+        Block FindBlock(Keccak blockHash, bool mainChainOnly);
+        
+        BlockHeader FindHeader(Keccak blockHash, bool mainChainOnly);
+        
+        BlockHeader FindHeader(Keccak blockHash);
+        
+        BlockHeader FindHeader(long blockNumber);
+        
+        Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
+        
+        BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
+        
+        Block FindBlock(long blockNumber);
+        
+        void DeleteInvalidBlock(Block invalidBlock);
         
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> BlockAddedToMain;
         event EventHandler<BlockEventArgs> NewHeadBlock;
-        
-        bool CanAcceptNewBlocks { get; }
-        Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue);
-        Block FindBlock(Keccak blockHash, bool mainChainOnly);
-        BlockHeader FindHeader(Keccak blockHash, bool mainChainOnly);
-        BlockHeader FindHeader(Keccak blockHash);
-        BlockHeader FindHeader(long blockNumber);
-        Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
-        BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
-        Block FindBlock(long blockNumber);
-        
-        void DeleteInvalidBlock(Block invalidBlock);
     }
 }

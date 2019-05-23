@@ -60,13 +60,13 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0)
+        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0)
         {
-            OfChainLength(out _, chainLength, splitVariant);
+            OfChainLength(out _, chainLength, splitVariant, splitFrom);
             return this;
         }
 
-        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0)
+        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0)
         {
             Block current = _genesisBlock;
             headBlock = _genesisBlock;
@@ -82,7 +82,7 @@ namespace Nethermind.Core.Test.Builders
                         TestObjectInternal.SuggestHeader(current.Header);
                     }
 
-                    current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong) splitVariant).TestObject;
+                    current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > current.Number ? 0 : (ulong) splitVariant)).TestObject;
                 }
                 else
                 {
@@ -90,11 +90,11 @@ namespace Nethermind.Core.Test.Builders
                     {
                         AddBlockResult result = TestObjectInternal.SuggestBlock(current);
                         Assert.AreEqual(AddBlockResult.Added, result, $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
-                        
+
                         TestObjectInternal.UpdateMainChain(current);
                     }
 
-                    current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong) splitVariant).TestObject;
+                    current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > current.Number ? 0 : (ulong) splitVariant)).TestObject;
                 }
             }
 

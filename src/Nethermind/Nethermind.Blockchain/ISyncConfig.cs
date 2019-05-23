@@ -28,7 +28,10 @@ namespace Nethermind.Blockchain
         int SyncPeersMaxCount { get; }
         long MinAvailableBlockDiffForSyncSwitch { get; }
         long MinDiffPercentageForLatencySwitch { get; }
-        
         long MinDiffForLatencySwitch { get; }
+        bool EnableExperimentalFastBlocks { get; set; }
+        string PivotTotalDifficulty { get; }
+        string PivotNumber { get; }
+        string PivotHash { get; }
     }
 }

@@ -20,7 +20,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Mining;
 
@@ -31,67 +30,62 @@ namespace Nethermind.Blockchain.Validators
         private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
 
         private readonly ISealValidator _sealValidator;
+        private readonly ISpecProvider _specProvider;
         private readonly long? _daoBlockNumber;
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 
         public HeaderValidator(IBlockTree blockTree, ISealValidator sealValidator, ISpecProvider specProvider, ILogManager logManager)
         {
-            if (specProvider == null) throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _daoBlockNumber = specProvider.DaoBlockNumber;
         }
-        
+
         /// <summary>
-        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
+        /// Note that this does not validate seal which is the responsibility of <see cref="ISealValidator"/>>
         /// </summary>
-        /// <param name="header">Block header to validate</param>
-        /// <param name="isOmmer"><value>True</value> if the <paramref name="header"/> is an ommer, otherwise <value>False</value></param>
-        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public bool Validate(BlockHeader header, bool isOmmer = false)
+        /// <param name="header">BlockHeader to validate</param>
+        /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
+        /// <param name="isOmmer"><value>True</value> if uncle block, otherwise <value>False</value></param>
+        /// <returns></returns>
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer = false)
         {
-            // the rule here is to validate the seal first (avoid any cheap attacks on validation logic)
-            // then validate whatever does not need to load parent from disk (the most expensive operation)
-            
-            bool areNonceValidAndMixHashValid = header.Number == 0 || header.SealEngineType == SealEngineType.None || _sealValidator.ValidateSeal(header);
-            if (!areNonceValidAndMixHashValid)
-            {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
-            }
-            
             bool hashAsExpected = header.Hash == BlockHeader.CalculateHash(header);
             if (!hashAsExpected)
             {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
             }
             
-            bool extraDataValid = isOmmer
-                                  || _daoBlockNumber == null
-                                  || header.Number < _daoBlockNumber
-                                  || header.Number >= _daoBlockNumber + 10
-                                  || Bytes.AreEqual(header.ExtraData, DaoExtraData);
+            IReleaseSpec spec = _specProvider.GetSpec(header.Number);
+            bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
+                                  && (isOmmer
+                                      || _daoBlockNumber == null
+                                      || header.Number < _daoBlockNumber
+                                      || header.Number >= _daoBlockNumber + 10
+                                      || Bytes.AreEqual(header.ExtraData, DaoExtraData));
             if (!extraDataValid)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
+                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
             }
-            
-            BlockHeader parent = _blockTree.FindHeader(header.ParentHash, false);
+
             if (parent == null)
             {
                 if (header.Number == 0)
                 {
-                    var isGenesisValid = ValidateGenesis(header);;
+                    var isGenesisValid = ValidateGenesis(header);
+                    ;
                     if (!isGenesisValid)
                     {
-                        if(_logger.IsWarn) _logger.Warn($"Invalid genesis block header ({header.Hash})");
+                        if (_logger.IsWarn) _logger.Warn($"Invalid genesis block header ({header.Hash})");
                     }
-                    
+
                     return isGenesisValid;
                 }
-                
-                if(_logger.IsWarn) _logger.Warn($"Orphan block, could not find parent ({header.Hash})");
+
+                if (_logger.IsDebug) _logger.Debug($"Orphan block, could not find parent ({header.Hash})");
                 return false;
             }
 
@@ -99,48 +93,45 @@ namespace Nethermind.Blockchain.Validators
             bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
             if (!sealParamsCorrect)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
+                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             if (!gasUsedBelowLimit)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
+                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
             }
 
-            long maxGasLimitDifference = parent.GasLimit / 1024;
+            long maxGasLimitDifference = parent.GasLimit / spec.GasLimitBoundDivisor;
             bool gasLimitNotTooHigh = header.GasLimit < parent.GasLimit + maxGasLimitDifference;
             if (!gasLimitNotTooHigh)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
+                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
             }
 
-            bool gasLimitNotTooLow = header.GasLimit > parent.GasLimit - maxGasLimitDifference;
+            bool gasLimitNotTooLow = header.GasLimit > parent.GasLimit - maxGasLimitDifference
+                                     && header.GasLimit > spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
             }
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
+                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
             }
 
             bool numberIsParentPlusOne = header.Number == parent.Number + 1;
             if (!numberIsParentPlusOne)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
+                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
             }
 
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
-            }
+            if (_logger.IsTrace)  _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
             return
-                areNonceValidAndMixHashValid &&
                 gasUsedBelowLimit &&
                 gasLimitNotTooLow &&
                 gasLimitNotTooHigh &&
@@ -152,14 +143,26 @@ namespace Nethermind.Blockchain.Validators
                 extraDataValid;
         }
 
-        private static bool ValidateGenesis(BlockHeader header)
+        /// <summary>
+        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
+        /// </summary>
+        /// <param name="header">Block header to validate</param>
+        /// <param name="isOmmer"><value>True</value> if the <paramref name="header"/> is an ommer, otherwise <value>False</value></param>
+        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
+        public bool Validate(BlockHeader header, bool isOmmer = false)
+        {
+            BlockHeader parent = _blockTree.FindHeader(header.ParentHash, false);
+            return Validate(header, parent, isOmmer);
+        }
+
+        private bool ValidateGenesis(BlockHeader header)
         {
             return
                 header.GasUsed < header.GasLimit &&
-                // header.GasLimit > 125000 && 
+                header.GasLimit > _specProvider.GenesisSpec.MinGasLimit &&
                 header.Timestamp > 0 &&
                 header.Number == 0 &&
-                header.ExtraData.Length <= 32;
+                header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
         }
     }
 }

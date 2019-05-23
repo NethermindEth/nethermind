@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -35,7 +34,8 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Core.Specs.Forks;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
@@ -201,6 +201,7 @@ namespace Nethermind.PerfTest
             public int ChainId => _blockTree.ChainId;
             public BlockHeader Genesis => _blockTree.Genesis;
             public BlockHeader BestSuggested => _blockTree.BestSuggested;
+            public BlockHeader LowestInserted => _blockTree.LowestInserted;
             public BlockHeader BestSuggestedFullBlock => _blockTree.BestSuggestedFullBlock;
             public long BestKnownNumber => _blockTree.BestKnownNumber;
             public BlockHeader Head => _blockTree.Head;
@@ -214,6 +215,11 @@ namespace Nethermind.PerfTest
             public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true)
             {
                 return _blockTree.SuggestBlock(block, shouldProcess);
+            }
+
+            public AddBlockResult Insert(BlockHeader header)
+            {
+                return _blockTree.Insert(header);
             }
 
             public AddBlockResult SuggestHeader(BlockHeader header)

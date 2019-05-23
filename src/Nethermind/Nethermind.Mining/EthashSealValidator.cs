@@ -22,13 +22,29 @@ namespace Nethermind.Mining
         
         public bool ValidateSeal(BlockHeader header)
         {
-            if (header.Number % 64 != 0 || header.Number == 0)
+            if (header.Number % 1024 != 0 || header.Number == 0)
             {
                 return true;
             }
 
-            return _ethash.Validate(header);
+            lock (_sealCache)
+            {
+                if (_sealCache.Get(header.Hash))
+                {
+                    return true;
+                }
+            }
+
+            bool result = _ethash.Validate(header);
+            lock (_sealCache)
+            {
+                _sealCache.Set(header.Hash, result);
+            }
+
+            return result;
         }
+        
+        private LruCache<Keccak, bool> _sealCache = new LruCache<Keccak, bool>(2048);
         
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {   

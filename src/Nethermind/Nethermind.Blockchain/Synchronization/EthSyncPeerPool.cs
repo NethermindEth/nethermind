@@ -41,7 +41,6 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ILogger _logger;
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
-
         private ConcurrentDictionary<SyncPeerAllocation, object> _allocations = new ConcurrentDictionary<SyncPeerAllocation, object>();
         private const int AllocationsUpgradeInterval = 1000;
         private System.Timers.Timer _upgradeTimer;
@@ -50,6 +49,35 @@ namespace Nethermind.Blockchain.Synchronization
         private Task _refreshLoopTask;
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
+
+        public void ReportNoSyncProgress(PeerInfo peerInfo)
+        {
+            if (peerInfo == null)
+            {
+                return;
+            }
+            
+            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
+            _sleepingPeers.TryAdd(peerInfo, DateTime.UtcNow);
+        }
+        
+        public void ReportNoSyncProgress(SyncPeerAllocation allocation)
+        {
+            PeerInfo peerInfo = allocation?.Current;
+            if (peerInfo == null)
+            {
+                return;
+            }
+            
+            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {allocation.Current}");
+            _sleepingPeers.TryAdd(peerInfo, DateTime.UtcNow);
+        }
+
+        public void ReportInvalid(SyncPeerAllocation syncPeerAllocation)
+        {
+            syncPeerAllocation.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "SYNC BREACH");
+        }
+
         public event EventHandler<SyncEventArgs> SyncEvent;
 
         private ConcurrentDictionary<PeerInfo, DateTime> _sleepingPeers = new ConcurrentDictionary<PeerInfo, DateTime>();
@@ -403,7 +431,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public int PeerCount => _peers.Count;
-        public int UsefulPeerCount => _peers.Count(p => p.Value.IsInitialized && p.Value.TotalDifficulty >= (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && !_sleepingPeers.ContainsKey(p.Value));
+        public int UsefulPeerCount => _peers.Count(p => p.Value.IsInitialized && p.Value.TotalDifficulty >= (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && !_sleepingPeers.ContainsKey(p.Value) && (_stats.GetOrAdd(p.Value.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 0) <= 200);
         public int PeerMaxCount => _syncConfig.SyncPeersMaxCount;
 
         public void Refresh(PublicKey publicKey)
@@ -475,7 +503,7 @@ namespace Nethermind.Blockchain.Synchronization
             (PeerInfo Info, long Latency) bestPeer = (null, 100000);
             foreach ((_, PeerInfo info) in _peers)
             {
-                if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < _blockTree.BestKnownNumber + allocation.MinBlocksAhead.Value)
+                if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < (_blockTree.BestSuggested?.Number ?? 0) + allocation.MinBlocksAhead.Value)
                 {
                     continue;
                 }
@@ -598,9 +626,11 @@ namespace Nethermind.Blockchain.Synchronization
             return Borrow(BorrowOptions.None, description);
         }
 
-        public SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description)
+        public SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description, long? minNumber = null)
         {
             SyncPeerAllocation allocation = new SyncPeerAllocation(description);
+            allocation.MinBlocksAhead = minNumber - _blockTree.BestSuggested?.Number ?? 0;
+
             if ((borrowOptions & BorrowOptions.DoNotReplace) == BorrowOptions.DoNotReplace)
             {
                 allocation.CanBeReplaced = false;
@@ -614,19 +644,6 @@ namespace Nethermind.Blockchain.Synchronization
 
             _allocations.TryAdd(allocation, null);
             return allocation;
-        }
-
-        public void ReportNoSyncProgress(SyncPeerAllocation allocation)
-        {
-            PeerInfo peer = allocation?.Current;
-            if (peer == null)
-            {
-                return;
-            }
-
-            // this is generally with the strange Parity nodes behaviour
-            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {allocation.Current}");
-            _sleepingPeers.TryAdd(peer, DateTime.UtcNow);
         }
 
         public void Free(SyncPeerAllocation syncPeerAllocation)

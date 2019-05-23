@@ -34,6 +34,7 @@ namespace Nethermind.Blockchain
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
 
+        [Todo(Improve.MissingFunctionality, "Use ChainSpec for block rewards")]
         public BlockReward[] CalculateRewards(Block block)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);

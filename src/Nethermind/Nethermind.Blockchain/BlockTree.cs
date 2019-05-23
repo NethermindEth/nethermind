@@ -93,6 +93,7 @@ namespace Nethermind.Blockchain
                 }
 
                 LoadBestKnown();
+                LoadLowestInserted();
 
                 if (genesisLevel.BlockInfos[0].WasProcessed)
                 {
@@ -124,15 +125,55 @@ namespace Nethermind.Blockchain
                     left = index + 1;
                 }
             }
-
-
+            
             long result = left - 1;
-            if (result < 0)
-            {
-                throw new InvalidOperationException($"Bets known is {result}");
-            }
 
             BestKnownNumber = result;
+            
+            if (BestKnownNumber < 0)
+            {
+                throw new InvalidOperationException($"Best known is {BestKnownNumber}");
+            }
+        }
+        
+        private void LoadLowestInserted()
+        {
+            if (BestKnownNumber == 0)
+            {
+                LowestInserted = null;
+                return;
+            }
+            
+            long left = 0;
+            long right = BestKnownNumber;
+
+            while (left != right)
+            {
+                long index = left + (right - left) / 2;
+                ChainLevelInfo level = LoadLevel(index, true);
+                if (level == null)
+                {
+                    left = index + 1;
+                }
+                else
+                {
+                    right = index;
+                }
+            }
+
+            long result = right + 1;
+            
+            if (result == 0)
+            {
+                result = long.MaxValue;
+            }
+            
+            if (result <= 0 || result > BestKnownNumber)
+            {
+                throw new InvalidOperationException($"Lowest inserted is is {result} and best known is {BestKnownNumber}");
+            }
+
+            LowestInserted = FindHeader(result);
         }
 
         public bool CanAcceptNewBlocks { get; private set; } = true; // no need to sync it at the moment
@@ -294,12 +335,13 @@ namespace Nethermind.Blockchain
         public BlockHeader Head { get; private set; }
         public BlockHeader BestSuggested { get; private set; }
         public BlockHeader BestSuggestedFullBlock { get; private set; }
+        public BlockHeader LowestInserted { get; private set; }
         public long BestKnownNumber { get; private set; }
         public int ChainId => _specProvider.ChainId;
 
-        private AddBlockResult Suggest(Block block, BlockHeader header, bool shouldProcess = true)
+        public AddBlockResult Insert(BlockHeader header)
         {
-#if DEBUG
+            #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
             if (header.StateRoot == null && !header.IsGenesis)
             {
@@ -333,27 +375,8 @@ namespace Nethermind.Blockchain
 
                 return AddBlockResult.AlreadyKnown;
             }
-            else if (!IsKnownBlock(header.Number - 1, header.ParentHash))
-            {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
-                }
-
-                return AddBlockResult.UnknownParent;
-            }
-
-            SetTotalDifficulty(header);
-            if (block != null)
-            {
-                using (MemoryStream stream = Rlp.BorrowStream())
-                {
-                    Rlp.Encode(stream, block);
-                    byte[] newRlp = stream.ToArray();
-                    _blockDb.Set(block.Hash, newRlp);
-                }
-            }
-
+            
+            // validate hash here
             using (MemoryStream stream = Rlp.BorrowStream())
             {
                 Rlp.Encode(stream, header);
@@ -373,6 +396,94 @@ namespace Nethermind.Blockchain
                 _blockInfoLock.ExitWriteLock();
             }
 
+            if (header.Number < (LowestInserted?.Number ?? long.MaxValue))
+            {
+                LowestInserted = header;
+            }
+            
+            return AddBlockResult.Added;
+        }
+        
+        private AddBlockResult Suggest(Block block, BlockHeader header, bool shouldProcess = true)
+        {
+#if DEBUG
+            /* this is just to make sure that we do not fall into this trap when creating tests */
+            if (header.StateRoot == null && !header.IsGenesis)
+            {
+                throw new InvalidDataException($"State root is null in {header.ToString(BlockHeader.Format.Short)}");
+            }
+#endif
+
+            if (!CanAcceptNewBlocks)
+            {
+                return AddBlockResult.CannotAccept;
+            }
+
+            if (_invalidBlocks.ContainsKey(header.Number) && _invalidBlocks[header.Number].Contains(header.Hash))
+            {
+                return AddBlockResult.InvalidBlock;
+            }
+
+            bool isKnown = IsKnownBlock(header.Number, header.Hash);
+            if (header.Number == 0)
+            {
+                if (BestSuggested != null)
+                {
+                    throw new InvalidOperationException("Genesis block should be added only once");
+                }
+            }
+            else if (isKnown && (BestSuggested?.Number ?? 0) >= header.Number)
+            {
+                if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Block {header.Hash} already known.");
+                }
+
+                return AddBlockResult.AlreadyKnown;
+            }
+            else if (!IsKnownBlock(header.Number - 1, header.ParentHash))
+            {
+                if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
+                }
+
+                return AddBlockResult.UnknownParent;
+            }
+
+            SetTotalDifficulty(header);
+            
+            if (block != null && !isKnown)
+            {
+                using (MemoryStream stream = Rlp.BorrowStream())
+                {
+                    Rlp.Encode(stream, block);
+                    byte[] newRlp = stream.ToArray();
+                    _blockDb.Set(block.Hash, newRlp);
+                }
+            }
+
+            if (!isKnown)
+            {
+                using (MemoryStream stream = Rlp.BorrowStream())
+                {
+                    Rlp.Encode(stream, header);
+                    byte[] newRlp = stream.ToArray();
+                    _headerDb.Set(header.Hash, newRlp);
+                }
+                
+                BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
+
+                try
+                {
+                    _blockInfoLock.EnterWriteLock();
+                    UpdateOrCreateLevel(header.Number, blockInfo);
+                }
+                finally
+                {
+                    _blockInfoLock.ExitWriteLock();
+                }
+            }
 
             if (header.IsGenesis || header.TotalDifficulty > (BestSuggested?.TotalDifficulty ?? 0))
             {

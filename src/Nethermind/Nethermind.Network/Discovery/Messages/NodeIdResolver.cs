@@ -16,9 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Model;
 
 namespace Nethermind.Network.Discovery.Messages
 {
@@ -31,9 +30,9 @@ namespace Nethermind.Network.Discovery.Messages
             _ecdsa = ecdsa;
         }
 
-        public PublicKey GetNodeId(byte[] signature, int recoveryId, byte[] messageType, byte[] data)
+        public PublicKey GetNodeId(byte[] signature, int recoveryId, Span<byte> typeAndData)
         {
-            return _ecdsa.RecoverPublicKey(new Signature(signature, recoveryId), Keccak.Compute(Bytes.Concat(messageType, data)));   
+            return _ecdsa.RecoverPublicKey(new Signature(signature, recoveryId), Keccak.Compute(typeAndData));   
         }
     }
 }

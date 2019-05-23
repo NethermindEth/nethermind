@@ -28,7 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;

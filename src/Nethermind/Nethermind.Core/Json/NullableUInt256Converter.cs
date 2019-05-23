@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Numerics;
 using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
 

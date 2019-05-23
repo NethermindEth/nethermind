@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -28,6 +27,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
@@ -37,9 +37,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Json;
-using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
@@ -331,7 +330,7 @@ namespace Nethermind.Runner.Runners
 
             if (_logger.IsInfo) _logger.Info("Stopping synchronizer...");
             var synchronizerTask = (_synchronizer?.StopAsync() ?? Task.CompletedTask)
-            .ContinueWith(t => _synchronizer?.Dispose());
+                .ContinueWith(t => _synchronizer?.Dispose());
 
             if (_logger.IsInfo) _logger.Info("Stopping sync peer pool...");
             var peerPoolTask = _syncPeerPool?.StopAsync() ?? Task.CompletedTask;
@@ -367,31 +366,9 @@ namespace Nethermind.Runner.Runners
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private async Task InitBlockchain()
         {
-            /* spec */
-            if (_chainSpec.ChainId == RopstenSpecProvider.Instance.ChainId)
-            {
-                _specProvider = RopstenSpecProvider.Instance;
-            }
-            else if (_chainSpec.ChainId == MainNetSpecProvider.Instance.ChainId)
-            {
-                _specProvider = MainNetSpecProvider.Instance;
-            }
-            else if (_chainSpec.ChainId == RinkebySpecProvider.Instance.ChainId)
-            {
-                _specProvider = RinkebySpecProvider.Instance;
-            }
-            else if (_chainSpec.ChainId == GoerliSpecProvider.Instance.ChainId)
-            {
-                _specProvider = GoerliSpecProvider.Instance;
-            }
-            else if (_chainSpec.ChainId == SturebySpecProvider.Instance.ChainId)
-            {
-                _specProvider = SturebySpecProvider.Instance;
-            }
-            else
-            {
-                _specProvider = new SingleReleaseSpecProvider(LatestRelease.Instance, _chainSpec.ChainId);
-            }
+            _specProvider = new ChainSpecBasedSpecProvider(_chainSpec);
+            
+            Account.AccountStartNonce = _chainSpec.Parameters.AccountStartNonce; 
 
             /* sync */
             IDbConfig dbConfig = _configProvider.GetConfig<IDbConfig>();
@@ -441,8 +418,8 @@ namespace Nethermind.Runner.Runners
                 case SealEngineType.Clique:
                     _rewardCalculator = NoBlockRewards.Instance;
                     cliqueConfig = new CliqueConfig();
-                    cliqueConfig.BlockPeriod = _chainSpec.CliquePeriod;
-                    cliqueConfig.Epoch = _chainSpec.CliqueEpoch;
+                    cliqueConfig.BlockPeriod = _chainSpec.Clique.Period;
+                    cliqueConfig.Epoch = _chainSpec.Clique.Epoch;
                     _snapshotManager = new SnapshotManager(cliqueConfig, _dbProvider.BlocksDb, _blockTree, _ethereumEcdsa, _logManager);
                     _sealValidator = new CliqueSealValidator(cliqueConfig, _snapshotManager, _logManager);
                     _recoveryStep = new CompositeDataRecoveryStep(_recoveryStep, new AuthorRecoveryStep(_snapshotManager));
@@ -573,6 +550,7 @@ namespace Nethermind.Runner.Runners
                             _blockTree, _timestamp, _cryptoRandom, producerChain.StateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
                         break;
                     }
+
                     case SealEngineType.NethDev:
                     {
                         if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
@@ -580,6 +558,7 @@ namespace Nethermind.Runner.Runners
                             _timestamp, _logManager);
                         break;
                     }
+
                     default:
                         throw new NotSupportedException($"Mining in {_chainSpec.SealEngineType} mode is not supported");
                 }
@@ -634,12 +613,12 @@ namespace Nethermind.Runner.Runners
             IReceiptStorage receiptStorage,
             ISealValidator sealValidator,
             TxValidator txValidator)
-        {   
+        {
             ISyncConfig syncConfig = _configProvider.GetConfig<ISyncConfig>();
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, syncConfig, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
-            _synchronizer = new Synchronizer(_blockTree, _blockValidator, _sealValidator, _syncPeerPool, syncConfig, nodeDataDownloader, _logManager);
+            _synchronizer = new Synchronizer(_blockTree, _blockValidator, _sealValidator, _syncPeerPool, syncConfig, nodeDataDownloader, _specProvider, _logManager);
 
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,
@@ -816,7 +795,7 @@ namespace Nethermind.Runner.Runners
             networkConfig.MasterPort = _initConfig.DiscoveryPort;
 
             var privateKeyProvider = new SameKeyGenerator(_nodeKey);
-            var discoveryMessageFactory = new DiscoveryMessageFactory(networkConfig, _timestamp);
+            var discoveryMessageFactory = new DiscoveryMessageFactory(_timestamp);
             var nodeIdResolver = new NodeIdResolver(_ecdsa);
 
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
@@ -875,6 +854,7 @@ namespace Nethermind.Runner.Runners
                 _cryptoRandom,
                 discoveryStorage,
                 networkConfig,
+                _timestamp,
                 _logManager, _perfService);
 
             _discoveryApp.Initialize(_nodeKey.PublicKey);

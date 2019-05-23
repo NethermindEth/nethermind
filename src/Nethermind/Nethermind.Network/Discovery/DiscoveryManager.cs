@@ -50,17 +50,18 @@ namespace Nethermind.Network.Discovery
         private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>>();
         private IMessageSender _messageSender;
 
-        public DiscoveryManager(INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
+        public DiscoveryManager(
+            INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
             INodeTable nodeTable,
             INetworkStorage discoveryStorage,
             INetworkConfig networkConfig,
             ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger();
-            _configurationProvider = networkConfig;
-            _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
-            _nodeTable = nodeTable;
-            _discoveryStorage = discoveryStorage;
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _configurationProvider = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory ?? throw new ArgumentNullException(nameof(nodeLifecycleManagerFactory));
+            _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
+            _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
         }
 
@@ -170,7 +171,7 @@ namespace Nethermind.Network.Discovery
             return _nodeLifecycleManagers.Values.Where(query.Invoke).ToArray();
         }
 
-        protected void ValidatePingAddress(PingMessage message)
+        private void ValidatePingAddress(PingMessage message)
         {
             if (message.DestinationAddress == null || message.SourceAddress == null || message.FarAddress == null)
             {
@@ -182,17 +183,17 @@ namespace Nethermind.Network.Discovery
 
             if (!Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress?.Address.GetAddressBytes()))
             {
-                //throw new NetworkingException($"Received message with inccorect destination adress, message: {message}");
+                //throw new NetworkingException($"Received message with incorrect destination address, message: {message}");
             }
 
             if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
             {
-//                throw new NetworkingException($"Received message with inccorect destination port, message: {message}");
+//                throw new NetworkingException($"Received message with incorrect destination port, message: {message}");
             }
 
             if (!Bytes.AreEqual(message.FarAddress?.Address.GetAddressBytes(), message.SourceAddress?.Address.GetAddressBytes()))
             {
-                //throw new NetworkingException($"Received message with inccorect source adress, message: {message}");
+                //throw new NetworkingException($"Received message with incorrect source address, message: {message}");
             }
 
             if (message.FarAddress?.Port != message.SourceAddress?.Port)

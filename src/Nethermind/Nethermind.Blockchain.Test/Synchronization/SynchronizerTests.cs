@@ -24,18 +24,19 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization
@@ -292,7 +293,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 Synchronizer = new Synchronizer(BlockTree,
                     TestBlockValidator.AlwaysValid,
                     TestSealValidator.AlwaysValid,
-                    SyncPeerPool, syncConfig, nodeDataDownloader, _logManager); 
+                    SyncPeerPool, syncConfig, nodeDataDownloader, GoerliSpecProvider.Instance, _logManager); 
                 
                 SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, _logManager);
                 SyncPeerPool.Start();

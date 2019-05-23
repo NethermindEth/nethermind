@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Specs.Forks;
+
 namespace Nethermind.Core.Specs
 {
     public class RinkebySpecProvider : ISpecProvider
@@ -48,6 +50,7 @@ namespace Nethermind.Core.Specs
         }
 
         public long? DaoBlockNumber { get; } = null;
+
         public static long SpuriousDragonBlockNumber { get; } = 3;
         public static long ByzantiumBlockNumber { get; } = 1035301;
         
@@ -56,7 +59,7 @@ namespace Nethermind.Core.Specs
         public static long ConstantinopleFixBlockNumber { get; } = 4321234;
         
         public int ChainId => 4;
-
+        
         private RinkebySpecProvider()
         {
         }

@@ -36,6 +36,7 @@ namespace Nethermind.Blockchain
         public int ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggested => _wrapped.BestSuggested;
+        public BlockHeader LowestInserted => _wrapped.LowestInserted;
         public BlockHeader BestSuggestedFullBlock => _wrapped.BestSuggestedFullBlock;
         public long BestKnownNumber => _wrapped.BestKnownNumber;
         public BlockHeader Head => _wrapped.Head;
@@ -49,6 +50,11 @@ namespace Nethermind.Blockchain
         public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true)
         {
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
+        }
+
+        public AddBlockResult Insert(BlockHeader header)
+        {
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
         }
 
         public AddBlockResult SuggestHeader(BlockHeader header)

@@ -123,11 +123,6 @@ namespace Nethermind.Network.Config
         int PingMessageVersion { get; }
 
         /// <summary>
-        /// Ping expiry time in seconds
-        /// </summary>
-        int DiscoveryMsgExpiryTime { get; }
-
-        /// <summary>
         /// Maximum count of NodeLifecycleManagers stored in memory
         /// </summary>
         int MaxNodeLifecycleManagersCount { get; }
