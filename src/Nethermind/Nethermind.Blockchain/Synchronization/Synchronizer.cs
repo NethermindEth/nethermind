@@ -91,9 +91,9 @@ namespace Nethermind.Blockchain.Synchronization
                 _blockDataFeed.StartHash = lowestInserted?.Hash ?? (syncConfig.PivotHash == null ? null : new Keccak(syncConfig.PivotHash));
                 _blockDataFeed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? UInt256.Parse(syncConfig.PivotTotalDifficulty ?? "0x0");
                 _blockDataFeed.RequestSize = 512;
+                
+                _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, _blockDataFeed, sealValidator, logManager);
             }
-
-            _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, _blockDataFeed, sealValidator, logManager);
         }
 
         public SyncMode SyncMode => _syncMode.Current;
