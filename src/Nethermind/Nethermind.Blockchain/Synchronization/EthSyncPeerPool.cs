@@ -497,7 +497,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason)
+        private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason, bool isLowPriority)
         {
             if (_logger.IsTrace) _logger.Trace($"[{reason}] Selecting best peer for {allocation}");
             (PeerInfo Info, long Latency) bestPeer = (null, 100000);
@@ -538,7 +538,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 long latency = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000;
 
-                if (latency <= bestPeer.Latency)
+                if (isLowPriority ? (latency > bestPeer.Latency) : (latency <= bestPeer.Latency))
                 {
                     bestPeer = (info, latency);
                 }
@@ -604,7 +604,7 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, reason);
+                PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, reason, false);
                 if (bestPeer != allocation.Current)
                 {
                     ReplaceIfWorthReplacing(allocation, bestPeer);
@@ -636,7 +636,7 @@ namespace Nethermind.Blockchain.Synchronization
                 allocation.CanBeReplaced = false;
             }
 
-            PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, "BORROW");
+            PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, "BORROW", (borrowOptions & BorrowOptions.LowPriority) == BorrowOptions.LowPriority);
             if (bestPeer != null)
             {
                 allocation.ReplaceCurrent(bestPeer);

@@ -93,6 +93,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             if (_pendingBatches.Any())
             {
                 _pendingBatches.TryPop(out blockSyncBatch);
+                blockSyncBatch.Retries++;
             }
             else
             {
@@ -111,37 +112,41 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
 
             if (_logger.IsTrace) _logger.Trace($"{blockSyncBatch} - sending REQUEST");
-
+            
             lock (_handlerLock)
             {
-                StringBuilder builder = new StringBuilder();
-                builder.AppendLine($"{_headerDependencies.Count} dependencies left");
+                if (_logger.IsTrace)
+                {
+                    StringBuilder builder = new StringBuilder();
+                    builder.AppendLine($"{_headerDependencies.Count} dependencies left");
 //                foreach (var headerDependency in _headerDependencies.ToList().OrderByDescending(d => d.Value.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.Value.HeadersSyncBatch.StartNumber))
 //                {
 //                    builder.AppendLine($"  - {headerDependency.Value}");
 //                }
 
-                builder.AppendLine($"{_pendingBatches.Count} pending batches");
-                foreach (var pendingBatch in _pendingBatches.ToList().OrderByDescending(d => d.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.HeadersSyncBatch.StartNumber))
-                {
-                    builder.AppendLine($"  - {pendingBatch}");
-                }
+                    builder.AppendLine($"{_pendingBatches.Count} pending batches");
+                    foreach (var pendingBatch in _pendingBatches.ToList().OrderByDescending(d => d.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.HeadersSyncBatch.StartNumber))
+                    {
+                        builder.AppendLine($"  - {pendingBatch}");
+                    }
 
-                builder.AppendLine($"{_sentBatches.Count} sent batches");
-                foreach (var sentBatch in _sentBatches.ToList().OrderByDescending(d => d.Key.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.Key.HeadersSyncBatch.StartNumber))
-                {
-                    builder.AppendLine($"  - {sentBatch.Key} | {sentBatch.Key.AssignedPeer?.Current}");
-                }
+                    builder.AppendLine($"{_sentBatches.Count} sent batches");
+                    foreach (var sentBatch in _sentBatches.ToList().OrderByDescending(d => d.Key.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.Key.HeadersSyncBatch.StartNumber))
+                    {
+                        builder.AppendLine($"  - {sentBatch.Key} | {sentBatch.Key.AssignedPeer?.Current}");
+                    }
 
-                if (_logger.IsDebug) _logger.Debug($"{builder}");
+                    if (_logger.IsTrace) _logger.Trace($"{builder}");
+                }
             }
-
+            
             _sentBatches.TryAdd(blockSyncBatch, _empty);
-
             if (blockSyncBatch.HeadersSyncBatch.StartNumber >= ((_blockTree.LowestInserted?.Number ?? 0) - 2048))
             {
                 blockSyncBatch.Prioritized = true;
             }
+
+            if(_logger.IsInfo) _logger.Info($"LOWEST_INSERTED {_blockTree.LowestInserted?.Number}, LOWEST_REQUESTED {BestDownwardRequestedNumber}, RETURNING {blockSyncBatch}");
 
             return blockSyncBatch;
         }

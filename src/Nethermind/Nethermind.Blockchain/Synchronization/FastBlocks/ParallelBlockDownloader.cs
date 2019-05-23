@@ -80,10 +80,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         }
                     );
                 }
-                else
-                {
-                    await Task.Delay(10);
-                }
 
                 (BlocksDataHandlerResult Result, int NodesConsumed) result = (BlocksDataHandlerResult.InvalidFormat, 0);
                 try
@@ -91,6 +87,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     if (batch.HeadersSyncBatch?.Response != null)
                     {
                         ValidateSeals(token, batch.HeadersSyncBatch.Response);
+                    }
+                    else
+                    {
+                        await Task.Delay(50);
                     }
 
                     result = _blockRequestFeed.HandleResponse(batch);
