@@ -339,6 +339,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
             }
 
+            foreach ((Keccak hash, BlockSyncBatch batch) in _headerDependencies.Where(hd => hd.Value.HeadersSyncBatch.EndNumber == header.Number - 1).ToArray())
+            {
+                if (header.ParentHash != hash)
+                {
+                    _pendingBatches.Push(batch);
+                    _headerDependencies.Remove(hash, out _);
+                    if (_logger.IsInfo) _logger.Info($"{batch} - REMOVED PENDING - ivnalid branch");
+                    
+                }
+            }
+
             return addBlockResult;
         }
     }
