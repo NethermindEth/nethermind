@@ -19,16 +19,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;

@@ -20,7 +20,6 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Releases;
 
 namespace Nethermind.Evm.Precompiles
 {

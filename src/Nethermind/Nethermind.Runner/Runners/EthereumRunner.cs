@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -38,10 +37,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Json;
-using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
-using Nethermind.Core.Specs.Releases;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;

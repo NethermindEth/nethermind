@@ -29,7 +29,4 @@
       <HintPath>C:\Users\glesniakiewicz\.nuget\packages\microsoft.io.recyclablememorystream\1.2.2\lib\netstandard1.4\Microsoft.IO.RecyclableMemoryStream.dll</HintPath>
     </Reference>
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Logging" />
-  </ItemGroup>
 </Project>

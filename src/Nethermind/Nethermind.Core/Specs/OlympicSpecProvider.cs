@@ -16,8 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs.Releases;
+using Nethermind.Core.Specs.Forks;
 
 namespace Nethermind.Core.Specs
 {

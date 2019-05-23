@@ -17,14 +17,11 @@
  */
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks

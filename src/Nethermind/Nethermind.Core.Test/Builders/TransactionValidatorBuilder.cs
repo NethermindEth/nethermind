@@ -18,7 +18,6 @@
 
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Releases;
 using NSubstitute;
 
 namespace Nethermind.Core.Test.Builders

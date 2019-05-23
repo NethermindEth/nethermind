@@ -19,7 +19,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Releases;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Store

@@ -19,9 +19,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs.Releases;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Specs.Forks;
 
 namespace Nethermind.Core.Specs
 {

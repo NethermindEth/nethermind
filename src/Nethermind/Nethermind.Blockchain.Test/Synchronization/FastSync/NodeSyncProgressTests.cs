@@ -17,7 +17,7 @@
  */
 
 using Nethermind.Blockchain.Synchronization.FastSync;
-using Nethermind.Core.Logging;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization.FastSync

@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -36,7 +35,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
-using Nethermind.Core.Specs.Releases;
+using Nethermind.Core.Specs.Forks;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;

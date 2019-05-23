@@ -24,9 +24,8 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Json;
-using Nethermind.Core.Logging;
-using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
