@@ -43,7 +43,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle.Json
             public Address[] DaoHardforkAccounts => Params?.DaoHardforkAccounts;
             public long? DaoHardForkTransition => Params?.DaoHardforkTransition;
             public long? Eip100bTransition => Params?.Eip100bTransition;
-            public UInt256? DifficultyBoundDivisor => Params?.DifficultyBoundDivisor;
+            public long? DifficultyBoundDivisor => Params?.DifficultyBoundDivisor;
             public long? DurationLimit => Params?.DurationLimit;
             public UInt256? MinimumDifficulty => Params?.MinimumDifficulty;
             public Dictionary<string, UInt256> BlockReward => Params?.BlockReward;
@@ -54,7 +54,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle.Json
         internal class EthashEngineParamsJson
         {
             public UInt256? MinimumDifficulty { get; set; }
-            public UInt256? DifficultyBoundDivisor { get; set; }
+            public long? DifficultyBoundDivisor { get; set; }
             public long? DurationLimit { get; set; }
             public long HomesteadTransition { get; set; }
             public long? DaoHardforkTransition { get; set; }

@@ -7,7 +7,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
     {
         public UInt256 MinimumDifficulty { get; set; }
 
-        public UInt256 DifficultyBoundDivisor { get; set; }
+        public long DifficultyBoundDivisor { get; set; }
 
         public long DurationLimit { get; set; }
 

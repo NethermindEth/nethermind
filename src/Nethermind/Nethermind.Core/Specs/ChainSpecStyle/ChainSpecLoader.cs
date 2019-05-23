@@ -127,8 +127,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             {
                 chainSpec.SealEngineType = SealEngineType.Ethash;
                 chainSpec.Ethash = new EthashParameters();
-                chainSpec.Ethash.MinimumDifficulty = chainSpecJson.Engine.Ethash.MinimumDifficulty ?? UInt256.Zero;
-                chainSpec.Ethash.DifficultyBoundDivisor = chainSpecJson.Engine.Ethash.DifficultyBoundDivisor ?? UInt256.One;
+                chainSpec.Ethash.MinimumDifficulty = chainSpecJson.Engine.Ethash.MinimumDifficulty ?? 0L;
+                chainSpec.Ethash.DifficultyBoundDivisor = chainSpecJson.Engine.Ethash.DifficultyBoundDivisor ?? 0x0800L;
                 chainSpec.Ethash.DurationLimit = chainSpecJson.Engine.Ethash.DurationLimit ?? 13L;
                 chainSpec.Ethash.HomesteadTransition = chainSpecJson.Engine.Ethash.HomesteadTransition ?? 0;
                 chainSpec.Ethash.DaoHardforkTransition = chainSpecJson.Engine.Ethash.DaoHardforkTransition;

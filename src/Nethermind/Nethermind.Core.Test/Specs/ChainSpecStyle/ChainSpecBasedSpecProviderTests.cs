@@ -50,6 +50,20 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
         }
         
         [Test]
+        public void Bound_divisors_set_correctly()
+        {
+            ChainSpec chainSpec = new ChainSpec();
+            chainSpec.Parameters = new ChainParameters();
+            chainSpec.Parameters.GasLimitBoundDivisor = 17;
+            chainSpec.Ethash = new EthashParameters();
+            chainSpec.Ethash.DifficultyBoundDivisor = 19;
+
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
+            Assert.AreEqual(19, provider.GenesisSpec.DifficultyBoundDivisor);
+            Assert.AreEqual(17, provider.GenesisSpec.GasLimitBoundDivisor);
+        }
+        
+        [Test]
         public void Max_code_transition_loaded_correctly()
         {
             const long maxCodeTransition = 13;
