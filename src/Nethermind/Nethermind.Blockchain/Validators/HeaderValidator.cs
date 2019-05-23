@@ -103,17 +103,17 @@ namespace Nethermind.Blockchain.Validators
             }
 
             long maxGasLimitDifference = parent.GasLimit / spec.GasLimitBoundDivisor;
-            bool gasLimitNotTooHigh = header.GasLimit < parent.GasLimit + maxGasLimitDifference;
+            bool gasLimitNotTooHigh = header.GasLimit <= parent.GasLimit + maxGasLimitDifference;
             if (!gasLimitNotTooHigh)
             {
                 if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
             }
 
-            bool gasLimitNotTooLow = header.GasLimit > parent.GasLimit - maxGasLimitDifference
-                                     && header.GasLimit > spec.MinGasLimit;
+            bool gasLimitNotTooLow = header.GasLimit >= parent.GasLimit - maxGasLimitDifference
+                                     && header.GasLimit >= spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
             }
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
