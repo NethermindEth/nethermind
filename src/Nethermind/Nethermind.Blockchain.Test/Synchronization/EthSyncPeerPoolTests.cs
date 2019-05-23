@@ -539,7 +539,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(peer);
 
-            _pool.ReportNoSyncProgress(null);
+            _pool.ReportNoSyncProgress((SyncPeerAllocation)null);
+            _pool.ReportNoSyncProgress((PeerInfo)null);
         }
     }
 }

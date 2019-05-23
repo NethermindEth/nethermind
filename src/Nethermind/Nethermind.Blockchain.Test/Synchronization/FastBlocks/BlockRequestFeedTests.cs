@@ -115,7 +115,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             HeaderValidator headerValidator = new HeaderValidator(_localBlockTree, TestSealValidator.AlwaysValid, MainNetSpecProvider.Instance, LimboLogs.Instance);
             OmmersValidator ommersValidator = new OmmersValidator(_localBlockTree, headerValidator, LimboLogs.Instance);
-            _feed = new BlockRequestFeed(_localBlockTree, _syncPeerPool, new BlockValidator(new TxValidator(MainNetSpecProvider.Instance.ChainId), headerValidator, ommersValidator, MainNetSpecProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
+            _feed = new BlockRequestFeed(_localBlockTree, _syncPeerPool, new BlockValidator(new TxValidator(MainNetSpecProvider.Instance.ChainId), headerValidator, ommersValidator, MainNetSpecProvider.Instance, LimboLogs.Instance), new SyncConfig(), LimboLogs.Instance);
             _feed.StartNumber = 2047;
             _feed.StartHash = _validTree2048.Head.Hash;
         }

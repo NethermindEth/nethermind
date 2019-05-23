@@ -30,6 +30,7 @@ namespace Nethermind.Blockchain
         public long MinAvailableBlockDiffForSyncSwitch { get; } = 100;
         public long MinDiffPercentageForLatencySwitch { get; } = 10;
         public long MinDiffForLatencySwitch { get; } = 5;
+        public bool EnableExperimentalFastBlocks { get; set; } = false;
         public string PivotTotalDifficulty { get; set; } = null;
         public string PivotNumber { get; set;} = null;
         public string PivotHash { get; set;} = null;

@@ -138,6 +138,12 @@ namespace Nethermind.Blockchain
         
         private void LoadLowestInserted()
         {
+            if (BestKnownNumber == 0)
+            {
+                LowestInserted = null;
+                return;
+            }
+            
             long left = 0;
             long right = BestKnownNumber;
 

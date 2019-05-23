@@ -36,6 +36,8 @@ namespace Nethermind.Blockchain.Synchronization
         
         void ReportNoSyncProgress(SyncPeerAllocation syncPeerAllocation);
         
+        void ReportNoSyncProgress(PeerInfo peerInfo);
+        
         void ReportInvalid(SyncPeerAllocation syncPeerAllocation);
         
         event EventHandler<SyncEventArgs> SyncEvent;

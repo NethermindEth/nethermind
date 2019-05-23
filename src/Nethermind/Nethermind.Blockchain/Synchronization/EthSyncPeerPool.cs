@@ -49,7 +49,30 @@ namespace Nethermind.Blockchain.Synchronization
         private Task _refreshLoopTask;
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
+
+        public void ReportNoSyncProgress(PeerInfo peerInfo)
+        {
+            if (peerInfo == null)
+            {
+                return;
+            }
+            
+            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
+            _sleepingPeers.TryAdd(peerInfo, DateTime.UtcNow);
+        }
         
+        public void ReportNoSyncProgress(SyncPeerAllocation allocation)
+        {
+            PeerInfo peerInfo = allocation?.Current;
+            if (peerInfo == null)
+            {
+                return;
+            }
+            
+            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {allocation.Current}");
+            _sleepingPeers.TryAdd(peerInfo, DateTime.UtcNow);
+        }
+
         public void ReportInvalid(SyncPeerAllocation syncPeerAllocation)
         {
             syncPeerAllocation.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "SYNC BREACH");
@@ -621,19 +644,6 @@ namespace Nethermind.Blockchain.Synchronization
 
             _allocations.TryAdd(allocation, null);
             return allocation;
-        }
-
-        public void ReportNoSyncProgress(SyncPeerAllocation allocation)
-        {
-            PeerInfo peer = allocation?.Current;
-            if (peer == null)
-            {
-                return;
-            }
-
-            // this is generally with the strange Parity nodes behaviour
-            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {allocation.Current}");
-            _sleepingPeers.TryAdd(peer, DateTime.UtcNow);
         }
 
         public void Free(SyncPeerAllocation syncPeerAllocation)
