@@ -68,12 +68,18 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 batch.Allocation = nodeSyncAllocation;
                 if (peer != null)
                 {
+                    batch.MarkSent();
                     Task<BlockHeader[]> getHeadersTask = peer.GetBlockHeaders(batch.HeadersSyncBatch.StartNumber.Value, batch.HeadersSyncBatch.RequestSize, 0, token);
                     await getHeadersTask.ContinueWith(
                         t =>
                         {
                             if (t.IsCompletedSuccessfully)
                             {
+                                if (batch.RequestTime > 1000)
+                                {
+                                    _logger.Error($"{batch} - reporting peer too slow {batch.RequestTime:F2}");
+                                }
+
                                 batch.HeadersSyncBatch.Response = getHeadersTask.Result;
                             }
                             else
@@ -87,6 +93,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 (BlocksDataHandlerResult Result, int NodesConsumed) result = (BlocksDataHandlerResult.InvalidFormat, 0);
                 try
                 {
+                    batch.MarkValidation();
                     if (batch.HeadersSyncBatch?.Response != null)
                     {
                         ValidateBlocks(token, batch.HeadersSyncBatch.Response);
@@ -181,7 +188,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     if (_logger.IsTrace) _logger.Trace($"Set semaphore - {_pendingRequests} pending");
                     if (!await semaphoreTask)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Faile to set semaphore");
+                        if (_logger.IsDebug) _logger.Debug($"Failed to set semaphore");
                         newUsefulPeerCount++;
                     }
                 }

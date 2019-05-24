@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
     {
         BlockSyncBatch PrepareRequest();
 
-        (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch syncBatch);
+        (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch batch);
         
         void StartNewRound();
     }

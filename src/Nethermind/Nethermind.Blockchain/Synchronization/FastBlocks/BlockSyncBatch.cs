@@ -17,29 +17,79 @@
  */
 
 using System;
+using System.Diagnostics;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class BlockSyncBatch
     {
-        private DateTime CreationTimeUtc { get; } = DateTime.UtcNow;
+        private Stopwatch _stopwatch = new Stopwatch();
+        private long? ScheduledLastTime;
+        private long? RequestSentTime;
+        private long? ValidationStartTime;
+        private long? HandlingStartTime;
+        private long? HandlingEndTime;
+        
         public bool Prioritized { get; set; }
         public HeadersSyncBatch HeadersSyncBatch { get; set; }
         public BodiesSyncBatch BodiesSyncBatch { get; set; }
         public SyncPeerAllocation Allocation { get; set; }
-        public int Retries { get; set; }
+
+        public BlockSyncBatch()
+        {
+            _stopwatch.Start();
+            ScheduledLastTime = _stopwatch.ElapsedMilliseconds;
+        }
+        
+        public void MarkRetry()
+        {
+            Retries++;
+            ScheduledLastTime = _stopwatch.ElapsedMilliseconds;
+            ValidationStartTime = null;
+            RequestSentTime = null;
+            HandlingStartTime = null;
+            HandlingEndTime = null;
+        }
+        
+        public void MarkSent()
+        {
+            RequestSentTime = _stopwatch.ElapsedMilliseconds;
+            
+        }
+        public void MarkValidation()
+        {
+            ValidationStartTime = _stopwatch.ElapsedMilliseconds;
+        }
+        
+        public void MarkHandlingStart()
+        {
+            HandlingStartTime = _stopwatch.ElapsedMilliseconds;
+        }
+        
+        public void MarkHandlingEnd()
+        {
+            HandlingEndTime = _stopwatch.ElapsedMilliseconds;
+        }
+        
+        private int Retries { get; set; }
+        public double? AgeInMs => _stopwatch.ElapsedMilliseconds;
+        public double? SchedulingTime => ((RequestSentTime ?? _stopwatch.ElapsedMilliseconds) - (ScheduledLastTime ?? _stopwatch.ElapsedMilliseconds));
+        public double? RequestTime => ((ValidationStartTime ?? _stopwatch.ElapsedMilliseconds) - (RequestSentTime ?? _stopwatch.ElapsedMilliseconds));
+        public double? ValidationTime => ((HandlingStartTime ?? _stopwatch.ElapsedMilliseconds) - (ValidationStartTime ?? _stopwatch.ElapsedMilliseconds));
+        public double? HandlingTime => ((HandlingEndTime ?? _stopwatch.ElapsedMilliseconds) - (HandlingStartTime ?? _stopwatch.ElapsedMilliseconds));
         public UInt256? MinTotalDifficulty { get; set; }
         public long? MinNumber { get; set; }
 
         public override string ToString()
         {
-            string bodiesOrHeaders = HeadersSyncBatch != null ? "HEADERS" : "BODIES";
+//            string bodiesOrHeaders = HeadersSyncBatch != null ? "HEADERS" : "BODIES";
+            string bodiesOrHeaders = string.Empty;
             string startBlock = HeadersSyncBatch?.StartNumber.ToString() ?? HeadersSyncBatch?.StartHash.ToString();
             string endBlock = (HeadersSyncBatch?.StartNumber != null ? HeadersSyncBatch.StartNumber + (HeadersSyncBatch.Reverse ? -1 : 1) * (HeadersSyncBatch.RequestSize - 1) : HeadersSyncBatch?.RequestSize - 1).ToString();
-            string age = $"{(DateTime.UtcNow - CreationTimeUtc).TotalMilliseconds:F0}ms";
             string priority = Prioritized ? "HIGH" : "LOW";
-            return $"{bodiesOrHeaders} [{startBlock}, {endBlock}]({HeadersSyncBatch?.RequestSize ?? 0}) [{priority}] [age: {age}, retries {Retries}] min#: {MinNumber} {Allocation?.Current}";
+
+            return $"{bodiesOrHeaders} [{startBlock}, {endBlock}]({HeadersSyncBatch?.RequestSize ?? 0}) [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {Allocation?.Current}";
         }
     }
 }

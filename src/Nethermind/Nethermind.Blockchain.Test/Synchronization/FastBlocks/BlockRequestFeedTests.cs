@@ -140,6 +140,18 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
         
         [Test]
+        public void One_peer_with_valid_one_with_invalid()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 300);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_badTreeAfter1024);
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(1204, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
         public void Two_peers_with_valid_chain_one_shorter()
         {
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
