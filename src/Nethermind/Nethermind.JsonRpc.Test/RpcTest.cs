@@ -35,14 +35,14 @@ namespace Nethermind.JsonRpc.Test
         {
             IJsonRpcService service = BuildRpcService<T>(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
-            return service.SendRequest(request);
+            return service.SendRequestAsync(request).Result;
         }
         
         public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
         {
             IJsonRpcService service = BuildRpcService<T>(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
-            JsonRpcResponse response = service.SendRequest(request);
+            JsonRpcResponse response = service.SendRequestAsync(request).Result;
             JsonSerializerSettings settings = new JsonSerializerSettings();
             settings.ContractResolver = new CamelCasePropertyNamesContractResolver();
             settings.Converters = service.Converters.ToArray();
