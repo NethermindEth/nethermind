@@ -233,7 +233,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                             if (_headerDependencies.ContainsKey(header.Number))
                             {
-                                throw new InvalidOperationException("Only one header dependency expected");
+                                _pendingBatches.Push(blockSyncBatch);
+                                throw new InvalidOperationException($"Only one header dependency expected ({blockSyncBatch})");
                             }
 
                             for (int j = 0; j < blockSyncBatch.HeadersSyncBatch.Response.Length; j++)

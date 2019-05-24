@@ -45,7 +45,6 @@ namespace Nethermind.Benchmarks.Mining
         [GlobalSetup]
         public void Setup()
         {
-            _ethash.PrecomputeCache(0);
             _header = _scenarios[ScenarioIndex];
         }
         

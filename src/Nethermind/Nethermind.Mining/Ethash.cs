@@ -43,7 +43,7 @@ namespace Nethermind.Mining
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private readonly LruCache<uint, IEthashDataSet> _cacheCache = new LruCache<uint, IEthashDataSet>(3);
+        private readonly LruCache<uint, Task<IEthashDataSet>> _cacheCache = new LruCache<uint, Task<IEthashDataSet>>(10);
 
         public const int WordBytes = 4; // bytes in word
         public static uint DataSetBytesInit = (uint) BigInteger.Pow(2, 30); // bytes in dataset at genesis
@@ -208,65 +208,37 @@ namespace Nethermind.Mining
             return IsLessThanTarget(result, threshold);
         }
 
-        public async Task PrecomputeCache(uint epoch)
-        {
-            await Task.Run(() => GetOrAddCache(epoch, false));
-        }
-
         private readonly Stopwatch _cacheStopwatch = new Stopwatch();
 
-        private ConcurrentDictionary<uint, object> _epochsRequested = new ConcurrentDictionary<uint, object>();
-
-        private IEthashDataSet GetOrAddCache(uint epoch, bool precompute = true)
+        private IEthashDataSet GetOrAddCache(uint epoch)
         {
-            IEthashDataSet dataSet = _cacheCache.Get(epoch);
-            if (dataSet == null)
+            lock (_cacheCache)
+            {
+                for (uint i = epoch - 2; i < epoch + 3; i++)
+                {
+                    if (_cacheCache.Get(i) == null)
+                    {
+                        _cacheCache.Set(i, BuildCache(i));
+                    }
+                }
+                
+                return _cacheCache.Get(epoch).Result;
+            }
+        }
+
+        private Task<IEthashDataSet> BuildCache(uint epoch)
+        {
+            return Task.Run(() =>
             {
                 uint cacheSize = GetCacheSize(epoch);
                 Keccak seed = GetSeedHash(epoch);
                 if (_logger.IsDebug) _logger.Debug($"Building cache for epoch {epoch}");
                 _cacheStopwatch.Restart();
-                dataSet = new EthashCache(cacheSize, seed.Bytes);
+                IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
                 _cacheStopwatch.Stop();
                 if (_logger.IsDebug) _logger.Debug($"Cache for epoch {epoch} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
-                _cacheCache.Set(epoch, dataSet);
-            }
-            
-            uint epochToPrecompute = epoch + 1;
-            if (precompute && _epochsRequested.TryAdd(epochToPrecompute, null))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Asking to precompute epoch {epochToPrecompute}");
-                PrecomputeCache(epochToPrecompute).ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error($"Precompute failure at epoch {epochToPrecompute}");
-                    }
-                    else
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Epoch precompute success at {epochToPrecompute}");
-                    }
-                });
-            }
-            
-            uint epochToPrecomputeLow = epoch - 1;
-            if (precompute && _epochsRequested.TryAdd(epochToPrecomputeLow, null))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Asking to precompute epoch {epochToPrecomputeLow}");
-                PrecomputeCache(epochToPrecomputeLow).ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error($"Precompute failure at epoch {epochToPrecomputeLow}");
-                    }
-                    else
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Epoch precompute success at {epochToPrecomputeLow}");
-                    }
-                });
-            }
-
-            return dataSet;
+                return dataSet;
+            });
         }
 
         private static Keccak GetTruncatedHash(BlockHeader header)
