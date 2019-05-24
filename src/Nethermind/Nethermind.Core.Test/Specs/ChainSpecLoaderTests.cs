@@ -130,7 +130,7 @@ namespace Nethermind.Core.Test.Specs
             Core.Specs.ChainSpecStyle.ChainSpec chainSpec = LoadChainSpec(path);
             
             Assert.AreEqual(3, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
-            Assert.AreEqual("Ropsten", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual("Ropsten Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.NotNull(chainSpec.Genesis, $"{nameof(Core.Specs.ChainSpecStyle.ChainSpec.Genesis)}");
 
             Assert.AreEqual(0x0000000000000042UL, chainSpec.Genesis.Header.Nonce, $"genesis {nameof(BlockHeader.Nonce)}");
@@ -212,7 +212,7 @@ namespace Nethermind.Core.Test.Specs
             Core.Specs.ChainSpecStyle.ChainSpec chainSpec = LoadChainSpec(path);
             
             Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
-            Assert.AreEqual("Foundation", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual("Ethereum", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual("ethereum", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.Ethash, chainSpec.SealEngineType, "engine");
             
@@ -221,7 +221,7 @@ namespace Nethermind.Core.Test.Specs
             Assert.AreEqual((long?)2463000, chainSpec.TangerineWhistleBlockNumber, "tw no");
             Assert.AreEqual((long?)2675000, chainSpec.SpuriousDragonBlockNumber, "sd no");
             Assert.AreEqual((long?)4370000, chainSpec.ByzantiumBlockNumber, "byzantium no");
-            Assert.AreEqual((long?)7080000, chainSpec.ConstantinopleBlockNumber, "constantinople no");
+            Assert.AreEqual((long?)7280000, chainSpec.ConstantinopleBlockNumber, "constantinople no");
         }
         
         [Test]
