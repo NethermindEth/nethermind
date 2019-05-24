@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,16 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
+using Microsoft.AspNetCore.Http;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.WebSockets
 {
-    public interface IJsonRpcService
+    public interface IWebSocketsModule
     {
-        Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request);
-        JsonRpcResponse GetErrorResponse(ErrorType errorType, string message);
-        IList<JsonConverter> Converters { get; }
+        string Name { get; }
+        bool TryInit(HttpRequest request);
+        void AddClient(IWebSocketsClient client);
+        Task ExecuteAsync(IWebSocketsClient client, byte[] data);
+        void Cleanup(IWebSocketsClient client);
     }
 }

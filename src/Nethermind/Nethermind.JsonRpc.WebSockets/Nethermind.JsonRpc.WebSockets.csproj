@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netcoreapp2.2</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+      <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
+    </ItemGroup>
+
+</Project>

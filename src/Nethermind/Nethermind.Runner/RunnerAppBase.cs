@@ -27,9 +27,11 @@ using Nethermind.Core.Json;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Web3;
+using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
+using Nethermind.WebSockets;
 
 namespace Nethermind.Runner
 {
@@ -120,6 +122,7 @@ namespace Nethermind.Runner
             IRpcModuleProvider rpcModuleProvider = initParams.JsonRpcEnabled
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>())
                 : (IRpcModuleProvider) NullModuleProvider.Instance;
+            var webSocketsManager = new WebSocketsManager();
 
             _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager);
             await _ethereumRunner.Start().ContinueWith(x =>
@@ -131,11 +134,14 @@ namespace Nethermind.Runner
             {
                 var serializer = new EthereumJsonSerializer();
                 rpcModuleProvider.Register<IWeb3Module>(new Web3Module(configProvider, logManager, serializer));
-
-                Bootstrap.Instance.JsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
+                var jsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
+                var jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, serializer, logManager);
+                webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, serializer));
+                Bootstrap.Instance.JsonRpcService = jsonRpcService;
                 Bootstrap.Instance.LogManager = logManager;
                 Bootstrap.Instance.JsonSerializer = serializer;
-                _jsonRpcRunner = new JsonRpcRunner(configProvider, rpcModuleProvider, logManager);
+                _jsonRpcRunner = new JsonRpcRunner(configProvider, rpcModuleProvider, logManager, jsonRpcProcessor,
+                    webSocketsManager);
                 await _jsonRpcRunner.Start().ContinueWith(x =>
                 {
                     if (x.IsFaulted && Logger.IsError) Logger.Error("Error during jsonRpc runner start", x.Exception);
