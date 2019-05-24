@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 if (peer != null)
                 {
                     batch.MarkSent();
-                    Task<BlockHeader[]> getHeadersTask = peer.GetBlockHeaders(batch.HeadersSyncBatch.StartNumber.Value, batch.HeadersSyncBatch.RequestSize, 0, token);
+                    Task<BlockHeader[]> getHeadersTask = peer.GetBlockHeaders(batch.HeadersSyncBatch.StartNumber, batch.HeadersSyncBatch.RequestSize, 0, token);
                     await getHeadersTask.ContinueWith(
                         t =>
                         {
@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             }
                             else
                             {
-                                _syncPeerPool.ReportNoSyncProgress(batch.Allocation);
+                                _syncPeerPool.ReportInvalid(batch.Allocation);
                             }
                         }
                     );
@@ -134,30 +134,30 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private void ValidateBlocks(CancellationToken cancellation, BlockHeader[] headers)
         {
-            if (_logger.IsTrace) _logger.Trace("Starting block validation");
-
-            for (int i = 0; i < headers.Length; i++)
-            {
-                if (cancellation.IsCancellationRequested)
-                {
-                    if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
-                    return;
-                }
-
-                BlockHeader header = headers[i];
-                if (header == null)
-                {
-                    return;
-                }
-                
-                bool isHashValid = _blockValidator.ValidateHash(header);
-                bool isSealValid = _sealValidator.ValidateSeal(header);
-                if (!(isHashValid && isSealValid))
-                {
-                    if (_logger.IsTrace) _logger.Trace("One of the blocks is invalid");
-                    throw new EthSynchronizationException($"Peer sent a block with seal valid {isSealValid}, hash valid {isHashValid}");
-                }
-            }
+//            if (_logger.IsTrace) _logger.Trace("Starting block validation");
+//
+//            for (int i = 0; i < headers.Length; i++)
+//            {
+//                if (cancellation.IsCancellationRequested)
+//                {
+//                    if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
+//                    return;
+//                }
+//
+//                BlockHeader header = headers[i];
+//                if (header == null)
+//                {
+//                    continue;
+//                }
+//                
+//                bool isHashValid = _blockValidator.ValidateHash(header);
+//                bool isSealValid = _sealValidator.ValidateSeal(header);
+//                if (!(isHashValid && isSealValid))
+//                {
+//                    if (_logger.IsTrace) _logger.Trace("One of the blocks is invalid");
+//                    throw new EthSynchronizationException($"Peer sent a block with seal valid {isSealValid}, hash valid {isHashValid}");
+//                }
+//            }
         }
 
         private async Task UpdateParallelism()

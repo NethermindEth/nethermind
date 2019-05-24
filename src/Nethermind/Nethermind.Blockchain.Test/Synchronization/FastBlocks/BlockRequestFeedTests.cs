@@ -49,6 +49,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private HashSet<LatencySyncPeerMock> _maliciousByRepetition;
         private HashSet<LatencySyncPeerMock> _maliciousByShiftedOneForward;
         private HashSet<LatencySyncPeerMock> _maliciousByShiftedOneBack;
+        private HashSet<LatencySyncPeerMock> _maliciousByShortAtStart;
         private HashSet<LatencySyncPeerMock> _incorrectByTooShortMessages;
         private HashSet<LatencySyncPeerMock> _incorrectByTooLongMessages;
         private HashSet<LatencySyncPeerMock> _timingOut;
@@ -76,6 +77,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _maliciousByRepetition = new HashSet<LatencySyncPeerMock>();
             _maliciousByShiftedOneForward = new HashSet<LatencySyncPeerMock>();
             _maliciousByShiftedOneBack = new HashSet<LatencySyncPeerMock>();
+            _maliciousByShortAtStart = new HashSet<LatencySyncPeerMock>();
             _incorrectByTooShortMessages = new HashSet<LatencySyncPeerMock>();
             _incorrectByTooLongMessages = new HashSet<LatencySyncPeerMock>();
             _timingOut = new HashSet<LatencySyncPeerMock>();
@@ -90,11 +92,27 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     mock.BusyUntil = _time + 5000;
                     mock.IsReported = true;
                 });
+            
+            _syncPeerPool.WhenForAnyArgs(p => p.ReportNoSyncProgress(Arg.Any<PeerInfo>()))
+                .Do(ci =>
+                {
+                    LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<PeerInfo>().SyncPeer);
+                    mock.BusyUntil = _time + 5000;
+                    mock.IsReported = true;
+                });
 
             _syncPeerPool.WhenForAnyArgs(p => p.ReportInvalid(Arg.Any<SyncPeerAllocation>()))
                 .Do(ci =>
                 {
                     LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<SyncPeerAllocation>().Current.SyncPeer);
+                    mock.BusyUntil = _time + 30000;
+                    mock.IsReported = true;
+                });
+            
+            _syncPeerPool.WhenForAnyArgs(p => p.ReportInvalid(Arg.Any<PeerInfo>()))
+                .Do(ci =>
+                {
+                    LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<PeerInfo>().SyncPeer);
                     mock.BusyUntil = _time + 30000;
                     mock.IsReported = true;
                 });
@@ -110,8 +128,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             {
                 _localBlockTree.SuggestBlock(_validTree2048.FindBlock(i));    
             }
+
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotHash = _validTree2048.Head.Hash.ToString();
+            syncConfig.PivotNumber = _validTree2048.Head.Number.ToString();
+            syncConfig.PivotTotalDifficulty = _validTree2048.Head.TotalDifficulty.ToString();
             
-            _feed = new BlockRequestFeed(_localBlockTree, _syncPeerPool, new SyncConfig(), LimboLogs.Instance);
+            _feed = new BlockRequestFeed(_localBlockTree, _syncPeerPool, syncConfig, LimboLogs.Instance);
             _feed.StartNumber = 2047;
             _feed.StartHash = _validTree2048.Head.Hash;
         }
@@ -140,10 +163,138 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
         
         [Test]
-        public void One_peer_with_valid_one_with_invalid()
+        public void Two_peers_with_valid_chain_and_various_max_response_sizes()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _peerMaxResponseSizes[syncPeer1] = 100;
+            _peerMaxResponseSizes[syncPeer2] = 75;
+            
+            SetupSyncPeers(syncPeer1, syncPeer2);
+
+            RunFeed();
+            Assert.AreEqual(90, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
+        public void Two_peers_one_malicious_by_repetition()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _maliciousByRepetition.Add(syncPeer1);
+            
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(49, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
+        public void Two_peers_one_malicious_by_short_at_start()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _maliciousByShortAtStart.Add(syncPeer1);
+            
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(49, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
+        public void Two_peers_one_malicious_by_shift_forward()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _maliciousByShiftedOneForward.Add(syncPeer1);
+            
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(49, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
+        public void Two_peers_one_malicious_by_shift_back()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _maliciousByShiftedOneBack.Add(syncPeer1);
+            
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(49, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
+        public void Two_peers_one_sending_too_short_messages()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _incorrectByTooShortMessages.Add(syncPeer1);
+            
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(54, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
+        public void Two_peers_one_sending_too_long_messages()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _incorrectByTooLongMessages.Add(syncPeer1);
+            
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(49, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
+        public void Two_peers_one_timing_out()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _timingOut.Add(syncPeer1);
+            
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed(20000);
+            Assert.AreEqual(5007, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
+        public void One_peer_with_valid_one_with_invalid_A()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_badTreeAfter1024);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048, 300);
+            
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(2409, _time);
+
+            AssertTreeSynced(_validTree2048);
+        }
+        
+        [Test]
+        public void One_peer_with_valid_one_with_invalid_B()
         {
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 300);
             LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_badTreeAfter1024);
+
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
             Assert.AreEqual(1204, _time);
@@ -309,10 +460,10 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             if (responseBatch.HeadersSyncBatch != null)
             {
                 var headersSyncBatch = responseBatch.HeadersSyncBatch;
-                Keccak hash = headersSyncBatch.StartHash;
+                Keccak hash = null;
                 if (headersSyncBatch.StartNumber != null)
                 {
-                    long startNumber = headersSyncBatch.StartNumber.Value;
+                    long startNumber = headersSyncBatch.StartNumber;
                     if (_maliciousByShiftedOneBack.Contains(syncPeer))
                     {
                         startNumber++;
@@ -358,12 +509,19 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     }
                 }
 
-                if (_maliciousByRepetition.Contains(syncPeer))
+                if (headers.Length > 3 && _maliciousByRepetition.Contains(syncPeer))
                 {
                     headers[headers.Length - 1] = headers[headers.Length - 3];
                     headers[headers.Length - 2] = headers[headers.Length - 3];
                     TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} WILL SEND A MALICIOUS (REPEATED) MESSAGE");
                 }
+                
+                if (_maliciousByShortAtStart.Contains(syncPeer))
+                {
+                    headers[0] = null;
+                    TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} WILL SEND A MALICIOUS (SHORT AT START) MESSAGE");
+                }
+
 
                 responseBatch.HeadersSyncBatch.Response = headers;
                 if (_peerMaxResponseSizes.ContainsKey(syncPeer))

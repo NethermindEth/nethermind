@@ -69,13 +69,18 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
             
-            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {allocation.Current}");
+            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
             _sleepingPeers.TryAdd(peerInfo, DateTime.UtcNow);
         }
 
-        public void ReportInvalid(SyncPeerAllocation syncPeerAllocation)
+        public void ReportInvalid(SyncPeerAllocation allocation)
         {
-            syncPeerAllocation.Current.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "SYNC BREACH");
+            allocation?.Current?.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "SYNC BREACH");
+        }
+        
+        public void ReportInvalid(PeerInfo peerInfo)
+        {
+            peerInfo?.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "SYNC BREACH");
         }
 
         public event EventHandler<SyncEventArgs> SyncEvent;
@@ -352,7 +357,16 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                     else
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:c} with head block numer {getHeadHeaderTask.Result}");
+                        BlockHeader header = getHeadHeaderTask.Result; 
+                        if (header == null)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
+                            syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault");
+                            SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Failed : Synchronization.SyncEvent.InitFailed));
+                            return;
+                        }
+
+                        if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:c} with head block numer {header.Number}");
                         if (!peerInfo.IsInitialized)
                         {
                             SyncEvent?.Invoke(
@@ -360,14 +374,14 @@ namespace Nethermind.Blockchain.Synchronization
                                 new SyncEventArgs(syncPeer, Synchronization.SyncEvent.InitCompleted));
                         }
 
-                        if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} to {getHeadHeaderTask.Result.Number}");
-                        peerInfo.HeadNumber = getHeadHeaderTask.Result.Number;
-                        peerInfo.HeadHash = getHeadHeaderTask.Result.Hash;
+                        if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} to {header.Number}");
+                        peerInfo.HeadNumber = header.Number;
+                        peerInfo.HeadHash = header.Hash;
 
-                        BlockHeader parent = _blockTree.FindHeader(getHeadHeaderTask.Result.ParentHash);
+                        BlockHeader parent = _blockTree.FindHeader(header.ParentHash);
                         if (parent != null)
                         {
-                            peerInfo.TotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + getHeadHeaderTask.Result.Difficulty;
+                            peerInfo.TotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
                         }
 
                         peerInfo.IsInitialized = true;

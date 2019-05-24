@@ -23,9 +23,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class HeadersSyncBatch
     {
-        public Keccak StartHash { get; set; }
-        public long? StartNumber { get; set; }
-        public long? EndNumber => StartNumber + RequestSize - 1;
+//        public Keccak StartHash { get; set; }
+        public long StartNumber { get; set; }
+        public long EndNumber => StartNumber + RequestSize - 1;
         public int Skip { get; set; }
         public bool Reverse { get; set; }
         public int RequestSize { get; set; }
