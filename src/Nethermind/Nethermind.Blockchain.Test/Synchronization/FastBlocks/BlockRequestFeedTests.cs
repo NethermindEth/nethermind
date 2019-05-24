@@ -208,7 +208,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
                 if (_pendingResponses.Count < _syncPeers.Count(p => !p.IsReported))
                 {
-                    BlockSyncBatch batch = _feed.PrepareRequest(SyncModeSelector.FullSyncThreshold);
+                    BlockSyncBatch batch = _feed.PrepareRequest();
                     if (batch == null && _pendingResponses.Count == 0)
                     {
                         TestContext.WriteLine($"STOP - NULL BATCH AND NO PENDING");
@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                                     syncPeer.BusyUntil = _time + _timeoutTime;
                                 }
 
-                                batch.AssignedPeer = new SyncPeerAllocation(new PeerInfo(syncPeer), "test");
+                                batch.Allocation = new SyncPeerAllocation(new PeerInfo(syncPeer), "test");
                                 _pendingResponses.Add(syncPeer, batch);
                                 TestContext.WriteLine($"{_time,6} |SENDING {batch} REQUEST TO {syncPeer.Node:s}");
                                 wasAssigned = true;

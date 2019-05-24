@@ -25,6 +25,5 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
     {
         public Keccak[] Request { get; set; }
         public Block[] Response { get; set; }
-        public SyncPeerAllocation AssignedPeer { get; set; }
     }
 }

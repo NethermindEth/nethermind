@@ -21,7 +21,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Json;
@@ -35,7 +34,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
         private readonly IEthSyncPeerPool _syncPeerPool;
-        private readonly IBlockValidator _blockValidator;
 
         private ConcurrentDictionary<long, BlockSyncBatch> _headerDependencies = new ConcurrentDictionary<long, BlockSyncBatch>();
         private ConcurrentStack<BlockSyncBatch> _pendingBatches = new ConcurrentStack<BlockSyncBatch>();
@@ -77,7 +75,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private object _empty = new object();
         private long _pivotNumber;
 
-        public BlockSyncBatch PrepareRequest(int threshold)
+        public BlockSyncBatch PrepareRequest()
         {
             if (NextHash == null)
             {
@@ -133,7 +131,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     builder.AppendLine($"{_sentBatches.Count} sent batches");
                     foreach (var sentBatch in _sentBatches.ToList().OrderByDescending(d => d.Key.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.Key.HeadersSyncBatch.StartNumber))
                     {
-                        builder.AppendLine($"  - {sentBatch.Key} | {sentBatch.Key.AssignedPeer?.Current}");
+                        builder.AppendLine($"  - {sentBatch.Key} | {sentBatch.Key.Allocation?.Current}");
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"{builder}");
@@ -186,7 +184,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 if (headersSyncBatch.Response == null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"{blockSyncBatch} - came back EMPTY");
-                    blockSyncBatch.AssignedPeer = null;
+                    blockSyncBatch.Allocation = null;
                     _pendingBatches.Push(blockSyncBatch);
                     return 0;
                 }
@@ -194,7 +192,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 decimal ratio = (decimal) _itemsSaved / (_requestsSent == 0 ? 1 : _requestsSent);
                 _requestsSent += blockSyncBatch.HeadersSyncBatch.RequestSize;
 
-                if (_logger.IsTrace) _logger.Trace($"{blockSyncBatch} - came back with {blockSyncBatch.HeadersSyncBatch?.Response.Count(r => r != null)} items | {blockSyncBatch.AssignedPeer?.Current}");
+                if (_logger.IsTrace) _logger.Trace($"{blockSyncBatch} - came back with {blockSyncBatch.HeadersSyncBatch?.Response.Count(r => r != null)} items | {blockSyncBatch.Allocation?.Current}");
 
                 int added = 0;
 
@@ -212,10 +210,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         // response does not carry expected data
                         if (header.Number == BestDownwardSyncNumber && header.Hash != _blockTree.FindHeader(BestDownwardSyncNumber.Value).Hash)
                         {
-                            if (blockSyncBatch.AssignedPeer != null)
+                            if (blockSyncBatch.Allocation != null)
                             {
-                                if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID hash - {blockSyncBatch.AssignedPeer?.Current}");
-                                _syncPeerPool.ReportInvalid(blockSyncBatch.AssignedPeer);
+                                if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID hash - {blockSyncBatch.Allocation?.Current}");
+                                _syncPeerPool.ReportInvalid(blockSyncBatch.Allocation);
                             }
 
                             break;
@@ -252,7 +250,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             dependentBatch.HeadersSyncBatch = new HeadersSyncBatch();
                             dependentBatch.HeadersSyncBatch.StartNumber = blockSyncBatch.HeadersSyncBatch.StartNumber;
                             dependentBatch.HeadersSyncBatch.RequestSize = added;
-                            dependentBatch.AssignedPeer = null;
+                            dependentBatch.Allocation = null;
                             dependentBatch.MinNumber = blockSyncBatch.MinNumber;
                             dependentBatch.HeadersSyncBatch.Response = blockSyncBatch.HeadersSyncBatch.Response.AsSpan().Slice(0, added).ToArray();
                             _headerDependencies[header.Number] = dependentBatch;
@@ -266,10 +264,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         if (header.Hash != headersSyncBatch.Response[i + 1].ParentHash)
                         {
-                            if (blockSyncBatch.AssignedPeer != null)
+                            if (blockSyncBatch.Allocation != null)
                             {
-                                if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID inconsistent - {blockSyncBatch.AssignedPeer?.Current}");
-                                _syncPeerPool.ReportInvalid(blockSyncBatch.AssignedPeer);
+                                if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID inconsistent - {blockSyncBatch.Allocation?.Current}");
+                                _syncPeerPool.ReportInvalid(blockSyncBatch.Allocation);
                             }
 
                             break;
@@ -286,10 +284,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     AddBlockResult addBlockResult = SuggestHeader(header);
                     if (addBlockResult == AddBlockResult.InvalidBlock)
                     {
-                        if (blockSyncBatch.AssignedPeer != null)
+                        if (blockSyncBatch.Allocation != null)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID bad block - {blockSyncBatch.AssignedPeer?.Current}");
-                            _syncPeerPool.ReportBadPeer(blockSyncBatch.AssignedPeer);
+                            if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID bad block - {blockSyncBatch.Allocation?.Current}");
+                            _syncPeerPool.ReportBadPeer(blockSyncBatch.Allocation);
                         }
 
                         break;
@@ -309,7 +307,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     fixedSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
                     fixedSyncBatch.HeadersSyncBatch.StartNumber = blockSyncBatch.HeadersSyncBatch.StartNumber.GetValueOrDefault() + added;
                     fixedSyncBatch.HeadersSyncBatch.RequestSize = blockSyncBatch.HeadersSyncBatch.RequestSize - added;
-                    fixedSyncBatch.AssignedPeer = null;
+                    fixedSyncBatch.Allocation = null;
                     fixedSyncBatch.MinNumber = blockSyncBatch.MinNumber;
 
                     if (fixedSyncBatch.HeadersSyncBatch.EndNumber != blockSyncBatch.HeadersSyncBatch.EndNumber)
@@ -324,10 +322,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 // if not stackRemaining then it was just held for later
                 if (added == 0)
                 {
-                    if (blockSyncBatch.AssignedPeer != null)
+                    if (blockSyncBatch.Allocation != null)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID no progress - {blockSyncBatch.AssignedPeer?.Current}");
-                        _syncPeerPool.ReportNoSyncProgress(blockSyncBatch.AssignedPeer);
+                        if (_logger.IsWarn) _logger.Warn($"{blockSyncBatch} - reporting INVALID no progress - {blockSyncBatch.Allocation?.Current}");
+                        _syncPeerPool.ReportNoSyncProgress(blockSyncBatch.Allocation);
                     }
                 }
                 else
@@ -380,7 +378,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 BlockSyncBatch batch = _headerDependencies[parentNumber];
                 {
-                    batch.AssignedPeer = null;
+                    batch.Allocation = null;
                     _headerDependencies.Remove(parentNumber, out _);
                     SuggestBatch(batch);
                 }

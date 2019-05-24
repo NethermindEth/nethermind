@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public interface IBlockRequestFeed
     {
-        BlockSyncBatch PrepareRequest(int threshold);
+        BlockSyncBatch PrepareRequest();
 
         (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch syncBatch);
         

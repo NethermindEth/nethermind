@@ -23,12 +23,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class BlockSyncBatch
     {
+        private DateTime CreationTimeUtc { get; } = DateTime.UtcNow;
         public bool Prioritized { get; set; }
         public HeadersSyncBatch HeadersSyncBatch { get; set; }
         public BodiesSyncBatch BodiesSyncBatch { get; set; }
-        public SyncPeerAllocation AssignedPeer { get; set; }
+        public SyncPeerAllocation Allocation { get; set; }
         public int Retries { get; set; }
-        public DateTime CreationTimeUtc { get; set; } = DateTime.UtcNow;
         public UInt256? MinTotalDifficulty { get; set; }
         public long? MinNumber { get; set; }
 
@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             string endBlock = (HeadersSyncBatch?.StartNumber != null ? HeadersSyncBatch.StartNumber + (HeadersSyncBatch.Reverse ? -1 : 1) * (HeadersSyncBatch.RequestSize - 1) : HeadersSyncBatch?.RequestSize - 1).ToString();
             string age = $"{(DateTime.UtcNow - CreationTimeUtc).TotalMilliseconds:F0}ms";
             string priority = Prioritized ? "HIGH" : "LOW";
-            return $"{bodiesOrHeaders} [{startBlock}, {endBlock}] priority: {priority}, age: {age}, retries {Retries}, reverse: {HeadersSyncBatch?.Reverse}, size: {HeadersSyncBatch?.RequestSize ?? 0}, skip: {HeadersSyncBatch?.Skip}, min#: {MinNumber}, min diff: {MinTotalDifficulty}";
+            return $"{bodiesOrHeaders} [{startBlock}, {endBlock}]({HeadersSyncBatch?.RequestSize ?? 0}) [{priority}] [age: {age}, retries {Retries}] min#: {MinNumber} {Allocation?.Current}";
         }
     }
 }

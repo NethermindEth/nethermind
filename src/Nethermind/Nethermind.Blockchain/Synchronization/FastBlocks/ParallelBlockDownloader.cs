@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 if (peerInfo.HeadNumber < Math.Max(0, (batch.MinNumber ?? 0) - 1024))
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Made {peerInfo} sleep for a while - no min number satisfied");
+                    if (_logger.IsDebug) _logger.Debug($"Made {peerInfo} sleep for a while - no min number satisfied");
                     _syncPeerPool.ReportNoSyncProgress(peerInfo);
                 }
             }
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             try
             {
                 ISyncPeer peer = nodeSyncAllocation?.Current?.SyncPeer;
-                batch.AssignedPeer = nodeSyncAllocation;
+                batch.Allocation = nodeSyncAllocation;
                 if (peer != null)
                 {
                     Task<BlockHeader[]> getHeadersTask = peer.GetBlockHeaders(batch.HeadersSyncBatch.StartNumber.Value, batch.HeadersSyncBatch.RequestSize, 0, token);
@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             }
                             else
                             {
-                                _syncPeerPool.ReportNoSyncProgress(batch.AssignedPeer);
+                                _syncPeerPool.ReportNoSyncProgress(batch.Allocation);
                             }
                         }
                     );
@@ -99,9 +99,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     result = _blockRequestFeed.HandleResponse(batch);
                     if (result.Result == BlocksDataHandlerResult.BadQuality)
                     {
-                        if (batch.AssignedPeer?.Current != null)
+                        if (batch.Allocation?.Current != null)
                         {
-                            _syncPeerPool.ReportBadPeer(batch.AssignedPeer);
+                            _syncPeerPool.ReportBadPeer(batch.Allocation);
                         }
                     }
                 }
@@ -165,7 +165,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             if (_logger.IsInfo) _logger.Info($"Headers sync parallelism - {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests} | remaining: {_semaphore.CurrentCount}).");
             if (difference > 0)
             {
-                if (_logger.IsDebug) _logger.Debug($"Releasing semaphore");
+                if (_logger.IsTrace) _logger.Trace($"Releasing semaphore - {_pendingRequests} pending");
                 _semaphore.Release(difference);
             }
             else
@@ -178,7 +178,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                 foreach (Task<bool> semaphoreTask in allSemaphoreTasks)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Set semaphore");
+                    if (_logger.IsTrace) _logger.Trace($"Set semaphore - {_pendingRequests} pending");
                     if (!await semaphoreTask)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Faile to set semaphore");
@@ -239,7 +239,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private BlockSyncBatch PrepareRequest()
         {
-            BlockSyncBatch request = _blockRequestFeed.PrepareRequest(_threshold);
+            BlockSyncBatch request = _blockRequestFeed.PrepareRequest();
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             return request;
         }
