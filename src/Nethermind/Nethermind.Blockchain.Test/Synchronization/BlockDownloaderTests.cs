@@ -330,6 +330,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         private class SlowHeaderValidator : IBlockValidator
         {
+            public bool ValidateHash(BlockHeader header)
+            {
+                Thread.Sleep(1000);
+                return true;
+            }
+
             public bool ValidateHeader(BlockHeader header, BlockHeader parent, bool isOmmer)
             {
                 Thread.Sleep(1000);

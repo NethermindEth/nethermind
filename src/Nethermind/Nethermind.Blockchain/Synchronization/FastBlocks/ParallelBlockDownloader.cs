@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Mining;
@@ -30,15 +31,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
     {
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly IBlockRequestFeed _blockRequestFeed;
+        private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private int _pendingRequests;
         private int _downloadedHeaders;
         private ILogger _logger;
 
-        public ParallelBlocksDownloader(IEthSyncPeerPool syncPeerPool, IBlockRequestFeed nodeDataFeed, ISealValidator sealValidator, ILogManager logManager)
+        public ParallelBlocksDownloader(IEthSyncPeerPool syncPeerPool, IBlockRequestFeed blockRequestFeed, IBlockValidator blockValidator, ISealValidator sealValidator, ILogManager logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            _blockRequestFeed = nodeDataFeed ?? throw new ArgumentNullException(nameof(nodeDataFeed));
+            _blockRequestFeed = blockRequestFeed ?? throw new ArgumentNullException(nameof(blockRequestFeed));
+            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -86,7 +89,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     if (batch.HeadersSyncBatch?.Response != null)
                     {
-                        ValidateSeals(token, batch.HeadersSyncBatch.Response);
+                        ValidateBlocks(token, batch.HeadersSyncBatch.Response);
                     }
                     else
                     {
@@ -122,9 +125,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
-        private void ValidateSeals(CancellationToken cancellation, BlockHeader[] headers)
+        private void ValidateBlocks(CancellationToken cancellation, BlockHeader[] headers)
         {
-            if (_logger.IsTrace) _logger.Trace("Starting seal validation");
+            if (_logger.IsTrace) _logger.Trace("Starting block validation");
 
             for (int i = 0; i < headers.Length; i++)
             {
@@ -139,11 +142,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     return;
                 }
-
-                if (!_sealValidator.ValidateSeal(headers[i]))
+                
+                bool isHashValid = _blockValidator.ValidateHash(header);
+                bool isSealValid = _sealValidator.ValidateSeal(header);
+                if (!(isHashValid && isSealValid))
                 {
-                    if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
-                    throw new EthSynchronizationException("Peer sent a block with an invalid seal");
+                    if (_logger.IsTrace) _logger.Trace("One of the blocks is invalid");
+                    throw new EthSynchronizationException($"Peer sent a block with seal valid {isSealValid}, hash valid {isHashValid}");
                 }
             }
         }

@@ -60,12 +60,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private UInt256? NextTotalDifficulty;
 
-        public BlockRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, IBlockValidator blockValidator, ISyncConfig syncConfig, ILogManager logManager)
+        public BlockRequestFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             ISyncConfig syncConfig1 = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncStats = new SyncStats(logManager);
 
@@ -283,9 +282,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     }
 
                     
-                    bool isValid = _blockValidator.ValidateHash(header);
                     header.TotalDifficulty = NextTotalDifficulty;
-                    AddBlockResult addBlockResult = isValid ? SuggestHeader(header) : AddBlockResult.InvalidBlock;
+                    AddBlockResult addBlockResult = SuggestHeader(header);
                     if (addBlockResult == AddBlockResult.InvalidBlock)
                     {
                         if (blockSyncBatch.AssignedPeer != null)
