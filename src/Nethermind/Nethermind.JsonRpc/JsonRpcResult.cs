@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,15 +17,24 @@
  */
 
 using System.Collections.Generic;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc
 {
-    public interface IJsonRpcService
+    public class JsonRpcResult
     {
-        Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request);
-        JsonRpcResponse GetErrorResponse(ErrorType errorType, string message);
-        IList<JsonConverter> Converters { get; }
+        public bool IsCollection { get; }
+        public IReadOnlyList<JsonRpcResponse> Responses { get; }
+
+        private JsonRpcResult(bool isCollection, IReadOnlyList<JsonRpcResponse> responses)
+        {
+            IsCollection = isCollection;
+            Responses = responses;
+        }
+
+        public static JsonRpcResult Single(JsonRpcResponse response)
+            => new JsonRpcResult(false, new[] {response});
+
+        public static JsonRpcResult Collection(IReadOnlyList<JsonRpcResponse> responses)
+            => new JsonRpcResult(true, responses);
     }
 }

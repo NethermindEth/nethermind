@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Json;
 using Nethermind.Core.Model;
@@ -79,7 +80,7 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        public JsonRpcResponse SendRequest(JsonRpcRequest rpcRequest)
+        public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest)
         {
             if (_logger.IsInfo) _logger.Info($"Handling JSON RPC request {rpcRequest.Id} {rpcRequest.Method}");
             
@@ -93,7 +94,7 @@ namespace Nethermind.JsonRpc
 
                 try
                 {
-                    return ExecuteRequest(rpcRequest);
+                    return await ExecuteRequestAsync(rpcRequest);
                 }
                 catch (TargetInvocationException ex)
                 {
@@ -113,21 +114,23 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private JsonRpcResponse ExecuteRequest(JsonRpcRequest rpcRequest)
+        private async Task<JsonRpcResponse> ExecuteRequestAsync(JsonRpcRequest rpcRequest)
         {
             var methodName = rpcRequest.Method.Trim().ToLower();
 
             var module = _rpcModuleProvider.GetEnabledModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
             if (module != null)
             {
-                return Execute(rpcRequest, methodName, module.MethodDictionary[methodName], module.ModuleObject);
+                return await ExecuteAsync(rpcRequest, methodName, module.MethodDictionary[methodName], module.ModuleObject);
             }
 
             return GetErrorResponse(ErrorType.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id, methodName);
         }
 
-        private JsonRpcResponse Execute(JsonRpcRequest request, string methodName, MethodInfo method, object module)
+        private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, MethodInfo method, object module)
         {
+            Console.WriteLine($"{methodName}");
+            
             var expectedParameters = method.GetParameters();
             var providedParameters = request.Params;
             int missingParamsCount = expectedParameters.Length - (providedParameters?.Length ?? 0);
@@ -167,13 +170,25 @@ namespace Nethermind.JsonRpc
             }
 
             //execute method
-            if (!(method.Invoke(module, parameters) is IResultWrapper resultWrapper))
+            IResultWrapper resultWrapper = null;
+            var invocationResult = method.Invoke(module, parameters);
+            if (invocationResult is IResultWrapper wrapper)
+            {
+                resultWrapper = wrapper;
+            }
+            else if (invocationResult is Task task)
+            {
+                await task;
+                resultWrapper = task.GetType().GetProperty("Result").GetValue(task) as IResultWrapper;
+            }
+
+            if (resultWrapper is null)
             {
                 string errorMessage = $"Method {methodName} execution result does not implement IResultWrapper";
                 if (_logger.IsError) _logger.Error(errorMessage);
                 return GetErrorResponse(ErrorType.InternalError, errorMessage, request.Id, methodName);
             }
-
+            
             Result result = resultWrapper.GetResult();
             if (result == null || result.ResultType == ResultType.Failure)
             {
@@ -194,11 +209,20 @@ namespace Nethermind.JsonRpc
                     var providedParameter = providedParameters[i];
                     var expectedParameter = expectedParameters[i];
                     var paramType = expectedParameter.ParameterType;
+                    if (string.IsNullOrWhiteSpace(providedParameter))
+                    {
+                        executionParameters.Add(Type.Missing);
+                        continue;
+                    }
                     object executionParam;
                     if (typeof(IJsonRpcRequest).IsAssignableFrom(paramType))
                     {
                         executionParam = Activator.CreateInstance(paramType);
                         ((IJsonRpcRequest) executionParam).FromJson(providedParameter);
+                    }
+                    else if (paramType == typeof(string))
+                    {
+                        executionParam = providedParameter;
                     }
                     else if (paramType == typeof(string[]))
                     {

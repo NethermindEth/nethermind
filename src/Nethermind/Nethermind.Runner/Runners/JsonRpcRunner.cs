@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Config;
 using Nethermind.Runner.Config;
 using Microsoft.Extensions.Logging;
@@ -30,6 +31,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Runner.LogBridge;
+using Nethermind.WebSockets;
 using ILogger = Nethermind.Logging.ILogger;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
@@ -38,18 +40,25 @@ namespace Nethermind.Runner.Runners
     public class JsonRpcRunner : IRunner
     {
         private readonly ILogger _logger;
+        private readonly IConfigProvider _configurationProvider;
         private readonly IRpcModuleProvider _moduleProvider;
         private readonly ILogManager _logManager;
+        private readonly IJsonRpcProcessor _jsonRpcProcessor;
+        private readonly IWebSocketsManager _webSocketsManager;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IInitConfig _initConfig;
         private IWebHost _webHost;
 
-        public JsonRpcRunner(IConfigProvider configurationProvider, IRpcModuleProvider moduleProvider, ILogManager logManager)
+        public JsonRpcRunner(IConfigProvider configurationProvider, IRpcModuleProvider moduleProvider,
+            ILogManager logManager, IJsonRpcProcessor jsonRpcProcessor, IWebSocketsManager webSocketsManager)
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
+            _configurationProvider = configurationProvider;
             _moduleProvider = moduleProvider ?? throw new ArgumentNullException(nameof(moduleProvider));
             _logManager = logManager;
+            _jsonRpcProcessor = jsonRpcProcessor;
+            _webSocketsManager = webSocketsManager;
             _logger = logManager.GetClassLogger();
         }
 
@@ -62,6 +71,12 @@ namespace Nethermind.Runner.Runners
                 : hostVariable;
             if (_logger.IsInfo) _logger.Info($"Running server, url: {host}");
             var webHost = WebHost.CreateDefaultBuilder()
+                .ConfigureServices(s =>
+                {
+                    s.AddSingleton(_configurationProvider);
+                    s.AddSingleton(_jsonRpcProcessor);
+                    s.AddSingleton(_webSocketsManager);
+                })
                 .UseStartup<Startup>()
                 .UseUrls(host)
                 .ConfigureLogging(logging =>

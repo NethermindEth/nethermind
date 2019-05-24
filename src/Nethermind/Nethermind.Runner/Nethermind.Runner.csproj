@@ -26,12 +26,14 @@
       <Project>{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}</Project>
       <Name>Nethermind.Db</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.JsonRpc.WebSockets\Nethermind.JsonRpc.WebSockets.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj">
       <Project>{53D62515-72D1-4DEA-BC60-71BCC9C928E3}</Project>
       <Name>Nethermind.JsonRpc</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     <ProjectReference Include="..\Nethermind.Store.Rpc\Nethermind.Store.Rpc.csproj" />
+    <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\Chains\**\*.*">
