@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using Nethermind.Core;
@@ -315,7 +316,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 //                    }
 
                     header.TotalDifficulty = NextTotalDifficulty;
-                    AddBlockResult addBlockResult = SuggestHeader(header);
+                    AddBlockResult addBlockResult = SuggestHeader(header, batch);
                     if (addBlockResult == AddBlockResult.InvalidBlock)
                     {
                         if (batch.Allocation != null)
@@ -401,14 +402,20 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
-        private AddBlockResult SuggestHeader(BlockHeader header)
+        private AddBlockResult SuggestHeader(BlockHeader header, BlockSyncBatch thisBatch)
         {
             if (header.IsGenesis)
             {
                 return AddBlockResult.AlreadyKnown;
             }
 
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start();
             AddBlockResult addBlockResult = _blockTree.Insert(header);
+            stopwatch.Stop();
+            thisBatch.OnInsert += stopwatch.ElapsedMilliseconds;
+//            _logger.Warn($"Elapsed milliseconds on insert: {stopwatch.ElapsedMilliseconds} - {header.Number}");
+            
             if (addBlockResult == AddBlockResult.Added || addBlockResult == AddBlockResult.AlreadyKnown)
             {
                 BestDownwardSyncNumber = Math.Min(BestDownwardSyncNumber ?? StartNumber, header.Number);

@@ -32,7 +32,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
-using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Store;
@@ -368,22 +367,22 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.InvalidBlock;
             }
 
-            if (header.Number == 0)
-            {
-                if (BestSuggested != null)
-                {
-                    throw new InvalidOperationException("Genesis block should be added only once");
-                }
-            }
-            else if (IsKnownBlock(header.Number, header.Hash))
-            {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Block {header.Hash} already known.");
-                }
-
-                return AddBlockResult.AlreadyKnown;
-            }
+//            if (header.Number == 0)
+//            {
+//                if (BestSuggested != null)
+//                {
+//                    throw new InvalidOperationException("Genesis block should be added only once");
+//                }
+//            }
+//            else if (IsKnownBlock(header.Number, header.Hash))
+//            {
+//                if (_logger.IsTrace)
+//                {
+//                    _logger.Trace($"Block {header.Hash} already known.");
+//                }
+//
+//                return AddBlockResult.AlreadyKnown;
+//            }
             
             // validate hash here
             using (MemoryStream stream = Rlp.BorrowStream())
@@ -397,12 +396,12 @@ namespace Nethermind.Blockchain
 
             try
             {
-                _blockInfoLock.EnterWriteLock();
+//                _blockInfoLock.EnterWriteLock();
                 UpdateOrCreateLevel(header.Number, blockInfo);
             }
             finally
             {
-                _blockInfoLock.ExitWriteLock();
+//                _blockInfoLock.ExitWriteLock();
             }
 
             if (header.Number < (LowestInserted?.Number ?? long.MaxValue))
