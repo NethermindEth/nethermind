@@ -79,6 +79,11 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 }
             }
 
+            foreach (KeyValuePair<long,long> bombDelay in _chainSpec.Ethash?.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long,long>>())
+            {
+                transitionBlocks.Add(bombDelay.Key);
+            }
+
             _transitions = new (long BlockNumber, IReleaseSpec Release)[transitionBlocks.Count];
 
             int index = 0;
@@ -113,6 +118,18 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 releaseSpec.IsEip1052Enabled = (_chainSpec.Parameters.Eip1052Transition ?? 0) <= releaseStartBlock;
                 releaseSpec.IsEip1234Enabled = (_chainSpec.ConstantinopleBlockNumber ?? 0) <= releaseStartBlock;
                 releaseSpec.IsEip1283Enabled = (_chainSpec.Parameters.Eip1283Transition ?? 0) <= releaseStartBlock && (_chainSpec.Parameters.Eip1283DisableTransition ?? 0) > releaseStartBlock;
+
+                if (_chainSpec.Ethash != null)
+                {
+                    foreach (KeyValuePair<long,long> bombDelay in _chainSpec.Ethash.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
+                    {
+                        if (bombDelay.Key <= releaseStartBlock)
+                        {
+                            releaseSpec.DifficultyBombDelay += bombDelay.Value;
+                        }
+                    }
+                }
+
                 _transitions[index] = (releaseStartBlock, releaseSpec);
                 index++;
             }

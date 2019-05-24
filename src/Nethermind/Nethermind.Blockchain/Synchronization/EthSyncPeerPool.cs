@@ -500,7 +500,7 @@ namespace Nethermind.Blockchain.Synchronization
         private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason, bool isLowPriority)
         {
             if (_logger.IsTrace) _logger.Trace($"[{reason}] Selecting best peer for {allocation}");
-            (PeerInfo Info, long Latency) bestPeer = (null, 100000);
+            (PeerInfo Info, long Latency) bestPeer = (null, isLowPriority ? 0 : 100000);
             foreach ((_, PeerInfo info) in _peers)
             {
                 if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < (_blockTree.BestSuggested?.Number ?? 0) + allocation.MinBlocksAhead.Value)
@@ -650,13 +650,19 @@ namespace Nethermind.Blockchain.Synchronization
         {
             if (_logger.IsTrace) _logger.Trace($"Returning {syncPeerAllocation}");
 
-            if (!syncPeerAllocation.CanBeReplaced)
+            PeerInfo peerInfo = syncPeerAllocation.Current;
+            if (peerInfo != null && !syncPeerAllocation.CanBeReplaced)
             {
-                _peerBadness.TryRemove(syncPeerAllocation.Current, out _);
+                _peerBadness.TryRemove(peerInfo, out _);
             }
 
             _allocations.TryRemove(syncPeerAllocation, out _);
             syncPeerAllocation.Cancel();
+
+            if (_allocations.Count > 1024 * 16)
+            {
+                _logger.Warn($"Peer allocations leakage - {_allocations.Count}");
+            }
         }
     }
 }

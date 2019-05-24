@@ -16,10 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
-using Nethermind.Core.Specs.Forks;
-using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Specs.ChainSpecStyle
@@ -37,7 +36,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             Assert.AreEqual(5, provider.ChainId);
         }
-        
+
         [Test]
         public void Dao_block_number_is_set_correctly()
         {
@@ -48,7 +47,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             Assert.AreEqual(23, provider.DaoBlockNumber);
         }
-        
+
         [Test]
         public void Bound_divisors_set_correctly()
         {
@@ -62,7 +61,30 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(19, provider.GenesisSpec.DifficultyBoundDivisor);
             Assert.AreEqual(17, provider.GenesisSpec.GasLimitBoundDivisor);
         }
-        
+
+        [Test]
+        public void Difficulty_bomb_delays_loaded_correctly()
+        {
+            ChainSpec chainSpec = new ChainSpec();
+            chainSpec.Parameters = new ChainParameters();
+            chainSpec.Ethash = new EthashParameters();
+            chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>
+            {
+                {3, 100},
+                {7, 200},
+                {13, 300},
+                {17, 400},
+                {19, 500},
+            };
+
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
+            Assert.AreEqual(100, provider.GetSpec(3).DifficultyBombDelay);
+            Assert.AreEqual(300, provider.GetSpec(7).DifficultyBombDelay);
+            Assert.AreEqual(600, provider.GetSpec(13).DifficultyBombDelay);
+            Assert.AreEqual(1000, provider.GetSpec(17).DifficultyBombDelay);
+            Assert.AreEqual(1500, provider.GetSpec(19).DifficultyBombDelay);
+        }
+
         [Test]
         public void Max_code_transition_loaded_correctly()
         {
@@ -90,10 +112,10 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             chainSpec.Ethash = new EthashParameters();
             chainSpec.Ethash.HomesteadTransition = 70;
             chainSpec.Ethash.Eip100bTransition = 1000;
-            
+
             chainSpec.ByzantiumBlockNumber = 1960;
             chainSpec.ConstantinopleBlockNumber = 6490;
-            
+
             chainSpec.Parameters = new ChainParameters();
             chainSpec.Parameters.MaxCodeSizeTransition = maxCodeTransition;
             chainSpec.Parameters.MaxCodeSize = maxCodeSize;
@@ -116,7 +138,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             chainSpec.Parameters.Eip1052Transition = 10520L;
             chainSpec.Parameters.Eip1283Transition = 12830L;
             chainSpec.Parameters.Eip1283DisableTransition = 12831L;
-            
+
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             Assert.AreEqual(long.MaxValue, provider.GetSpec(maxCodeTransition - 1).MaxCodeSize, "one before");
             Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition).MaxCodeSize, "at transition");
@@ -127,7 +149,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(11L, releaseSpec0.MinGasLimit);
             Assert.AreEqual(13L, releaseSpec0.GasLimitBoundDivisor);
             Assert.AreEqual(17L, releaseSpec0.MaximumExtraDataSize);
-            
+
             Assert.AreEqual(long.MaxValue, releaseSpec0.MaxCodeSize);
             Assert.AreEqual(false, releaseSpec0.IsEip2Enabled);
             Assert.AreEqual(false, releaseSpec0.IsEip7Enabled);
@@ -150,7 +172,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec0.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec0.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec0.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec1 = provider.GetSpec(1L);
             Assert.AreEqual(maxCodeSize, releaseSpec1.MaxCodeSize);
             Assert.AreEqual(false, releaseSpec1.IsEip2Enabled);
@@ -198,7 +220,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec7.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec7.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec7.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec100 = provider.GetSpec(1000L);
             Assert.AreEqual(releaseSpec100.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec100.IsEip2Enabled);
@@ -222,7 +244,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec100.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec100.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec100.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec140 = provider.GetSpec(1400L);
             Assert.AreEqual(releaseSpec100.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec140.IsEip2Enabled);
@@ -246,7 +268,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec140.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec140.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec140.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec145 = provider.GetSpec(1450L);
             Assert.AreEqual(releaseSpec145.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec145.IsEip2Enabled);
@@ -270,7 +292,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec145.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec145.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec145.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec150 = provider.GetSpec(1500L);
             Assert.AreEqual(releaseSpec150.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec150.IsEip2Enabled);
@@ -294,7 +316,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec150.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec150.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec150.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec155 = provider.GetSpec(1550L);
             Assert.AreEqual(releaseSpec155.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec155.IsEip2Enabled);
@@ -318,7 +340,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec155.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec155.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec155.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec158 = provider.GetSpec(1580L);
             Assert.AreEqual(releaseSpec158.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec158.IsEip2Enabled);
@@ -342,7 +364,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec158.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec158.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec158.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec160 = provider.GetSpec(1600L);
             Assert.AreEqual(releaseSpec160.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec160.IsEip2Enabled);
@@ -366,7 +388,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec160.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec160.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec160.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec170 = provider.GetSpec(1700L);
             Assert.AreEqual(releaseSpec170.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec170.IsEip2Enabled);
@@ -390,7 +412,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec170.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec170.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec170.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec196 = provider.GetSpec(1960L);
             Assert.AreEqual(releaseSpec196.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec196.IsEip2Enabled);
@@ -414,7 +436,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec196.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec196.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec196.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec211 = provider.GetSpec(2110L);
             Assert.AreEqual(releaseSpec211.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec211.IsEip2Enabled);
@@ -438,7 +460,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec211.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec211.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec211.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec214 = provider.GetSpec(2140L);
             Assert.AreEqual(releaseSpec214.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec214.IsEip2Enabled);
@@ -462,7 +484,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec214.IsEip1052Enabled);
             Assert.AreEqual(false, releaseSpec214.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec214.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec658 = provider.GetSpec(6580L);
             Assert.AreEqual(releaseSpec658.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec658.IsEip2Enabled);
@@ -486,7 +508,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec658.IsEip1052Enabled);
             Assert.AreEqual(true, releaseSpec658.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec658.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec1014 = provider.GetSpec(10140L);
             Assert.AreEqual(releaseSpec1014.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec1014.IsEip2Enabled);
@@ -510,7 +532,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(false, releaseSpec1014.IsEip1052Enabled);
             Assert.AreEqual(true, releaseSpec1014.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec1014.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec1052 = provider.GetSpec(10520L);
             Assert.AreEqual(releaseSpec1052.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec1052.IsEip2Enabled);
@@ -534,7 +556,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(true, releaseSpec1052.IsEip1052Enabled);
             Assert.AreEqual(true, releaseSpec1052.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec1052.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec1283 = provider.GetSpec(12830L);
             Assert.AreEqual(releaseSpec1283.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec1283.IsEip2Enabled);
@@ -558,7 +580,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(true, releaseSpec1283.IsEip1052Enabled);
             Assert.AreEqual(true, releaseSpec1283.IsEip1234Enabled);
             Assert.AreEqual(true, releaseSpec1283.IsEip1283Enabled);
-            
+
             IReleaseSpec releaseSpec1283Disabled = provider.GetSpec(12831L);
             Assert.AreEqual(releaseSpec1283Disabled.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, releaseSpec1283Disabled.IsEip2Enabled);
