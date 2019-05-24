@@ -44,6 +44,17 @@ namespace Nethermind.Blockchain.Validators
             _daoBlockNumber = specProvider.DaoBlockNumber;
         }
 
+        public bool ValidateHash(BlockHeader header)
+        {
+            bool hashAsExpected = header.Hash == BlockHeader.CalculateHash(header);
+            if (!hashAsExpected)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
+            }
+
+            return hashAsExpected;
+        }
+        
         /// <summary>
         /// Note that this does not validate seal which is the responsibility of <see cref="ISealValidator"/>>
         /// </summary>
@@ -53,11 +64,7 @@ namespace Nethermind.Blockchain.Validators
         /// <returns></returns>
         public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer = false)
         {
-            bool hashAsExpected = header.Hash == BlockHeader.CalculateHash(header);
-            if (!hashAsExpected)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
-            }
+            bool hashAsExpected = ValidateHash(header);
             
             IReleaseSpec spec = _specProvider.GetSpec(header.Number);
             bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
