@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             {
                                 if (batch.RequestTime > 1000)
                                 {
-                                    _logger.Error($"{batch} - reporting peer too slow {batch.RequestTime:F2}");
+                                    if(_logger.IsDebug) _logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
                                 }
 
                                 batch.HeadersSyncBatch.Response = getHeadersTask.Result;
@@ -96,11 +96,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     batch.MarkValidation();
                     if (batch.HeadersSyncBatch?.Response != null)
                     {
-                        ValidateBlocks(token, batch.HeadersSyncBatch.Response);
+                        ValidateBlocks(token, batch);
                     }
                     else
                     {
-                        await Task.Delay(50);
+                        await Task.Delay(10);
                     }
 
                     result = _blockRequestFeed.HandleResponse(batch);
@@ -132,10 +132,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
-        private void ValidateBlocks(CancellationToken cancellation, BlockHeader[] headers)
+        private void ValidateBlocks(CancellationToken cancellation, BlockSyncBatch batch)
         {
             if (_logger.IsTrace) _logger.Trace("Starting block validation");
 
+            BlockHeader[] headers = batch.HeadersSyncBatch.Response;
             for (int i = 0; i < headers.Length; i++)
             {
                 if (cancellation.IsCancellationRequested)
@@ -155,7 +156,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 if (!(isHashValid && isSealValid))
                 {
                     if (_logger.IsTrace) _logger.Trace("One of the blocks is invalid");
-                    throw new EthSynchronizationException($"Peer sent a block with seal valid {isSealValid}, hash valid {isHashValid}");
+                    _syncPeerPool.ReportInvalid(batch.Allocation?.Current);
+                    batch.HeadersSyncBatch.Response = null;
                 }
             }
         }
