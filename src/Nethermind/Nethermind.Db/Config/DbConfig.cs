@@ -52,7 +52,7 @@ namespace Nethermind.Db.Config
         public ulong BlockInfosDbWriteBufferSize { get; set; } = 8.MB();
         public uint BlockInfosDbWriteBufferNumber { get; set; } = 4;
         public ulong BlockInfosDbBlockCacheSize { get; set; } = 32.MB();
-        public bool BlockInfosDbCacheIndexAndFilterBlocks { get; set; } = true;
+        public bool BlockInfosDbCacheIndexAndFilterBlocks { get; set; } = false;
         
         public ulong PendingTxsDbWriteBufferSize { get; set; } = 4.MB();
         public uint PendingTxsDbWriteBufferNumber { get; set; } = 4;

@@ -20,6 +20,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -32,7 +33,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
-using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Store;
@@ -75,10 +75,10 @@ namespace Nethermind.Blockchain
             ISpecProvider specProvider,
             ITxPool txPool,
             ILogManager logManager)
-        : this(blockDb, headerDb, blockInfoDb, specProvider, txPool, new SyncConfig(), logManager)
+            : this(blockDb, headerDb, blockInfoDb, specProvider, txPool, new SyncConfig(), logManager)
         {
         }
-        
+
         public BlockTree(
             IDb blockDb,
             IDb headerDb,
@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain
         private void LoadBestKnown()
         {
             long headNumber = Head?.Number ?? -1;
-            long left = Math.Max(LowestInserted?.Number ?? 0,  headNumber);
+            long left = Math.Max(LowestInserted?.Number ?? 0, headNumber);
             long right = headNumber + MaxQueueSize;
 
             while (left != right)
@@ -140,17 +140,17 @@ namespace Nethermind.Blockchain
                     left = index + 1;
                 }
             }
-            
+
             long result = left - 1;
 
             BestKnownNumber = result;
-            
+
             if (BestKnownNumber < 0)
             {
                 throw new InvalidOperationException($"Best known is {BestKnownNumber}");
             }
         }
-        
+
         private void LoadLowestInserted()
         {
             long left = 0;
@@ -171,12 +171,12 @@ namespace Nethermind.Blockchain
             }
 
             long result = right + 1;
-            
+
             if (result == 0)
             {
                 result = long.MaxValue;
             }
-            
+
             if (result <= 0)
             {
                 throw new InvalidOperationException($"Lowest inserted is is {result} and best known is {BestKnownNumber}");
@@ -194,7 +194,7 @@ namespace Nethermind.Blockchain
             int maxBlocksToLoad = int.MaxValue)
         {
 //            return; // use for fast sync blocks download
-            
+
             try
             {
                 CanAcceptNewBlocks = false;
@@ -350,46 +350,22 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult Insert(BlockHeader header)
         {
-            #if DEBUG
-            /* this is just to make sure that we do not fall into this trap when creating tests */
-            if (header.StateRoot == null && !header.IsGenesis)
-            {
-                throw new InvalidDataException($"State root is null in {header.ToString(BlockHeader.Format.Short)}");
-            }
-#endif
-
             if (!CanAcceptNewBlocks)
             {
                 return AddBlockResult.CannotAccept;
             }
 
-            if (_invalidBlocks.ContainsKey(header.Number) && _invalidBlocks[header.Number].Contains(header.Hash))
-            {
-                return AddBlockResult.InvalidBlock;
-            }
-
             if (header.Number == 0)
             {
-                if (BestSuggested != null)
-                {
-                    throw new InvalidOperationException("Genesis block should be added only once");
-                }
+                throw new InvalidOperationException("Genesis block should not be inserted.");
             }
-            else if (IsKnownBlock(header.Number, header.Hash))
-            {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Block {header.Hash} already known.");
-                }
 
-                return AddBlockResult.AlreadyKnown;
-            }
-            
             // validate hash here
             using (MemoryStream stream = Rlp.BorrowStream())
             {
                 Rlp.Encode(stream, header);
                 byte[] newRlp = stream.ToArray();
+
                 _headerDb.Set(header.Hash, newRlp);
             }
 
@@ -398,7 +374,8 @@ namespace Nethermind.Blockchain
             try
             {
                 _blockInfoLock.EnterWriteLock();
-                UpdateOrCreateLevel(header.Number, blockInfo);
+                ChainLevelInfo chainLevel = new ChainLevelInfo(false, new[] {blockInfo});
+                PersistLevel(header.Number, chainLevel);
             }
             finally
             {
@@ -409,10 +386,10 @@ namespace Nethermind.Blockchain
             {
                 LowestInserted = header;
             }
-            
+
             return AddBlockResult.Added;
         }
-        
+
         private AddBlockResult Suggest(Block block, BlockHeader header, bool shouldProcess = true)
         {
 #if DEBUG
@@ -461,7 +438,7 @@ namespace Nethermind.Blockchain
             }
 
             SetTotalDifficulty(header);
-            
+
             if (block != null && !isKnown)
             {
                 using (MemoryStream stream = Rlp.BorrowStream())
@@ -480,7 +457,7 @@ namespace Nethermind.Blockchain
                     byte[] newRlp = stream.ToArray();
                     _headerDb.Set(header.Hash, newRlp);
                 }
-                
+
                 BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
 
                 try
@@ -573,7 +550,7 @@ namespace Nethermind.Blockchain
         }
 
         public BlockHeader[] FindHeaders(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
-        {   
+        {
             if (blockHash == null) throw new ArgumentNullException(nameof(blockHash));
 
             BlockHeader[] result = new BlockHeader[numberOfBlocks];
@@ -595,7 +572,7 @@ namespace Nethermind.Blockchain
                 {
                     break;
                 }
-                
+
                 current = FindHeader(nextNumber);
             } while (current != null && responseIndex < numberOfBlocks);
 
@@ -623,13 +600,13 @@ namespace Nethermind.Blockchain
 
             if (level.BlockInfos.Length != 1)
             {
-                if(_logger.IsError) _logger.Error($"Invalid request for block {blockNumber} ({level.BlockInfos.Length} blocks at the same level).");
+                if (_logger.IsError) _logger.Error($"Invalid request for block {blockNumber} ({level.BlockInfos.Length} blocks at the same level).");
                 throw new InvalidOperationException($"Unexpected request by number for a block {blockNumber} that is not on the main chain and is not the only hash on chain");
             }
 
             return level.BlockInfos[0].BlockHash;
         }
-        
+
         private Keccak GetBlockHashOnMain(long blockNumber)
         {
             if (blockNumber < 0)
@@ -1018,6 +995,7 @@ namespace Nethermind.Blockchain
         private void UpdateOrCreateLevel(long number, BlockInfo blockInfo)
         {
             ChainLevelInfo level = LoadLevel(number, false);
+
             if (level != null)
             {
                 BlockInfo[] blockInfos = new BlockInfo[level.BlockInfos.Length + 1];
@@ -1045,7 +1023,7 @@ namespace Nethermind.Blockchain
         /* error-prone: all methods that load a level, change it and then persist need to execute everything under a lock */
         private void PersistLevel(long number, ChainLevelInfo level)
         {
-            _blockInfoCache.Set(number, level);
+//            _blockInfoCache.Set(number, level);
             _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
         }
 
