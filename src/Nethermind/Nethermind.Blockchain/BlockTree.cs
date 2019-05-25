@@ -412,7 +412,7 @@ namespace Nethermind.Blockchain
                 stopwatch.Stop();
                 if (stopwatch.ElapsedMilliseconds >= 1)
                 {
-                    _logger.Warn($"Elapsed level {stopwatch.ElapsedMilliseconds}");
+//                    _logger.Warn($"Elapsed level {stopwatch.ElapsedMilliseconds}");
                 }
             }
             finally
@@ -1106,7 +1106,7 @@ namespace Nethermind.Blockchain
                 stopwatch.Stop();
                 if (stopwatch.ElapsedMilliseconds >= 1)
                 {
-                    _logger.Warn($"Elapsed load level DB {stopwatch.ElapsedMilliseconds} - {levelBytes?.Length}");
+//                    _logger.Warn($"Elapsed load level DB {stopwatch.ElapsedMilliseconds} - {levelBytes?.Length}");
                 }
                 if (levelBytes == null)
                 {
