@@ -109,7 +109,7 @@ namespace Nethermind.Network.Discovery
 
             if (msg.Length < 98)
             {
-                _logger.Error($"Incorrect message, length: {msg.Length}, sender: {address}");
+                if(_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {msg.Length}, sender: {address}");
                 ctx.DisconnectAsync();
                 return;
             }
@@ -134,7 +134,8 @@ namespace Nethermind.Network.Discovery
             }
             catch (Exception e)
             {
-                if(_logger.IsError) _logger.Error($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}, {e.Message}");
+                if(_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}, {e.Message}");
+                ctx.DisconnectAsync();
                 return;
             }
 
@@ -142,21 +143,21 @@ namespace Nethermind.Network.Discovery
             {
                 if ((ulong)message.ExpirationTime < _timestamp.EpochSeconds)
                 {
-                    if(_logger.IsError) _logger.Error($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
+                    if(_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
                     ctx.DisconnectAsync();
                     return;
                 }
 
                 if (!message.FarAddress.Equals((IPEndPoint)packet.Sender))
                 {
-                    if(_logger.IsError) _logger.Error($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                    if(_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
                     ctx.DisconnectAsync();
                     return;
                 }
                 
                 if (message.FarPublicKey == null)
                 {
-                    if(_logger.IsError) _logger.Error($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                    if(_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
                     ctx.DisconnectAsync();
                     return;
                 }
@@ -165,7 +166,8 @@ namespace Nethermind.Network.Discovery
             }
             catch (Exception e)
             {
-                _logger.Error($"Error while processing message, type: {type}, sender: {address}, message: {message}", e);
+                if(_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error while processing message, type: {type}, sender: {address}, message: {message}", e);
+                ctx.DisconnectAsync();
             }
         }
 
