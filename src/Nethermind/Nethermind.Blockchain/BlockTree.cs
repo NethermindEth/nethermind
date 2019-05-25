@@ -20,6 +20,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -349,23 +350,23 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult Insert(BlockHeader header)
         {
-            #if DEBUG
-            /* this is just to make sure that we do not fall into this trap when creating tests */
-            if (header.StateRoot == null && !header.IsGenesis)
-            {
-                throw new InvalidDataException($"State root is null in {header.ToString(BlockHeader.Format.Short)}");
-            }
-#endif
+//            #if DEBUG
+//            /* this is just to make sure that we do not fall into this trap when creating tests */
+//            if (header.StateRoot == null && !header.IsGenesis)
+//            {
+//                throw new InvalidDataException($"State root is null in {header.ToString(BlockHeader.Format.Short)}");
+//            }
+//#endif
 
-            if (!CanAcceptNewBlocks)
-            {
-                return AddBlockResult.CannotAccept;
-            }
-
-            if (_invalidBlocks.ContainsKey(header.Number) && _invalidBlocks[header.Number].Contains(header.Hash))
-            {
-                return AddBlockResult.InvalidBlock;
-            }
+//            if (!CanAcceptNewBlocks)
+//            {
+//                return AddBlockResult.CannotAccept;
+//            }
+//
+//            if (_invalidBlocks.ContainsKey(header.Number) && _invalidBlocks[header.Number].Contains(header.Hash))
+//            {
+//                return AddBlockResult.InvalidBlock;
+//            }
 
 //            if (header.Number == 0)
 //            {
@@ -387,17 +388,32 @@ namespace Nethermind.Blockchain
             // validate hash here
             using (MemoryStream stream = Rlp.BorrowStream())
             {
+                Stopwatch stopwatch = new Stopwatch();
+                stopwatch.Start();
                 Rlp.Encode(stream, header);
                 byte[] newRlp = stream.ToArray();
+                
                 _headerDb.Set(header.Hash, newRlp);
+                stopwatch.Stop();
+                if (stopwatch.ElapsedMilliseconds >= 1)
+                {
+                    _logger.Warn($"Elapsed headerdb {stopwatch.ElapsedMilliseconds}");
+                }
             }
 
             BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
 
             try
             {
+                Stopwatch stopwatch = new Stopwatch();
+                stopwatch.Start();
 //                _blockInfoLock.EnterWriteLock();
                 UpdateOrCreateLevel(header.Number, blockInfo);
+                stopwatch.Stop();
+                if (stopwatch.ElapsedMilliseconds >= 1)
+                {
+                    _logger.Warn($"Elapsed level {stopwatch.ElapsedMilliseconds}");
+                }
             }
             finally
             {
@@ -1017,6 +1033,7 @@ namespace Nethermind.Blockchain
         private void UpdateOrCreateLevel(long number, BlockInfo blockInfo)
         {
             ChainLevelInfo level = LoadLevel(number, false);
+
             if (level != null)
             {
                 BlockInfo[] blockInfos = new BlockInfo[level.BlockInfos.Length + 1];
@@ -1044,7 +1061,7 @@ namespace Nethermind.Blockchain
         /* error-prone: all methods that load a level, change it and then persist need to execute everything under a lock */
         private void PersistLevel(long number, ChainLevelInfo level)
         {
-            _blockInfoCache.Set(number, level);
+//            _blockInfoCache.Set(number, level);
             _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
         }
 
@@ -1083,7 +1100,14 @@ namespace Nethermind.Blockchain
             ChainLevelInfo chainLevelInfo = _blockInfoCache.Get(number);
             if (chainLevelInfo == null)
             {
+                Stopwatch stopwatch = new Stopwatch();
+                stopwatch.Start();
                 byte[] levelBytes = _blockInfoDb.Get(number);
+                stopwatch.Stop();
+                if (stopwatch.ElapsedMilliseconds >= 1)
+                {
+                    _logger.Warn($"Elapsed load level DB {stopwatch.ElapsedMilliseconds} - {levelBytes?.Length}");
+                }
                 if (levelBytes == null)
                 {
                     return null;
