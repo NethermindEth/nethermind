@@ -402,6 +402,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
+        private long _insertElapsed;
+        private long _calls;
+        
         private AddBlockResult SuggestHeader(BlockHeader header, BlockSyncBatch thisBatch)
         {
             if (header.IsGenesis)
@@ -413,6 +416,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             stopwatch.Start();
             AddBlockResult addBlockResult = _blockTree.Insert(header);
             stopwatch.Stop();
+            _insertElapsed += stopwatch.ElapsedTicks;
+            _calls++;
+            _logger.Info($"Average - {(decimal)_insertElapsed/_calls}:F2");
             thisBatch.OnInsert += stopwatch.ElapsedMilliseconds;
 //            _logger.Warn($"Elapsed milliseconds on insert: {stopwatch.ElapsedMilliseconds} - {header.Number}");
             

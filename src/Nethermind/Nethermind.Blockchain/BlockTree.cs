@@ -388,32 +388,18 @@ namespace Nethermind.Blockchain
             // validate hash here
             using (MemoryStream stream = Rlp.BorrowStream())
             {
-                Stopwatch stopwatch = new Stopwatch();
-                stopwatch.Start();
                 Rlp.Encode(stream, header);
                 byte[] newRlp = stream.ToArray();
                 
                 _headerDb.Set(header.Hash, newRlp);
-                stopwatch.Stop();
-                if (stopwatch.ElapsedMilliseconds >= 1)
-                {
-                    _logger.Warn($"Elapsed headerdb {stopwatch.ElapsedMilliseconds}");
-                }
             }
 
             BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
 
             try
             {
-                Stopwatch stopwatch = new Stopwatch();
-                stopwatch.Start();
 //                _blockInfoLock.EnterWriteLock();
                 UpdateOrCreateLevel(header.Number, blockInfo);
-                stopwatch.Stop();
-                if (stopwatch.ElapsedMilliseconds >= 1)
-                {
-//                    _logger.Warn($"Elapsed level {stopwatch.ElapsedMilliseconds}");
-                }
             }
             finally
             {
@@ -1090,6 +1076,9 @@ namespace Nethermind.Blockchain
             return null;
         }
 
+        private long totalTicks = 0;
+        private long calls = 0;
+        
         private ChainLevelInfo LoadLevel(long number, bool forceLoad = true)
         {
             if (number > BestKnownNumber && !forceLoad)
@@ -1104,9 +1093,11 @@ namespace Nethermind.Blockchain
                 stopwatch.Start();
                 byte[] levelBytes = _blockInfoDb.Get(number);
                 stopwatch.Stop();
+                totalTicks += stopwatch.ElapsedTicks;
+                calls++;
                 if (stopwatch.ElapsedMilliseconds >= 1)
                 {
-//                    _logger.Warn($"Elapsed load level DB {stopwatch.ElapsedMilliseconds} - {levelBytes?.Length}");
+                    _logger.Warn($"Elapsed load level DB {stopwatch.ElapsedMilliseconds} - {levelBytes?.Length} | {stopwatch.ElapsedTicks} | calls {calls} | av({(decimal)totalTicks/calls:F2})");
                 }
                 if (levelBytes == null)
                 {
