@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Diagnostics;
 using Nethermind.Dirichlet.Numerics;
 
@@ -81,8 +80,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public double? HandlingTime => ((HandlingEndTime ?? _stopwatch.ElapsedMilliseconds) - (HandlingStartTime ?? _stopwatch.ElapsedMilliseconds));
         public UInt256? MinTotalDifficulty { get; set; }
         public long? MinNumber { get; set; }
-        public long OnInsert { get; set; }
-
         public override string ToString()
         {
 //            string bodiesOrHeaders = HeadersSyncBatch != null ? "HEADERS" : "BODIES";

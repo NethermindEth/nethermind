@@ -134,30 +134,30 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private void ValidateBlocks(CancellationToken cancellation, BlockHeader[] headers)
         {
-//            if (_logger.IsTrace) _logger.Trace("Starting block validation");
-//
-//            for (int i = 0; i < headers.Length; i++)
-//            {
-//                if (cancellation.IsCancellationRequested)
-//                {
-//                    if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
-//                    return;
-//                }
-//
-//                BlockHeader header = headers[i];
-//                if (header == null)
-//                {
-//                    continue;
-//                }
-//                
-//                bool isHashValid = _blockValidator.ValidateHash(header);
-//                bool isSealValid = _sealValidator.ValidateSeal(header);
-//                if (!(isHashValid && isSealValid))
-//                {
-//                    if (_logger.IsTrace) _logger.Trace("One of the blocks is invalid");
-//                    throw new EthSynchronizationException($"Peer sent a block with seal valid {isSealValid}, hash valid {isHashValid}");
-//                }
-//            }
+            if (_logger.IsTrace) _logger.Trace("Starting block validation");
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (cancellation.IsCancellationRequested)
+                {
+                    if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
+                    return;
+                }
+
+                BlockHeader header = headers[i];
+                if (header == null)
+                {
+                    continue;
+                }
+                
+                bool isHashValid = _blockValidator.ValidateHash(header);
+                bool isSealValid = _sealValidator.ValidateSeal(header);
+                if (!(isHashValid && isSealValid))
+                {
+                    if (_logger.IsTrace) _logger.Trace("One of the blocks is invalid");
+                    throw new EthSynchronizationException($"Peer sent a block with seal valid {isSealValid}, hash valid {isHashValid}");
+                }
+            }
         }
 
         private async Task UpdateParallelism()

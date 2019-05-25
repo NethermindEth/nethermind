@@ -125,38 +125,37 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 blockSyncBatch.Prioritized = true;
             }
 
-//            lock (_handlerLock)
-//            {
-//                if (_logger.IsInfo) _logger.Info($"LOWEST_INSERTED {_blockTree.LowestInserted?.Number}, LOWEST_REQUESTED {BestDownwardRequestedNumber}, RETURNING {blockSyncBatch}, DEPENDENCIES {_headerDependencies.Count}, SENT: {_sentBatches.Count}, PENDING: {_pendingBatches.Count}");
-//
-//                if (_logger.IsDebug)
-//                {
-//                    Dictionary<long, string> all = new Dictionary<long, string>();
-//                    StringBuilder builder = new StringBuilder();
-//                    builder.AppendLine($"SENT {_sentBatches.Count} PENDING {_pendingBatches.Count} DEPENDENCIES {_headerDependencies.Count}");
-//                    foreach (var headerDependency in _headerDependencies.ToList().OrderByDescending(d => d.Value.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.Value.HeadersSyncBatch.StartNumber))
-//                    {
-//                        all.Add(headerDependency.Value.HeadersSyncBatch.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
-//                    }
-//
-//                    foreach (var pendingBatch in _pendingBatches.ToList().OrderByDescending(d => d.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.HeadersSyncBatch.StartNumber))
-//                    {
-//                        all.Add(pendingBatch.HeadersSyncBatch.EndNumber, $"  PENDING    {pendingBatch}");
-//                    }
-//
-//                    foreach (var sentBatch in _sentBatches.ToList().OrderByDescending(d => d.Key.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.Key.HeadersSyncBatch.StartNumber))
-//                    {
-//                        all.Add(sentBatch.Key.HeadersSyncBatch.EndNumber, $"  SENT       {sentBatch.Key}");
-//                    }
-//
-//                    foreach (KeyValuePair<long, string> keyValuePair in all.OrderByDescending(kvp => kvp.Key))
-//                    {
-//                        builder.AppendLine(keyValuePair.Value);
-//                    }
-//
-//                    _logger.Debug($"{builder}");
-//                }
-//            }
+            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInserted?.Number}, LOWEST_REQUESTED {BestDownwardRequestedNumber}, DEPENDENCIES {_headerDependencies.Count}, SENT: {_sentBatches.Count}, PENDING: {_pendingBatches.Count}");
+            if (_logger.IsTrace)
+            {
+                lock (_handlerLock)
+                {
+                    Dictionary<long, string> all = new Dictionary<long, string>();
+                    StringBuilder builder = new StringBuilder();
+                    builder.AppendLine($"SENT {_sentBatches.Count} PENDING {_pendingBatches.Count} DEPENDENCIES {_headerDependencies.Count}");
+                    foreach (var headerDependency in _headerDependencies.ToList().OrderByDescending(d => d.Value.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.Value.HeadersSyncBatch.StartNumber))
+                    {
+                        all.Add(headerDependency.Value.HeadersSyncBatch.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
+                    }
+
+                    foreach (var pendingBatch in _pendingBatches.ToList().OrderByDescending(d => d.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.HeadersSyncBatch.StartNumber))
+                    {
+                        all.Add(pendingBatch.HeadersSyncBatch.EndNumber, $"  PENDING    {pendingBatch}");
+                    }
+
+                    foreach (var sentBatch in _sentBatches.ToList().OrderByDescending(d => d.Key.HeadersSyncBatch.EndNumber).ThenByDescending(d => d.Key.HeadersSyncBatch.StartNumber))
+                    {
+                        all.Add(sentBatch.Key.HeadersSyncBatch.EndNumber, $"  SENT       {sentBatch.Key}");
+                    }
+
+                    foreach (KeyValuePair<long, string> keyValuePair in all.OrderByDescending(kvp => kvp.Key))
+                    {
+                        builder.AppendLine(keyValuePair.Value);
+                    }
+
+                    _logger.Trace($"{builder}");
+                }
+            }
 
             return blockSyncBatch;
         }
@@ -310,13 +309,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         }
                     }
 
-//                    if (BestDownwardSyncNumber != null)
-//                    {
-//                        _syncStats.ReportBlocksDownload(_pivotNumber - (BestDownwardSyncNumber ?? _pivotNumber), _pivotNumber, ratio);
-//                    }
-
                     header.TotalDifficulty = NextTotalDifficulty;
-                    AddBlockResult addBlockResult = SuggestHeader(header, batch);
+                    AddBlockResult addBlockResult = SuggestHeader(header);
                     if (addBlockResult == AddBlockResult.InvalidBlock)
                     {
                         if (batch.Allocation != null)
@@ -339,7 +333,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.HeadersSyncBatch.RequestSize} in  {batch}");
                 }
-                
+
                 added = Math.Max(0, added);
 
                 if (added < batch.HeadersSyncBatch.RequestSize)
@@ -392,7 +386,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     _syncStats.ReportBlocksDownload(_pivotNumber - (BestDownwardSyncNumber ?? _pivotNumber), _pivotNumber, ratio);
                 }
 
-                if (_logger.IsInfo) _logger.Info($"{batch} - FINISHED with [{addedEarliest},{addedLast}] added or enqueued - LOWEST_INSERTED {_blockTree.LowestInserted?.Number} | BEST_KNOWN {_blockTree.BestKnownNumber}");
+                if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInserted?.Number} | HANDLED {batch}");
 
                 return added;
             }
@@ -402,26 +396,15 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
-        private long _insertElapsed;
-        private long _calls;
-        
-        private AddBlockResult SuggestHeader(BlockHeader header, BlockSyncBatch thisBatch)
+        private AddBlockResult SuggestHeader(BlockHeader header)
         {
             if (header.IsGenesis)
             {
                 return AddBlockResult.AlreadyKnown;
             }
 
-            Stopwatch stopwatch = new Stopwatch();
-            stopwatch.Start();
             AddBlockResult addBlockResult = _blockTree.Insert(header);
-            stopwatch.Stop();
-            _insertElapsed += stopwatch.ElapsedTicks;
-            _calls++;
-            _logger.Info($"Average - {(decimal)_insertElapsed/_calls}:F2");
-            thisBatch.OnInsert += stopwatch.ElapsedMilliseconds;
-//            _logger.Warn($"Elapsed milliseconds on insert: {stopwatch.ElapsedMilliseconds} - {header.Number}");
-            
+
             if (addBlockResult == AddBlockResult.Added || addBlockResult == AddBlockResult.AlreadyKnown)
             {
                 BestDownwardSyncNumber = Math.Min(BestDownwardSyncNumber ?? StartNumber, header.Number);
