@@ -75,13 +75,13 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index)
         {
-            UInt256? blockNo = blockParameter.BlockId.AsNumber();
+            long? blockNo = blockParameter.BlockId;
             if (!blockNo.HasValue)
             {
                 throw new InvalidDataException("Block number value incorrect");
             }
 
-            var transactionTrace = _debugBridge.GetTransactionTrace((long)blockNo.Value, index);
+            var transactionTrace = _debugBridge.GetTransactionTrace(blockNo.Value, index);
             if (transactionTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorType.NotFound);

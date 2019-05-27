@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc
         public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest)
         {
             if (_logger.IsInfo) _logger.Info($"Handling JSON RPC request {rpcRequest.Id} {rpcRequest.Method}");
-            
+
             try
             {
                 (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
@@ -130,10 +130,10 @@ namespace Nethermind.JsonRpc
         private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, MethodInfo method, object module)
         {
             Console.WriteLine($"{methodName}");
-            
+
             var expectedParameters = method.GetParameters();
             var providedParameters = request.Params;
-            int missingParamsCount = expectedParameters.Length - (providedParameters?.Length ?? 0);
+            int missingParamsCount = expectedParameters.Length - (providedParameters?.Length ?? 0) + providedParameters?.Count(string.IsNullOrWhiteSpace) ?? 0;
 
             if (missingParamsCount != 0)
             {
@@ -153,7 +153,7 @@ namespace Nethermind.JsonRpc
 
                 if (incorrectParametersCount)
                 {
-                    return GetErrorResponse(ErrorType.InvalidParams, $"Incorrect parameters count, expected: {expectedParameters.Length}, actual: {providedParameters?.Length ?? 0}", request.Id, methodName);
+                    return GetErrorResponse(ErrorType.InvalidParams, $"Incorrect parameters count, expected: {expectedParameters.Length}, actual: {expectedParameters.Length - missingParamsCount}", request.Id, methodName);
                 }
             }
 
@@ -188,7 +188,7 @@ namespace Nethermind.JsonRpc
                 if (_logger.IsError) _logger.Error(errorMessage);
                 return GetErrorResponse(ErrorType.InternalError, errorMessage, request.Id, methodName);
             }
-            
+
             Result result = resultWrapper.GetResult();
             if (result == null || result.ResultType == ResultType.Failure)
             {
@@ -214,6 +214,7 @@ namespace Nethermind.JsonRpc
                         executionParameters.Add(Type.Missing);
                         continue;
                     }
+
                     object executionParam;
                     if (typeof(IJsonRpcRequest).IsAssignableFrom(paramType))
                     {
@@ -288,7 +289,7 @@ namespace Nethermind.JsonRpc
                     Code = ErrorCodes[errorType],
                     Message = message
                 },
-                Result = result ?? new byte[0]
+                Result = result
             };
 
             return response;

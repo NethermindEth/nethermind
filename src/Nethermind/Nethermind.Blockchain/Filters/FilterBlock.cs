@@ -22,10 +22,10 @@ namespace Nethermind.Blockchain.Filters
 {
     public class FilterBlock
     {
-        public UInt256 BlockId { get; }
+        public long BlockId { get; }
         public FilterBlockType Type { get; }
         
-        public FilterBlock(UInt256 blockId)
+        public FilterBlock(long blockId)
         {
             BlockId = blockId;
             Type = FilterBlockType.BlockId;

@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public FilterBuilder FromBlock(UInt256 number)
+        public FilterBuilder FromBlock(long number)
         {
             _fromBlock = new FilterBlock(number);
 
@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public FilterBuilder ToBlock(UInt256 number)
+        public FilterBuilder ToBlock(long number)
         {
             _toBlock = new FilterBlock(number);
 

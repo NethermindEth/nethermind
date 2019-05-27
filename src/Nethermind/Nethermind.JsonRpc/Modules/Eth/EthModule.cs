@@ -683,7 +683,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private FilterBlock MapFilterBlock(BlockParameter parameter)
             => parameter.BlockId != null
-                ? new FilterBlock(new UInt256(parameter.BlockId.AsNumber() ?? 0))
+                ? new FilterBlock(parameter.BlockId ?? 0)
                 : new FilterBlock(MapFilterBlockType(parameter.Type));
 
         private FilterBlockType MapFilterBlockType(BlockParameterType type)
@@ -886,33 +886,27 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 case BlockParameterType.Pending:
                     var pending = _blockchainBridge.FindBlock(_blockchainBridge.BestSuggested.Hash, false);
-                    return ResultWrapper<Core.Block>.Success(pending); // TODO: a pending block for sealEngine, work in progress
+                    return ResultWrapper<Block>.Success(pending); // TODO: a pending block for sealEngine, work in progress
                 case BlockParameterType.Latest:
-                    return ResultWrapper<Core.Block>.Success(_blockchainBridge.RetrieveHeadBlock());
+                    return ResultWrapper<Block>.Success(_blockchainBridge.RetrieveHeadBlock());
                 case BlockParameterType.Earliest:
                     var genesis = _blockchainBridge.RetrieveGenesisBlock();
-                    return ResultWrapper<Core.Block>.Success(genesis);
+                    return ResultWrapper<Block>.Success(genesis);
                 case BlockParameterType.BlockId:
-                    if (blockParameter.BlockId?.Value == null)
+                    if (blockParameter.BlockId == null)
                     {
-                        return ResultWrapper<Core.Block>.Fail($"Block id is required for {BlockParameterType.BlockId}", ErrorType.InvalidParams);
+                        return ResultWrapper<Block>.Fail($"Block number is required for {BlockParameterType.BlockId}", ErrorType.InvalidParams);
                     }
 
-                    Block block = null;
-                    var value = blockParameter.BlockId.AsNumber();
-                    if (value.HasValue)
-                    {
-                        block = _blockchainBridge.FindBlock((long)(value.Value));
-                    }
-
+                    Block block = _blockchainBridge.FindBlock(blockParameter.BlockId.Value); 
                     if (block == null && !allowNulls)
                     {
-                        return ResultWrapper<Core.Block>.Fail($"Cannot find block for {value}", ErrorType.NotFound);
+                        return ResultWrapper<Block>.Fail($"Cannot find block {blockParameter.BlockId.Value}", ErrorType.NotFound);
                     }
 
-                    return ResultWrapper<Core.Block>.Success(block);
+                    return ResultWrapper<Block>.Success(block);
                 default:
-                    throw new Exception($"BlockParameterType not supported: {blockParameter.Type}");
+                    throw new Exception($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}");
             }
         }
 

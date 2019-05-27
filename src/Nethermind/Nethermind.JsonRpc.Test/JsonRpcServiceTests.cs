@@ -126,7 +126,7 @@ namespace Nethermind.JsonRpc.Test
         {
             JsonRpcResponse response = TestRequest<IEthModule>(Substitute.For<IEthModule>(), "incorrect_method");
             Assert.AreEqual(response.Error.Code, JsonRpcService.ErrorCodes[ErrorType.MethodNotFound]);
-            Assert.AreEqual(Bytes.Empty, response.Result);
+            Assert.AreEqual(null, response.Result);
             Assert.AreEqual(response.JsonRpc, "2.0");
         }
 
@@ -136,9 +136,7 @@ namespace Nethermind.JsonRpc.Test
             INetModule netModule = Substitute.For<INetModule>();
             netModule.net_peerCount().ReturnsForAnyArgs(x => ResultWrapper<BigInteger>.Success(new BigInteger(2)));
             JsonRpcResponse response = TestRequest<INetModule>(netModule, "net_peerCount");
-            Quantity quantity = new Quantity();
-            quantity.FromJson(response.Result.ToString());
-            Assert.AreEqual(quantity.AsNumber(), new UInt256(2));
+            Assert.AreEqual("2", response.Result.ToString());
         }
 
         [Test]

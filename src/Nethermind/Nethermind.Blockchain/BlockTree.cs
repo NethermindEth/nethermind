@@ -579,6 +579,18 @@ namespace Nethermind.Blockchain
             return result;
         }
 
+        private Keccak GetFirstBlockHashAtLevel(long blockNumber)
+        {
+            if (blockNumber < 0)
+            {
+                throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}",
+                    nameof(blockNumber));
+            }
+
+            ChainLevelInfo level = LoadLevel(blockNumber);
+            return level?.BlockInfos[0].BlockHash;
+        }
+
         private Keccak GetBlockHashOnMainOrOnlyHash(long blockNumber)
         {
             if (blockNumber < 0)
@@ -1119,7 +1131,7 @@ namespace Nethermind.Blockchain
             Keccak hash = GetBlockHashOnMainOrOnlyHash(number);
             return hash == null ? null : FindHeader(hash);
         }
-
+        
         private (BlockHeader Header, BlockInfo BlockInfo, ChainLevelInfo Level) LoadHeader(Keccak blockHash)
         {
             if (blockHash == null || blockHash == Keccak.Zero)

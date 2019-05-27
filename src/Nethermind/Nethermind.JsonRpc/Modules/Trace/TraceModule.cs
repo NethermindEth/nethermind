@@ -69,13 +69,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityLikeTxTrace[]> trace_replayBlockTransactions(BlockParameter numberOrTag, string[] traceTypes)
         {
-            UInt256? blockNo = numberOrTag.BlockId.AsNumber();
+            long? blockNo = numberOrTag.BlockId;
             if (!blockNo.HasValue)
             {
                 throw new InvalidDataException("Block number value incorrect");
             }
 
-            return ResultWrapper<ParityLikeTxTrace[]>.Success(_tracer.ParityTraceBlock((long)blockNo.Value, GetParityTypes(traceTypes)));
+            return ResultWrapper<ParityLikeTxTrace[]>.Success(_tracer.ParityTraceBlock(blockNo.Value, GetParityTypes(traceTypes)));
         }
 
         public ResultWrapper<ParityLikeTxTrace[]> trace_block(BlockParameter block)
