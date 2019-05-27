@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test.Specs
         {
             byte[] data = File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/genesis_test.json"));
             GenesisFileLoader loader = new GenesisFileLoader(new EthereumJsonSerializer());
-            Core.Specs.ChainSpecStyle.ChainSpec chainSpec = loader.Load(data);
+            ChainSpec chainSpec = loader.Load(data);
             Assert.AreEqual(22082, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual(null, chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.NotNull(chainSpec.Genesis, $"{nameof(Core.Specs.ChainSpecStyle.ChainSpec.Genesis)}");
@@ -64,11 +64,11 @@ namespace Nethermind.Core.Test.Specs
             Assert.AreEqual(30000UL, chainSpec.Clique.Epoch, "Clique.epoch");
             Assert.AreEqual((UInt256?)UInt256.Zero, chainSpec.Clique.Reward, "Clique.reward");
             
-            Assert.AreEqual((UInt256?)1, chainSpec.HomesteadBlockNumber, "homestead no");
-            Assert.AreEqual((UInt256?)2, chainSpec.TangerineWhistleBlockNumber, "tw no");
-            Assert.AreEqual((UInt256?)3, chainSpec.SpuriousDragonBlockNumber, "sd no");
-            Assert.AreEqual((UInt256?)4, chainSpec.ByzantiumBlockNumber, "byzantium no");
-            Assert.AreEqual((UInt256?)5, chainSpec.ConstantinopleBlockNumber, "constantinople no");
+            Assert.AreEqual((long?)1, chainSpec.HomesteadBlockNumber, "homestead no");
+            Assert.AreEqual((long?)2, chainSpec.TangerineWhistleBlockNumber, "tw no");
+            Assert.AreEqual((long?)3, chainSpec.SpuriousDragonBlockNumber, "sd no");
+            Assert.AreEqual((long?)4, chainSpec.ByzantiumBlockNumber, "byzantium no");
+            Assert.AreEqual((long?)5, chainSpec.ConstantinopleBlockNumber, "constantinople no");
             Assert.AreEqual(null, chainSpec.DaoForkBlockNumber, "dao no");
         }
     }

@@ -32,8 +32,8 @@ namespace Nethermind.Core.Test.Specs
         [Test]
         public void Can_load_hive()
         {
-            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs\\hive.json");
-            Core.Specs.ChainSpecStyle.ChainSpec chainSpec = LoadChainSpec(path);
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/hive.json");
+            ChainSpec chainSpec = LoadChainSpec(path);
 
             Assert.AreEqual("Foundation", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual("ethereum", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
@@ -115,11 +115,11 @@ namespace Nethermind.Core.Test.Specs
             
         }
 
-        private static Core.Specs.ChainSpecStyle.ChainSpec LoadChainSpec(string path)
+        private static ChainSpec LoadChainSpec(string path)
         {
             byte[] data = File.ReadAllBytes(path);
             ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new EthereumJsonSerializer());
-            Core.Specs.ChainSpecStyle.ChainSpec chainSpec = chainSpecLoader.Load(data);
+            ChainSpec chainSpec = chainSpecLoader.Load(data);
             return chainSpec;
         }
 
@@ -127,11 +127,11 @@ namespace Nethermind.Core.Test.Specs
         public void Can_load_ropsten()
         {
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/ropsten.json");
-            Core.Specs.ChainSpecStyle.ChainSpec chainSpec = LoadChainSpec(path);
+            ChainSpec chainSpec = LoadChainSpec(path);
             
             Assert.AreEqual(3, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("Ropsten Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
-            Assert.NotNull(chainSpec.Genesis, $"{nameof(Core.Specs.ChainSpecStyle.ChainSpec.Genesis)}");
+            Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
 
             Assert.AreEqual(0x0000000000000042UL, chainSpec.Genesis.Header.Nonce, $"genesis {nameof(BlockHeader.Nonce)}");
             Assert.AreEqual(Keccak.Zero, chainSpec.Genesis.Header.MixHash, $"genesis {nameof(BlockHeader.MixHash)}");
@@ -145,7 +145,7 @@ namespace Nethermind.Core.Test.Specs
                 $"genesis {nameof(BlockHeader.ExtraData)}");
             Assert.AreEqual(0x1000000L, chainSpec.Genesis.Header.GasLimit, $"genesis {nameof(BlockHeader.GasLimit)}");
             
-            Assert.NotNull(chainSpec.Allocations, $"{nameof(Core.Specs.ChainSpecStyle.ChainSpec.Allocations)}");
+            Assert.NotNull(chainSpec.Allocations, $"{nameof(ChainSpec.Allocations)}");
             Assert.AreEqual(257, chainSpec.Allocations.Count, $"allocations count");
             Assert.AreEqual(
                 UInt256.Zero,
@@ -175,7 +175,7 @@ namespace Nethermind.Core.Test.Specs
         public void Can_load_goerli()
         {
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/goerli.json");
-            Core.Specs.ChainSpecStyle.ChainSpec chainSpec = LoadChainSpec(path);
+            ChainSpec chainSpec = LoadChainSpec(path);
             
             Assert.AreEqual(5, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("Görli Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
@@ -198,7 +198,7 @@ namespace Nethermind.Core.Test.Specs
         public void Can_load_rinkeby()
         {
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/rinkeby.json");
-            Core.Specs.ChainSpecStyle.ChainSpec chainSpec = LoadChainSpec(path);
+            ChainSpec chainSpec = LoadChainSpec(path);
 
             Assert.AreEqual(4, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("Rinkeby", chainSpec.Name, $"{nameof(chainSpec.Name)}");
@@ -209,7 +209,7 @@ namespace Nethermind.Core.Test.Specs
         public void Can_load_mainnet()
         {
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
-            Core.Specs.ChainSpecStyle.ChainSpec chainSpec = LoadChainSpec(path);
+            ChainSpec chainSpec = LoadChainSpec(path);
             
             Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("Ethereum", chainSpec.Name, $"{nameof(chainSpec.Name)}");
@@ -228,7 +228,7 @@ namespace Nethermind.Core.Test.Specs
         public void Can_load_spaceneth()
         {
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/spaceneth.json");
-            Core.Specs.ChainSpecStyle.ChainSpec chainSpec = LoadChainSpec(path);
+            ChainSpec chainSpec = LoadChainSpec(path);
             
             Assert.AreEqual(99, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("Spaceneth", chainSpec.Name, $"{nameof(chainSpec.Name)}");

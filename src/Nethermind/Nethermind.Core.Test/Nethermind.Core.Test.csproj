@@ -24,7 +24,7 @@
     </Content>
     <None Remove="Specs\hive.json" />
     <Content Include="Specs\hive.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
   <ItemGroup>
