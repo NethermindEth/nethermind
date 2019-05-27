@@ -68,11 +68,18 @@ namespace Nethermind.Blockchain
         BlockHeader Head { get; }
         
         /// <summary>
-        /// Suggests a block header (without body)
+        /// Inserts a disconnected block header (without body)
         /// </summary>
         /// <param name="header">Header to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult Insert(BlockHeader header);
+        
+        /// <summary>
+        /// Inserts a disconnected block body
+        /// </summary>
+        /// <param name="block">Block to add</param>
+        /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        AddBlockResult Insert(Block block);
         
         /// <summary>
         /// Suggests block for inclusion in the block tree.

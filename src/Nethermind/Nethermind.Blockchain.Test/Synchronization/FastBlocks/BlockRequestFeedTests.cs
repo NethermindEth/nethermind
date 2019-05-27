@@ -118,7 +118,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 });
 
             _syncPeerPool.AllPeers.Returns((ci) => _syncPeers.Select(sp => new PeerInfo(sp) {HeadNumber = sp.Tree.Head.Number}));
+            
             SetupLocalTree();
+            SetupFeed();
         }
 
         private void SetupLocalTree(int length = 1)
@@ -128,17 +130,36 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             {
                 _localBlockTree.SuggestBlock(_validTree2048.FindBlock(i));
             }
+        }
 
+        private void SetupFeed(bool syncBodies = false)
+        {
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotHash = _validTree2048.Head.Hash.ToString();
             syncConfig.PivotNumber = _validTree2048.Head.Number.ToString();
             syncConfig.PivotTotalDifficulty = _validTree2048.Head.TotalDifficulty.ToString();
+            if (syncBodies)
+            {
+                syncConfig.DownloadBodiesInFastSync = true;
+            }
 
             _feed = new BlockRequestFeed(_localBlockTree, _syncPeerPool, syncConfig, LimboLogs.Instance);
             _feed.StartNumber = 2047;
             _feed.StartHash = _validTree2048.Head.Hash;
         }
 
+        [Test]
+        public void One_peer_with_valid_chain_bodies()
+        {
+            LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree2048);
+            SetupFeed(true);
+            SetupSyncPeers(syncPeer);
+            RunFeed();
+            Assert.AreEqual(102, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+        
         [Test]
         public void One_peer_with_valid_chain()
         {
@@ -344,13 +365,19 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             AssertTreeSynced(_validTree2048);
         }
 
-        private void AssertTreeSynced(IBlockTree tree)
+        private void AssertTreeSynced(IBlockTree tree, bool bodiesSync = false)
         {
             Keccak nextHash = tree.Head.Hash;
             for (int i = 0; i < tree.Head.Number; i++)
             {
                 BlockHeader header = _localBlockTree.FindHeader(nextHash);
-                Assert.NotNull(header, $"{tree.Head.Number - i}");
+                Assert.NotNull(header, $"header {tree.Head.Number - i}");
+                if (bodiesSync)
+                {
+                    Block block = _localBlockTree.FindBlock(nextHash, false);
+                    Assert.NotNull(block, $"body {tree.Head.Number - i}");
+                }
+                
                 nextHash = header.ParentHash;
             }
         }
@@ -457,9 +484,34 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 return responseBatch;
             }
 
-            if (responseBatch.HeadersSyncBatch != null)
+            TestContext.WriteLine($"{_time,6} |SYNC PEER {syncPeer.Node:s} RESPONDING TO {responseBatch}");
+            var headersSyncBatch = responseBatch.HeadersSyncBatch;
+            var bodiesSyncBatch = responseBatch.BodiesSyncBatch;
+            if (headersSyncBatch != null)
             {
-                var headersSyncBatch = responseBatch.HeadersSyncBatch;
+                PrepareHeadersResponse(headersSyncBatch, syncPeer, tree);
+            }
+            else if (bodiesSyncBatch != null)
+            {
+                PrepareBodiesResponse(bodiesSyncBatch, tree);
+            }
+
+            return responseBatch;
+        }
+
+        private static void PrepareBodiesResponse(BodiesSyncBatch bodiesSyncBatch, IBlockTree tree)
+        {
+            bodiesSyncBatch.Response = new Block[bodiesSyncBatch.Request.Length];
+            for (int i = 0; i < bodiesSyncBatch.Request.Length; i++)
+            {
+                bodiesSyncBatch.Response[i] = tree.FindBlock(bodiesSyncBatch.Request[i], false);
+            }
+        }
+
+        private void PrepareHeadersResponse(HeadersSyncBatch headersSyncBatch, LatencySyncPeerMock syncPeer, IBlockTree tree)
+        {
+            if (headersSyncBatch != null)
+            {
                 long startNumber = headersSyncBatch.StartNumber;
                 if (_maliciousByShiftedOneBack.Contains(syncPeer))
                 {
@@ -477,7 +529,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 if (hash == null)
                 {
                     TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} CANNOT FIND {headersSyncBatch.StartNumber}");
-                    return responseBatch;
+                    return;
                 }
 
                 int requestSize = headersSyncBatch.RequestSize;
@@ -492,7 +544,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} WILL SEND TOO SHORT MESSAGE ({requestSize} INSTEAD OF {headersSyncBatch.RequestSize})");
                 }
 
-                BlockHeader[] headers = tree.FindHeaders(hash, requestSize, headersSyncBatch.Skip, headersSyncBatch.Reverse);
+                BlockHeader[] headers = tree.FindHeaders(hash, requestSize, 0, false);
                 if (_invalidBlocks.ContainsKey(syncPeer))
                 {
                     for (int i = 0; i < headers.Length; i++)
@@ -519,7 +571,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 }
 
 
-                responseBatch.HeadersSyncBatch.Response = headers;
+                headersSyncBatch.Response = headers;
                 if (_peerMaxResponseSizes.ContainsKey(syncPeer))
                 {
                     int maxResponseSize = _peerMaxResponseSizes[syncPeer];
@@ -532,19 +584,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                         }
                     }
                 }
-
-                TestContext.WriteLine($"{_time,6} |SYNC PEER {syncPeer.Node:s} RESPONDING TO {responseBatch}");
             }
-
-            if (responseBatch.BodiesSyncBatch != null)
-            {
-                for (int i = 0; i < responseBatch.BodiesSyncBatch.Request.Length; i++)
-                {
-                    responseBatch.BodiesSyncBatch.Response[i] = tree.FindBlock(responseBatch.BodiesSyncBatch.Request[i], false);
-                }
-            }
-
-            return responseBatch;
         }
     }
 }

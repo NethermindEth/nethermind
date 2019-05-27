@@ -213,6 +213,11 @@ namespace Nethermind.PerfTest
                 await _blockTree.LoadBlocksFromDb(cancellationToken, startBlockNumber, batchSize, maxBlocksToLoad);
             }
 
+            public AddBlockResult Insert(Block block)
+            {
+                return _blockTree.Insert(block);
+            }
+
             public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true)
             {
                 return _blockTree.SuggestBlock(block, shouldProcess);

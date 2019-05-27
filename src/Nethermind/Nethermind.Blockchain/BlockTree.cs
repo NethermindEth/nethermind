@@ -427,6 +427,35 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
+        public AddBlockResult Insert(Block block)
+        {
+            if (!CanAcceptNewBlocks)
+            {
+                return AddBlockResult.CannotAccept;
+            }
+
+            if (block.Number == 0)
+            {
+                throw new InvalidOperationException("Genesis block should not be inserted.");
+            }
+
+            // validate hash here
+            using (MemoryStream stream = Rlp.BorrowStream())
+            {
+                Rlp.Encode(stream, block);
+                byte[] newRlp = stream.ToArray();
+
+                _blockDb.Set(block.Hash, newRlp);
+            }
+
+            if (block.Number < (LowestInsertedBody?.Number ?? long.MaxValue))
+            {
+                LowestInsertedBody = block;
+            }
+
+            return AddBlockResult.Added;
+        }
+
         private AddBlockResult Suggest(Block block, BlockHeader header, bool shouldProcess = true)
         {
 #if DEBUG
@@ -510,6 +539,11 @@ namespace Nethermind.Blockchain
 
             if (header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
             {
+                if (header.IsGenesis)
+                {
+                    Genesis = header;
+                }
+                
                 BestSuggestedHeader = header;
                 if (block != null && shouldProcess)
                 {
