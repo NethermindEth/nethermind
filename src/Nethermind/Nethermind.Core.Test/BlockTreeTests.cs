@@ -448,7 +448,7 @@ namespace Nethermind.Core.Test
             blockTree.SuggestBlock(block1);
 
             Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blockTree.Head), "head block");
-            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blockTree.BestSuggested), "best suggested");
+            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blockTree.BestSuggestedHeader), "best suggested");
         }
 
         [Test]
@@ -550,7 +550,7 @@ namespace Nethermind.Core.Test
                 BlockTree blockTree = new BlockTree(blocksDb,  headersDb,blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), LimboLogs.Instance);
                 await blockTree.LoadBlocksFromDb(CancellationToken.None);
 
-                Assert.AreEqual(blockTree.BestSuggested.Hash, testTree.Head.Hash, $"head {chainLength}");
+                Assert.AreEqual(blockTree.BestSuggestedHeader.Hash, testTree.Head.Hash, $"head {chainLength}");
             }
         }
 
@@ -580,7 +580,7 @@ namespace Nethermind.Core.Test
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb,blockInfosDb, OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), LimboLogs.Instance);
                 await blockTree.LoadBlocksFromDb(CancellationToken.None);
 
-                Assert.AreEqual(blockTree.BestSuggested.Hash, testTree.Head.Hash, $"head {chainLength}");
+                Assert.AreEqual(blockTree.BestSuggestedHeader.Hash, testTree.Head.Hash, $"head {chainLength}");
             }
         }
 
@@ -695,7 +695,7 @@ namespace Nethermind.Core.Test
 
             Assert.AreEqual(block1.Number, tree.BestKnownNumber);
             Assert.AreEqual(block1.Header, tree.Head);
-            Assert.AreEqual(block1.Header, tree.BestSuggested);
+            Assert.AreEqual(block1.Header, tree.BestSuggestedHeader);
         }
 
         private int _dbLoadTimeout = 5000;
@@ -723,7 +723,7 @@ namespace Nethermind.Core.Test
 
             Assert.AreEqual(1L, tree.BestKnownNumber, "best known");
             Assert.AreEqual(1L, tree.Head.Number, "head");
-            Assert.AreEqual(1L, tree.BestSuggested.Number, "suggested");
+            Assert.AreEqual(1L, tree.BestSuggestedHeader.Number, "suggested");
 
             Assert.NotNull(blocksDb.Get(block1.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
@@ -761,7 +761,7 @@ namespace Nethermind.Core.Test
 
             Assert.AreEqual(0L, tree.BestKnownNumber, "best known");
             Assert.AreEqual(null, tree.Head, "head");
-            Assert.AreEqual(0L, tree.BestSuggested.Number, "suggested");
+            Assert.AreEqual(0L, tree.BestSuggestedHeader.Number, "suggested");
 
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
@@ -853,7 +853,7 @@ namespace Nethermind.Core.Test
 
             Assert.AreEqual(3L, tree.BestKnownNumber, "best known");
             Assert.AreEqual(null, tree.Head, "head");
-            Assert.AreEqual(block3B.Hash, tree.BestSuggested.Hash, "suggested");
+            Assert.AreEqual(block3B.Hash, tree.BestSuggestedHeader.Hash, "suggested");
 
             Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
@@ -917,7 +917,7 @@ namespace Nethermind.Core.Test
 
             Assert.AreEqual(3L, tree2.BestKnownNumber, "best known");
             Assert.AreEqual(block2B.Hash, tree2.Head.Hash, "head");
-            Assert.AreEqual(block2B.Hash, tree2.BestSuggested.Hash, "suggested");
+            Assert.AreEqual(block2B.Hash, tree2.BestSuggestedHeader.Hash, "suggested");
 
             Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
@@ -973,7 +973,7 @@ namespace Nethermind.Core.Test
 
             Assert.AreEqual(0L, tree2.BestKnownNumber, "best known");
             Assert.AreEqual(block0.Hash, tree2.Head.Hash, "head");
-            Assert.AreEqual(block0.Hash, tree2.BestSuggested.Hash, "suggested");
+            Assert.AreEqual(block0.Hash, tree2.BestSuggestedHeader.Hash, "suggested");
 
             Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");

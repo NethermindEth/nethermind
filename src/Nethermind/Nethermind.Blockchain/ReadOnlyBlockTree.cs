@@ -35,9 +35,10 @@ namespace Nethermind.Blockchain
 
         public int ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
-        public BlockHeader BestSuggested => _wrapped.BestSuggested;
-        public BlockHeader LowestInserted => _wrapped.LowestInserted;
-        public BlockHeader BestSuggestedFullBlock => _wrapped.BestSuggestedFullBlock;
+        public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
+        public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
+        public Block LowestInsertedBody => _wrapped.LowestInsertedBody;
+        public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
         public long BestKnownNumber => _wrapped.BestKnownNumber;
         public BlockHeader Head => _wrapped.Head;
         public bool CanAcceptNewBlocks { get; } = false;

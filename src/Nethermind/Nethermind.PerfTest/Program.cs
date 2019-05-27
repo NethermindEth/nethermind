@@ -200,9 +200,10 @@ namespace Nethermind.PerfTest
 
             public int ChainId => _blockTree.ChainId;
             public BlockHeader Genesis => _blockTree.Genesis;
-            public BlockHeader BestSuggested => _blockTree.BestSuggested;
-            public BlockHeader LowestInserted => _blockTree.LowestInserted;
-            public BlockHeader BestSuggestedFullBlock => _blockTree.BestSuggestedFullBlock;
+            public BlockHeader BestSuggestedHeader => _blockTree.BestSuggestedHeader;
+            public BlockHeader LowestInsertedHeader => _blockTree.LowestInsertedHeader;
+            public Block LowestInsertedBody => _blockTree.LowestInsertedBody;
+            public Block BestSuggestedBody => _blockTree.BestSuggestedBody;
             public long BestKnownNumber => _blockTree.BestKnownNumber;
             public BlockHeader Head => _blockTree.Head;
             public bool CanAcceptNewBlocks { get; } = true;

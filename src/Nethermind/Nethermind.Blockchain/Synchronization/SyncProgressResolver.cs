@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Synchronization
              This scenario is still correct. It may be worth to analyze what happens
              when it causes a full sync vs node sync race at every block.*/
 
-            BlockHeader bestSuggested = _blockTree.BestSuggested;
+            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             BlockHeader head = _blockTree.Head;
             long bestFullState = head?.Number ?? 0;
             long maxLookup = Math.Min(_maxLookup * 2, bestSuggested?.Number ?? 0L - bestFullState);
@@ -74,18 +74,18 @@ namespace Nethermind.Blockchain.Synchronization
 
         public long FindLowestInserted()
         {
-            return _blockTree.LowestInserted?.Number ?? long.MaxValue;
+            return _blockTree.LowestInsertedHeader?.Number ?? long.MaxValue;
         }
         
         public long FindBestHeader()
         {
-            return _blockTree.BestSuggested?.Number ?? 0;
+            return _blockTree.BestSuggestedHeader?.Number ?? 0;
         }
 
         public long FindBestFullBlock()
         {
             /* avoiding any potential concurrency issue */
-            return Math.Min(FindBestHeader(), _blockTree.BestSuggestedFullBlock?.Number ?? 0);
+            return Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0);
         }
     }
 }

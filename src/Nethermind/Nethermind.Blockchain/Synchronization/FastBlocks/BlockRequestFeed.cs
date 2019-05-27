@@ -88,9 +88,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             lock (_handlerLock)
             {
-                while (_headerDependencies.ContainsKey((_blockTree.LowestInserted?.Number ?? 0) - 1))
+                while (_headerDependencies.ContainsKey((_blockTree.LowestInsertedHeader?.Number ?? 0) - 1))
                 {
-                    SuggestBatch(_headerDependencies[(_blockTree.LowestInserted?.Number ?? 0) - 1]);
+                    SuggestBatch(_headerDependencies[(_blockTree.LowestInsertedHeader?.Number ?? 0) - 1]);
                 }
             }
 
@@ -119,12 +119,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             if (_logger.IsTrace) _logger.Trace($"{blockSyncBatch} - sending REQUEST");
 
             _sentBatches.TryAdd(blockSyncBatch, _empty);
-            if (blockSyncBatch.HeadersSyncBatch.StartNumber >= ((_blockTree.LowestInserted?.Number ?? 0) - 2048))
+            if (blockSyncBatch.HeadersSyncBatch.StartNumber >= ((_blockTree.LowestInsertedHeader?.Number ?? 0) - 2048))
             {
                 blockSyncBatch.Prioritized = true;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInserted?.Number}, LOWEST_REQUESTED {BestDownwardRequestedNumber}, DEPENDENCIES {_headerDependencies.Count}, SENT: {_sentBatches.Count}, PENDING: {_pendingBatches.Count}");
+            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number}, LOWEST_REQUESTED {BestDownwardRequestedNumber}, DEPENDENCIES {_headerDependencies.Count}, SENT: {_sentBatches.Count}, PENDING: {_pendingBatches.Count}");
             if (_logger.IsTrace)
             {
                 lock (_handlerLock)
@@ -243,14 +243,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         // response needs to be cached until predecessors arrive
                         if (header.Hash != NextHash)
                         {
-                            if (header.Number == (_blockTree.LowestInserted?.Number ?? _pivotNumber + 1) - 1)
+                            if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
                             {
                                 if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
                                 _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
                                 break;
                             }
 
-                            if (header.Number == _blockTree.LowestInserted?.Number)
+                            if (header.Number == _blockTree.LowestInsertedHeader?.Number)
                             {
                                 if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
                                 _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
@@ -385,7 +385,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     _syncStats.ReportBlocksDownload(_pivotNumber - (BestDownwardSyncNumber ?? _pivotNumber), _pivotNumber, ratio);
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInserted?.Number} | HANDLED {batch}");
+                if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
 
                 return added;
             }

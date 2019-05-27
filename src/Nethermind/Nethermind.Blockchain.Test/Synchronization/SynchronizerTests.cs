@@ -317,7 +317,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext BestSuggestBlockIs(BlockHeader blockHeader)
             {
-                Assert.AreSame(blockHeader, BlockTree.BestSuggested);
+                Assert.AreSame(blockHeader, BlockTree.BestSuggestedHeader);
                 return this;
             }
 
@@ -380,7 +380,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 get
                 {
-                    _blockHeader = BlockTree.BestSuggested;
+                    _blockHeader = BlockTree.BestSuggestedHeader;
                     return this;
                 }
             }

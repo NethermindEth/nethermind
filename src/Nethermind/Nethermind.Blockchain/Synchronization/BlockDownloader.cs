@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Synchronization
             int ancestorLookupLevel = 0;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
-            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
+            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
             {
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (headersSynced > 0)
                 {
-                    _syncStats.ReportBlocksDownload(_blockTree.BestSuggested?.Number ?? 0, bestPeer.HeadNumber);
+                    _syncStats.ReportBlocksDownload(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber);
                 }
             }
 
@@ -157,7 +157,7 @@ namespace Nethermind.Blockchain.Synchronization
             int ancestorLookupLevel = 0;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
-            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
+            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
                 if (ancestorLookupLevel > MaxReorganizationLength)
@@ -266,7 +266,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (blocksSynced > 0)
                 {
-                    _syncStats.ReportBlocksDownload(_blockTree.BestSuggested?.Number ?? 0, bestPeer.HeadNumber);
+                    _syncStats.ReportBlocksDownload(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber);
                 }
             }
 

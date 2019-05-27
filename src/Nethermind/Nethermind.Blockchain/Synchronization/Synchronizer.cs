@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
         private SyncModeSelector _syncMode;
         private BlockRequestFeed _blockDataFeed;
-        private long _bestSuggestedNumber => _blockTree.BestSuggested?.Number ?? 0;
+        private long _bestSuggestedNumber => _blockTree.BestSuggestedHeader?.Number ?? 0;
 
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs> SyncEvent;
@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.Synchronization
             // make ctor parameter?
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
 
-            BlockHeader lowestInserted = _blockTree.LowestInserted;
+            BlockHeader lowestInserted = _blockTree.LowestInsertedHeader;
 
             if (syncConfig.EnableExperimentalFastBlocks)
             {
@@ -248,7 +248,7 @@ namespace Nethermind.Blockchain.Synchronization
                 PeerInfo bestPeer = null;
                 if (_blocksSyncAllocation != null)
                 {
-                    UInt256 ourTotalDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? 0;
+                    UInt256 ourTotalDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0;
                     _syncPeerPool.EnsureBest(); // can we remove it yet?
                     bestPeer = _blocksSyncAllocation?.Current;
                     if (bestPeer == null || bestPeer.TotalDifficulty <= ourTotalDifficulty)
@@ -258,7 +258,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
 
                     SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
-                    if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer?.HeadNumber} {bestPeer?.TotalDifficulty} | ours {_bestSuggestedNumber} {_blockTree.BestSuggested?.TotalDifficulty ?? 0}");
+                    if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer?.HeadNumber} {bestPeer?.TotalDifficulty} | ours {_bestSuggestedNumber} {_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0}");
                 }
 
                 _peerSyncCancellation = new CancellationTokenSource();
@@ -314,7 +314,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _peerSyncCancellation = null;
                 source?.Dispose();
 
-                if (_syncConfig.EnableExperimentalFastBlocks && !_alreadySyncedAncient && (_blockTree.LowestInserted?.Number ?? long.MaxValue) <= 1)
+                if (_syncConfig.EnableExperimentalFastBlocks && !_alreadySyncedAncient && (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1)
                 {
                     BlockHeader header = _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash));
                     _blockTree.SuggestHeader(header);
@@ -416,7 +416,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             PeerInfo newPeer = e.Current;
-            BlockHeader bestSuggested = _blockTree.BestSuggested;
+            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             if (newPeer.TotalDifficulty > bestSuggested.TotalDifficulty)
             {
                 RequestSynchronization(SyncTriggerType.PeerChange);
@@ -425,7 +425,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private async Task<long> DownloadStateNodes(CancellationToken cancellation)
         {
-            BlockHeader bestSuggested = _blockTree.BestSuggested;
+            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             if (bestSuggested == null)
             {
                 return 0;

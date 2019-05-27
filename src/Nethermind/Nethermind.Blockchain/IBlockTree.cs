@@ -40,17 +40,22 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Best header that has been suggested
         /// </summary>
-        BlockHeader BestSuggested { get; }
+        BlockHeader BestSuggestedHeader { get; }
 
         /// <summary>
         /// Best block that has been suggested for processing
         /// </summary>
-        BlockHeader BestSuggestedFullBlock { get; }
+        Block BestSuggestedBody { get; }
         
         /// <summary>
         /// Lowest header added in reverse insert
         /// </summary>
-        BlockHeader LowestInserted { get; }
+        BlockHeader LowestInsertedHeader { get; }
+        
+        /// <summary>
+        /// Lowest header added in reverse insert
+        /// </summary>
+        Block LowestInsertedBody { get; }
         
         /// <summary>
         /// Best downloaded block number
