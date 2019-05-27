@@ -214,7 +214,7 @@ namespace Nethermind.Mining
         {
             lock (_cacheCache)
             {
-                for (uint i = epoch - 2; i < epoch + 3; i++)
+                for (uint i = Math.Max(epoch, 2) - 2; i < epoch + 3; i++)
                 {
                     if (_cacheCache.Get(i) == null)
                     {
