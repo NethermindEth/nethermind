@@ -51,7 +51,6 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private HashSet<LatencySyncPeerMock> _maliciousByRepetition;
         private HashSet<LatencySyncPeerMock> _maliciousByInvalidTxs;
         private HashSet<LatencySyncPeerMock> _maliciousByInvalidOmmers;
-        private HashSet<LatencySyncPeerMock> _maliciousByInvalidBeneficiary;
         private HashSet<LatencySyncPeerMock> _maliciousByShiftedOneForward;
         private HashSet<LatencySyncPeerMock> _maliciousByShiftedOneBack;
         private HashSet<LatencySyncPeerMock> _maliciousByShortAtStart;
