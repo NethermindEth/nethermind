@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
             else
             {
-                if ((_blockTree.LowestInsertedHeader?.Number ?? 0L) == 1L || LowestRequestedHeaderNumber == 0L)
+                if ((_blockTree.LowestInsertedHeader?.Number ?? 0L) == 1L)
                 {
                     if (!_syncConfig.DownloadBodiesInFastSync)
                     {
@@ -136,6 +136,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
                 else
                 {
+                    if (LowestRequestedHeaderNumber == 0L)
+                    {
+                        return null;
+                    }
+                    
                     blockSyncBatch = new BlockSyncBatch();
                     blockSyncBatch.MinNumber = LowestRequestedHeaderNumber ?? StartNumber;
                     blockSyncBatch.HeadersSyncBatch = new HeadersSyncBatch();
@@ -234,6 +239,22 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     _blockTree.Insert(block);
                     added++;
                 }
+            }
+
+            if (added < batch.BodiesSyncBatch.Request.Length)
+            {
+                BlockSyncBatch fillerBatch = new BlockSyncBatch();
+                fillerBatch.MinNumber = batch.MinNumber;
+                fillerBatch.BodiesSyncBatch = new BodiesSyncBatch();
+                
+                int originalLength = batch.BodiesSyncBatch.Request.Length;
+                fillerBatch.BodiesSyncBatch.Request = new Keccak[originalLength - added];
+                for (int i = added; i < originalLength; i++)
+                {
+                    fillerBatch.BodiesSyncBatch.Request[i - added] = batch.BodiesSyncBatch.Request[i];
+                }
+                
+                _pendingBatches.Push(fillerBatch);
             }
 
             return added;

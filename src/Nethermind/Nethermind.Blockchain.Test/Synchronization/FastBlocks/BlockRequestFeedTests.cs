@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             SetupFeed(true);
             SetupSyncPeers(syncPeer);
             RunFeed();
-            Assert.AreEqual(102, _time);
+            Assert.AreEqual(108, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -172,6 +172,19 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
 
         [Test]
+        public void Two_peers_with_valid_chain_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            SetupFeed(true);
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(61, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+        
+        [Test]
         public void Two_peers_with_valid_chain()
         {
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
@@ -183,6 +196,23 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             AssertTreeSynced(_validTree2048);
         }
 
+        [Test]
+        public void Two_peers_with_valid_chain_and_various_max_response_sizes_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            SetupFeed(true);
+            _peerMaxResponseSizes[syncPeer1] = 100;
+            _peerMaxResponseSizes[syncPeer2] = 75;
+
+            SetupSyncPeers(syncPeer1, syncPeer2);
+
+            RunFeed();
+            Assert.AreEqual(180, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+        
         [Test]
         public void Two_peers_with_valid_chain_and_various_max_response_sizes()
         {
@@ -309,6 +339,20 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             AssertTreeSynced(_validTree2048);
         }
+        
+        [Test]
+        public void One_peer_with_valid_one_with_invalid_A_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_badTreeAfter1024);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048, 300);
+            SetupFeed(true);
+            
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed(10000);
+            Assert.AreEqual(5124, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
 
         [Test]
         public void One_peer_with_valid_one_with_invalid_B()
@@ -322,6 +366,21 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             AssertTreeSynced(_validTree2048);
         }
+        
+        [Test]
+        public void One_peer_with_valid_one_with_invalid_B_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 300);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_badTreeAfter1024);
+            SetupFeed(true);
+
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(4214, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+
 
         [Test]
         public void Two_peers_with_valid_chain_one_shorter()
@@ -493,16 +552,17 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             }
             else if (bodiesSyncBatch != null)
             {
-                PrepareBodiesResponse(bodiesSyncBatch, tree);
+                PrepareBodiesResponse(bodiesSyncBatch, syncPeer, tree);
             }
 
             return responseBatch;
         }
 
-        private static void PrepareBodiesResponse(BodiesSyncBatch bodiesSyncBatch, IBlockTree tree)
+        private void PrepareBodiesResponse(BodiesSyncBatch bodiesSyncBatch, LatencySyncPeerMock syncPeer, IBlockTree tree)
         {
             bodiesSyncBatch.Response = new Block[bodiesSyncBatch.Request.Length];
-            for (int i = 0; i < bodiesSyncBatch.Request.Length; i++)
+            int maxResponseSize = _peerMaxResponseSizes.ContainsKey(syncPeer) ? _peerMaxResponseSizes[syncPeer] : int.MaxValue;
+            for (int i = 0; i < Math.Min(maxResponseSize, bodiesSyncBatch.Response.Length); i++)
             {
                 bodiesSyncBatch.Response[i] = tree.FindBlock(bodiesSyncBatch.Request[i], false);
             }
