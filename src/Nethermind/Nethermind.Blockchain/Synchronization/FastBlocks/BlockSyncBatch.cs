@@ -39,7 +39,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public bool Prioritized { get; set; }
 
         public BatchType BatchType => Headers != null ? BatchType.Headers : BatchType.Bodies;
-        
         public HeadersSyncBatch Headers { get; set; }
         public BodiesSyncBatch Bodies { get; set; }
         public SyncPeerAllocation Allocation { get; set; }

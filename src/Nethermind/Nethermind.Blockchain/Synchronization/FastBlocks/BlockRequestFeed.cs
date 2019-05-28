@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncStats = new SyncStats("Headers", logManager);
-            _bodiesSyncStats = new SyncStats("Blocks", logManager);
+            _bodiesSyncStats = new SyncStats("Bodies", logManager);
 
             _pivotNumber = LongConverter.FromString(_syncConfig.PivotNumber ?? "0");
             StartNewRound();

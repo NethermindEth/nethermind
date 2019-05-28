@@ -240,17 +240,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 await UpdateParallelism();
-//                if (_logger.IsInfo) _logger.Info($"Waiting for semaphore");
+                if (_logger.IsTrace) _logger.Trace($"Waiting for semaphore");
                 if (!await _semaphore.WaitAsync(1000, token))
                 {
-//                    if (_logger.IsInfo) _logger.Info($"Failed semaphore wait");
+                    if (_logger.IsTrace) _logger.Trace($"Failed semaphore wait");
                     continue;
                 }
 
-//                if (_logger.IsInfo) _logger.Info($"Successful semaphore wait");
+                if (_logger.IsTrace) _logger.Trace($"Successful semaphore wait");
 
                 BlockSyncBatch request = PrepareRequest();
-                if (request?.Headers != null)
+                if (request != null)
                 {
 //                    if (_logger.IsInfo) _logger.Info($"Creating new headers request {request} with current semaphore count {_semaphore.CurrentCount} and pending requests {_pendingRequests}");
                     Interlocked.Increment(ref _pendingRequests);
