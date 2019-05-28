@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain
 
 
             Block block = new Block(header, selectedTxs, new BlockHeader[0]);
-            header.TransactionsRoot = block.CalculateTxRoot();
+            header.TxRoot = block.CalculateTxRoot();
             return block;
         }
 

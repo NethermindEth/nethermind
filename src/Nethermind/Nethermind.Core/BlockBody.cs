@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,29 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Linq;
-using Nethermind.Core;
-
-namespace Nethermind.Network.P2P.Subprotocols.Eth
+namespace Nethermind.Core
 {
-    public class BlockBodiesMessage : P2PMessage
+    public class BlockBody
     {
-        public override int PacketType { get; } = Eth62MessageCode.BlockBodies;
-        public override string Protocol { get; } = "eth";
-
-        public BlockBodiesMessage()
+        public BlockBody(Transaction[] transactions, BlockHeader[] ommers)
         {
+            Transactions = transactions;
+            Ommers = ommers;
         }
 
-        public BlockBodiesMessage(Block[] blocks)
-        {
-            Bodies = new BlockBody[blocks.Length];
-            for (int i = 0; i < blocks.Length; i++)
-            {
-                Bodies[i] = blocks[i] == null ? null : new BlockBody(blocks[i].Transactions, blocks[i].Ommers);
-            }
-        }
-        
-        public BlockBody[] Bodies { get; set; }
+        public Transaction[] Transactions { get; }
+        public BlockHeader[] Ommers { get; }
     }
 }

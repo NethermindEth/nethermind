@@ -19,11 +19,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -47,6 +50,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private Dictionary<LatencySyncPeerMock, IBlockTree> _peerTrees;
         private Dictionary<LatencySyncPeerMock, BlockSyncBatch> _pendingResponses;
         private HashSet<LatencySyncPeerMock> _maliciousByRepetition;
+        private HashSet<LatencySyncPeerMock> _maliciousByInvalidTxs;
+        private HashSet<LatencySyncPeerMock> _maliciousByInvalidOmmers;
+        private HashSet<LatencySyncPeerMock> _maliciousByInvalidBeneficiary;
         private HashSet<LatencySyncPeerMock> _maliciousByShiftedOneForward;
         private HashSet<LatencySyncPeerMock> _maliciousByShiftedOneBack;
         private HashSet<LatencySyncPeerMock> _maliciousByShortAtStart;
@@ -75,6 +81,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _pendingResponses = new Dictionary<LatencySyncPeerMock, BlockSyncBatch>();
             _invalidBlocks = new Dictionary<LatencySyncPeerMock, HashSet<long>>();
             _maliciousByRepetition = new HashSet<LatencySyncPeerMock>();
+            _maliciousByInvalidTxs = new HashSet<LatencySyncPeerMock>();
+            _maliciousByInvalidOmmers = new HashSet<LatencySyncPeerMock>();
             _maliciousByShiftedOneForward = new HashSet<LatencySyncPeerMock>();
             _maliciousByShiftedOneBack = new HashSet<LatencySyncPeerMock>();
             _maliciousByShortAtStart = new HashSet<LatencySyncPeerMock>();
@@ -118,7 +126,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 });
 
             _syncPeerPool.AllPeers.Returns((ci) => _syncPeers.Select(sp => new PeerInfo(sp) {HeadNumber = sp.Tree.Head.Number}));
-            
+
             SetupLocalTree();
             SetupFeed();
         }
@@ -146,6 +154,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _feed = new BlockRequestFeed(_localBlockTree, _syncPeerPool, syncConfig, LimboLogs.Instance);
             _feed.StartNumber = 2047;
             _feed.StartHash = _validTree2048.Head.Hash;
+            _feed.StartTotalDifficulty = _validTree2048.Head.TotalDifficulty.Value;
         }
 
         [Test]
@@ -159,7 +168,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             AssertTreeSynced(_validTree2048, true);
         }
-        
+
         [Test]
         public void One_peer_with_valid_chain()
         {
@@ -183,7 +192,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             AssertTreeSynced(_validTree2048, true);
         }
-        
+
         [Test]
         public void Two_peers_with_valid_chain()
         {
@@ -212,7 +221,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             AssertTreeSynced(_validTree2048, true);
         }
-        
+
         [Test]
         public void Two_peers_with_valid_chain_and_various_max_response_sizes()
         {
@@ -244,6 +253,36 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
 
         [Test]
+        public void Two_peers_one_malicious_by_invalid_txs()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _maliciousByInvalidTxs.Add(syncPeer1);
+            SetupFeed(true);
+
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(86, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+        
+        [Test]
+        public void Two_peers_one_malicious_by_invalid_ommers()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _maliciousByInvalidOmmers.Add(syncPeer1);
+            SetupFeed(true);
+
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(86, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+
+        [Test]
         public void Two_peers_one_malicious_by_short_at_start()
         {
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
@@ -255,6 +294,21 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             Assert.AreEqual(49, _time);
 
             AssertTreeSynced(_validTree2048);
+        }
+
+        [Test]
+        public void Two_peers_one_malicious_by_short_at_start_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _maliciousByShortAtStart.Add(syncPeer1);
+            SetupFeed(true);
+
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(109, _time);
+
+            AssertTreeSynced(_validTree2048, true);
         }
 
         [Test]
@@ -272,6 +326,21 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
 
         [Test]
+        public void Two_peers_one_malicious_by_shift_forward_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _maliciousByShiftedOneForward.Add(syncPeer1);
+            SetupFeed(true);
+
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(109, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+
+        [Test]
         public void Two_peers_one_malicious_by_shift_back()
         {
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
@@ -283,6 +352,21 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             Assert.AreEqual(49, _time);
 
             AssertTreeSynced(_validTree2048);
+        }
+
+        [Test]
+        public void Two_peers_one_malicious_by_shift_back_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _maliciousByShiftedOneBack.Add(syncPeer1);
+            SetupFeed(true);
+
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(109, _time);
+
+            AssertTreeSynced(_validTree2048, true);
         }
 
         [Test]
@@ -300,6 +384,21 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
 
         [Test]
+        public void Two_peers_one_sending_too_short_messages_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _incorrectByTooShortMessages.Add(syncPeer1);
+            SetupFeed(true);
+
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(109, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+
+        [Test]
         public void Two_peers_one_sending_too_long_messages()
         {
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
@@ -311,6 +410,21 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             Assert.AreEqual(49, _time);
 
             AssertTreeSynced(_validTree2048);
+        }
+
+        [Test]
+        public void Two_peers_one_sending_too_long_messages_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _incorrectByTooLongMessages.Add(syncPeer1);
+            SetupFeed(true);
+
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed();
+            Assert.AreEqual(109, _time);
+
+            AssertTreeSynced(_validTree2048, true);
         }
 
         [Test]
@@ -328,6 +442,21 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
 
         [Test]
+        public void Two_peers_one_timing_out_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            _timingOut.Add(syncPeer1);
+            SetupFeed(true);
+
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            RunFeed(20000);
+            Assert.AreEqual(5067, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+
+        [Test]
         public void One_peer_with_valid_one_with_invalid_A()
         {
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_badTreeAfter1024);
@@ -339,14 +468,14 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             AssertTreeSynced(_validTree2048);
         }
-        
+
         [Test]
         public void One_peer_with_valid_one_with_invalid_A_bodies()
         {
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_badTreeAfter1024);
             LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048, 300);
             SetupFeed(true);
-            
+
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed(10000);
             Assert.AreEqual(5124, _time);
@@ -366,7 +495,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             AssertTreeSynced(_validTree2048);
         }
-        
+
         [Test]
         public void One_peer_with_valid_one_with_invalid_B_bodies()
         {
@@ -395,6 +524,19 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
 
         [Test]
+        public void Two_peers_with_valid_chain_one_shorter_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree1024);
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            SetupFeed(true);
+            RunFeed();
+            Assert.AreEqual(85, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+
+        [Test]
         public void Short_chain()
         {
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
@@ -407,6 +549,22 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             Assert.AreEqual(6, _time);
 
             AssertTreeSynced(_validTree8);
+        }
+
+        [Test]
+        public void Short_chain_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree1024);
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            SetupFeed(true);
+
+            _feed.StartNumber = _validTree8.Head.Number;
+            _feed.StartHash = _validTree8.Head.Hash;
+            RunFeed();
+            Assert.AreEqual(18, _time);
+
+            AssertTreeSynced(_validTree8, true);
         }
 
         [Test]
@@ -424,6 +582,22 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             AssertTreeSynced(_validTree2048);
         }
 
+        [Test]
+        public void Shorter_responses_bodies()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            SetupSyncPeers(syncPeer1);
+            SetupFeed(true);
+
+            _incorrectByTooShortMessages.Add(syncPeer1);
+
+            RunFeed();
+
+            Assert.AreEqual(894, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+
         private void AssertTreeSynced(IBlockTree tree, bool bodiesSync = false)
         {
             Keccak nextHash = tree.Head.Hash;
@@ -434,9 +608,12 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 if (bodiesSync)
                 {
                     Block block = _localBlockTree.FindBlock(nextHash, false);
-                    Assert.NotNull(block, $"body {tree.Head.Number - i}");
+                    Assert.AreEqual(nextHash, block.Hash, $"hash difference {tree.Head.Number - i}");
+                    Rlp saved = Rlp.Encode(tree.FindBlock(block.Hash, false));
+                    Rlp expected = Rlp.Encode(block);
+                    Assert.AreEqual(expected, saved, $"body {tree.Head.Number - i}");
                 }
-                
+
                 nextHash = header.ParentHash;
             }
         }
@@ -560,11 +737,50 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
         private void PrepareBodiesResponse(BodiesSyncBatch bodiesSyncBatch, LatencySyncPeerMock syncPeer, IBlockTree tree)
         {
-            bodiesSyncBatch.Response = new Block[bodiesSyncBatch.Request.Length];
-            int maxResponseSize = _peerMaxResponseSizes.ContainsKey(syncPeer) ? _peerMaxResponseSizes[syncPeer] : int.MaxValue;
-            for (int i = 0; i < Math.Min(maxResponseSize, bodiesSyncBatch.Response.Length); i++)
+            int requestSize = bodiesSyncBatch.Request.Length;
+            int responseSize = bodiesSyncBatch.Request.Length;
+            if (_incorrectByTooLongMessages.Contains(syncPeer))
             {
-                bodiesSyncBatch.Response[i] = tree.FindBlock(bodiesSyncBatch.Request[i], false);
+                responseSize *= 2;
+                TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} WILL SEND TOO LONG MESSAGE ({responseSize} INSTEAD OF {requestSize})");
+            }
+            else if (_incorrectByTooShortMessages.Contains(syncPeer))
+            {
+                responseSize = Math.Max(1, responseSize / 2);
+                TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} WILL SEND TOO SHORT MESSAGE ({responseSize} INSTEAD OF {requestSize})");
+            }
+
+            bodiesSyncBatch.Response = new BlockBody[responseSize];
+            int maxResponseSize = _peerMaxResponseSizes.ContainsKey(syncPeer) ? Math.Min(responseSize, _peerMaxResponseSizes[syncPeer]) : responseSize;
+
+            for (int i = 0; i < Math.Min(maxResponseSize, requestSize); i++)
+            {
+                Block block = tree.FindBlock(bodiesSyncBatch.Request[i], false);
+                bodiesSyncBatch.Response[i] = new BlockBody(block.Transactions, block.Ommers);
+            }
+
+            if (_maliciousByShortAtStart.Contains(syncPeer))
+            {
+                bodiesSyncBatch.Response[0] = null;
+                TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} WILL SEND A MALICIOUS (SHORT AT START) MESSAGE");
+            }
+
+            if (_maliciousByInvalidTxs.Contains(syncPeer))
+            {
+                for (int i = 0; i < bodiesSyncBatch.Response.Length; i++)
+                {
+                    BlockBody valid = bodiesSyncBatch.Response[i]; 
+                    bodiesSyncBatch.Response[i] = new BlockBody(new [] {Build.A.Transaction.WithData(Bytes.FromHexString("bad")).TestObject}, valid.Ommers);
+                }
+            }
+            
+            if (_maliciousByInvalidOmmers.Contains(syncPeer))
+            {
+                for (int i = 0; i < bodiesSyncBatch.Response.Length; i++)
+                {
+                    BlockBody valid = bodiesSyncBatch.Response[i]; 
+                    bodiesSyncBatch.Response[i] = new BlockBody(valid.Transactions, new [] {Build.A.BlockHeader.WithAuthor(new Address(Keccak.Compute("bad_ommer").Bytes.Take(20).ToArray())).TestObject});
+                }
             }
         }
 

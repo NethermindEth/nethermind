@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 while (_headerDependencies.ContainsKey((_blockTree.LowestInsertedHeader?.Number ?? 0) - 1))
                 {
-                    SuggestHeadersBatch(_headerDependencies[(_blockTree.LowestInsertedHeader?.Number ?? 0) - 1]);
+                    InsertHeaders(_headerDependencies[(_blockTree.LowestInsertedHeader?.Number ?? 0) - 1]);
                 }
             }
 
@@ -127,7 +127,16 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     for (int i = thisRequestSize - 1; i >= 0; i--)
                     {
                         LowestRequestedBodyHash = blockSyncBatch.BodiesSyncBatch.Request[i] = lastHeader.Hash;
-                        lastHeader = _blockTree.FindHeader(lastHeader.ParentHash);
+                        try
+                        {
+                            lastHeader = _blockTree.FindHeader(lastHeader.ParentHash);
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine(e);
+                            throw;
+                        }
+                        
                         if (lastHeader == null)
                         {
                             break;
@@ -210,13 +219,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 if (batch.HeadersSyncBatch != null)
                 {
-                    int added = SuggestHeadersBatch(batch);
+                    int added = InsertHeaders(batch);
                     return (BlocksDataHandlerResult.OK, added);
                 }
                 
                 if (batch.BodiesSyncBatch != null)
                 {
-                    int added = SuggestBodiesBatch(batch);
+                    int added = InsertBodies(batch);
                     return (BlocksDataHandlerResult.OK, added);
                 }
 
@@ -224,13 +233,31 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
-        private int SuggestBodiesBatch(BlockSyncBatch batch)
+        private int InsertBodies(BlockSyncBatch batch)
         {
-            int added = 0;
-            foreach (Block block in batch.BodiesSyncBatch.Response)
+            var bodiesSyncBatch = batch.BodiesSyncBatch;
+            if (bodiesSyncBatch.Response == null)
             {
-                if (block == null)
+                if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
+                batch.Allocation = null;
+                _pendingBatches.Push(batch);
+                return 0;
+            }
+            
+            int added = 0;
+            for (int i = 0; i < batch.BodiesSyncBatch.Response.Length; i++)
+            {
+                BlockBody blockBody = batch.BodiesSyncBatch.Response[i];
+                if (blockBody == null)
                 {
+                    break;
+                }
+                
+                Block block = new Block(_blockTree.FindHeader(batch.BodiesSyncBatch.Request[i]), blockBody.Transactions, blockBody.Ommers);
+                if (block.CalculateTxRoot() != block.TransactionsRoot ||
+                    block.CalculateOmmersHash() != block.OmmersHash)
+                {
+                    _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
                     break;
                 }
 
@@ -269,7 +296,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _sentBatches.Clear();
         }
 
-        private int SuggestHeadersBatch(BlockSyncBatch batch)
+        private int InsertHeaders(BlockSyncBatch batch)
         {
             batch.MarkHandlingStart();
             try
@@ -538,7 +565,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     batch.Allocation = null;
                     _headerDependencies.Remove(parentNumber, out _);
-                    SuggestHeadersBatch(batch);
+                    InsertHeaders(batch);
                 }
             }
 

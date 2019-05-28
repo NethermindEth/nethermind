@@ -22,6 +22,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
@@ -122,8 +123,8 @@ namespace Nethermind.Core
 
         public Keccak TransactionsRoot
         {
-            get => Header.TransactionsRoot;
-            set => Header.TransactionsRoot = value;
+            get => Header.TxRoot;
+            set => Header.TxRoot = value;
         }
 
         public Keccak ReceiptsRoot

@@ -112,7 +112,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             genesisHeader.Nonce = (ulong)nonce;
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesisHeader.StateRoot = Keccak.EmptyTreeHash;
-            genesisHeader.TransactionsRoot = Keccak.EmptyTreeHash;
+            genesisHeader.TxRoot = Keccak.EmptyTreeHash;
 
             chainSpec.Genesis = new Block(genesisHeader);
         }
