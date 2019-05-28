@@ -450,7 +450,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

@@ -90,21 +90,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
 
-            public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
             {
                 if (_causeTimeoutOnBlocks)
                 {
-                    return Task.FromException<Block[]>(new TimeoutException());
+                    return Task.FromException<BlockBody[]>(new TimeoutException());
                 }
 
-                Block[] result = new Block[blockHashes.Length];
+                BlockBody[] result = new BlockBody[blockHashes.Length];
                 for (int i = 0; i < blockHashes.Length; i++)
                 {
                     foreach (Block block in Blocks)
                     {
                         if (block.Hash == blockHashes[i])
                         {
-                            result[i] = block;
+                            result[i] = new BlockBody(block.Transactions, block.Ommers);
                         }
                     }
                 }

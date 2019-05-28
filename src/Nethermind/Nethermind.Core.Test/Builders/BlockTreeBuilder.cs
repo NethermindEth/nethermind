@@ -71,7 +71,7 @@ namespace Nethermind.Core.Test.Builders
             Block current = _genesisBlock;
             headBlock = _genesisBlock;
 
-            bool skipGenesis = TestObjectInternal.Head != null;
+            bool skipGenesis = TestObjectInternal.Genesis != null;
             for (int i = 0; i < chainLength; i++)
             {
                 headBlock = current;

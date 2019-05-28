@@ -28,11 +28,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public void Can_keep_going()
         {
-            SyncStats stats = new SyncStats(NoErrorLimboLogs.Instance);
-            stats.ReportBlocksDownload(0, 1024);
-            stats.ReportBlocksDownload(256, 1024);
-            stats.ReportBlocksDownload(512, 1024);
-            stats.ReportBlocksDownload(1024, 1024);
+            SyncStats stats = new SyncStats("Test", NoErrorLimboLogs.Instance);
+            stats.ReportDownloadProgress(0, 1024);
+            stats.ReportDownloadProgress(256, 1024);
+            stats.ReportDownloadProgress(512, 1024);
+            stats.ReportDownloadProgress(1024, 1024);
         }
     }
 }

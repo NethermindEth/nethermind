@@ -42,8 +42,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests
             = new BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>>();
 
-        private readonly BlockingCollection<Request<GetBlockBodiesMessage, Block[]>> _bodiesRequests
-            = new BlockingCollection<Request<GetBlockBodiesMessage, Block[]>>();
+        private readonly BlockingCollection<Request<GetBlockBodiesMessage, BlockBody[]>> _bodiesRequests
+            = new BlockingCollection<Request<GetBlockBodiesMessage, BlockBody[]>>();
 
         private bool _statusReceived;
         private Keccak _remoteHeadBlockHash;
@@ -389,17 +389,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(BlockBodiesMessage message)
         {
-            Block[] blocks = new Block[message.Bodies.Length];
+            BlockBody[] bodies = new BlockBody[message.Bodies.Length];
             for (int i = 0; i < message.Bodies.Length; i++)
             {
-                Block block = new Block(null, message.Bodies[i].Transactions, message.Bodies[i].Ommers);
-                blocks[i] = block;
+                BlockBody block = new BlockBody(message.Bodies[i].Transactions, message.Bodies[i].Ommers);
+                bodies[i] = block;
             }
 
             var request = _bodiesRequests.Take();
             if (message.PacketType == Eth62MessageCode.BlockBodies)
             {
-                request.CompletionSource.SetResult(blocks);
+                request.CompletionSource.SetResult(bodies);
             }
         }
 
@@ -485,7 +485,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         }
 
         [Todo(Improve.Refactor, "Generic approach to requests")]
-        private async Task<Block[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
+        private async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
             if (_headersRequests.IsAddingCompleted || _isDisposed)
             {
@@ -498,13 +498,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Logger.Trace($"Blockhashes count: {message.BlockHashes.Length}");
             }
 
-            var request = new Request<GetBlockBodiesMessage, Block[]>(message);
+            var request = new Request<GetBlockBodiesMessage, BlockBody[]>(message);
             _bodiesRequests.Add(request, token);
             var perfCalcId = _perfService.StartPerfCalc();
 
             Send(request.Message);
 
-            Task<Block[]> task = request.CompletionSource.Task;
+            Task<BlockBody[]> task = request.CompletionSource.Task;
             var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, token));
             if (firstTask.IsCanceled)
             {
@@ -555,11 +555,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Session.InitiateDisconnect(reason, details);
         }
 
-        async Task<Block[]> ISyncPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
+        async Task<BlockBody[]> ISyncPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
             var bodiesMsg = new GetBlockBodiesMessage(blockHashes);
 
-            Block[] blocks = await SendRequest(bodiesMsg, token);
+            BlockBody[] blocks = await SendRequest(bodiesMsg, token);
             return blocks;
         }
 

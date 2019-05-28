@@ -78,20 +78,23 @@ namespace Nethermind.Blockchain.Synchronization
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, _nodeDataDownloader, logManager);
             _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
-
-            // make ctor parameter?
+            
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
 
             BlockHeader lowestInserted = _blockTree.LowestInsertedHeader;
+            Block lowestInsertedBody = _blockTree.LowestInsertedBody;
 
             if (syncConfig.EnableExperimentalFastBlocks)
             {
+                Keccak pivotHash = syncConfig.PivotHash == null ? null : new Keccak(syncConfig.PivotHash);
+                long pivotNumber = LongConverter.FromString(syncConfig.PivotNumber ?? "0x0");
+                UInt256 pivotDifficulty = UInt256.Parse(syncConfig.PivotTotalDifficulty ?? "0x0");
                 _blockDataFeed = new BlockRequestFeed(_blockTree, _syncPeerPool, syncConfig, logManager);
-                _blockDataFeed.StartNumber = lowestInserted?.Number ?? LongConverter.FromString(syncConfig.PivotNumber ?? "0x0");
-                _blockDataFeed.StartHash = lowestInserted?.Hash ?? (syncConfig.PivotHash == null ? null : new Keccak(syncConfig.PivotHash));
-                _blockDataFeed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? UInt256.Parse(syncConfig.PivotTotalDifficulty ?? "0x0");
-                _blockDataFeed.RequestSize = 512;
-                
+                _blockDataFeed.StartNumber = lowestInserted?.Number ?? pivotNumber;
+                _blockDataFeed.StartHeaderHash = lowestInserted?.Hash ?? pivotHash;
+                _blockDataFeed.StartBodyHash = lowestInsertedBody?.Hash ?? pivotHash;
+                _blockDataFeed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? pivotDifficulty;
+
                 _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, _blockDataFeed, blockValidator, sealValidator, logManager);
             }
         }
@@ -314,12 +317,20 @@ namespace Nethermind.Blockchain.Synchronization
                 _peerSyncCancellation = null;
                 source?.Dispose();
 
-                if (_syncConfig.EnableExperimentalFastBlocks && !_alreadySyncedAncient && (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1)
-                {
-                    BlockHeader header = _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash));
-                    _blockTree.SuggestHeader(header);
-                    _alreadySyncedAncient = true;
-                }
+                FinalizeFastBlocks();
+            }
+        }
+
+        private void FinalizeFastBlocks()
+        {
+            if (!_alreadySyncedAncient 
+                && _syncConfig.EnableExperimentalFastBlocks 
+                && (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1
+                && (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1))
+            {
+                BlockHeader header = _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash));
+                _blockTree.SuggestHeader(header);
+                _alreadySyncedAncient = true;
             }
         }
 

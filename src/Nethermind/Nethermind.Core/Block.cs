@@ -192,9 +192,7 @@ namespace Nethermind.Core
 
             return builder.ToString();
         }
-
-        public bool HasAddressesRecovered => Transactions.Length == 0 || Transactions[0].SenderAddress != null;
-
+        
         public override string ToString()
         {
             return ToString(Format.Short);
