@@ -69,7 +69,7 @@ namespace Nethermind.Mining
 
         internal async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
         {
-            if (processed.Header.TransactionsRoot == null ||
+            if (processed.Header.TxRoot == null ||
                 processed.Header.StateRoot == null ||
                 processed.Header.ReceiptsRoot == null ||
                 processed.Header.OmmersHash == null ||

@@ -97,8 +97,6 @@ namespace Nethermind.Network.Discovery
             });
         }
 
-        public event EventHandler OnChannelActivated;
-
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
             var content = packet.Content;
@@ -204,5 +202,7 @@ namespace Nethermind.Network.Discovery
                     throw new Exception($"Unsupported messageType: {message.MessageType}");
             }
         }
+        
+        public event EventHandler OnChannelActivated;
     }
 }

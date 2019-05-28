@@ -23,6 +23,7 @@ namespace Nethermind.Blockchain.Synchronization
 {
     internal class SyncStats
     {
+        private readonly string _prefix;
         private long _firstCurrent;
         private DateTime _firstNotificationTime = DateTime.MinValue;
         private DateTime _lastSyncNotificationTime = DateTime.MinValue;
@@ -31,34 +32,15 @@ namespace Nethermind.Blockchain.Synchronization
 
         private ILogger _logger;
 
-        public SyncStats(ILogManager logManager)
+        public SyncStats(string prefix, ILogManager logManager)
         {
+            _prefix = prefix ?? throw new ArgumentNullException(nameof(prefix));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         private bool isFirst = true;
 
-        public void ReportBlocksDownload(long current, long total)
-        {
-            // create sync stats like processing stats?
-            if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1)
-                && (_lastCurrent != current || _lastTotal != total))
-            {
-                if (_logger.IsInfo) _logger.Info($"Blocks download        {string.Empty.PadLeft(9 - current.ToString().Length, ' ')}{current}/{total} | {(current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps");
-                _lastSyncNotificationTime = DateTime.UtcNow;
-                _lastCurrent = current;
-                _lastTotal = total;
-            }
-
-            if (isFirst)
-            {
-                _firstCurrent = _lastCurrent;
-                _firstNotificationTime = DateTime.UtcNow;
-                isFirst = false;
-            }
-        }
-
-        public void ReportBlocksDownload(long current, long total, decimal ratio)
+        public void ReportDownloadProgress(long current, long total, decimal? ratio = null)
         {
             // create sync stats like processing stats?
             if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1)
@@ -69,7 +51,7 @@ namespace Nethermind.Blockchain.Synchronization
                     string bps = isFirst ? "N/A" : $"{(current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps";
                     if (current != _firstCurrent)
                     {
-                        _logger.Info($"Blocks download        {string.Empty.PadLeft(9 - current.ToString().Length, ' ')}{current}/{total} | {bps} | hit ratio: {ratio:p2}");
+                        _logger.Info($"{_prefix.PadRight(7, ' ')} download        {current.ToString().PadLeft(9, ' ')}/{total} | {bps}" + (ratio == null ? string.Empty : $" | hit ratio: {ratio:p2}"));
                     }
                 }
 

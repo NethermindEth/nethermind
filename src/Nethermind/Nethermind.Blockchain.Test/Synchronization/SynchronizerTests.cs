@@ -90,21 +90,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
 
-            public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
             {
                 if (_causeTimeoutOnBlocks)
                 {
-                    return Task.FromException<Block[]>(new TimeoutException());
+                    return Task.FromException<BlockBody[]>(new TimeoutException());
                 }
 
-                Block[] result = new Block[blockHashes.Length];
+                BlockBody[] result = new BlockBody[blockHashes.Length];
                 for (int i = 0; i < blockHashes.Length; i++)
                 {
                     foreach (Block block in Blocks)
                     {
                         if (block.Hash == blockHashes[i])
                         {
-                            result[i] = block;
+                            result[i] = new BlockBody(block.Transactions, block.Ommers);
                         }
                     }
                 }
@@ -293,7 +293,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 Synchronizer = new Synchronizer(BlockTree,
                     TestBlockValidator.AlwaysValid,
                     TestSealValidator.AlwaysValid,
-                    SyncPeerPool, syncConfig, nodeDataDownloader, GoerliSpecProvider.Instance, _logManager); 
+                    SyncPeerPool, syncConfig, nodeDataDownloader, _logManager); 
                 
                 SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, _logManager);
                 SyncPeerPool.Start();
@@ -317,7 +317,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext BestSuggestBlockIs(BlockHeader blockHeader)
             {
-                Assert.AreSame(blockHeader, BlockTree.BestSuggested);
+                Assert.AreSame(blockHeader, BlockTree.BestSuggestedHeader);
                 return this;
             }
 
@@ -380,7 +380,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 get
                 {
-                    _blockHeader = BlockTree.BestSuggested;
+                    _blockHeader = BlockTree.BestSuggestedHeader;
                     return this;
                 }
             }

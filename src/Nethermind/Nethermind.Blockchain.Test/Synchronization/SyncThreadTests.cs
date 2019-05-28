@@ -295,7 +295,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 tree,
                 blockValidator,
                 sealValidator,
-                syncPeerPool, syncConfig, downloader, GoerliSpecProvider.Instance, logManager);
+                syncPeerPool, syncConfig, downloader, logManager);
             var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, logManager);
 
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();

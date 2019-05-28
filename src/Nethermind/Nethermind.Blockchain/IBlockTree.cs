@@ -40,17 +40,22 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Best header that has been suggested
         /// </summary>
-        BlockHeader BestSuggested { get; }
+        BlockHeader BestSuggestedHeader { get; }
 
         /// <summary>
         /// Best block that has been suggested for processing
         /// </summary>
-        BlockHeader BestSuggestedFullBlock { get; }
+        Block BestSuggestedBody { get; }
         
         /// <summary>
         /// Lowest header added in reverse insert
         /// </summary>
-        BlockHeader LowestInserted { get; }
+        BlockHeader LowestInsertedHeader { get; }
+        
+        /// <summary>
+        /// Lowest header added in reverse insert
+        /// </summary>
+        Block LowestInsertedBody { get; }
         
         /// <summary>
         /// Best downloaded block number
@@ -63,11 +68,18 @@ namespace Nethermind.Blockchain
         BlockHeader Head { get; }
         
         /// <summary>
-        /// Suggests a block header (without body)
+        /// Inserts a disconnected block header (without body)
         /// </summary>
         /// <param name="header">Header to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult Insert(BlockHeader header);
+        
+        /// <summary>
+        /// Inserts a disconnected block body
+        /// </summary>
+        /// <param name="block">Block to add</param>
+        /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        AddBlockResult Insert(Block block);
         
         /// <summary>
         /// Suggests block for inclusion in the block tree.

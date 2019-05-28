@@ -39,7 +39,7 @@ namespace Nethermind.Mining.Test
             ulong validNonce = 971086423715459953;
 
             BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 1000, 1, 21000, 1, new byte[] {1, 2, 3});
-            header.TransactionsRoot = Keccak.Zero;
+            header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
             header.OmmersHash = Keccak.Zero;
             header.StateRoot = Keccak.Zero;
@@ -61,7 +61,7 @@ namespace Nethermind.Mining.Test
             ulong badNonce = 971086423715459953; // change if valid
 
             BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, (UInt256)BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] {1, 2, 3});
-            header.TransactionsRoot = Keccak.Zero;
+            header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
             header.OmmersHash = Keccak.Zero;
             header.StateRoot = Keccak.Zero;

@@ -69,12 +69,12 @@ namespace Nethermind.Wallet
         [DoNotUseInSecuredContext("This stored the node key in plaintext - it is just one step further to the full node key protection")]
         public PrivateKey LoadNodeKey()
         {
-            string oldPath = UnsecuredNodeKeyFilePath;
-            string newPath = Path.Combine(_config.KeyStoreDirectory, UnsecuredNodeKeyFilePath);
-
             // this is not secure at all but this is just the node key, nothing critical so far, will use the key store here later and allow to manage by password when launching the node
             if (_config.TestNodeKey == null)
             {
+                string oldPath = UnsecuredNodeKeyFilePath;
+                string newPath = Path.Combine(_config.KeyStoreDirectory, UnsecuredNodeKeyFilePath);
+                
                 if (!File.Exists(newPath))
                 {
                     PrivateKey nodeKey = File.Exists(oldPath) ? new PrivateKey(File.ReadAllBytes(oldPath)) : new PrivateKeyGenerator(_cryptoRandom).Generate();

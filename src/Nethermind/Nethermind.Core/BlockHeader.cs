@@ -54,7 +54,7 @@ namespace Nethermind.Core
         public Address Beneficiary { get; set; }
         public Address GasBeneficiary => Author ?? Beneficiary;
         public Keccak StateRoot { get; set; }
-        public Keccak TransactionsRoot { get; set; }
+        public Keccak TxRoot { get; set; }
         public Keccak ReceiptsRoot { get; set; }
         public Bloom Bloom { get; set; }
         public UInt256 Difficulty { get; set; }

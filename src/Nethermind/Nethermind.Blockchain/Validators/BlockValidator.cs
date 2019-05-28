@@ -74,6 +74,12 @@ namespace Nethermind.Blockchain.Validators
                 }
             }
 
+            if (block.Header.OmmersHash != block.CalculateOmmersHash())
+            {
+                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid ommers hash");
+                return false;
+            }
+            
             if (!_ommersValidator.Validate(block.Header, block.Ommers))
             {
                 _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid ommers");
@@ -86,17 +92,11 @@ namespace Nethermind.Blockchain.Validators
                 if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid header");
                 return false;
             }
-            
-            if (block.Header.OmmersHash != Keccak.Compute(Rlp.Encode(block.Ommers)))
-            {
-                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid ommers hash");
-                return false;
-            }
-            
+
             Keccak txRoot = block.CalculateTxRoot();
-            if (txRoot != block.Header.TransactionsRoot)
+            if (txRoot != block.Header.TxRoot)
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) tx root {txRoot} != stated tx root {block.Header.TransactionsRoot}");
+                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) tx root {txRoot} != stated tx root {block.Header.TxRoot}");
                 return false;
             }
 

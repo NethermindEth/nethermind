@@ -92,9 +92,9 @@ namespace Nethermind.Facade
         }
 
         public BlockHeader Head => _blockTree.Head;
-        public BlockHeader BestSuggested => _blockTree.BestSuggested;
+        public BlockHeader BestSuggested => _blockTree.BestSuggestedHeader;
         public long BestKnown => _blockTree.BestKnownNumber;
-        public bool IsSyncing => _blockTree.BestSuggested.Hash != _blockTree.Head.Hash;
+        public bool IsSyncing => _blockTree.BestSuggestedHeader.Hash != _blockTree.Head.Hash;
         public Block FindBlock(Keccak blockHash, bool mainChainOnly) => _blockTree.FindBlock(blockHash, mainChainOnly);
         public Block FindBlock(long blockNumber) => _blockTree.FindBlock(blockNumber);
         public Block RetrieveHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, false);

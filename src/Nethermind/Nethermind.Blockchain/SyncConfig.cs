@@ -31,6 +31,8 @@ namespace Nethermind.Blockchain
         public long MinDiffPercentageForLatencySwitch { get; } = 10;
         public long MinDiffForLatencySwitch { get; } = 5;
         public bool EnableExperimentalFastBlocks { get; set; } = false;
+        public bool DownloadBodiesInFastSync { get; set; }
+        public bool DownloadReceiptsInFastSync { get; set; }
         public string PivotTotalDifficulty { get; set; } = null;
         public string PivotNumber { get; set;} = null;
         public string PivotHash { get; set;} = null;

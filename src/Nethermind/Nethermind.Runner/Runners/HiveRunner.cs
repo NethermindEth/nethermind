@@ -195,7 +195,7 @@ namespace Nethermind.Runner.Runners
                 Nonce = (ulong) Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger(),               
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 StateRoot = Keccak.EmptyTreeHash,
-                TransactionsRoot = Keccak.EmptyTreeHash
+                TxRoot = Keccak.EmptyTreeHash
             };
 
             header.StateRoot = stateRoot;

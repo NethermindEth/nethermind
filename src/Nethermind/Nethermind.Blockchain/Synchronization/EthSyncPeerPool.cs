@@ -126,9 +126,9 @@ namespace Nethermind.Blockchain.Synchronization
                         {
                             UpdateAllocations("REFRESH");
                             // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
-                            if (peerInfo.TotalDifficulty == _blockTree.BestSuggested?.TotalDifficulty && peerInfo.HeadHash != _blockTree.BestSuggested?.Hash)
+                            if (peerInfo.TotalDifficulty == _blockTree.BestSuggestedHeader?.TotalDifficulty && peerInfo.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
                             {
-                                Block block = _blockTree.FindBlock(_blockTree.BestSuggested.Hash, false);
+                                Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash, false);
                                 if (block != null) // can be null if fast syncing headers only
                                 {
                                     peerInfo.SyncPeer.SendNewBlock(block);
@@ -246,8 +246,8 @@ namespace Nethermind.Blockchain.Synchronization
             int peersDropped = 0;
             _lastUselessDrop = DateTime.UtcNow;
 
-            long ourNumber = _blockTree.BestSuggested?.Number ?? 0L;
-            UInt256 ourDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero;
+            long ourNumber = _blockTree.BestSuggestedHeader?.Number ?? 0L;
+            UInt256 ourDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
             foreach (PeerInfo peerInfo in AllPeers)
             {
                 if (peerInfo.HeadNumber > ourNumber)
@@ -423,7 +423,7 @@ namespace Nethermind.Blockchain.Synchronization
                         continue;
                     }
 
-                    if (peerInfo.TotalDifficulty < (_blockTree.BestSuggested?.TotalDifficulty ?? 0))
+                    if (peerInfo.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0))
                     {
                         continue;
                     }
@@ -517,12 +517,12 @@ namespace Nethermind.Blockchain.Synchronization
             (PeerInfo Info, long Latency) bestPeer = (null, isLowPriority ? 0 : 100000);
             foreach ((_, PeerInfo info) in _peers)
             {
-                if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < (_blockTree.BestSuggested?.Number ?? 0) + allocation.MinBlocksAhead.Value)
+                if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < (_blockTree.BestSuggestedHeader?.Number ?? 0) + allocation.MinBlocksAhead.Value)
                 {
                     continue;
                 }
 
-                if (!info.IsInitialized || info.TotalDifficulty <= (_blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero))
+                if (!info.IsInitialized || info.TotalDifficulty <= (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero))
                 {
                     continue;
                 }
@@ -542,7 +542,7 @@ namespace Nethermind.Blockchain.Synchronization
                     _sleepingPeers.TryRemove(info, out _);
                 }
 
-                if (info.TotalDifficulty - (_blockTree.BestSuggested?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.SyncPeer.ClientId.Contains("Parity"))
+                if (info.TotalDifficulty - (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.SyncPeer.ClientId.Contains("Parity"))
                 {
                     // Parity advertises a better block but never sends it back and then it disconnects after a few conversations like this
                     // Geth responds all fine here
@@ -643,7 +643,7 @@ namespace Nethermind.Blockchain.Synchronization
         public SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description, long? minNumber = null)
         {
             SyncPeerAllocation allocation = new SyncPeerAllocation(description);
-            allocation.MinBlocksAhead = minNumber - _blockTree.BestSuggested?.Number ?? 0;
+            allocation.MinBlocksAhead = minNumber - _blockTree.BestSuggestedHeader?.Number ?? 0;
 
             if ((borrowOptions & BorrowOptions.DoNotReplace) == BorrowOptions.DoNotReplace)
             {

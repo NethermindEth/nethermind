@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
             _pool = new EthSyncPeerPool(_blockTree, stats, quickConfig, LimboLogs.Instance);
-            _synchronizer = new Synchronizer(_blockTree, blockValidator, sealValidator, _pool, quickConfig, Substitute.For<INodeDataDownloader>(), GoerliSpecProvider.Instance, LimboLogs.Instance);
+            _synchronizer = new Synchronizer(_blockTree, blockValidator, sealValidator, _pool, quickConfig, Substitute.For<INodeDataDownloader>(), LimboLogs.Instance);
             _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, sealValidator, _pool, _synchronizer, LimboLogs.Instance);
         }
 
@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.AddPeer(peer);
             
             resetEvent.WaitOne(_standardTimeoutUnit);
-            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int) _blockTree.BestSuggestedHeader.Number);
         }
 
         [Test]
@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _synchronizer.Start();
             _pool.AddPeer(peer);
             
-            Assert.AreEqual(0, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(0, (int) _blockTree.BestSuggestedHeader.Number);
         }
 
         [Test]
@@ -128,7 +128,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.AddPeer(peer);
             
             resetEvent.WaitOne(_standardTimeoutUnit);
-            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int) _blockTree.BestSuggestedHeader.Number);
         }
 
         [Test]
@@ -153,7 +153,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             semaphore.Wait(_standardTimeoutUnit);
             semaphore.Wait(_standardTimeoutUnit);
 
-            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int) _blockTree.BestSuggestedHeader.Number);
         }
 
         [Test]
@@ -177,7 +177,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.AreEqual(SyncBatchSize.Max - 1, (int) _blockTree.BestSuggested.Number);
+            Assert.AreEqual(SyncBatchSize.Max - 1, (int) _blockTree.BestSuggestedHeader.Number);
         }
 
         [Test]
@@ -198,7 +198,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
+            Assert.AreEqual(miner1Tree.BestSuggestedHeader.Hash, _blockTree.BestSuggestedHeader.Hash, "client agrees with miner before split");
 
             Block splitBlock = Build.A.Block.WithParent(miner1Tree.FindParent(miner1Tree.Head)).WithDifficulty(miner1Tree.Head.Difficulty - 1).TestObject;
             Block splitBlockChild = Build.A.Block.WithParent(splitBlock).TestObject;
@@ -208,7 +208,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             miner1Tree.SuggestBlock(splitBlockChild);
             miner1Tree.UpdateMainChain(splitBlockChild);
 
-            Assert.AreEqual(splitBlockChild.Hash, miner1Tree.BestSuggested.Hash, "split as expected");
+            Assert.AreEqual(splitBlockChild.Hash, miner1Tree.BestSuggestedHeader.Hash, "split as expected");
 
             resetEvent.Reset();
 
@@ -216,7 +216,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner after split");
+            Assert.AreEqual(miner1Tree.BestSuggestedHeader.Hash, _blockTree.BestSuggestedHeader.Hash, "client agrees with miner after split");
         }
 
         [Test]
@@ -237,11 +237,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
+            Assert.AreEqual(miner1Tree.BestSuggestedHeader.Hash, _blockTree.BestSuggestedHeader.Hash, "client agrees with miner before split");
 
             miner1Tree.AddBranch(7, 0, 1);
 
-            Assert.AreNotEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client does not agree with miner after split");
+            Assert.AreNotEqual(miner1Tree.BestSuggestedHeader.Hash, _blockTree.BestSuggestedHeader.Hash, "client does not agree with miner after split");
 
             resetEvent.Reset();
 
@@ -249,7 +249,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner after split");
+            Assert.AreEqual(miner1Tree.BestSuggestedHeader.Hash, _blockTree.BestSuggestedHeader.Hash, "client agrees with miner after split");
         }
 
         [Test]
@@ -270,7 +270,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.AddPeer(miner1);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.AreEqual(minerTree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
+            Assert.AreEqual(minerTree.BestSuggestedHeader.Hash, _blockTree.BestSuggestedHeader.Hash, "client agrees with miner before split");
 
             Block newBlock = Build.A.Block.WithParent(minerTree.Head).TestObject;
             minerTree.SuggestBlock(newBlock);
@@ -308,7 +308,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.AddPeer(miner1);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.AreEqual(minerTree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
+            Assert.AreEqual(minerTree.BestSuggestedHeader.Hash, _blockTree.BestSuggestedHeader.Hash, "client agrees with miner before split");
 
             Block newBlock = Build.A.Block.WithParent(minerTree.Head).TestObject;
             minerTree.SuggestBlock(newBlock);

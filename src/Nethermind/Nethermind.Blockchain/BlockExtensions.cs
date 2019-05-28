@@ -42,5 +42,10 @@ namespace Nethermind.Blockchain
             txTree.UpdateRootHash();
             return txTree.RootHash;
         }
+        
+        public static Keccak CalculateOmmersHash(this Block block)
+        {
+            return Keccak.Compute(Rlp.Encode(block.Ommers));
+        }
     }
 }

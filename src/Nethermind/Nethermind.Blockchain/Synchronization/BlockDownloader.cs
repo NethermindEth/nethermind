@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _syncBatchSize = new SyncBatchSize(logManager);
-            _syncStats = new SyncStats(logManager);
+            _syncStats = new SyncStats("Blocks", logManager);
         }
 
         public async Task<long> DownloadHeaders(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation)
@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Synchronization
             int ancestorLookupLevel = 0;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
-            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
+            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
             {
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (headersSynced > 0)
                 {
-                    _syncStats.ReportBlocksDownload(_blockTree.BestSuggested?.Number ?? 0, bestPeer.HeadNumber);
+                    _syncStats.ReportDownloadProgress(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber);
                 }
             }
 
@@ -157,7 +157,7 @@ namespace Nethermind.Blockchain.Synchronization
             int ancestorLookupLevel = 0;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
-            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggested?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
+            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
                 if (ancestorLookupLevel > MaxReorganizationLength)
@@ -189,7 +189,7 @@ namespace Nethermind.Blockchain.Synchronization
                     headersByHash[headers[i].Hash] = headers[i];
                 }
 
-                Task<Block[]> bodiesTask = bestPeer.SyncPeer.GetBlocks(hashes.ToArray(), cancellation);
+                Task<BlockBody[]> bodiesTask = bestPeer.SyncPeer.GetBlocks(hashes.ToArray(), cancellation);
                 await bodiesTask.ContinueWith(t =>
                 {
                     if (t.IsFaulted)
@@ -216,7 +216,12 @@ namespace Nethermind.Blockchain.Synchronization
                     return blocksSynced;
                 }
 
-                Block[] blocks = bodiesTask.Result;
+                BlockBody[] bodies = bodiesTask.Result;
+                Block[] blocks = new Block[bodies.Length];
+                for (int i = 0; i < bodies.Length; i++)
+                {
+                    blocks[i] = new Block(null, bodies[i].Transactions, bodies[i].Ommers);
+                }
 
                 _sinceLastTimeout++;
                 if (_sinceLastTimeout > 2)
@@ -266,7 +271,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (blocksSynced > 0)
                 {
-                    _syncStats.ReportBlocksDownload(_blockTree.BestSuggested?.Number ?? 0, bestPeer.HeadNumber);
+                    _syncStats.ReportDownloadProgress(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber);
                 }
             }
 
@@ -300,7 +305,7 @@ namespace Nethermind.Blockchain.Synchronization
             cancellation.ThrowIfCancellationRequested();
 
             var headers = headersRequest.Result;
-//            ValidateSeals(cancellation, headers);
+            ValidateSeals(cancellation, headers);
             ValidateBatchConsistency(bestPeer, headers);
             return headers;
         }

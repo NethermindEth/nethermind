@@ -24,6 +24,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
     public class BodiesSyncBatch
     {
         public Keccak[] Request { get; set; }
-        public Block[] Response { get; set; }
+        public BlockBody[] Response { get; set; }
     }
 }

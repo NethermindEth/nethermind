@@ -69,8 +69,19 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 if (peer != null)
                 {
                     batch.MarkSent();
-                    Task<BlockHeader[]> getHeadersTask = peer.GetBlockHeaders(batch.HeadersSyncBatch.StartNumber, batch.HeadersSyncBatch.RequestSize, 0, token);
-                    await getHeadersTask.ContinueWith(
+
+                    Task<BlockHeader[]> getHeadersTask = null;
+                    Task<BlockBody[]> getBodiesTask = null;
+                    if (batch.BatchType == BatchType.Headers)
+                    {
+                        getHeadersTask = peer.GetBlockHeaders(batch.Headers.StartNumber, batch.Headers.RequestSize, 0, token);
+                    }
+                    else
+                    {
+                        getBodiesTask = peer.GetBlocks(batch.Bodies.Request, token);
+                    }
+
+                    await (getHeadersTask?.ContinueWith(
                         t =>
                         {
                             if (t.IsCompletedSuccessfully)
@@ -80,21 +91,40 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                     if(_logger.IsDebug) _logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
                                 }
 
-                                batch.HeadersSyncBatch.Response = getHeadersTask.Result;
+                                batch.Headers.Response = getHeadersTask.Result;
                             }
                             else
                             {
                                 _syncPeerPool.ReportInvalid(batch.Allocation);
                             }
                         }
-                    );
+                    ) ?? Task.CompletedTask);
+                    
+                    await (getBodiesTask?.ContinueWith(
+                               t =>
+                               {
+                                   if (t.IsCompletedSuccessfully)
+                                   {
+                                       if (batch.RequestTime > 1000)
+                                       {
+                                           if(_logger.IsDebug) _logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
+                                       }
+
+                                       batch.Bodies.Response = getBodiesTask.Result;
+                                   }
+                                   else
+                                   {
+                                       _syncPeerPool.ReportInvalid(batch.Allocation);
+                                   }
+                               }
+                           ) ?? Task.CompletedTask);
                 }
 
                 (BlocksDataHandlerResult Result, int NodesConsumed) result = (BlocksDataHandlerResult.InvalidFormat, 0);
                 try
                 {
                     batch.MarkValidation();
-                    if (batch.HeadersSyncBatch?.Response != null)
+                    if (batch.Headers?.Response != null)
                     {
                         ValidateBlocks(token, batch);
                     }
@@ -136,7 +166,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         {
             if (_logger.IsTrace) _logger.Trace("Starting block validation");
 
-            BlockHeader[] headers = batch.HeadersSyncBatch.Response;
+            BlockHeader[] headers = batch.Headers.Response;
             for (int i = 0; i < headers.Length; i++)
             {
                 if (cancellation.IsCancellationRequested)
@@ -157,7 +187,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     if (_logger.IsTrace) _logger.Trace("One of the blocks is invalid");
                     _syncPeerPool.ReportInvalid(batch.Allocation?.Current);
-                    batch.HeadersSyncBatch.Response = null;
+                    batch.Headers.Response = null;
                 }
             }
         }
@@ -210,17 +240,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 await UpdateParallelism();
-//                if (_logger.IsInfo) _logger.Info($"Waiting for semaphore");
+                if (_logger.IsTrace) _logger.Trace($"Waiting for semaphore");
                 if (!await _semaphore.WaitAsync(1000, token))
                 {
-//                    if (_logger.IsInfo) _logger.Info($"Failed semaphore wait");
+                    if (_logger.IsTrace) _logger.Trace($"Failed semaphore wait");
                     continue;
                 }
 
-//                if (_logger.IsInfo) _logger.Info($"Successful semaphore wait");
+                if (_logger.IsTrace) _logger.Trace($"Successful semaphore wait");
 
                 BlockSyncBatch request = PrepareRequest();
-                if (request?.HeadersSyncBatch != null)
+                if (request != null)
                 {
 //                    if (_logger.IsInfo) _logger.Info($"Creating new headers request {request} with current semaphore count {_semaphore.CurrentCount} and pending requests {_pendingRequests}");
                     Interlocked.Increment(ref _pendingRequests);

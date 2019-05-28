@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Synchronization
                 peerInfo.TotalDifficulty = block.TotalDifficulty ?? peerInfo.TotalDifficulty;
             }
 
-            if ((block.TotalDifficulty ?? 0) < _blockTree.BestSuggested.TotalDifficulty) return;
+            if ((block.TotalDifficulty ?? 0) < _blockTree.BestSuggestedHeader.TotalDifficulty) return;
 
             lock (_recentlySuggested)
             {

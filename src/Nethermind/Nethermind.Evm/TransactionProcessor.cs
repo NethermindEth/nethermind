@@ -70,7 +70,7 @@ namespace Nethermind.Evm
 
         private EthereumEcdsa _ecdsa;
 
-        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
+        private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             Address recipient = transaction.To;

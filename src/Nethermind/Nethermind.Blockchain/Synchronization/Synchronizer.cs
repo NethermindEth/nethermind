@@ -41,21 +41,19 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISyncConfig _syncConfig;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly INodeDataDownloader _nodeDataDownloader;
-        private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly BlockDownloader _blockDownloader;
         private readonly ParallelBlocksDownloader _parallelBlockDownloader;
-
-        private System.Timers.Timer _syncTimer;
-        private SyncPeerAllocation _blocksSyncAllocation;
-        private Task _syncLoopTask;
+        
+        private ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
         private CancellationTokenSource _syncLoopCancellation = new CancellationTokenSource();
         private CancellationTokenSource _peerSyncCancellation;
-        private bool _requestedSyncCancelDueToBetterPeer;
-        private readonly ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
+        private SyncPeerAllocation _blocksSyncAllocation;
+        private System.Timers.Timer _syncTimer;
         private SyncModeSelector _syncMode;
-        private BlockRequestFeed _blockDataFeed;
-        private long _bestSuggestedNumber => _blockTree.BestSuggested?.Number ?? 0;
+        private bool _cancelDueToBetterPeer;
+        private bool _alreadySyncedAncient;
+        private Task _syncLoopTask;
 
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs> SyncEvent;
@@ -66,33 +64,34 @@ namespace Nethermind.Blockchain.Synchronization
             IEthSyncPeerPool peerPool,
             ISyncConfig syncConfig,
             INodeDataDownloader nodeDataDownloader,
-            ISpecProvider specProvider,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, _nodeDataDownloader, logManager);
             _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
 
-            // make ctor parameter?
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
 
-            BlockHeader lowestInserted = _blockTree.LowestInserted;
+            BlockHeader lowestInserted = _blockTree.LowestInsertedHeader;
+            Block lowestInsertedBody = _blockTree.LowestInsertedBody;
 
             if (syncConfig.EnableExperimentalFastBlocks)
             {
-                _blockDataFeed = new BlockRequestFeed(_blockTree, _syncPeerPool, syncConfig, logManager);
-                _blockDataFeed.StartNumber = lowestInserted?.Number ?? LongConverter.FromString(syncConfig.PivotNumber ?? "0x0");
-                _blockDataFeed.StartHash = lowestInserted?.Hash ?? (syncConfig.PivotHash == null ? null : new Keccak(syncConfig.PivotHash));
-                _blockDataFeed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? UInt256.Parse(syncConfig.PivotTotalDifficulty ?? "0x0");
-                _blockDataFeed.RequestSize = 512;
-                
-                _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, _blockDataFeed, blockValidator, sealValidator, logManager);
+                Keccak pivotHash = syncConfig.PivotHash == null ? null : new Keccak(syncConfig.PivotHash);
+                long pivotNumber = LongConverter.FromString(syncConfig.PivotNumber ?? "0x0");
+                UInt256 pivotDifficulty = UInt256.Parse(syncConfig.PivotTotalDifficulty ?? "0x0");
+                BlockRequestFeed blockDataFeed = new BlockRequestFeed(_blockTree, _syncPeerPool, syncConfig, logManager);
+                blockDataFeed.StartNumber = lowestInserted?.Number ?? pivotNumber;
+                blockDataFeed.StartHeaderHash = lowestInserted?.Hash ?? pivotHash;
+                blockDataFeed.StartBodyHash = lowestInsertedBody?.Hash ?? pivotHash;
+                blockDataFeed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? pivotDifficulty;
+
+                _parallelBlockDownloader = new ParallelBlocksDownloader(_syncPeerPool, blockDataFeed, blockValidator, sealValidator, logManager);
             }
         }
 
@@ -217,18 +216,18 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_logger.IsTrace) _logger.Trace("Sync loop - WAIT.");
                 _syncRequested.Wait(_syncLoopCancellation.Token);
                 _syncRequested.Reset();
-                
+
                 if (_logger.IsTrace) _logger.Trace("Sync loop - IN.");
                 if (_syncLoopCancellation.IsCancellationRequested)
                 {
                     if (_logger.IsTrace) _logger.Trace("Sync loop cancellation requested - leaving the main sync loop.");
                     break;
                 }
-                
+
                 if (!_blockTree.CanAcceptNewBlocks) continue;
 
                 _syncMode.Update();
-                if (_blocksSyncAllocation == null && _syncMode.Current != SyncMode.StateNodes)
+                if (!_syncMode.IsParallel && _blocksSyncAllocation == null)
                 {
                     AllocateBlocksSync();
                     if (_syncMode.Current == SyncMode.Headers)
@@ -240,15 +239,15 @@ namespace Nethermind.Blockchain.Synchronization
                         _blocksSyncAllocation.MinBlocksAhead = null;
                     }
                 }
-                else if (_syncMode.Current == SyncMode.StateNodes)
+                else if (_syncMode.IsParallel)
                 {
                     FreeBlocksSyncAllocation();
                 }
-                
+
                 PeerInfo bestPeer = null;
                 if (_blocksSyncAllocation != null)
                 {
-                    UInt256 ourTotalDifficulty = _blockTree.BestSuggested?.TotalDifficulty ?? 0;
+                    UInt256 ourTotalDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0;
                     _syncPeerPool.EnsureBest(); // can we remove it yet?
                     bestPeer = _blocksSyncAllocation?.Current;
                     if (bestPeer == null || bestPeer.TotalDifficulty <= ourTotalDifficulty)
@@ -258,7 +257,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
 
                     SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
-                    if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer?.HeadNumber} {bestPeer?.TotalDifficulty} | ours {_bestSuggestedNumber} {_blockTree.BestSuggested?.TotalDifficulty ?? 0}");
+                    if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer?.HeadNumber} {bestPeer?.TotalDifficulty} | ours {_blockTree.BestSuggestedHeader?.Number ?? 0} {_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0}");
                 }
 
                 _peerSyncCancellation = new CancellationTokenSource();
@@ -267,14 +266,12 @@ namespace Nethermind.Blockchain.Synchronization
                 switch (_syncMode.Current)
                 {
                     case SyncMode.AncientBlocks:
-//                        syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
-//                        syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false);
-                        FreeBlocksSyncAllocation();
                         syncProgressTask = _parallelBlockDownloader.SyncHeaders(SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                         break;
                     case SyncMode.Headers:
-                        syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
-//                        syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false);
+                        syncProgressTask = _syncConfig.DownloadBodiesInFastSync
+                            ? _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false)
+                            : _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                         break;
                     case SyncMode.StateNodes:
                         syncProgressTask = DownloadStateNodes(_syncLoopCancellation.Token);
@@ -314,16 +311,18 @@ namespace Nethermind.Blockchain.Synchronization
                 _peerSyncCancellation = null;
                 source?.Dispose();
 
-                if (_syncConfig.EnableExperimentalFastBlocks && !_alreadySyncedAncient && (_blockTree.LowestInserted?.Number ?? long.MaxValue) <= 1)
-                {
-                    BlockHeader header = _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash));
-                    _blockTree.SuggestHeader(header);
-                    _alreadySyncedAncient = true;
-                }
+                FinalizeFastBlocks();
             }
         }
 
-        private bool _alreadySyncedAncient = false;
+        private void FinalizeFastBlocks()
+        {
+            if (_syncMode.Current == SyncMode.AncientBlocks)
+            {
+                BlockHeader header = _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash));
+                _blockTree.SuggestHeader(header);
+            }
+        }
 
         private void HandleSyncRequestResult(Task<long> task, PeerInfo peerInfo)
         {
@@ -350,9 +349,9 @@ namespace Nethermind.Blockchain.Synchronization
 
                     break;
                 case Task<long> t when t.IsCanceled:
-                    if (_requestedSyncCancelDueToBetterPeer)
+                    if (_cancelDueToBetterPeer)
                     {
-                        _requestedSyncCancelDueToBetterPeer = false;
+                        _cancelDueToBetterPeer = false;
                     }
                     else
                     {
@@ -411,12 +410,12 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (e.Previous != null)
             {
-                _requestedSyncCancelDueToBetterPeer = true;
+                _cancelDueToBetterPeer = true;
                 _peerSyncCancellation?.Cancel();
             }
 
             PeerInfo newPeer = e.Current;
-            BlockHeader bestSuggested = _blockTree.BestSuggested;
+            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             if (newPeer.TotalDifficulty > bestSuggested.TotalDifficulty)
             {
                 RequestSynchronization(SyncTriggerType.PeerChange);
@@ -425,7 +424,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private async Task<long> DownloadStateNodes(CancellationToken cancellation)
         {
-            BlockHeader bestSuggested = _blockTree.BestSuggested;
+            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             if (bestSuggested == null)
             {
                 return 0;

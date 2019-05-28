@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Validators
 
         public static Block RetrieveBestSuggestedBlock(this IBlockTree tree)
         {
-            return tree.FindBlock(tree.BestSuggested.Hash, false);
+            return tree.FindBlock(tree.BestSuggestedHeader.Hash, false);
         }
 
         public static Block RetrieveHeadBlock(this IBlockTree tree)

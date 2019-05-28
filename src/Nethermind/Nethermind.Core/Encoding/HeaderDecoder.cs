@@ -68,7 +68,7 @@ namespace Nethermind.Core.Encoding
                 extraData);
 
             blockHeader.StateRoot = stateRoot;
-            blockHeader.TransactionsRoot = transactionsRoot;
+            blockHeader.TxRoot = transactionsRoot;
             blockHeader.ReceiptsRoot = receiptsRoot;
             blockHeader.Bloom = bloom;
             blockHeader.GasUsed = (long) gasUsed;
@@ -92,7 +92,7 @@ namespace Nethermind.Core.Encoding
             elements[1] = Rlp.Encode(item.OmmersHash);
             elements[2] = Rlp.Encode(item.Beneficiary);
             elements[3] = Rlp.Encode(item.StateRoot);
-            elements[4] = Rlp.Encode(item.TransactionsRoot);
+            elements[4] = Rlp.Encode(item.TxRoot);
             elements[5] = Rlp.Encode(item.ReceiptsRoot);
             elements[6] = Rlp.Encode(item.Bloom);
             elements[7] = Rlp.Encode(item.Difficulty);
@@ -124,7 +124,7 @@ namespace Nethermind.Core.Encoding
             Rlp.Encode(stream, item.OmmersHash);
             Rlp.Encode(stream, item.Beneficiary);
             Rlp.Encode(stream, item.StateRoot);
-            Rlp.Encode(stream, item.TransactionsRoot);
+            Rlp.Encode(stream, item.TxRoot);
             Rlp.Encode(stream, item.ReceiptsRoot);
             Rlp.Encode(stream, item.Bloom);
             Rlp.Encode(stream, item.Difficulty);
@@ -154,7 +154,7 @@ namespace Nethermind.Core.Encoding
                                 + Rlp.LengthOf(item.OmmersHash)
                                 + Rlp.LengthOf(item.Beneficiary)
                                 + Rlp.LengthOf(item.StateRoot)
-                                + Rlp.LengthOf(item.TransactionsRoot)
+                                + Rlp.LengthOf(item.TxRoot)
                                 + Rlp.LengthOf(item.ReceiptsRoot)
                                 + Rlp.LengthOf(item.Bloom)
                                 + Rlp.LengthOf(item.Difficulty)

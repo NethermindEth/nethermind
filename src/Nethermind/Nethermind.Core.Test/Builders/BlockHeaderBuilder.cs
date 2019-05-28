@@ -50,7 +50,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Nonce = 1000;
             TestObjectInternal.ReceiptsRoot = Keccak.EmptyTreeHash;
             TestObjectInternal.StateRoot = Keccak.EmptyTreeHash;
-            TestObjectInternal.TransactionsRoot = Keccak.EmptyTreeHash;
+            TestObjectInternal.TxRoot = Keccak.EmptyTreeHash;
         }
 
         public BlockHeaderBuilder WithParent(BlockHeader parentHeader)
@@ -108,7 +108,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockHeaderBuilder WithTransactionsRoot(Keccak transactionsRoot)
         {
-            TestObjectInternal.TransactionsRoot = transactionsRoot;
+            TestObjectInternal.TxRoot = transactionsRoot;
             return this;
         }
 

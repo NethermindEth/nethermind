@@ -68,6 +68,17 @@ namespace Nethermind.Blockchain
         private readonly ITxPool _txPool;
         private readonly ISyncConfig _syncConfig;
 
+        public BlockHeader Genesis { get; private set; }
+        public BlockHeader Head { get; private set; }
+        public BlockHeader BestSuggestedHeader { get; private set; }
+        public Block BestSuggestedBody { get; private set; }
+        public BlockHeader LowestInsertedHeader { get; private set; }
+        public Block LowestInsertedBody { get; private set; }
+        public long BestKnownNumber { get; private set; }
+        public int ChainId => _specProvider.ChainId;
+
+        public bool CanAcceptNewBlocks { get; private set; } = true; // no need to sync it at the moment
+
         public BlockTree(
             IDb blockDb,
             IDb headerDb,
@@ -107,7 +118,8 @@ namespace Nethermind.Blockchain
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
 
-                LoadLowestInserted();
+                LoadLowestInsertedHeader();
+                LoadLowestInsertedBody();
                 LoadBestKnown();
 
                 if (genesisLevel.BlockInfos[0].WasProcessed)
@@ -118,13 +130,13 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggested?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}");
+            if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}, lowest inserted header {LowestInsertedHeader?.Number}, body {LowestInsertedBody?.Number}");
         }
 
         private void LoadBestKnown()
         {
             long headNumber = Head?.Number ?? -1;
-            long left = Math.Max(LowestInserted?.Number ?? 0, headNumber);
+            long left = Math.Max(LowestInsertedHeader?.Number ?? 0, headNumber);
             long right = headNumber + MaxQueueSize;
 
             while (left != right)
@@ -151,7 +163,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private void LoadLowestInserted()
+        private void LoadLowestInsertedHeader()
         {
             long left = 0;
             long right = LongConverter.FromString(_syncConfig.PivotNumber ?? "0x0");
@@ -182,10 +194,49 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException($"Lowest inserted is is {result} and best known is {BestKnownNumber}");
             }
 
-            LowestInserted = FindHeader(result);
+            LowestInsertedHeader = FindHeader(result);
         }
 
-        public bool CanAcceptNewBlocks { get; private set; } = true; // no need to sync it at the moment
+        private void LoadLowestInsertedBody()
+        {
+            if (LowestInsertedHeader == null)
+            {
+                LowestInsertedBody = null;
+                return;
+            }
+
+            long left = LowestInsertedHeader.Number;
+            long right = LongConverter.FromString(_syncConfig.PivotNumber ?? "0x0");
+
+            while (left != right)
+            {
+                long index = left + (right - left) / 2;
+                ChainLevelInfo level = LoadLevel(index, true);
+                Block block = level == null ? null : FindBlock(level.BlockInfos[0].BlockHash, false);
+                if (block == null)
+                {
+                    left = index + 1;
+                }
+                else
+                {
+                    right = index;
+                }
+            }
+
+            long result = right + 1;
+
+            if (result == 0)
+            {
+                result = long.MaxValue;
+            }
+
+            if (result <= 0)
+            {
+                throw new InvalidOperationException($"Lowest inserted is is {result} and best known is {BestKnownNumber}");
+            }
+
+            LowestInsertedBody = FindBlock(result);
+        }
 
         public async Task LoadBlocksFromDb(
             CancellationToken cancellationToken,
@@ -216,116 +267,122 @@ namespace Nethermind.Blockchain
                     Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1)?.Header;
                 }
 
+                bool fastSyncFinished = (LowestInsertedBody?.Number ?? long.MaxValue) <= 1 && (LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
+                if (!fastSyncFinished)
+                {
+                    if (_logger.IsInfo) _logger.Info("Fast sync in progress - skipping loading blocks from DB");
+                    return;
+                }
+
                 long blocksToLoad = Math.Min(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
                 if (blocksToLoad == 0)
                 {
                     if (_logger.IsInfo) _logger.Info("Found no blocks to load from DB");
+                    return;
                 }
-                else
+
+                if (_logger.IsInfo) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.ToString(BlockHeader.Format.Short)}");
+
+                long blockNumber = startBlockNumber.Value;
+                for (long i = 0; i < blocksToLoad; i++)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.ToString(BlockHeader.Format.Short)}");
-
-                    long blockNumber = startBlockNumber.Value;
-                    for (long i = 0; i < blocksToLoad; i++)
-                    {
-                        if (cancellationToken.IsCancellationRequested)
-                        {
-                            break;
-                        }
-
-                        ChainLevelInfo level = LoadLevel(blockNumber);
-                        if (level == null)
-                        {
-                            _logger.Warn($"Missing level - {blockNumber}");
-                            break;
-                        }
-
-                        BigInteger maxDifficultySoFar = 0;
-                        BlockInfo maxDifficultyBlock = null;
-                        for (int blockIndex = 0; blockIndex < level.BlockInfos.Length; blockIndex++)
-                        {
-                            if (level.BlockInfos[blockIndex].TotalDifficulty > maxDifficultySoFar)
-                            {
-                                maxDifficultyBlock = level.BlockInfos[blockIndex];
-                                maxDifficultySoFar = maxDifficultyBlock.TotalDifficulty;
-                            }
-                        }
-
-                        level = null;
-                        // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-                        if (level != null)
-                            // ReSharper disable once HeuristicUnreachableCode
-                        {
-                            // ReSharper disable once HeuristicUnreachableCode
-                            throw new InvalidOperationException("just be aware that this level can be deleted by another thread after here");
-                        }
-
-                        if (maxDifficultyBlock == null)
-                        {
-                            throw new InvalidOperationException($"Expected at least one block at level {blockNumber}");
-                        }
-
-                        Block block = FindBlock(maxDifficultyBlock.BlockHash, false);
-                        if (block == null)
-                        {
-                            BlockHeader header = FindHeader(maxDifficultyBlock.BlockHash, false);
-                            if (header == null)
-                            {
-                                _blockInfoDb.Delete(blockNumber);
-                                BestKnownNumber = blockNumber - 1;
-                                // TODO: check if it is the last one
-                                break;
-                            }
-
-                            BestSuggested = header;
-                            if (i < blocksToLoad - 1024)
-                            {
-                                long jumpSize = blocksToLoad - 1024 - 1;
-                                if (_logger.IsInfo) _logger.Info($"Switching to fast sync headers load - jumping from {i} to {i + jumpSize}.");
-                                blockNumber += jumpSize;
-                                i += jumpSize;
-                            }
-
-                            // copy paste from below less batching
-                            if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < blockNumber)
-                            {
-                                if (_logger.IsInfo) _logger.Info($"Loaded {i + 1} out of {blocksToLoad} headers from DB.");
-                            }
-                        }
-                        else
-                        {
-                            BestSuggested = block.Header;
-                            BestSuggestedFullBlock = block.Header;
-                            NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
-
-                            if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < blockNumber)
-                            {
-                                if (_logger.IsInfo)
-                                {
-                                    _logger.Info($"Loaded {i + 1} out of {blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
-                                }
-
-                                _dbBatchProcessed = new TaskCompletionSource<object>();
-                                using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
-                                {
-                                    _currentDbLoadBatchEnd = blockNumber - batchSize;
-                                    await _dbBatchProcessed.Task;
-                                }
-                            }
-                        }
-
-                        blockNumber++;
-                    }
-
                     if (cancellationToken.IsCancellationRequested)
                     {
-                        _logger.Info($"Canceled loading blocks from DB at block {blockNumber}");
+                        break;
                     }
 
-                    if (_logger.IsInfo)
+                    ChainLevelInfo level = LoadLevel(blockNumber);
+                    if (level == null)
                     {
-                        _logger.Info($"Completed loading blocks from DB at block {blockNumber} - best known {BestKnownNumber}");
+                        _logger.Warn($"Missing level - {blockNumber}");
+                        break;
                     }
+
+                    BigInteger maxDifficultySoFar = 0;
+                    BlockInfo maxDifficultyBlock = null;
+                    for (int blockIndex = 0; blockIndex < level.BlockInfos.Length; blockIndex++)
+                    {
+                        if (level.BlockInfos[blockIndex].TotalDifficulty > maxDifficultySoFar)
+                        {
+                            maxDifficultyBlock = level.BlockInfos[blockIndex];
+                            maxDifficultySoFar = maxDifficultyBlock.TotalDifficulty;
+                        }
+                    }
+
+                    level = null;
+                    // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                    if (level != null)
+                        // ReSharper disable once HeuristicUnreachableCode
+                    {
+                        // ReSharper disable once HeuristicUnreachableCode
+                        throw new InvalidOperationException("just be aware that this level can be deleted by another thread after here");
+                    }
+
+                    if (maxDifficultyBlock == null)
+                    {
+                        throw new InvalidOperationException($"Expected at least one block at level {blockNumber}");
+                    }
+
+                    Block block = FindBlock(maxDifficultyBlock.BlockHash, false);
+                    if (block == null)
+                    {
+                        BlockHeader header = FindHeader(maxDifficultyBlock.BlockHash, false);
+                        if (header == null)
+                        {
+                            _blockInfoDb.Delete(blockNumber);
+                            BestKnownNumber = blockNumber - 1;
+                            // TODO: check if it is the last one
+                            break;
+                        }
+
+                        BestSuggestedHeader = header;
+                        if (i < blocksToLoad - 1024)
+                        {
+                            long jumpSize = blocksToLoad - 1024 - 1;
+                            if (_logger.IsInfo) _logger.Info($"Switching to fast sync headers load - jumping from {i} to {i + jumpSize}.");
+                            blockNumber += jumpSize;
+                            i += jumpSize;
+                        }
+
+                        // copy paste from below less batching
+                        if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < blockNumber)
+                        {
+                            if (_logger.IsInfo) _logger.Info($"Loaded {i + 1} out of {blocksToLoad} headers from DB.");
+                        }
+                    }
+                    else
+                    {
+                        BestSuggestedHeader = block.Header;
+                        BestSuggestedBody = block;
+                        NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+
+                        if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < blockNumber)
+                        {
+                            if (_logger.IsInfo)
+                            {
+                                _logger.Info($"Loaded {i + 1} out of {blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
+                            }
+
+                            _dbBatchProcessed = new TaskCompletionSource<object>();
+                            using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
+                            {
+                                _currentDbLoadBatchEnd = blockNumber - batchSize;
+                                await _dbBatchProcessed.Task;
+                            }
+                        }
+                    }
+
+                    blockNumber++;
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    _logger.Info($"Canceled loading blocks from DB at block {blockNumber}");
+                }
+
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"Completed loading blocks from DB at block {blockNumber} - best known {BestKnownNumber}");
                 }
             }
             finally
@@ -333,20 +390,6 @@ namespace Nethermind.Blockchain
                 CanAcceptNewBlocks = true;
             }
         }
-
-        public event EventHandler<BlockEventArgs> BlockAddedToMain;
-
-        public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
-
-        public event EventHandler<BlockEventArgs> NewHeadBlock;
-
-        public BlockHeader Genesis { get; private set; }
-        public BlockHeader Head { get; private set; }
-        public BlockHeader BestSuggested { get; private set; }
-        public BlockHeader BestSuggestedFullBlock { get; private set; }
-        public BlockHeader LowestInserted { get; private set; }
-        public long BestKnownNumber { get; private set; }
-        public int ChainId => _specProvider.ChainId;
 
         public AddBlockResult Insert(BlockHeader header)
         {
@@ -382,9 +425,43 @@ namespace Nethermind.Blockchain
                 _blockInfoLock.ExitWriteLock();
             }
 
-            if (header.Number < (LowestInserted?.Number ?? long.MaxValue))
+            if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))
             {
-                LowestInserted = header;
+                LowestInsertedHeader = header;
+            }
+
+            if (header.Number > BestKnownNumber)
+            {
+                BestKnownNumber = header.Number;
+            }
+
+            return AddBlockResult.Added;
+        }
+
+        public AddBlockResult Insert(Block block)
+        {
+            if (!CanAcceptNewBlocks)
+            {
+                return AddBlockResult.CannotAccept;
+            }
+
+            if (block.Number == 0)
+            {
+                throw new InvalidOperationException("Genesis block should not be inserted.");
+            }
+
+            // validate hash here
+            using (MemoryStream stream = Rlp.BorrowStream())
+            {
+                Rlp.Encode(stream, block);
+                byte[] newRlp = stream.ToArray();
+
+                _blockDb.Set(block.Hash, newRlp);
+            }
+
+            if (block.Number < (LowestInsertedBody?.Number ?? long.MaxValue))
+            {
+                LowestInsertedBody = block;
             }
 
             return AddBlockResult.Added;
@@ -413,12 +490,12 @@ namespace Nethermind.Blockchain
             bool isKnown = IsKnownBlock(header.Number, header.Hash);
             if (header.Number == 0)
             {
-                if (BestSuggested != null)
+                if (BestSuggestedHeader != null)
                 {
                     throw new InvalidOperationException("Genesis block should be added only once");
                 }
             }
-            else if (isKnown && (BestSuggested?.Number ?? 0) >= header.Number)
+            else if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
                 if (_logger.IsTrace)
                 {
@@ -471,12 +548,17 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (header.IsGenesis || header.TotalDifficulty > (BestSuggested?.TotalDifficulty ?? 0))
+            if (header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
             {
-                BestSuggested = header;
+                if (header.IsGenesis)
+                {
+                    Genesis = header;
+                }
+
+                BestSuggestedHeader = header;
                 if (block != null && shouldProcess)
                 {
-                    BestSuggestedFullBlock = block.Header;
+                    BestSuggestedBody = block;
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
                 }
             }
@@ -665,7 +747,8 @@ namespace Nethermind.Blockchain
                     return set;
                 });
 
-            BestSuggested = BestSuggestedFullBlock = Head;
+            BestSuggestedHeader = Head;
+            BestSuggestedBody = FindBlock(Head.Hash, false);
 
             try
             {
@@ -941,7 +1024,8 @@ namespace Nethermind.Blockchain
 
                 headBlockHeader.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
 
-                Head = BestSuggested = BestSuggestedFullBlock = headBlockHeader;
+                Head = BestSuggestedHeader = headBlockHeader;
+                BestSuggestedBody = FindBlock(headBlockHeader.Hash, false);
             }
         }
 
@@ -1131,7 +1215,7 @@ namespace Nethermind.Blockchain
             Keccak hash = GetBlockHashOnMainOrOnlyHash(number);
             return hash == null ? null : FindHeader(hash);
         }
-        
+
         private (BlockHeader Header, BlockInfo BlockInfo, ChainLevelInfo Level) LoadHeader(Keccak blockHash)
         {
             if (blockHash == null || blockHash == Keccak.Zero)
@@ -1276,5 +1360,11 @@ namespace Nethermind.Blockchain
                 _logger.Trace($"Calculated total difficulty for {header} is {header.TotalDifficulty}");
             }
         }
+
+        public event EventHandler<BlockEventArgs> BlockAddedToMain;
+
+        public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
+
+        public event EventHandler<BlockEventArgs> NewHeadBlock;
     }
 }

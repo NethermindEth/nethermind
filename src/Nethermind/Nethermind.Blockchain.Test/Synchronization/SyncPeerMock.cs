@@ -80,12 +80,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
         }
 
-        public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
+        public Task<BlockBody[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
-            Block[] result = new Block[blockHashes.Length];
+            BlockBody[] result = new BlockBody[blockHashes.Length];
             for (int i = 0; i < blockHashes.Length; i++)
             {
-                result[i] = _remoteTree.FindBlock(blockHashes[i], true);
+                Block block = _remoteTree.FindBlock(blockHashes[i], true);
+                result[i] = new BlockBody(block.Transactions, block.Ommers);
             }
             
             return Task.FromResult(result);
