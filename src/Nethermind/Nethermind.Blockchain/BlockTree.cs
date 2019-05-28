@@ -430,6 +430,11 @@ namespace Nethermind.Blockchain
                 LowestInsertedHeader = header;
             }
 
+            if (header.Number > BestKnownNumber)
+            {
+                BestKnownNumber = header.Number;
+            }
+
             return AddBlockResult.Added;
         }
 

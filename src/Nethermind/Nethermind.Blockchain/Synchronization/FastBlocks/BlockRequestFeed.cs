@@ -207,19 +207,26 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         {
             lock (_handlerLock)
             {
-                if (batch.Headers != null)
+                try
                 {
-                    int added = InsertHeaders(batch);
-                    return (BlocksDataHandlerResult.OK, added);
-                }
+                    if (batch.Headers != null)
+                    {
+                        int added = InsertHeaders(batch);
+                        return (BlocksDataHandlerResult.OK, added);
+                    }
 
-                if (batch.Bodies != null)
+                    if (batch.Bodies != null)
+                    {
+                        int added = InsertBodies(batch);
+                        return (BlocksDataHandlerResult.OK, added);
+                    }
+
+                    return (BlocksDataHandlerResult.InvalidFormat, 0);
+                }
+                finally
                 {
-                    int added = InsertBodies(batch);
-                    return (BlocksDataHandlerResult.OK, added);
+                    _sentBatches.TryRemove(batch, out _);
                 }
-
-                return (BlocksDataHandlerResult.InvalidFormat, 0);
             }
         }
 
@@ -294,197 +301,190 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private int InsertHeaders(BlockSyncBatch batch)
         {
             batch.MarkHandlingStart();
-            try
+            var headersSyncBatch = batch.Headers;
+            if (headersSyncBatch.Response == null)
             {
-                var headersSyncBatch = batch.Headers;
-                if (headersSyncBatch.Response == null)
+                if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
+                batch.Allocation = null;
+                _pendingBatches.Push(batch);
+                return 0;
+            }
+
+            if (headersSyncBatch.Response.Length > batch.Headers.RequestSize)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Peer sent too long response ({headersSyncBatch.Response.Length}) to {batch}");
+                _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
+                _pendingBatches.Push(batch);
+                return 0;
+            }
+
+            decimal ratio = (decimal) _itemsSaved / (_requestsSent == 0 ? 1 : _requestsSent);
+            _requestsSent += batch.Headers.RequestSize;
+
+            long addedLast = batch.Headers.StartNumber - 1;
+            long addedEarliest = batch.Headers.EndNumber + 1;
+            int skippedAtTheEnd = 0;
+            for (int i = headersSyncBatch.Response.Length - 1; i >= 0; i--)
+            {
+                BlockHeader header = headersSyncBatch.Response[i];
+                if (header == null)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                    batch.Allocation = null;
-                    _pendingBatches.Push(batch);
-                    return 0;
+                    skippedAtTheEnd++;
+                    continue;
                 }
 
-                if (headersSyncBatch.Response.Length > batch.Headers.RequestSize)
+                if (header.Number != headersSyncBatch.StartNumber + i)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Peer sent too long response ({headersSyncBatch.Response.Length}) to {batch}");
-                    _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
-                    _pendingBatches.Push(batch);
-                    return 0;
+                    _syncPeerPool.ReportInvalid(batch.Allocation);
+                    break;
                 }
 
-                decimal ratio = (decimal) _itemsSaved / (_requestsSent == 0 ? 1 : _requestsSent);
-                _requestsSent += batch.Headers.RequestSize;
-
-                long addedLast = batch.Headers.StartNumber - 1;
-                long addedEarliest = batch.Headers.EndNumber + 1;
-                int skippedAtTheEnd = 0;
-                for (int i = headersSyncBatch.Response.Length - 1; i >= 0; i--)
+                bool isFirst = i == headersSyncBatch.Response.Length - 1 - skippedAtTheEnd;
+                if (isFirst)
                 {
-                    BlockHeader header = headersSyncBatch.Response[i];
-                    if (header == null)
-                    {
-                        skippedAtTheEnd++;
-                        continue;
-                    }
-
-                    if (header.Number != headersSyncBatch.StartNumber + i)
-                    {
-                        _syncPeerPool.ReportInvalid(batch.Allocation);
-                        break;
-                    }
-
-                    bool isFirst = i == headersSyncBatch.Response.Length - 1 - skippedAtTheEnd;
-                    if (isFirst)
-                    {
-                        BlockHeader lowestInserted = _blockTree.LowestInsertedHeader;
-                        // response does not carry expected data
-                        if (header.Number == lowestInserted?.Number && header.Hash != lowestInserted?.Hash)
-                        {
-                            if (batch.Allocation != null)
-                            {
-                                if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID hash");
-                                _syncPeerPool.ReportInvalid(batch.Allocation);
-                            }
-
-                            break;
-                        }
-
-                        // response needs to be cached until predecessors arrive
-                        if (header.Hash != NextHash)
-                        {
-                            if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
-                            {
-                                if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
-                                _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
-                                break;
-                            }
-
-                            if (header.Number == _blockTree.LowestInsertedHeader?.Number)
-                            {
-                                if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
-                                _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
-                                break;
-                            }
-
-                            if (_headerDependencies.ContainsKey(header.Number))
-                            {
-                                _pendingBatches.Push(batch);
-                                throw new InvalidOperationException($"Only one header dependency expected ({batch})");
-                            }
-
-                            for (int j = 0; j < batch.Headers.Response.Length; j++)
-                            {
-                                BlockHeader current = batch.Headers.Response[j];
-                                if (batch.Headers.Response[j] != null)
-                                {
-                                    addedEarliest = Math.Min(addedEarliest, current.Number);
-                                    addedLast = Math.Max(addedLast, current.Number);
-                                }
-                                else
-                                {
-                                    break;
-                                }
-                            }
-
-                            BlockSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
-                            _headerDependencies[header.Number] = dependentBatch;
-                            if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
-
-                            // but we cannot do anything with it yet
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        if (header.Hash != headersSyncBatch.Response[i + 1]?.ParentHash)
-                        {
-                            if (batch.Allocation != null)
-                            {
-                                if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID inconsistent");
-                                _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
-                            }
-
-                            break;
-                        }
-                    }
-
-                    header.TotalDifficulty = NextTotalDifficulty;
-                    AddBlockResult addBlockResult = SuggestHeader(header);
-                    if (addBlockResult == AddBlockResult.InvalidBlock)
+                    BlockHeader lowestInserted = _blockTree.LowestInsertedHeader;
+                    // response does not carry expected data
+                    if (header.Number == lowestInserted?.Number && header.Hash != lowestInserted?.Hash)
                     {
                         if (batch.Allocation != null)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID bad block");
+                            if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID hash");
+                            _syncPeerPool.ReportInvalid(batch.Allocation);
+                        }
+
+                        break;
+                    }
+
+                    // response needs to be cached until predecessors arrive
+                    if (header.Hash != NextHash)
+                    {
+                        if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
+                            _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
+                            break;
+                        }
+
+                        if (header.Number == _blockTree.LowestInsertedHeader?.Number)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
+                            _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
+                            break;
+                        }
+
+                        if (_headerDependencies.ContainsKey(header.Number))
+                        {
+                            _pendingBatches.Push(batch);
+                            throw new InvalidOperationException($"Only one header dependency expected ({batch})");
+                        }
+
+                        for (int j = 0; j < batch.Headers.Response.Length; j++)
+                        {
+                            BlockHeader current = batch.Headers.Response[j];
+                            if (batch.Headers.Response[j] != null)
+                            {
+                                addedEarliest = Math.Min(addedEarliest, current.Number);
+                                addedLast = Math.Max(addedLast, current.Number);
+                            }
+                            else
+                            {
+                                break;
+                            }
+                        }
+
+                        BlockSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
+                        _headerDependencies[header.Number] = dependentBatch;
+                        if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
+
+                        // but we cannot do anything with it yet
+                        break;
+                    }
+                }
+                else
+                {
+                    if (header.Hash != headersSyncBatch.Response[i + 1]?.ParentHash)
+                    {
+                        if (batch.Allocation != null)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID inconsistent");
                             _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
                         }
 
                         break;
                     }
-
-                    addedEarliest = Math.Min(addedEarliest, header.Number);
-                    addedLast = Math.Max(addedLast, header.Number);
                 }
 
-                int added = (int) (addedLast - addedEarliest + 1);
-                int leftFillerSize = (int) (addedEarliest - batch.Headers.StartNumber);
-                int rightFillerSize = (int) (batch.Headers.EndNumber - addedLast);
-                if (added + leftFillerSize + rightFillerSize != batch.Headers.RequestSize)
-                {
-                    throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.Headers.RequestSize} in  {batch}");
-                }
-
-                added = Math.Max(0, added);
-
-                if (added < batch.Headers.RequestSize)
-                {
-                    if (added <= 0)
-                    {
-                        batch.Headers.Response = null;
-                        _pendingBatches.Push(batch);
-                    }
-                    else
-                    {
-                        if (leftFillerSize > 0)
-                        {
-                            BlockSyncBatch leftFiller = BuildLeftFiller(batch, leftFillerSize);
-                            _pendingBatches.Push(leftFiller);
-                            if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {leftFiller}");
-                        }
-
-                        if (rightFillerSize > 0)
-                        {
-                            BlockSyncBatch rightFiller = BuildRightFiller(batch, rightFillerSize);
-                            _pendingBatches.Push(rightFiller);
-                            if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {rightFiller}");
-                        }
-                    }
-                }
-
-                if (added == 0)
+                header.TotalDifficulty = NextTotalDifficulty;
+                AddBlockResult addBlockResult = SuggestHeader(header);
+                if (addBlockResult == AddBlockResult.InvalidBlock)
                 {
                     if (batch.Allocation != null)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"{batch} - reporting no progress");
-                        _syncPeerPool.ReportNoSyncProgress(batch.Allocation);
+                        if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID bad block");
+                        _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
+                    }
+
+                    break;
+                }
+
+                addedEarliest = Math.Min(addedEarliest, header.Number);
+                addedLast = Math.Max(addedLast, header.Number);
+            }
+
+            int added = (int) (addedLast - addedEarliest + 1);
+            int leftFillerSize = (int) (addedEarliest - batch.Headers.StartNumber);
+            int rightFillerSize = (int) (batch.Headers.EndNumber - addedLast);
+            if (added + leftFillerSize + rightFillerSize != batch.Headers.RequestSize)
+            {
+                throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.Headers.RequestSize} in  {batch}");
+            }
+
+            added = Math.Max(0, added);
+
+            if (added < batch.Headers.RequestSize)
+            {
+                if (added <= 0)
+                {
+                    batch.Headers.Response = null;
+                    _pendingBatches.Push(batch);
+                }
+                else
+                {
+                    if (leftFillerSize > 0)
+                    {
+                        BlockSyncBatch leftFiller = BuildLeftFiller(batch, leftFillerSize);
+                        _pendingBatches.Push(leftFiller);
+                        if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {leftFiller}");
+                    }
+
+                    if (rightFillerSize > 0)
+                    {
+                        BlockSyncBatch rightFiller = BuildRightFiller(batch, rightFillerSize);
+                        _pendingBatches.Push(rightFiller);
+                        if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {rightFiller}");
                     }
                 }
-
-                batch.MarkHandlingEnd();
-
-                if (_blockTree.LowestInsertedHeader != null)
-                {
-                    _syncStats.ReportDownloadProgress(_pivotNumber - (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber), _pivotNumber, ratio);
-                }
-
-                if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
-
-                return added;
             }
-            finally
+
+            if (added == 0)
             {
-                _sentBatches.TryRemove(batch, out _);
+                if (batch.Allocation != null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"{batch} - reporting no progress");
+                    _syncPeerPool.ReportNoSyncProgress(batch.Allocation);
+                }
             }
+
+            batch.MarkHandlingEnd();
+
+            if (_blockTree.LowestInsertedHeader != null)
+            {
+                _syncStats.ReportDownloadProgress(_pivotNumber - (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber), _pivotNumber, ratio);
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
+
+            return added;
         }
 
         private static BlockSyncBatch BuildRightFiller(BlockSyncBatch batch, int rightFillerSize)
