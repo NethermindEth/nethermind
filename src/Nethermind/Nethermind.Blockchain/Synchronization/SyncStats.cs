@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Synchronization
                     string bps = isFirst ? "N/A" : $"{(current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps";
                     if (current != _firstCurrent)
                     {
-                        _logger.Info($"{_prefix} download        {string.Empty.PadLeft(9 - current.ToString().Length, ' ')}{current}/{total} | {bps}" + (ratio == null ? string.Empty : " | hit ratio: {ratio:p2}"));
+                        _logger.Info($"{_prefix.PadRight(7, ' ')} download        {current.ToString().PadLeft(9, ' ')}/{total} | {bps}" + (ratio == null ? string.Empty : $" | hit ratio: {ratio:p2}"));
                     }
                 }
 
