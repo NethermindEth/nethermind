@@ -151,6 +151,8 @@ namespace Nethermind.Db
             options.SetMaxWriteBufferNumber((int)ReadConfig<uint>(dbConfig, dbInstance, nameof(dbConfig.WriteBufferNumber)));
             options.SetMinWriteBufferNumberToMerge(2);
             options.SetBlockBasedTableFactory(tableOptions);
+            
+            options.SetMaxBackgroundFlushes(Environment.ProcessorCount);
             options.IncreaseParallelism(Environment.ProcessorCount);
 //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
             return options;
