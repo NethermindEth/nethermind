@@ -281,12 +281,15 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 BlockSyncBatch fillerBatch = new BlockSyncBatch();
                 fillerBatch.MinNumber = batch.MinNumber;
                 fillerBatch.Bodies = new BodiesSyncBatch();
-
+                
                 int originalLength = batch.Bodies.Request.Length;
                 fillerBatch.Bodies.Request = new Keccak[originalLength - added];
+                fillerBatch.Bodies.Headers = new BlockHeader[originalLength - added];
+                
                 for (int i = added; i < originalLength; i++)
                 {
                     fillerBatch.Bodies.Request[i - added] = batch.Bodies.Request[i];
+                    fillerBatch.Bodies.Headers[i - added] = batch.Bodies.Headers[i];
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {fillerBatch}");
