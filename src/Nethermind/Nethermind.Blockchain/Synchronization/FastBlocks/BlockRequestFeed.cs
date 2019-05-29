@@ -209,6 +209,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 try
                 {
+                    batch.MarkHandlingStart();
                     if (batch.Headers != null)
                     {
                         int added = InsertHeaders(batch);
@@ -225,6 +226,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
                 finally
                 {
+                    batch.MarkHandlingEnd();
                     _sentBatches.TryRemove(batch, out _);
                 }
             }
@@ -304,7 +306,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private int InsertHeaders(BlockSyncBatch batch)
         {
-            batch.MarkHandlingStart();
             var headersSyncBatch = batch.Headers;
             if (headersSyncBatch.Response == null)
             {
@@ -478,8 +479,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     _syncPeerPool.ReportNoSyncProgress(batch.Allocation);
                 }
             }
-
-            batch.MarkHandlingEnd();
 
             if (_blockTree.LowestInsertedHeader != null)
             {

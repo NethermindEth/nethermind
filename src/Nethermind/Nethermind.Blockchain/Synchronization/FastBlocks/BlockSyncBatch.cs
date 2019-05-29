@@ -93,7 +93,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             string bodiesOrHeaders = Headers != null ? "HEADERS" : "BODIES";
             string startBlock = Headers?.StartNumber.ToString();
             string endBlock = (Headers?.StartNumber != null ? Headers.StartNumber + (Headers.RequestSize - 1) : (Headers?.RequestSize ?? 0) - 1).ToString();
-            string details = BatchType == BatchType.Headers ? $"[{startBlock}, {endBlock}]({Headers?.RequestSize ?? 0})" : ""; 
+            string details = BatchType == BatchType.Headers ? $"[{startBlock}, {endBlock}]({Headers?.RequestSize ?? Bodies?.Request.Length})" : ""; 
             string priority = Prioritized ? "HIGH" : "LOW";
 
             return $"{bodiesOrHeaders} {details} [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {Allocation?.Current ?? PreviousPeerInfo}";

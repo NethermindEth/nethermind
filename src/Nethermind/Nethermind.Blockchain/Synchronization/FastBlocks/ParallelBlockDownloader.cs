@@ -128,7 +128,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         ValidateBlocks(token, batch);
                     }
-                    else
+                    else if(batch.Bodies?.Response == null)
                     {
                         await Task.Delay(10);
                     }
