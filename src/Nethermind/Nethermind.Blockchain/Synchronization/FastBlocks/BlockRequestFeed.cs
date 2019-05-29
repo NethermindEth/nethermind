@@ -296,7 +296,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 _pendingBatches.Push(fillerBatch);
             }
 
-            if (_blockTree.LowestInsertedHeader != null)
+            if (_blockTree.LowestInsertedBody != null)
             {
                 _bodiesSyncStats.ReportDownloadProgress(_pivotNumber - (_blockTree.LowestInsertedBody?.Number ?? _pivotNumber), _pivotNumber);
             }
