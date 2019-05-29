@@ -317,7 +317,9 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void FinalizeFastBlocks()
         {
-            if (_syncMode.Current == SyncMode.AncientBlocks)
+            if (_syncMode.Current == SyncMode.AncientBlocks
+                && (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1
+                && (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1))
             {
                 BlockHeader header = _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash));
                 _blockTree.SuggestHeader(header);

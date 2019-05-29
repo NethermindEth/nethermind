@@ -127,6 +127,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     int thisRequestSize = (int) Math.Min(lastHeader.Number + 1, _bodiesRequestSize);
                     batch.Bodies = new BodiesSyncBatch();
                     batch.Bodies.Request = new Keccak[thisRequestSize];
+                    batch.Bodies.Headers = new BlockHeader[thisRequestSize];
                     batch.MinNumber = lastHeader.Number;
 
                     for (int i = thisRequestSize - 1; i >= 0; i--)
