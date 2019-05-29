@@ -254,6 +254,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 if (block.CalculateTxRoot() != block.TransactionsRoot ||
                     block.CalculateOmmersHash() != block.OmmersHash)
                 {
+                    if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
                     _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
                     break;
                 }
@@ -278,6 +279,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     fillerBatch.Bodies.Request[i - added] = batch.Bodies.Request[i];
                 }
 
+                if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {fillerBatch}");
                 _pendingBatches.Push(fillerBatch);
             }
 
@@ -285,6 +287,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 _bodiesSyncStats.ReportDownloadProgress(_pivotNumber - (_blockTree.LowestInsertedBody?.Number ?? _pivotNumber), _pivotNumber);
             }
+            
+            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
 
             return added;
         }
