@@ -515,9 +515,9 @@ namespace Ethereum.Test.Base
                 differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {stateProvider.StateRoot}");
             }
 
-            if (testHeader.TransactionsRoot != headBlock.Header.TransactionsRoot)
+            if (testHeader.TxRoot != headBlock.Header.TxRoot)
             {
-                differences.Add($"TRANSACTIONS ROOT exp: {testHeader.TransactionsRoot}, actual: {headBlock.Header.TransactionsRoot}");
+                differences.Add($"TRANSACTIONS ROOT exp: {testHeader.TxRoot}, actual: {headBlock.Header.TxRoot}");
             }
 
             if (testHeader.ReceiptsRoot != headBlock.Header.ReceiptsRoot)
@@ -563,7 +563,7 @@ namespace Ethereum.Test.Base
             header.Nonce = (ulong) Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger();
             header.ReceiptsRoot = new Keccak(headerJson.ReceiptTrie);
             header.StateRoot = new Keccak(headerJson.StateRoot);
-            header.TransactionsRoot = new Keccak(headerJson.TransactionsTrie);
+            header.TxRoot = new Keccak(headerJson.TransactionsTrie);
             return header;
         }
 
