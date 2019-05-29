@@ -269,9 +269,10 @@ namespace Nethermind.Blockchain.Synchronization
                         syncProgressTask = _parallelBlockDownloader.SyncHeaders(SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                         break;
                     case SyncMode.Headers:
-                        syncProgressTask = _syncConfig.DownloadBodiesInFastSync
-                            ? _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false)
-                            : _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
+                        syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
+//                        syncProgressTask = _syncConfig.DownloadBodiesInFastSync
+//                            ? _blockDownloader.DownloadBlocks(bestPeer, linkedCancellation.Token, false)
+//                            : _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                         break;
                     case SyncMode.StateNodes:
                         syncProgressTask = DownloadStateNodes(_syncLoopCancellation.Token);
