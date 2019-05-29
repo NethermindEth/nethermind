@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Nethermind.Core;
@@ -117,6 +118,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                     Keccak lastHash = LowestRequestedBodyHash ?? StartBodyHash;
                     BlockHeader lastHeader = _blockTree.FindHeader(lastHash);
+                    if (lastHeader == null)
+                    {
+                        throw new InvalidDataException($"Last header is null for {lastHash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
+                    }
+                    
                     batch = new BlockSyncBatch();
                     int thisRequestSize = (int) Math.Min(lastHeader.Number + 1, _bodiesRequestSize);
                     batch.Bodies = new BodiesSyncBatch();
