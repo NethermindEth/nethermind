@@ -125,6 +125,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                     for (int i = thisRequestSize - 1; i >= 0; i--)
                     {
+                        batch.Bodies.Headers[i] = lastHeader;
                         LowestRequestedBodyHash = batch.Bodies.Request[i] = lastHeader.Hash;
                         lastHeader = _blockTree.FindHeader(lastHeader.ParentHash);
                         if (lastHeader == null)
@@ -252,7 +253,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     break;
                 }
 
-                Block block = new Block(_blockTree.FindHeader(batch.Bodies.Request[i]), blockBody.Transactions, blockBody.Ommers);
+                Block block = new Block(batch.Bodies.Headers[i], blockBody.Transactions, blockBody.Ommers);
                 if (block.CalculateTxRoot() != block.TransactionsRoot ||
                     block.CalculateOmmersHash() != block.OmmersHash)
                 {
