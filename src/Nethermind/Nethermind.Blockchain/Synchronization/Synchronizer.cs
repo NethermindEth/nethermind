@@ -88,13 +88,14 @@ namespace Nethermind.Blockchain.Synchronization
                 long pivotNumber = LongConverter.FromString(syncConfig.PivotNumber ?? "0x0");
                 Keccak pivotHash = syncConfig.PivotHash == null ? null : new Keccak(syncConfig.PivotHash);
                 UInt256 pivotDifficulty = UInt256.Parse(syncConfig.PivotTotalDifficulty ?? "0x0");
-                FastBlocksFeed blockDataFeed = new FastBlocksFeed(_blockTree, receiptStorage, _syncPeerPool, syncConfig, logManager);
-                blockDataFeed.StartNumber = lowestInserted?.Number ?? pivotNumber;
-                blockDataFeed.StartHeaderHash = lowestInserted?.Hash ?? pivotHash;
-                blockDataFeed.StartBodyHash = lowestInsertedBody?.Hash ?? pivotHash;
-                blockDataFeed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? pivotDifficulty;
+                FastBlocksFeed feed = new FastBlocksFeed(_blockTree, receiptStorage, _syncPeerPool, syncConfig, logManager);
+                feed.StartNumber = lowestInserted?.Number ?? pivotNumber;
+                feed.StartBodyHash = lowestInsertedBody?.Hash ?? pivotHash;
+                feed.StartHeaderHash = lowestInserted?.Hash ?? pivotHash;
+                feed.StartReceiptsHash = lowestInsertedBody?.Hash ?? pivotHash;
+                feed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? pivotDifficulty;
 
-                _fastBlockDownloader = new FastBlocksDownloader(_syncPeerPool, blockDataFeed, blockValidator, sealValidator, logManager);
+                _fastBlockDownloader = new FastBlocksDownloader(_syncPeerPool, feed, blockValidator, sealValidator, logManager);
             }
         }
 

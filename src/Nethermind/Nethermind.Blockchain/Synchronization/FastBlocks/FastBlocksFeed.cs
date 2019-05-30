@@ -79,9 +79,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
+            _receiptsSyncStats = new SyncStats("Receipts", logManager);
             _headersSyncStats = new SyncStats("Headers", logManager);
             _bodiesSyncStats = new SyncStats("Bodies", logManager);
-            _receiptsSyncStats = new SyncStats("Receipts", logManager);
 
             _pivotNumber = LongConverter.FromString(_syncConfig.PivotNumber ?? "0");
 
@@ -203,6 +203,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         batch.Receipts = new ReceiptsSyncBatch();
                         batch.Receipts.BlockHashes = new Keccak[requestSize];
                         batch.MinNumber = header.Number;
+                        _receiptsSyncStats.Update(header.Number, _pivotNumber);
 
                         for (int i = requestSize - 1; i >= 0; i--)
                         {
@@ -321,10 +322,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         {
             int added = 0;
             var receiptsSyncBatch = batch.Receipts;
-            foreach (TxReceipt receipt in receiptsSyncBatch.Receipts)
+            foreach (TxReceipt[] receipts in receiptsSyncBatch.Response)
             {
-                _receiptStorage.Insert(receipt);
-                added++;
+                foreach (TxReceipt receipt in receipts)
+                {
+                    _receiptStorage.Insert(receipt);
+                    added++;    
+                }
             }
 
             return added;

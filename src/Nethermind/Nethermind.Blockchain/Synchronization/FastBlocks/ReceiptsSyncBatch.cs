@@ -24,6 +24,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
     public class ReceiptsSyncBatch
     {
         public Keccak[] BlockHashes { get; set; }
-        public TxReceipt[] Receipts { get; set; }
+        public TxReceipt[][] Response { get; set; }
     }
 }

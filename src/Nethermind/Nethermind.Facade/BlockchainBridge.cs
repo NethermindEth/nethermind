@@ -38,17 +38,17 @@ namespace Nethermind.Facade
     [DoNotUseInSecuredContext("Not reviewed, work in progress")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly IBlockTree _blockTree;
         private readonly ITxPool _txPool;
-        private readonly ITxPoolInfoProvider _transactionPoolInfoProvider;
-        private readonly IFilterManager _filterManager;
+        private readonly IWallet _wallet;
+        private readonly IBlockTree _blockTree;
         private readonly IFilterStore _filterStore;
         private readonly IStateReader _stateReader;
+        private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly IWallet _wallet;
+        private readonly ITxPoolInfoProvider _transactionPoolInfoProvider;
 
         public BlockchainBridge(
             IStateReader stateReader,

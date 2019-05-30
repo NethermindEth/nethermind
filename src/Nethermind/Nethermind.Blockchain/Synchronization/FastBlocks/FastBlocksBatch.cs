@@ -24,15 +24,16 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
     public class FastBlocksBatch
     {
         private Stopwatch _stopwatch = new Stopwatch();
-        private long? ScheduledLastTime;
-        private long? RequestSentTime;
-        private long? ValidationStartTime;
-        private long? HandlingStartTime;
-        private long? HandlingEndTime;
+        private long? _scheduledLastTime;
+        private long? _requestSentTime;
+        private long? _validationStartTime;
+        private long? _waitingStartTime;
+        private long? _handlingStartTime;
+        private long? _handlingEndTime;
         
         public bool Prioritized { get; set; }
 
-        public FastBlocksBatchType BatchType => Headers != null ? FastBlocksBatchType.Headers : Bodies == null ? FastBlocksBatchType.Bodies : FastBlocksBatchType.Receipts;
+        public FastBlocksBatchType BatchType => Headers != null ? FastBlocksBatchType.Headers : Bodies == null ? FastBlocksBatchType.Receipts : FastBlocksBatchType.Bodies;
         public ReceiptsSyncBatch Receipts { get; set; }
         public HeadersSyncBatch Headers { get; set; }
         public BodiesSyncBatch Bodies { get; set; }
@@ -42,45 +43,57 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public FastBlocksBatch()
         {
             _stopwatch.Start();
-            ScheduledLastTime = _stopwatch.ElapsedMilliseconds;
+            _scheduledLastTime = _stopwatch.ElapsedMilliseconds;
         }
         
         public void MarkRetry()
         {
             Retries++;
-            ScheduledLastTime = _stopwatch.ElapsedMilliseconds;
-            ValidationStartTime = null;
-            RequestSentTime = null;
-            HandlingStartTime = null;
-            HandlingEndTime = null;
+            _scheduledLastTime = _stopwatch.ElapsedMilliseconds;
+            _validationStartTime = null;
+            _requestSentTime = null;
+            _handlingStartTime = null;
+            _handlingEndTime = null;
         }
         
         public void MarkSent()
         {
-            RequestSentTime = _stopwatch.ElapsedMilliseconds;
+            _requestSentTime = _stopwatch.ElapsedMilliseconds;
             
         }
         public void MarkValidation()
         {
-            ValidationStartTime = _stopwatch.ElapsedMilliseconds;
+            _validationStartTime = _stopwatch.ElapsedMilliseconds;
+        }
+        
+        public void MarkWaiting()
+        {
+            _waitingStartTime = _stopwatch.ElapsedMilliseconds;
         }
         
         public void MarkHandlingStart()
         {
-            HandlingStartTime = _stopwatch.ElapsedMilliseconds;
+            _handlingStartTime = _stopwatch.ElapsedMilliseconds;
+            
+            if (_validationStartTime == null)
+            {
+                _validationStartTime = _handlingStartTime;
+            }
         }
         
         public void MarkHandlingEnd()
         {
-            HandlingEndTime = _stopwatch.ElapsedMilliseconds;
+            _handlingEndTime = _stopwatch.ElapsedMilliseconds;
         }
         
         private int Retries { get; set; }
         public double? AgeInMs => _stopwatch.ElapsedMilliseconds;
-        public double? SchedulingTime => (RequestSentTime ?? _stopwatch.ElapsedMilliseconds) - (ScheduledLastTime ?? _stopwatch.ElapsedMilliseconds);
-        public double? RequestTime => (ValidationStartTime ?? _stopwatch.ElapsedMilliseconds) - (RequestSentTime ?? _stopwatch.ElapsedMilliseconds);
-        public double? ValidationTime => (HandlingStartTime ?? _stopwatch.ElapsedMilliseconds) - (ValidationStartTime ?? HandlingStartTime ?? _stopwatch.ElapsedMilliseconds);
-        public double? HandlingTime => (HandlingEndTime ?? _stopwatch.ElapsedMilliseconds) - (HandlingStartTime ?? _stopwatch.ElapsedMilliseconds);
+        public double? SchedulingTime => (_requestSentTime ?? _stopwatch.ElapsedMilliseconds) - (_scheduledLastTime ?? _stopwatch.ElapsedMilliseconds);
+        public double? RequestTime => (_validationStartTime ?? _stopwatch.ElapsedMilliseconds) - (_requestSentTime ?? _stopwatch.ElapsedMilliseconds);
+        public double? ValidationTime => (_waitingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_validationStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
+        
+        public double? WaitingTime => (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_waitingStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
+        public double? HandlingTime => (_handlingEndTime ?? _stopwatch.ElapsedMilliseconds) - (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
         public long? MinNumber { get; set; }
         
         public override string ToString()
@@ -106,7 +119,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
             
             string priority = Prioritized ? "HIGH" : "LOW";
-            return $"{BatchType} {details} [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {Allocation?.Current ?? PreviousPeerInfo}";
+            return $"{BatchType} {details} [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {Allocation?.Current ?? PreviousPeerInfo}";
         }
     }
 }
