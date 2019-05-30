@@ -16,13 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
+using System;
+using Nethermind.Core;
 
-namespace Nethermind.Blockchain.TxPools
+namespace Nethermind.Blockchain
 {
-    public interface IPendingTransactionThresholdValidator
+    public class TxEventArgs : EventArgs
     {
-        bool IsObsolete(UInt256 currentTimestamp, UInt256 transactionTimestamp);
-        bool IsRemovable(UInt256 currentTimestamp, UInt256 transactionTimestamp);
+        public Transaction Transaction { get; }
+
+        public TxEventArgs(Transaction transaction)
+        {
+            Transaction = transaction;
+        }
     }
 }

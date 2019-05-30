@@ -248,8 +248,8 @@ namespace Nethermind.Runner.Runners
                 _wallet,
                 rpcState.TransactionProcessor);
 
-            TxPool debugTxPool = new TxPool(new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
-                new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval, _initConfig.RemovePendingTransactionInterval),
+            TxPool debugTxPool = new TxPool(new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
+                new PendingTxThresholdValidator(_initConfig.ObsoletePendingTransactionInterval, _initConfig.RemovePendingTransactionInterval),
                 _timestamp,
                 _ethereumEcdsa,
                 _specProvider,
@@ -386,8 +386,8 @@ namespace Nethermind.Runner.Runners
 
             _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
             _txPool = new TxPool(
-                new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
-                new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
+                new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
+                new PendingTxThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
                     _initConfig.RemovePendingTransactionInterval), new Timestamp(),
                 _ethereumEcdsa, _specProvider, _logManager, _initConfig.RemovePendingTransactionInterval,
                 _initConfig.PeerNotificationThreshold);

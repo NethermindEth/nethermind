@@ -72,12 +72,12 @@ namespace Nethermind.Blockchain.Filters
             AddBlock(e.Block);
         }
 
-        private void OnTransactionProcessed(object sender, TransactionProcessedEventArgs e)
+        private void OnTransactionProcessed(object sender, TxProcessedEventArgs e)
         {
             AddReceipts(e.TxReceipt);
         }
 
-        private void OnNewPendingTransaction(object sender, TransactionEventArgs e)
+        private void OnNewPendingTransaction(object sender, TxEventArgs e)
         {
             var filters = _filterStore.GetFilters<PendingTransactionFilter>();
             if (filters == null || filters.Length == 0)
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        private void OnRemovedPendingTransaction(object sender, TransactionEventArgs e)
+        private void OnRemovedPendingTransaction(object sender, TxEventArgs e)
         {
             var filters = _filterStore.GetFilters<PendingTransactionFilter>();
             if (filters == null || filters.Length == 0)

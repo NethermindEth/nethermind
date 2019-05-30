@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain
         }
 
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
-        public event EventHandler<TransactionProcessedEventArgs> TransactionProcessed;
+        public event EventHandler<TxProcessedEventArgs> TransactionProcessed;
 
         public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
@@ -156,7 +156,7 @@ namespace Nethermind.Blockchain
 
                 if ((processingOptions & ProcessingOptions.ReadOnlyChain) == 0)
                 {
-                    TransactionProcessed?.Invoke(this, new TransactionProcessedEventArgs(_receiptsTracer.TxReceipts[i]));
+                    TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(_receiptsTracer.TxReceipts[i]));
                 }
             }
 

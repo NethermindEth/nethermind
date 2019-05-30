@@ -20,7 +20,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.TxPools.Filters
 {
-    public class AcceptAllTransactionFilter : ITransactionFilter
+    public class AcceptAllTxFilter : ITxFilter
     {
         public bool IsValid(Transaction transaction) => true;
     }

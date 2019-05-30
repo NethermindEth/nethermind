@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain.TxPools
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Blockchain.TxPools.Filters
 {
-    public enum AddTransactionResult
+    public class RejectAllTxFilter : ITxFilter
     {
-        AlreadyKnown,
-        OldScheme,
-        InvalidChainId,
-        OldNonce,
-        PotentiallyUseless,
-        Added,
+        public bool IsValid(Transaction transaction) => false;
     }
 }

@@ -105,7 +105,7 @@ namespace Nethermind.Blockchain.Test
 
                 public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
 
-                public event EventHandler<TransactionProcessedEventArgs> TransactionProcessed
+                public event EventHandler<TxProcessedEventArgs> TransactionProcessed
                 {
                     add { }
                     remove { }

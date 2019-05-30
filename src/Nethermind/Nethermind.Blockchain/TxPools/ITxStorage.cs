@@ -22,7 +22,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TxPools
 {
-    public interface ITransactionStorage
+    public interface ITxStorage
     {
         Transaction Get(Keccak hash);
         Transaction[] GetAll();

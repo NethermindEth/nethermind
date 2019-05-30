@@ -28,13 +28,13 @@ namespace Nethermind.Blockchain.TxPools
     public interface ITxPool
     {
         Transaction[] GetPendingTransactions();
-        void AddFilter<T>(T filter) where T : ITransactionFilter;
+        void AddFilter<T>(T filter) where T : ITxFilter;
         void AddPeer(ISyncPeer peer);
         void RemovePeer(PublicKey nodeId);
-        AddTransactionResult AddTransaction(Transaction transaction, long blockNumber);
+        AddTxResult AddTransaction(Transaction transaction, long blockNumber);
         void RemoveTransaction(Keccak hash);
         bool TryGetSender(Keccak hash, out Address sender);
-        event EventHandler<TransactionEventArgs> NewPending;
-        event EventHandler<TransactionEventArgs> RemovedPending;
+        event EventHandler<TxEventArgs> NewPending;
+        event EventHandler<TxEventArgs> RemovedPending;
     }
 }

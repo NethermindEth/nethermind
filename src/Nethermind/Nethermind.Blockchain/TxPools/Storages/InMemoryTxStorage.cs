@@ -16,26 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Concurrent;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TxPools.Storages
 {
-    public class NullTransactionStorage : ITransactionStorage
+    public class InMemoryTxStorage : ITxStorage
     {
-        public static NullTransactionStorage Instance => new NullTransactionStorage();
-        
-        public Transaction Get(Keccak hash) => null;
+        private readonly ConcurrentDictionary<Keccak, Transaction> _transactions =
+            new ConcurrentDictionary<Keccak, Transaction>();
 
-        public Transaction[] GetAll() => new Transaction[0];
+        public Transaction Get(Keccak hash)
+        {
+            _transactions.TryGetValue(hash, out var transaction);
+
+            return transaction;
+        }
+
+        public Transaction[] GetAll() => _transactions.Values.ToArray();
 
         public void Add(Transaction transaction, long blockNumber)
-        {
-        }
+            => _transactions.TryAdd(transaction.Hash, transaction);
 
-        public void Delete(Keccak hash)
-        {
-        }
+        public void Delete(Keccak hash) => _transactions.TryRemove(hash, out _);
     }
 }

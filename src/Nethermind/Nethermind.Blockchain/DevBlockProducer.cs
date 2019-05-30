@@ -130,7 +130,7 @@ namespace Nethermind.Blockchain
             ProduceNewBlock();
         }
         
-        private void OnNewPendingTx(object sender, TransactionEventArgs e)
+        private void OnNewPendingTx(object sender, TxEventArgs e)
         {
             ProduceNewBlock();
         }

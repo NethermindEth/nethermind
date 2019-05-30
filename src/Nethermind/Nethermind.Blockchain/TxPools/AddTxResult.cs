@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,18 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Core;
-
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.TxPools
 {
-    public class TransactionEventArgs : EventArgs
+    public enum AddTxResult
     {
-        public Transaction Transaction { get; }
-
-        public TransactionEventArgs(Transaction transaction)
-        {
-            Transaction = transaction;
-        }
+        AlreadyKnown,
+        OldScheme,
+        InvalidChainId,
+        OldNonce,
+        PotentiallyUseless,
+        Added,
     }
 }

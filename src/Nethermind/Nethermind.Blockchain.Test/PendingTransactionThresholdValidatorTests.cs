@@ -61,13 +61,13 @@ namespace Nethermind.Blockchain.Test
             validator.IsRemovable(currentTimestamp, transaction3.Timestamp).Should().BeTrue();
         }
 
-        private PendingTransactionThresholdValidator GetValidator(int obsoletePendingTransactionInterval = 15,
+        private PendingTxThresholdValidator GetValidator(int obsoletePendingTransactionInterval = 15,
             int removePendingTransactionInterval = 600)
         {
             _obsoletePendingTransactionInterval = obsoletePendingTransactionInterval;
             _removePendingTransactionInterval = removePendingTransactionInterval;
 
-            return new PendingTransactionThresholdValidator(_obsoletePendingTransactionInterval,
+            return new PendingTxThresholdValidator(_obsoletePendingTransactionInterval,
                 _removePendingTransactionInterval);
         }
 

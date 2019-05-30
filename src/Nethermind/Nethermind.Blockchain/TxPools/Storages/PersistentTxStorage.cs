@@ -26,12 +26,12 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain.TxPools.Storages
 {
-    public class PersistentTransactionStorage : ITransactionStorage
+    public class PersistentTxStorage : ITxStorage
     {
         private readonly IDb _database;
         private readonly ISpecProvider _specProvider;
 
-        public PersistentTransactionStorage(IDb database, ISpecProvider specProvider)
+        public PersistentTxStorage(IDb database, ISpecProvider specProvider)
         {
             _database = database;
             _specProvider = specProvider;
