@@ -39,6 +39,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
         
+        public BlockBodiesMessage(BlockBody[] bodies)
+        {
+            Bodies = bodies;
+        }
+        
         public BlockBody[] Bodies { get; set; }
     }
 }

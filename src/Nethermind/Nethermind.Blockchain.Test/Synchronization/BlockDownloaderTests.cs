@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -25,11 +26,13 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Mining;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
 using NSubstitute;
@@ -91,8 +94,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     }
                 }
 
-                return await Task.FromResult(headers);
+                BlockHeadersMessage message = new BlockHeadersMessage(headers);
+                byte[] messageSerialized = _headersSerializer.Serialize(message);
+                return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
+
+            private BlockHeadersMessageSerializer _headersSerializer = new BlockHeadersMessageSerializer();
+            private BlockBodiesMessageSerializer _bodiesSerializer = new BlockBodiesMessageSerializer();
 
             public async Task<BlockBody[]> BuildBlocksResponse(Keccak[] blockHashes, Response flags)
             {
@@ -137,7 +145,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     }
                 }
 
-                return await Task.FromResult(blockBodies);
+                BlockBodiesMessage message = new BlockBodiesMessage(blockBodies);
+                byte[] messageSerialized = _bodiesSerializer.Serialize(message);
+                return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies);
             }
         }
 
