@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 {
     [TestFixture]
     [SingleThreaded]
-    public class BlockRequestFeedTests
+    public class FastBlocksFeedTests
     {
         private BlockTree _validTree2048;
         private BlockTree _validTree1024;
@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private Dictionary<LatencySyncPeerMock, int> _peerMaxResponseSizes;
         private Dictionary<LatencySyncPeerMock, HashSet<long>> _invalidBlocks;
         private Dictionary<LatencySyncPeerMock, IBlockTree> _peerTrees;
-        private Dictionary<LatencySyncPeerMock, BlockSyncBatch> _pendingResponses;
+        private Dictionary<LatencySyncPeerMock, FastBlocksBatch> _pendingResponses;
         private HashSet<LatencySyncPeerMock> _maliciousByRepetition;
         private HashSet<LatencySyncPeerMock> _maliciousByInvalidTxs;
         private HashSet<LatencySyncPeerMock> _maliciousByInvalidOmmers;
@@ -58,10 +58,10 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private HashSet<LatencySyncPeerMock> _incorrectByTooLongMessages;
         private HashSet<LatencySyncPeerMock> _timingOut;
         private BlockTree _localBlockTree;
-        private BlockRequestFeed _feed;
+        private FastBlocksFeed _feed;
         private long _time;
 
-        public BlockRequestFeedTests()
+        public FastBlocksFeedTests()
         {
             // make trees lazy
             _validTree2048 = Build.A.BlockTree().OfChainLength(2048).TestObject;
@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _syncPeers = new List<LatencySyncPeerMock>();
             _peerTrees = new Dictionary<LatencySyncPeerMock, IBlockTree>();
             _peerMaxResponseSizes = new Dictionary<LatencySyncPeerMock, int>();
-            _pendingResponses = new Dictionary<LatencySyncPeerMock, BlockSyncBatch>();
+            _pendingResponses = new Dictionary<LatencySyncPeerMock, FastBlocksBatch>();
             _invalidBlocks = new Dictionary<LatencySyncPeerMock, HashSet<long>>();
             _maliciousByRepetition = new HashSet<LatencySyncPeerMock>();
             _maliciousByInvalidTxs = new HashSet<LatencySyncPeerMock>();
@@ -149,7 +149,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 syncConfig.DownloadBodiesInFastSync = true;
             }
 
-            _feed = new BlockRequestFeed(_localBlockTree, _syncPeerPool, syncConfig, LimboLogs.Instance);
+            _feed = new FastBlocksFeed(_localBlockTree, _syncPeerPool, syncConfig, LimboLogs.Instance);
             _feed.StartNumber = 2047;
             _feed.StartBodyHash = _feed.StartHeaderHash = _validTree2048.Head.Hash;
             _feed.StartTotalDifficulty = _validTree2048.Head.TotalDifficulty.Value;
@@ -632,7 +632,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
                 if (_pendingResponses.Count < _syncPeers.Count(p => !p.IsReported))
                 {
-                    BlockSyncBatch batch = _feed.PrepareRequest();
+                    FastBlocksBatch batch = _feed.PrepareRequest();
                     if (batch == null && _pendingResponses.Count == 0)
                     {
                         TestContext.WriteLine($"STOP - NULL BATCH AND NO PENDING");
@@ -674,7 +674,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     if (intSyncPeerMock.BusyUntil == _time)
                     {
                         intSyncPeerMock.BusyUntil = null;
-                        BlockSyncBatch responseBatch = CreateResponse(intSyncPeerMock);
+                        FastBlocksBatch responseBatch = CreateResponse(intSyncPeerMock);
                         if (responseBatch != null)
                         {
                             _feed.HandleResponse(responseBatch);
@@ -695,7 +695,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             }
         }
 
-        private BlockSyncBatch CreateResponse(LatencySyncPeerMock syncPeer)
+        private FastBlocksBatch CreateResponse(LatencySyncPeerMock syncPeer)
         {
             if (!_pendingResponses.ContainsKey(syncPeer))
             {
@@ -704,7 +704,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 return null;
             }
 
-            BlockSyncBatch responseBatch = _pendingResponses[syncPeer];
+            FastBlocksBatch responseBatch = _pendingResponses[syncPeer];
             IBlockTree tree = _peerTrees[syncPeer];
             _pendingResponses.Remove(syncPeer);
 

@@ -102,14 +102,14 @@ namespace Nethermind.Facade
 
         public (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
-            TransactionReceipt transactionReceipt = _receiptStorage.Get(transactionHash);
+            TransactionReceipt transactionReceipt = _receiptStorage.Find(transactionHash);
             if (transactionReceipt?.BlockHash == null) return (null, null);
 
             Block block = _blockTree.FindBlock(transactionReceipt.BlockHash, true);
             return (transactionReceipt, block.Transactions[transactionReceipt.Index]);
         }
 
-        public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Get(transactionHash).BlockHash;
+        public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Find(transactionHash).BlockHash;
 
         private Timestamp _timestamp = new Timestamp();
 
@@ -128,7 +128,7 @@ namespace Nethermind.Facade
 
         public TransactionReceipt GetTransactionReceipt(Keccak txHash)
         {
-            var rec = _receiptStorage.Get(txHash);
+            var rec = _receiptStorage.Find(txHash);
             return rec;
         }
 

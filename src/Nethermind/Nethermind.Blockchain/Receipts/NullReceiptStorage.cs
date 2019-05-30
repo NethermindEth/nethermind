@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class NullReceiptStorage : IReceiptStorage
     {
-        public TransactionReceipt Get(Keccak hash) => null;
+        public TransactionReceipt Find(Keccak hash) => null;
 
         private NullReceiptStorage()
         {
@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Receipts
         
         public static NullReceiptStorage Instance { get; } = new NullReceiptStorage();
 
-        public void Add(TransactionReceipt transactionReceipt)
+        public void Insert(TransactionReceipt transactionReceipt)
         {
         }
     }

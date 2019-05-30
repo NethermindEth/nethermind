@@ -41,12 +41,12 @@ namespace Nethermind.Blockchain.Synchronization
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
-            Current = _syncConfig.FastSync ? SyncMode.AncientBlocks : SyncMode.Full;
+            Current = _syncConfig.FastSync ? SyncMode.FastBlocks : SyncMode.Full;
         }
 
         public SyncMode Current { get; private set; }
 
-        public bool IsParallel => Current == SyncMode.AncientBlocks || Current == SyncMode.StateNodes;
+        public bool IsParallel => Current == SyncMode.FastBlocks || Current == SyncMode.StateNodes;
         
         public void Update()
         {
@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Synchronization
             SyncMode newSyncMode;
             if (_syncConfig.EnableExperimentalFastBlocks && bestHeader < LongConverter.FromString(_syncConfig.PivotNumber ?? "0"))
             {
-                newSyncMode = SyncMode.AncientBlocks;
+                newSyncMode = SyncMode.FastBlocks;
             }
             else if (maxBlockNumberAmongPeers - Math.Max(bestFullState, bestFullBlock) <= FullSyncThreshold)
             {

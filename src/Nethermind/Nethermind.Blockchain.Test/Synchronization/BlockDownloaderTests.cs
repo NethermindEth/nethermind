@@ -187,7 +187,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.AreEqual(Math.Max(0, headNumber - SyncModeSelector.FullSyncThreshold), _blockTree.BestSuggestedHeader.Number, "headers");
 
             peerInfo.HeadNumber *= 2;
-            await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None);
+            await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None);
             Assert.AreEqual(Math.Max(0, headNumber * 2), _blockTree.BestSuggestedHeader.Number);
         }
 
@@ -212,8 +212,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber - SyncModeSelector.FullSyncThreshold), _blockTree.BestSuggestedHeader.Number);
 
             peerInfo.HeadNumber *= 2;
-            await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None).ContinueWith(t => { });
-            await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None);
+            await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None).ContinueWith(t => { });
+            await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None);
             Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber), _blockTree.BestSuggestedHeader.Number);
         }
 
@@ -237,7 +237,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .ContinueWith(t => Assert.True(t.IsCompletedSuccessfully));
 
             peerInfo.HeadNumber = 128;
-            await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None)
+            await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None)
                 .ContinueWith(t => Assert.True(t.IsCompletedSuccessfully));
         }
 
@@ -258,7 +258,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             peerInfo.TotalDifficulty = UInt256.MaxValue;
             peerInfo.HeadNumber = headNumber;
 
-            Task task = blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None);
+            Task task = blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None);
             await task.ContinueWith(t => Assert.True(t.IsFaulted));
 
             Assert.AreEqual(0, _blockTree.BestSuggestedHeader.Number);
@@ -271,7 +271,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Task task1 = blockDownloader.DownloadHeaders(null, SyncModeSelector.FullSyncThreshold, CancellationToken.None);
             await task1.ContinueWith(t => Assert.True(t.IsFaulted));
 
-            Task task2 = blockDownloader.DownloadBlocks(null, CancellationToken.None);
+            Task task2 = blockDownloader.DownloadBlocks(null, 0, CancellationToken.None);
             await task2.ContinueWith(t => Assert.True(t.IsFaulted));
         }
 
@@ -397,7 +397,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             peerInfo.HeadNumber = 2000;
             cancellation = new CancellationTokenSource();
             cancellation.CancelAfter(1000);
-            task = blockDownloader.DownloadBlocks(peerInfo, cancellation.Token);
+            task = blockDownloader.DownloadBlocks(peerInfo, 0, cancellation.Token);
             await task.ContinueWith(t => Assert.True(t.IsCanceled, $"blocks {t.Status}"));
         }
 

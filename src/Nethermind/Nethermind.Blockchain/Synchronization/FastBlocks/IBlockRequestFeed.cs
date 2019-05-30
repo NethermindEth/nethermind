@@ -18,11 +18,11 @@
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public interface IBlockRequestFeed
+    public interface IFastBlocksFeed
     {
-        BlockSyncBatch PrepareRequest();
+        FastBlocksBatch PrepareRequest();
 
-        (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(BlockSyncBatch batch);
+        (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(FastBlocksBatch batch);
         
         void StartNewRound();
     }

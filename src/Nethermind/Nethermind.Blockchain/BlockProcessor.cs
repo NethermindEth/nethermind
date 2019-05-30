@@ -258,7 +258,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 transactionReceipts[i].BlockHash = block.Hash;
-                _receiptStorage.Add(transactionReceipts[i]);
+                _receiptStorage.Insert(transactionReceipts[i]);
                 _txPool.RemoveTransaction(transactionReceipts[i].TransactionHash);
             }
         }

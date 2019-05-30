@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain
 
         public GethLikeTxTrace Trace(Keccak txHash)
         {
-            TransactionReceipt transactionReceipt = _receiptStorage.Get(txHash);
+            TransactionReceipt transactionReceipt = _receiptStorage.Find(txHash);
             Block block = _blockTree.FindBlock(transactionReceipt.BlockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
 
@@ -115,7 +115,7 @@ namespace Nethermind.Blockchain
                 return Rlp.Decode<ParityLikeTxTrace>(traceBytes);
             }
             
-            TransactionReceipt transactionReceipt = _receiptStorage.Get(txHash);
+            TransactionReceipt transactionReceipt = _receiptStorage.Find(txHash);
             Block block = _blockTree.FindBlock(transactionReceipt.BlockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
 

@@ -16,24 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Receipts
+namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public class InMemoryReceiptStorage : IReceiptStorage
+    public class ReceiptsSyncBatch
     {
-        private readonly ConcurrentDictionary<Keccak, TransactionReceipt> _receipts =
-            new ConcurrentDictionary<Keccak, TransactionReceipt>();
-
-        public TransactionReceipt Find(Keccak hash)
-        {
-            _receipts.TryGetValue(hash, out var transaction);
-            return transaction;
-        }
-
-        public void Insert(TransactionReceipt transactionReceipt)
-            => _receipts.TryAdd(transactionReceipt.TransactionHash, transactionReceipt);
+        public Keccak[] BlockHashes { get; set; }
+        public TransactionReceipt[] Receipts { get; set; }
     }
 }

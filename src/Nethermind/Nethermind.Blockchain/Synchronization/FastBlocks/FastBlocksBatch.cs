@@ -24,10 +24,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
     public enum BatchType
     {
         Headers,
-        Bodies,    
+        Bodies,
+        Receipts
     }
     
-    public class BlockSyncBatch
+    public class FastBlocksBatch
     {
         private Stopwatch _stopwatch = new Stopwatch();
         private long? ScheduledLastTime;
@@ -38,13 +39,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         
         public bool Prioritized { get; set; }
 
-        public BatchType BatchType => Headers != null ? BatchType.Headers : BatchType.Bodies;
+        public BatchType BatchType => Headers != null ? BatchType.Headers : Bodies == null ? BatchType.Bodies : BatchType.Receipts;
         public HeadersSyncBatch Headers { get; set; }
         public BodiesSyncBatch Bodies { get; set; }
         public SyncPeerAllocation Allocation { get; set; }
         public PeerInfo PreviousPeerInfo { get; set; }
 
-        public BlockSyncBatch()
+        public FastBlocksBatch()
         {
             _stopwatch.Start();
             ScheduledLastTime = _stopwatch.ElapsedMilliseconds;

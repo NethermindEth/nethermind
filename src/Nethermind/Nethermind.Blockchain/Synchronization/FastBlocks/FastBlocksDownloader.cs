@@ -27,20 +27,20 @@ using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public class ParallelBlocksDownloader
+    public class FastBlocksDownloader
     {
         private readonly IEthSyncPeerPool _syncPeerPool;
-        private readonly IBlockRequestFeed _blockRequestFeed;
+        private readonly IFastBlocksFeed _fastBlocksFeed;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private int _pendingRequests;
         private int _downloadedHeaders;
         private ILogger _logger;
 
-        public ParallelBlocksDownloader(IEthSyncPeerPool syncPeerPool, IBlockRequestFeed blockRequestFeed, IBlockValidator blockValidator, ISealValidator sealValidator, ILogManager logManager)
+        public FastBlocksDownloader(IEthSyncPeerPool syncPeerPool, IFastBlocksFeed fastBlocksFeed, IBlockValidator blockValidator, ISealValidator sealValidator, ILogManager logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            _blockRequestFeed = blockRequestFeed ?? throw new ArgumentNullException(nameof(blockRequestFeed));
+            _fastBlocksFeed = fastBlocksFeed ?? throw new ArgumentNullException(nameof(fastBlocksFeed));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private int _lastUsefulPeerCount;
 
-        private async Task ExecuteRequest(CancellationToken token, BlockSyncBatch batch)
+        private async Task ExecuteRequest(CancellationToken token, FastBlocksBatch batch)
         {
             SyncPeerAllocation nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace | (batch.Prioritized ? BorrowOptions.None : BorrowOptions.LowPriority), "fast blocks", batch.MinNumber);
             foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
@@ -133,7 +133,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         await Task.Delay(10);
                     }
 
-                    result = _blockRequestFeed.HandleResponse(batch);
+                    result = _fastBlocksFeed.HandleResponse(batch);
                     if (result.Result == BlocksDataHandlerResult.BadQuality)
                     {
                         if (batch.Allocation?.Current != null)
@@ -162,7 +162,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
-        private void ValidateBlocks(CancellationToken cancellation, BlockSyncBatch batch)
+        private void ValidateBlocks(CancellationToken cancellation, FastBlocksBatch batch)
         {
             if (_logger.IsTrace) _logger.Trace("Starting block validation");
 
@@ -249,7 +249,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                 if (_logger.IsTrace) _logger.Trace($"Successful semaphore wait");
 
-                BlockSyncBatch request = PrepareRequest();
+                FastBlocksBatch request = PrepareRequest();
                 if (request != null)
                 {
 //                    if (_logger.IsInfo) _logger.Info($"Creating new headers request {request} with current semaphore count {_semaphore.CurrentCount} and pending requests {_pendingRequests}");
@@ -276,20 +276,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_lastUsefulPeerCount} useful peers.");
         }
 
-        private BlockSyncBatch PrepareRequest()
+        private FastBlocksBatch PrepareRequest()
         {
-            BlockSyncBatch request = _blockRequestFeed.PrepareRequest();
+            FastBlocksBatch request = _fastBlocksFeed.PrepareRequest();
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             return request;
         }
 
-        private int _threshold;
-
-        public async Task<long> SyncHeaders(int threshold, CancellationToken token)
+        public async Task<long> Sync(CancellationToken token)
         {
             if (_logger.IsDebug) _logger.Debug($"Sync headers - pending: {_pendingRequests} - semaphore: {_semaphore.CurrentCount}");
-            _blockRequestFeed.StartNewRound();
-            _threshold = threshold;
+            _fastBlocksFeed.StartNewRound();
             _downloadedHeaders = 0;
             await KeepSyncing(token);
             return _downloadedHeaders;

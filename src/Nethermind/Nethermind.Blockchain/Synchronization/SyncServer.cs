@@ -166,7 +166,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (block == null) continue;
 
-                    blockTransactionReceipts[receiptIndex] = _receiptStorage.Get(block.Transactions[receiptIndex].Hash);
+                    blockTransactionReceipts[receiptIndex] = _receiptStorage.Find(block.Transactions[receiptIndex].Hash);
                 }
 
                 transactionReceipts[blockIndex] = blockTransactionReceipts;
