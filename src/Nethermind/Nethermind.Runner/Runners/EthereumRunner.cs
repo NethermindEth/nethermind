@@ -587,10 +587,7 @@ namespace Nethermind.Runner.Runners
                 }
             }
 
-            await InitializeNetwork(
-                _receiptStorage,
-                _sealValidator,
-                txValidator);
+            await InitializeNetwork();
         }
 
         private async Task LoadBlocksFromDb()
@@ -613,22 +610,19 @@ namespace Nethermind.Runner.Runners
             });
         }
 
-        private async Task InitializeNetwork(
-            IReceiptStorage receiptStorage,
-            ISealValidator sealValidator,
-            TxValidator txValidator)
+        private async Task InitializeNetwork()
         {
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
-            _synchronizer = new Synchronizer(_blockTree, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _logManager);
+            _synchronizer = new Synchronizer(_blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _logManager);
 
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,
                 _dbProvider.CodeDb,
                 _blockTree,
                 _receiptStorage,
-                sealValidator,
+                _sealValidator,
                 _syncPeerPool,
                 _synchronizer,
                 _logManager);
@@ -689,9 +683,9 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            foreach (KeyValuePair<Address, UInt256> allocation in chainSpec.Allocations)
+            foreach ((Address address, UInt256 balance) in chainSpec.Allocations)
             {
-                stateProvider.CreateAccount(allocation.Key, allocation.Value);
+                stateProvider.CreateAccount(address, balance);
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

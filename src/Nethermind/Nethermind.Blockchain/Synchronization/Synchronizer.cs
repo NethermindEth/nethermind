@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.Validators;
@@ -38,10 +39,11 @@ namespace Nethermind.Blockchain.Synchronization
     public class Synchronizer : ISynchronizer
     {
         private readonly ILogger _logger;
+        private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly INodeDataDownloader _nodeDataDownloader;
-        private readonly IBlockTree _blockTree;
+        
         private readonly BlockDownloader _blockDownloader;
         private readonly FastBlocksDownloader _fastBlockDownloader;
         
@@ -57,7 +59,9 @@ namespace Nethermind.Blockchain.Synchronization
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs> SyncEvent;
 
-        public Synchronizer(IBlockTree blockTree,
+        public Synchronizer(
+            IBlockTree blockTree,
+            IReceiptStorage receiptStorage,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
             IEthSyncPeerPool peerPool,
@@ -66,10 +70,10 @@ namespace Nethermind.Blockchain.Synchronization
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
-            _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
+            _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, _nodeDataDownloader, logManager);
             _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
@@ -81,10 +85,10 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (syncConfig.EnableExperimentalFastBlocks)
             {
-                Keccak pivotHash = syncConfig.PivotHash == null ? null : new Keccak(syncConfig.PivotHash);
                 long pivotNumber = LongConverter.FromString(syncConfig.PivotNumber ?? "0x0");
+                Keccak pivotHash = syncConfig.PivotHash == null ? null : new Keccak(syncConfig.PivotHash);
                 UInt256 pivotDifficulty = UInt256.Parse(syncConfig.PivotTotalDifficulty ?? "0x0");
-                FastBlocksFeed blockDataFeed = new FastBlocksFeed(_blockTree, _syncPeerPool, syncConfig, logManager);
+                FastBlocksFeed blockDataFeed = new FastBlocksFeed(_blockTree, receiptStorage, _syncPeerPool, syncConfig, logManager);
                 blockDataFeed.StartNumber = lowestInserted?.Number ?? pivotNumber;
                 blockDataFeed.StartHeaderHash = lowestInserted?.Hash ?? pivotHash;
                 blockDataFeed.StartBodyHash = lowestInsertedBody?.Hash ?? pivotHash;

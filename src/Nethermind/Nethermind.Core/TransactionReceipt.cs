@@ -21,7 +21,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
-    public class TransactionReceipt
+    public class TxReceipt
     {
         /// <summary>
         ///     EIP-658

@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain
         /// Lowest header added in reverse insert
         /// </summary>
         BlockHeader LowestInsertedHeader { get; }
-        
+
         /// <summary>
         /// Lowest header added in reverse insert
         /// </summary>

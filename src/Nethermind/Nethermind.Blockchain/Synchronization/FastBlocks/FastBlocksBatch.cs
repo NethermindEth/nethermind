@@ -16,18 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Diagnostics;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public enum BatchType
-    {
-        Headers,
-        Bodies,
-        Receipts
-    }
-    
     public class FastBlocksBatch
     {
         private Stopwatch _stopwatch = new Stopwatch();
@@ -39,7 +32,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         
         public bool Prioritized { get; set; }
 
-        public BatchType BatchType => Headers != null ? BatchType.Headers : Bodies == null ? BatchType.Bodies : BatchType.Receipts;
+        public FastBlocksBatchType BatchType => Headers != null ? FastBlocksBatchType.Headers : Bodies == null ? FastBlocksBatchType.Bodies : FastBlocksBatchType.Receipts;
+        public ReceiptsSyncBatch Receipts { get; set; }
         public HeadersSyncBatch Headers { get; set; }
         public BodiesSyncBatch Bodies { get; set; }
         public SyncPeerAllocation Allocation { get; set; }
@@ -91,13 +85,28 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         
         public override string ToString()
         {
-            string bodiesOrHeaders = Headers != null ? "HEADERS" : "BODIES";
             string startBlock = Headers?.StartNumber.ToString();
             string endBlock = (Headers?.StartNumber != null ? Headers.StartNumber + (Headers.RequestSize - 1) : (Headers?.RequestSize ?? 0) - 1).ToString();
-            string details = BatchType == BatchType.Headers ? $"[{startBlock}, {endBlock}]({Headers?.RequestSize ?? Bodies?.Request.Length})" : $"({Bodies.Request.Length})"; 
+            string details = string.Empty;
+            switch (BatchType)
+            {
+                case FastBlocksBatchType.None:
+                    break;
+                case FastBlocksBatchType.Headers:
+                    details = $"[{startBlock}, {endBlock}]({Headers?.RequestSize ?? Bodies?.Request.Length})";
+                    break;
+                case FastBlocksBatchType.Bodies:
+                    details = $"({Bodies.Request.Length})";
+                    break;
+                case FastBlocksBatchType.Receipts:
+                    details = $"({Receipts.BlockHashes.Length})";
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+            
             string priority = Prioritized ? "HIGH" : "LOW";
-
-            return $"{bodiesOrHeaders} {details} [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {Allocation?.Current ?? PreviousPeerInfo}";
+            return $"{BatchType} {details} [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {Allocation?.Current ?? PreviousPeerInfo}";
         }
     }
 }

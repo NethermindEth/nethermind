@@ -36,25 +36,25 @@ namespace Nethermind.Blockchain.Receipts
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
 
-        public TransactionReceipt Find(Keccak hash)
+        public TxReceipt Find(Keccak hash)
         {
             var receiptData = _database.Get(hash);
 
             return receiptData == null
                 ? null
-                : Rlp.Decode<TransactionReceipt>(new Rlp(receiptData), RlpBehaviors.Storage);
+                : Rlp.Decode<TxReceipt>(new Rlp(receiptData), RlpBehaviors.Storage);
         }
 
-        public void Insert(TransactionReceipt transactionReceipt)
+        public void Insert(TxReceipt txReceipt)
         {
-            if (transactionReceipt == null)
+            if (txReceipt == null)
             {
-                throw new ArgumentNullException(nameof(transactionReceipt));
+                throw new ArgumentNullException(nameof(txReceipt));
             }
 
-            var spec = _specProvider.GetSpec(transactionReceipt.BlockNumber);
-            _database.Set(transactionReceipt.TransactionHash,
-                Rlp.Encode(transactionReceipt, spec.IsEip658Enabled
+            var spec = _specProvider.GetSpec(txReceipt.BlockNumber);
+            _database.Set(txReceipt.TransactionHash,
+                Rlp.Encode(txReceipt, spec.IsEip658Enabled
                     ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage
                     : RlpBehaviors.Storage).Bytes);
         }

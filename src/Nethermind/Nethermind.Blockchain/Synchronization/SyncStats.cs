@@ -23,14 +23,15 @@ namespace Nethermind.Blockchain.Synchronization
 {
     internal class SyncStats
     {
-        private readonly string _prefix;
+        private ILogger _logger;
+        private string _prefix;
+        
+        private bool _isFirst = true;
         private long _firstCurrent;
         private DateTime _firstNotificationTime = DateTime.MinValue;
         private DateTime _lastSyncNotificationTime = DateTime.MinValue;
         private long _lastCurrent;
         private long _lastTotal;
-
-        private ILogger _logger;
 
         public SyncStats(string prefix, ILogManager logManager)
         {
@@ -38,9 +39,7 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private bool isFirst = true;
-
-        public void ReportDownloadProgress(long current, long total, decimal? ratio = null)
+        public void Update(long current, long total, decimal? ratio = null)
         {
             // create sync stats like processing stats?
             if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1)
@@ -48,7 +47,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_logger.IsInfo)
                 {
-                    string bps = isFirst ? "N/A" : $"{(current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps";
+                    string bps = _isFirst ? "N/A" : $"{(current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps";
                     if (current != _firstCurrent)
                     {
                         _logger.Info($"{_prefix.PadRight(7, ' ')} download        {current.ToString().PadLeft(9, ' ')}/{total} | {bps}" + (ratio == null ? string.Empty : $" | hit ratio: {ratio:p2}"));
@@ -60,11 +59,11 @@ namespace Nethermind.Blockchain.Synchronization
                 _lastTotal = total;
             }
 
-            if (isFirst)
+            if (_isFirst)
             {
                 _firstCurrent = _lastCurrent;
                 _firstNotificationTime = DateTime.UtcNow;
-                isFirst = false;
+                _isFirst = false;
             }
         }
     }

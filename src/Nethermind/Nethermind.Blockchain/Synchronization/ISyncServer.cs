@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         void HintBlock(Keccak hash, long number, Node receivedFrom);
         void AddNewBlock(Block block, Node node);
-        TransactionReceipt[][] GetReceipts(Keccak[] blockHashes);
+        TxReceipt[][] GetReceipts(Keccak[] blockHashes);
         Block Find(Keccak hash);
         BlockHeader FindHeader(Keccak hash);
         Block Find(long number);

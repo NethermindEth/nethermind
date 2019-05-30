@@ -504,7 +504,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             try
             {
                 _readerWriterLockSlim.EnterReadLock();
-                (TransactionReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
+                (TxReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
                 if (transaction == null)
                 {
                     return ResultWrapper<TransactionForRpc>.Success(null);
@@ -587,15 +587,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
             try
             {
                 _readerWriterLockSlim.EnterReadLock();
-                var transactionReceipt = _blockchainBridge.GetTransactionReceipt(txHash);
-                if (transactionReceipt == null)
+                var receipt = _blockchainBridge.GetReceipt(txHash);
+                if (receipt == null)
                 {
                     return ResultWrapper<ReceiptForRpc>.Success(null);
                 }
 
-                var transactionReceiptModel = new ReceiptForRpc(txHash, transactionReceipt);
+                var receiptModel = new ReceiptForRpc(txHash, receipt);
                 if (Logger.IsTrace) Logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
-                return ResultWrapper<ReceiptForRpc>.Success(transactionReceiptModel);
+                return ResultWrapper<ReceiptForRpc>.Success(receiptModel);
             }
             finally
             {

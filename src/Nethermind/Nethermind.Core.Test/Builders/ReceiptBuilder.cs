@@ -21,11 +21,11 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Test.Builders
 {
-    public class ReceiptBuilder : BuilderBase<TransactionReceipt>
+    public class ReceiptBuilder : BuilderBase<TxReceipt>
     {
         public ReceiptBuilder()
         {
-            TestObjectInternal = new TransactionReceipt();
+            TestObjectInternal = new TxReceipt();
             TestObjectInternal.Logs = new[] {new LogEntry(Address.Zero, new byte[0], new[] {Keccak.Zero}),};
         }
 

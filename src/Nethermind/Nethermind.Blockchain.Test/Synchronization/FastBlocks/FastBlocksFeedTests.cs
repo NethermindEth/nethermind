@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.TxPools;
@@ -149,7 +150,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 syncConfig.DownloadBodiesInFastSync = true;
             }
 
-            _feed = new FastBlocksFeed(_localBlockTree, _syncPeerPool, syncConfig, LimboLogs.Instance);
+            _feed = new FastBlocksFeed(_localBlockTree, NullReceiptStorage.Instance,  _syncPeerPool, syncConfig, LimboLogs.Instance);
             _feed.StartNumber = 2047;
             _feed.StartBodyHash = _feed.StartHeaderHash = _validTree2048.Head.Hash;
             _feed.StartTotalDifficulty = _validTree2048.Head.TotalDifficulty.Value;

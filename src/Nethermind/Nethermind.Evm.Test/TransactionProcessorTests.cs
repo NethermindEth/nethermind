@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Success, tracer.TransactionReceipts[0].StatusCode);
+            Assert.AreEqual(StatusCode.Success, tracer.TxReceipts[0].StatusCode);
         }
 
         [TestCase(true, true)]
@@ -81,7 +81,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TransactionReceipts[0].StatusCode);
+            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
         
         [TestCase(true, true)]
@@ -98,7 +98,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TransactionReceipts[0].StatusCode);
+            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
         
         [TestCase(true, true)]
@@ -114,7 +114,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TransactionReceipts[0].StatusCode);
+            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
         
         [TestCase(true, true)]
@@ -130,7 +130,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TransactionReceipts[0].StatusCode);
+            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
         
         private BlockReceiptsTracer BuildTracer(Block block, Transaction tx, bool stateDiff, bool trace)

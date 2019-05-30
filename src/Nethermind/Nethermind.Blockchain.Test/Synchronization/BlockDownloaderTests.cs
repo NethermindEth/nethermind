@@ -366,7 +366,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return true;
             }
 
-            public bool ValidateProcessedBlock(Block processedBlock, TransactionReceipt[] receipts, Block suggestedBlock)
+            public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
             {
                 Thread.Sleep(1000);
                 return true;
@@ -472,7 +472,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 throw new NotImplementedException();
             }
 
-            public Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+            public Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

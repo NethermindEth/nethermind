@@ -22,13 +22,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class ReceiptsMessage : P2PMessage
     {
-        public TransactionReceipt[][] TransactionReceipts { get; }
+        public TxReceipt[][] TxReceipts { get; }
         public override int PacketType { get; } = 0x10;
         public override string Protocol { get; } = "eth";
 
-        public ReceiptsMessage(TransactionReceipt[][] transactionReceipts)
+        public ReceiptsMessage(TxReceipt[][] txReceipts)
         {
-            TransactionReceipts = transactionReceipts ?? new TransactionReceipt[0][];
+            TxReceipts = txReceipts ?? new TxReceipt[0][];
         }
     }
 }

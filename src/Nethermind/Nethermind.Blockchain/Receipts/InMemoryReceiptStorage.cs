@@ -24,16 +24,16 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class InMemoryReceiptStorage : IReceiptStorage
     {
-        private readonly ConcurrentDictionary<Keccak, TransactionReceipt> _receipts =
-            new ConcurrentDictionary<Keccak, TransactionReceipt>();
+        private readonly ConcurrentDictionary<Keccak, TxReceipt> _receipts =
+            new ConcurrentDictionary<Keccak, TxReceipt>();
 
-        public TransactionReceipt Find(Keccak hash)
+        public TxReceipt Find(Keccak hash)
         {
             _receipts.TryGetValue(hash, out var transaction);
             return transaction;
         }
 
-        public void Insert(TransactionReceipt transactionReceipt)
-            => _receipts.TryAdd(transactionReceipt.TransactionHash, transactionReceipt);
+        public void Insert(TxReceipt txReceipt)
+            => _receipts.TryAdd(txReceipt.TransactionHash, txReceipt);
     }
 }

@@ -16,17 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Blockchain.Synchronization.FastSync
+namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public interface INodeDataDownloader
+    public enum FastBlocksBatchType
     {
-        Task<long> SyncNodeData(CancellationToken cancellationToken, long number, Keccak rootNode);
-
-        bool IsFullySynced(BlockHeader header);
+        None,
+        Headers,
+        Bodies,
+        Receipts
     }
 }

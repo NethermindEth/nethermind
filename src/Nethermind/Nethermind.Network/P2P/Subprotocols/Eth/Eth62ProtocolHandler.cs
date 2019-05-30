@@ -262,7 +262,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Send(msg);
         }
 
-        public virtual async Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+        public virtual async Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
         {
             await Task.CompletedTask;
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");

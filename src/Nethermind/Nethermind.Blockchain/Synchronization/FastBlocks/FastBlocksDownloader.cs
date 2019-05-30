@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                     Task<BlockHeader[]> getHeadersTask = null;
                     Task<BlockBody[]> getBodiesTask = null;
-                    if (batch.BatchType == BatchType.Headers)
+                    if (batch.BatchType == FastBlocksBatchType.Headers)
                     {
                         getHeadersTask = peer.GetBlockHeaders(batch.Headers.StartNumber, batch.Headers.RequestSize, 0, token);
                     }

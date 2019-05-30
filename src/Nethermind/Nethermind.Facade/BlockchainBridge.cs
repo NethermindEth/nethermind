@@ -100,13 +100,13 @@ namespace Nethermind.Facade
         public Block RetrieveHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, false);
         public Block RetrieveGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, true);
 
-        public (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
+        public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
-            TransactionReceipt transactionReceipt = _receiptStorage.Find(transactionHash);
-            if (transactionReceipt?.BlockHash == null) return (null, null);
+            TxReceipt txReceipt = _receiptStorage.Find(transactionHash);
+            if (txReceipt?.BlockHash == null) return (null, null);
 
-            Block block = _blockTree.FindBlock(transactionReceipt.BlockHash, true);
-            return (transactionReceipt, block.Transactions[transactionReceipt.Index]);
+            Block block = _blockTree.FindBlock(txReceipt.BlockHash, true);
+            return (txReceipt, block.Transactions[txReceipt.Index]);
         }
 
         public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Find(transactionHash).BlockHash;
@@ -126,7 +126,7 @@ namespace Nethermind.Facade
             return transaction.Hash;
         }
 
-        public TransactionReceipt GetTransactionReceipt(Keccak txHash)
+        public TxReceipt GetReceipt(Keccak txHash)
         {
             var rec = _receiptStorage.Find(txHash);
             return rec;

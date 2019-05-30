@@ -28,49 +28,49 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [TestFixture]
     public class ReceiptsMessageSerializerTests
     {
-        private static void Test(TransactionReceipt[][] transactionReceipts)
+        private static void Test(TxReceipt[][] txReceipts)
         {
-            ReceiptsMessage message = new ReceiptsMessage(transactionReceipts);
+            ReceiptsMessage message = new ReceiptsMessage(txReceipts);
             ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer();
             var serialized = serializer.Serialize(message);
             ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
-            if (transactionReceipts == null)
+            if (txReceipts == null)
             {
-                Assert.AreEqual(0, deserialized.TransactionReceipts.Length);
+                Assert.AreEqual(0, deserialized.TxReceipts.Length);
             }
             else
             {
-                Assert.AreEqual(transactionReceipts.Length, deserialized.TransactionReceipts.Length, "length");
-                for (int i = 0; i < transactionReceipts.Length; i++)
+                Assert.AreEqual(txReceipts.Length, deserialized.TxReceipts.Length, "length");
+                for (int i = 0; i < txReceipts.Length; i++)
                 {
-                    if (transactionReceipts[i] == null)
+                    if (txReceipts[i] == null)
                     {
-                        Assert.IsNull(deserialized.TransactionReceipts[i], $"receipts[{i}]");
+                        Assert.IsNull(deserialized.TxReceipts[i], $"receipts[{i}]");
                     }
                     else
                     {
-                        for (int j = 0; j < transactionReceipts[i].Length; j++)
+                        for (int j = 0; j < txReceipts[i].Length; j++)
                         {
-                            if (transactionReceipts[i][j] == null)
+                            if (txReceipts[i][j] == null)
                             {
-                                Assert.IsNull(deserialized.TransactionReceipts[i][j], $"receipts[{i}][{j}]");
+                                Assert.IsNull(deserialized.TxReceipts[i][j], $"receipts[{i}][{j}]");
                             }
                             else
                             {
-                                Assert.AreEqual(transactionReceipts[i][j].Bloom, deserialized.TransactionReceipts[i][j].Bloom, $"receipts[{i}][{j}].Bloom");
-                                Assert.Null(deserialized.TransactionReceipts[i][j].Error, $"receipts[{i}][{j}].Error");
-                                Assert.AreEqual(0, deserialized.TransactionReceipts[i][j].Index, $"receipts[{i}][{j}].Index");
-                                Assert.AreEqual(transactionReceipts[i][j].Logs.Length, deserialized.TransactionReceipts[i][j].Logs.Length, $"receipts[{i}][{j}].Logs.Length");
-                                Assert.Null(deserialized.TransactionReceipts[i][j].Recipient, $"receipts[{i}][{j}].Recipient");
-                                Assert.Null(deserialized.TransactionReceipts[i][j].Sender, $"receipts[{i}][{j}].Sender");
-                                Assert.Null(deserialized.TransactionReceipts[i][j].BlockHash, $"receipts[{i}][{j}].BlockHash");
-                                Assert.AreEqual(0L, deserialized.TransactionReceipts[i][j].BlockNumber, $"receipts[{i}][{j}].BlockNumber");
-                                Assert.Null(deserialized.TransactionReceipts[i][j].ContractAddress, $"receipts[{i}][{j}].ContractAddress");
-                                Assert.AreEqual(0L, deserialized.TransactionReceipts[i][j].GasUsed, $"receipts[{i}][{j}].GasUsed");
-                                Assert.AreEqual(transactionReceipts[i][j].StatusCode, deserialized.TransactionReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
-                                Assert.AreEqual(transactionReceipts[i][j].GasUsedTotal, deserialized.TransactionReceipts[i][j].GasUsedTotal, $"receipts[{i}][{j}].GasUsedTotal");
-                                Assert.AreEqual(transactionReceipts[i][j].PostTransactionState, deserialized.TransactionReceipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
+                                Assert.AreEqual(txReceipts[i][j].Bloom, deserialized.TxReceipts[i][j].Bloom, $"receipts[{i}][{j}].Bloom");
+                                Assert.Null(deserialized.TxReceipts[i][j].Error, $"receipts[{i}][{j}].Error");
+                                Assert.AreEqual(0, deserialized.TxReceipts[i][j].Index, $"receipts[{i}][{j}].Index");
+                                Assert.AreEqual(txReceipts[i][j].Logs.Length, deserialized.TxReceipts[i][j].Logs.Length, $"receipts[{i}][{j}].Logs.Length");
+                                Assert.Null(deserialized.TxReceipts[i][j].Recipient, $"receipts[{i}][{j}].Recipient");
+                                Assert.Null(deserialized.TxReceipts[i][j].Sender, $"receipts[{i}][{j}].Sender");
+                                Assert.Null(deserialized.TxReceipts[i][j].BlockHash, $"receipts[{i}][{j}].BlockHash");
+                                Assert.AreEqual(0L, deserialized.TxReceipts[i][j].BlockNumber, $"receipts[{i}][{j}].BlockNumber");
+                                Assert.Null(deserialized.TxReceipts[i][j].ContractAddress, $"receipts[{i}][{j}].ContractAddress");
+                                Assert.AreEqual(0L, deserialized.TxReceipts[i][j].GasUsed, $"receipts[{i}][{j}].GasUsed");
+                                Assert.AreEqual(txReceipts[i][j].StatusCode, deserialized.TxReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
+                                Assert.AreEqual(txReceipts[i][j].GasUsedTotal, deserialized.TxReceipts[i][j].GasUsedTotal, $"receipts[{i}][{j}].GasUsedTotal");
+                                Assert.AreEqual(txReceipts[i][j].PostTransactionState, deserialized.TxReceipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
                             }
                         }
                     }
@@ -81,7 +81,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip()
         {            
-            TransactionReceipt[][] data = {new[] {Build.A.TransactionReceipt.WithAllFieldsFilled.TestObject, Build.A.TransactionReceipt.WithAllFieldsFilled.TestObject}, new[] {Build.A.TransactionReceipt.WithAllFieldsFilled.TestObject, Build.A.TransactionReceipt.WithAllFieldsFilled.TestObject}};
+            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
             Test(data);
         }
 
@@ -94,7 +94,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip_with_nulls()
         {
-            TransactionReceipt[][] data = {new[] {Build.A.TransactionReceipt.WithAllFieldsFilled.TestObject, Build.A.TransactionReceipt.WithAllFieldsFilled.TestObject}, null, new[] {null, Build.A.TransactionReceipt.WithAllFieldsFilled.TestObject}};
+            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}, null, new[] {null, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
             Test(data);
         }
         

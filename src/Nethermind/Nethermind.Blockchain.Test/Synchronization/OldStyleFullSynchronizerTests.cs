@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
             _pool = new EthSyncPeerPool(_blockTree, stats, quickConfig, LimboLogs.Instance);
-            _synchronizer = new Synchronizer(_blockTree, blockValidator, sealValidator, _pool, quickConfig, Substitute.For<INodeDataDownloader>(), LimboLogs.Instance);
+            _synchronizer = new Synchronizer(_blockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _pool, quickConfig, Substitute.For<INodeDataDownloader>(), LimboLogs.Instance);
             _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, sealValidator, _pool, _synchronizer, LimboLogs.Instance);
         }
 
@@ -345,12 +345,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Block block0 = _blockTree.FindBlock(0);
             Block block1 = _blockTree.FindBlock(1);
 
-            TransactionReceipt[][] transactionReceipts = _syncServer.GetReceipts(new[] {block0.Hash, block1.Hash, TestItem.KeccakA});
+            TxReceipt[][] txReceipts = _syncServer.GetReceipts(new[] {block0.Hash, block1.Hash, TestItem.KeccakA});
 
-            Assert.AreEqual(3, transactionReceipts.Length, "data.Length");
-            Assert.AreEqual(0, transactionReceipts[0].Length, "data[0]");
-            Assert.AreEqual(0, transactionReceipts[1].Length, "data[1]");
-            Assert.AreEqual(0, transactionReceipts[2].Length, "data[2]");
+            Assert.AreEqual(3, txReceipts.Length, "data.Length");
+            Assert.AreEqual(0, txReceipts[0].Length, "data[0]");
+            Assert.AreEqual(0, txReceipts[1].Length, "data[1]");
+            Assert.AreEqual(0, txReceipts[2].Length, "data[2]");
         }
     }
 }

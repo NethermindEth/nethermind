@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Data
             Topics = logEntry.Topics;
         }
         
-        public LogEntryForRpc(TransactionReceipt receipt, LogEntry logEntry, int index)
+        public LogEntryForRpc(TxReceipt receipt, LogEntry logEntry, int index)
         {
             Removed = false;
             LogIndex = index;
