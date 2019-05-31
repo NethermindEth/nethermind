@@ -157,9 +157,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 (BlocksDataHandlerResult Result, int ItemsSynced) result = (BlocksDataHandlerResult.InvalidFormat, 0);
                 try
                 {
-                    if (batch.Bodies.Response == null
-                        && batch.Headers.Response == null
-                        && batch.Receipts.Response == null)
+                    if (batch.Bodies?.Response == null
+                        && batch.Headers?.Response == null
+                        && batch.Receipts?.Response == null)
                     {
                         // to avoid uncontrolled loop in case of a code error
                         await Task.Delay(10);

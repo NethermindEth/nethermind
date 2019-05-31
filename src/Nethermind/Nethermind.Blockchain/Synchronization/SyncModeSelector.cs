@@ -63,11 +63,13 @@ namespace Nethermind.Blockchain.Synchronization
             long bestHeader = _syncProgressResolver.FindBestHeader();
             long bestFullBlock = _syncProgressResolver.FindBestFullBlock();
             long bestFullState = _syncProgressResolver.FindBestFullState();
-            long lowestInserted = _syncProgressResolver.FindLowestInserted();
             long maxBlockNumberAmongPeers = 0;
-            if (lowestInserted < 0 || bestFullBlock < 0 || bestHeader < 0 || bestFullState < 0  || bestFullBlock > bestHeader)
+            if (bestFullBlock < 0
+                || bestHeader < 0
+                || bestFullState < 0
+                || bestFullBlock > bestHeader)
             {
-                string errorMessage = $"Invalid best state calculation: {BuildStateString(bestHeader, bestFullBlock, bestFullBlock,lowestInserted, maxBlockNumberAmongPeers)}";
+                string errorMessage = $"Invalid best state calculation: {BuildStateString(bestHeader, bestFullBlock, bestFullBlock, maxBlockNumberAmongPeers)}";
                 if(_logger.IsError) _logger.Error(errorMessage);
                 throw new InvalidOperationException(errorMessage);
             }
@@ -98,19 +100,19 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (newSyncMode != Current)
             {
-                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullBlock,lowestInserted, maxBlockNumberAmongPeers)}");
+                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullBlock, maxBlockNumberAmongPeers)}");
                 Current = newSyncMode;
                 Changed?.Invoke(this, EventArgs.Empty);
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullBlock,lowestInserted, maxBlockNumberAmongPeers)}");
+                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullBlock, maxBlockNumberAmongPeers)}");
             }
         }
 
-        private string BuildStateString(long bestHeader, long bestFullBlock, long bestFullState, long lowestInserted, long bestAmongPeers)
+        private string BuildStateString(long bestHeader, long bestFullBlock, long bestFullState, long bestAmongPeers)
         {
-            return $"|best header:{bestHeader}|best full block:{bestFullBlock}|best state:{bestFullState}|lowest inserted:{lowestInserted}|best peer block:{bestAmongPeers}";
+            return $"|best header:{bestHeader}|best full block:{bestFullBlock}|best state:{bestFullState}|best peer block:{bestAmongPeers}";
         }
         
         public event EventHandler Changed;

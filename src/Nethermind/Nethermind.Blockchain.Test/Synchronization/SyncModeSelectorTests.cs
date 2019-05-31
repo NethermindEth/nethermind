@@ -87,7 +87,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 syncProgressResolver.FindBestFullState().Returns(testCase.BestLocalState);
                 syncProgressResolver.FindBestHeader().Returns(testCase.BestLocalHeader);
                 syncProgressResolver.FindBestFullBlock().Returns(testCase.BestLocalFullBlock);
-                syncProgressResolver.FindLowestInserted().Returns(1L);
                 
                 Assert.GreaterOrEqual(testCase.BestLocalHeader, testCase.BestLocalState, "checking if the test case is correct - local state always less then local header");
                 Assert.GreaterOrEqual(testCase.BestLocalHeader, testCase.BestLocalFullBlock, "checking if the test case is correct - local full block always less then local header");
@@ -156,7 +155,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncProgressResolver.FindBestHeader().Returns(bestHeader);
             syncProgressResolver.FindBestFullBlock().Returns(bestBlock);
             syncProgressResolver.FindBestFullState().Returns(bestLocalState);
-            syncProgressResolver.FindLowestInserted().Returns(1L);
             
             SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             return selector;
@@ -175,7 +173,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncProgressResolver.FindBestHeader().Returns(bestHeader);
             syncProgressResolver.FindBestFullBlock().Returns(bestBlock);
             syncProgressResolver.FindBestFullState().Returns(bestLocalState);
-            syncProgressResolver.FindLowestInserted().Returns(1L);            
 
             SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             return selector;

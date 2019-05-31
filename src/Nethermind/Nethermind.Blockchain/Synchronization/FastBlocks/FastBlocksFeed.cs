@@ -201,15 +201,24 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         int requestSize = (int) Math.Min(header.Number + 1, _receiptsRequestStats);
                         batch = new FastBlocksBatch();
                         batch.Receipts = new ReceiptsSyncBatch();
+                        batch.Receipts.Headers = new BlockHeader[requestSize];
                         batch.Receipts.BlockHashes = new Keccak[requestSize];
                         batch.MinNumber = header.Number;
                         _receiptsSyncStats.Update(header.Number, _pivotNumber);
 
-                        for (int i = requestSize - 1; i >= 0; i--)
+                        int collectedRequests = 0;
+                        while (collectedRequests < requestSize)
                         {
-                            _lowestRequestedReceiptsHash = batch.Bodies.Request[i] = header.Hash;
+                            _lowestRequestedReceiptsHash = header.Hash;
+                            if (header.TxRoot != Keccak.EmptyTreeHash)
+                            {
+                                batch.Receipts.Headers[collectedRequests] = header;
+                                batch.Bodies.Request[collectedRequests] = header.Hash;
+                                collectedRequests++;
+                            }
+                            
                             header = _blockTree.FindHeader(header.ParentHash);
-                            if (header == null)
+                            if (header == null || header.IsGenesis)
                             {
                                 break;
                             }

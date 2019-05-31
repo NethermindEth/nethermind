@@ -25,5 +25,6 @@ namespace Nethermind.Blockchain.Receipts
     {
         TxReceipt Find(Keccak hash);
         void Insert(TxReceipt txReceipt);
+        long? LowestInsertedReceiptBlock { get; }
     }
 }

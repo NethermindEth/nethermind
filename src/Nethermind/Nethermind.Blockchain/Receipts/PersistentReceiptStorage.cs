@@ -58,5 +58,7 @@ namespace Nethermind.Blockchain.Receipts
                     ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage
                     : RlpBehaviors.Storage).Bytes);
         }
+
+        public long? LowestInsertedReceiptBlock => long.MaxValue;
     }
 }
