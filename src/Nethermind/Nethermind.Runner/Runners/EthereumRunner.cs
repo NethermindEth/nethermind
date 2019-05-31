@@ -247,18 +247,8 @@ namespace Nethermind.Runner.Runners
                 filterManager,
                 _wallet,
                 rpcState.TransactionProcessor);
-
-            TxPool debugTxPool = new TxPool(new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
-                new PendingTxThresholdValidator(_initConfig.ObsoletePendingTransactionInterval, _initConfig.RemovePendingTransactionInterval),
-                _timestamp,
-                _ethereumEcdsa,
-                _specProvider,
-                _logManager,
-                _initConfig.RemovePendingTransactionInterval,
-                _initConfig.PeerNotificationThreshold);
-
-            var debugReceiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
-            AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, debugTxPool, debugReceiptStorage);
+            
+            AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, NullTxPool.Instance, NullReceiptStorage.Instance);
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             var debugBridge = new DebugBridge(_configProvider, debugDbProvider, tracer, debugChain.Processor);
 

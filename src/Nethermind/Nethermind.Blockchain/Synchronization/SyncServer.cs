@@ -162,14 +162,22 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 Block block = Find(blockHashes[blockIndex]);
                 var blockReceipts = new TxReceipt[block?.Transactions.Length ?? 0];
+                bool setNullForBlock = false;
                 for (int receiptIndex = 0; receiptIndex < (block?.Transactions.Length ?? 0); receiptIndex++)
                 {
                     if (block == null) continue;
 
-                    blockReceipts[receiptIndex] = _receiptStorage.Find(block.Transactions[receiptIndex].Hash);
+                    TxReceipt receipt = _receiptStorage.Find(block.Transactions[receiptIndex].Hash);
+                    if (receipt == null)
+                    {
+                        setNullForBlock = true;
+                        break;
+                    }
+                    
+                    blockReceipts[receiptIndex] = receipt;
                 }
 
-                receipts[blockIndex] = blockReceipts;
+                receipts[blockIndex] = setNullForBlock ? null : blockReceipts;
             }
 
             return receipts;

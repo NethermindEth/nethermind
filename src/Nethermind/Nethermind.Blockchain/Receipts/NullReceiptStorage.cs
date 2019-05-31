@@ -31,7 +31,11 @@ namespace Nethermind.Blockchain.Receipts
         
         public static NullReceiptStorage Instance { get; } = new NullReceiptStorage();
 
-        public void Insert(TxReceipt txReceipt)
+        public void Insert(TxReceipt txReceipt, bool isProcessed)
+        {
+        }
+
+        public void Insert(long blockNumber, TxReceipt txReceipt)
         {
         }
 

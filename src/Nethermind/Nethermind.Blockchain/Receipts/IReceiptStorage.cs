@@ -24,7 +24,8 @@ namespace Nethermind.Blockchain.Receipts
     public interface IReceiptStorage
     {
         TxReceipt Find(Keccak hash);
-        void Insert(TxReceipt txReceipt);
+        void Insert(TxReceipt txReceipt, bool isProcessed);
+        void Insert(long blockNumber, TxReceipt txReceipt);
         long? LowestInsertedReceiptBlock { get; }
     }
 }

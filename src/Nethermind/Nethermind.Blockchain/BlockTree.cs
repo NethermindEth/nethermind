@@ -205,7 +205,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            long left = LowestInsertedHeader.Number;
+            long left = Math.Max(0L, LowestInsertedHeader.Number - 1L);
             long right = LongConverter.FromString(_syncConfig.PivotNumber ?? "0x0");
 
             while (left != right)
@@ -244,8 +244,6 @@ namespace Nethermind.Blockchain
             int batchSize = DbLoadBatchSize,
             int maxBlocksToLoad = int.MaxValue)
         {
-//            return; // use for fast sync blocks download
-
             try
             {
                 CanAcceptNewBlocks = false;
@@ -267,7 +265,7 @@ namespace Nethermind.Blockchain
                     Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1)?.Header;
                 }
 
-                bool fastSyncFinished = (LowestInsertedBody?.Number ?? long.MaxValue) <= 1 && (LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
+                bool fastSyncFinished = Head?.Number > 0;  
                 if (!fastSyncFinished)
                 {
                     if (_logger.IsInfo) _logger.Info("Fast sync in progress - skipping loading blocks from DB");

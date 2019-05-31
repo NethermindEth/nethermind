@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                         case FastBlocksBatchType.Receipts:
                         {
-                            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(batch.Receipts.BlockHashes, token);
+                            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(batch.Receipts.Request, token);
                             await getReceiptsTask.ContinueWith(
                                 t =>
                                 {

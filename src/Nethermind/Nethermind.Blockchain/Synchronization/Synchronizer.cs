@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Synchronization
                 feed.StartNumber = lowestInserted?.Number ?? pivotNumber;
                 feed.StartBodyHash = lowestInsertedBody?.Hash ?? pivotHash;
                 feed.StartHeaderHash = lowestInserted?.Hash ?? pivotHash;
-                feed.StartReceiptsHash = lowestInsertedBody?.Hash ?? pivotHash;
+                feed.StartReceiptsHash = _blockTree.FindBlock(_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue)?.Hash ?? pivotHash;
                 feed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? pivotDifficulty;
 
                 _fastBlockDownloader = new FastBlocksDownloader(_syncPeerPool, feed, blockValidator, sealValidator, logManager);
@@ -326,7 +326,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (_syncMode.Current == SyncMode.FastBlocks
                 && (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1
                 && (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1
-                && (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1
+                && (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1)
                 && (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1))
             {
                 BlockHeader header = _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash));
