@@ -23,6 +23,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class ReceiptsSyncBatch
     {
+        public bool IsFinal { get; set; }
         public Block[] Blocks { get; set; }
         public Keccak[] Request { get; set; }
         public TxReceipt[][] Response { get; set; }

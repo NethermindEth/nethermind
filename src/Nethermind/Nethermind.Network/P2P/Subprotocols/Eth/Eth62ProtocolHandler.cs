@@ -539,6 +539,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
+            if (number == 0)
+            {
+                return new BlockHeader[0];
+            }
+            
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
@@ -557,6 +562,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         async Task<BlockBody[]> ISyncPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
+            if (blockHashes.Length == 0)
+            {
+                return new BlockBody[0];
+            }
+            
             var bodiesMsg = new GetBlockBodiesMessage(blockHashes);
 
             BlockBody[] blocks = await SendRequest(bodiesMsg, token);

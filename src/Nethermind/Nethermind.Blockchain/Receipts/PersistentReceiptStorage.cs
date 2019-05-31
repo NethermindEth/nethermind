@@ -29,18 +29,14 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly IDb _database;
         private readonly ISpecProvider _specProvider;
-        private byte[] _maxValueBytes = Rlp.Encode(long.MaxValue).Bytes; 
 
         public PersistentReceiptStorage(IDb database, ISpecProvider specProvider)
         {
             _database = database ?? throw new ArgumentNullException(nameof(database));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            
-            LowestInsertedReceiptBlock = new Rlp.DecoderContext(_database.Get(Keccak.Zero) ?? _maxValueBytes).DecodeLong();
-            if (LowestInsertedReceiptBlock == long.MaxValue)
-            {
-                LowestInsertedReceiptBlock = null;
-            }
+
+            byte[] lowestBytes = _database.Get(Keccak.Zero);
+            LowestInsertedReceiptBlock = lowestBytes == null ? (long?)null : new Rlp.DecoderContext( lowestBytes).DecodeLong();
         }
 
         public TxReceipt Find(Keccak hash)
@@ -72,17 +68,20 @@ namespace Nethermind.Blockchain.Receipts
 
         public void Insert(long blockNumber, TxReceipt txReceipt)
         {
-            if (txReceipt == null)
+            if (txReceipt == null && blockNumber != 1L)
             {
                 throw new ArgumentNullException(nameof(txReceipt));
             }
+
+            if (txReceipt != null)
+            {
+                var spec = _specProvider.GetSpec(blockNumber);
+                RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+                _database.Set(txReceipt.TransactionHash, Rlp.Encode(txReceipt, behaviors).Bytes);
+            }
             
-            var spec = _specProvider.GetSpec(txReceipt.BlockNumber);
-            RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
-            _database.Set(txReceipt.TransactionHash, Rlp.Encode(txReceipt, behaviors).Bytes);
             LowestInsertedReceiptBlock = blockNumber;
-            
-            _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock ?? long.MaxValue).Bytes);
+            _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
         }
 
         public long? LowestInsertedReceiptBlock { get; private set; }

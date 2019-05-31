@@ -125,6 +125,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public override async Task<byte[][]> GetNodeData(Keccak[] keys, CancellationToken token)
         {
+            if (keys.Length == 0)
+            {
+                return new byte[0][];
+            }
+            
             var msg = new GetNodeDataMessage(keys);
             byte[][] receipts = await SendRequest(msg, token);
             return receipts;
@@ -132,6 +137,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         
         public override async Task<TxReceipt[][]> GetReceipts(Keccak[] blockHashes, CancellationToken token)
         {
+            if (blockHashes.Length == 0)
+            {
+                return new TxReceipt[0][];
+            }
+            
             var msg = new GetReceiptsMessage(blockHashes);
             TxReceipt[][] txReceipts = await SendRequest(msg, token);
             return txReceipts;

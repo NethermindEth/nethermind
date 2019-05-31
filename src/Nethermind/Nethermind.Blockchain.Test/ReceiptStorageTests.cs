@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Test
         {
             var transaction = GetSignedTransaction();
             var receipt = GetReceipt(transaction);
-            storage.Insert(receipt);
+            storage.Insert(receipt, true);
             var fetchedReceipt = storage.Find(transaction.Hash);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
         }

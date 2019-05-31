@@ -93,7 +93,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             bool bodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
             bool headersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? 0) == 1;
             bool receiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
-            _logger.Warn($"LIB {_blockTree.LowestInsertedBody?.Number ?? 0} LIH {_blockTree.LowestInsertedHeader?.Number ?? 0} LIR {_receiptStorage.LowestInsertedReceiptBlock ?? 0}");
 
             if (!headersDownloaded)
             {
@@ -232,6 +231,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             batch.Receipts.Request = new Keccak[collectedRequests];
                             Array.Copy(currentBlocks, 0, batch.Receipts.Blocks, 0, collectedRequests);
                             Array.Copy(currentRequests, 0, batch.Receipts.Request, 0, collectedRequests);
+                            batch.Receipts.IsFinal = true;
                         }
 
                         break;
@@ -356,6 +356,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     FastBlocksBatch filler = PrepareReceiptFiller(added, receiptsSyncBatch);
                     _pendingBatches.Push(filler);
+                    if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {filler}");
                     return added;
                 }
 
@@ -380,10 +381,18 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
             }
 
+            if (added == receiptsSyncBatch.Request.Length && receiptsSyncBatch.IsFinal)
+            {
+                _receiptStorage.Insert(1, null);
+                added = 1; // magic (not to disconnect the last peer)
+            }
+            
             if (_receiptStorage.LowestInsertedReceiptBlock != null)
             {
                 _receiptsSyncStats.Update(_pivotNumber - (_receiptStorage.LowestInsertedReceiptBlock ?? _pivotNumber), _pivotNumber);
             }
+            
+            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {batch}");
 
             return added;
         }
