@@ -96,21 +96,26 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (!headersDownloaded)
             {
-                return FastBlocksBatchType.Headers;
+                return (_lowestRequestedHeaderNumber ?? long.MaxValue) == 0
+                    ? FastBlocksBatchType.None
+                    : FastBlocksBatchType.Headers;
             }
 
             if (!bodiesDownloaded
                 && _syncConfig.DownloadBodiesInFastSync
-                && _lowestRequestedBodyHash != _blockTree.Genesis.Hash)
+            )
             {
-                return FastBlocksBatchType.Bodies;
+                return _lowestRequestedBodyHash == _blockTree.Genesis.Hash
+                    ? FastBlocksBatchType.None
+                    : FastBlocksBatchType.Bodies;
             }
 
             if (!receiptsDownloaded
-                && _syncConfig.DownloadReceiptsInFastSync
-                && _lowestRequestedReceiptsHash != _blockTree.Genesis.Hash)
+                && _syncConfig.DownloadReceiptsInFastSync)
             {
-                return FastBlocksBatchType.Receipts;
+                return _lowestRequestedReceiptsHash == _blockTree.Genesis.Hash
+                    ? FastBlocksBatchType.None
+                    : FastBlocksBatchType.Receipts;
             }
 
             return FastBlocksBatchType.None;
@@ -309,9 +314,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         {
                             if (batch.Headers?.RequestSize == 0)
                             {
-                                return (BlocksDataHandlerResult.OK, 1);    
+                                return (BlocksDataHandlerResult.OK, 1);
                             }
-                            
+
                             int added = InsertHeaders(batch);
                             return (BlocksDataHandlerResult.OK, added);
                         }
@@ -320,9 +325,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         {
                             if (batch.Bodies?.Request?.Length == 0)
                             {
-                                return (BlocksDataHandlerResult.OK, 1);    
+                                return (BlocksDataHandlerResult.OK, 1);
                             }
-                            
+
                             int added = InsertBodies(batch);
                             return (BlocksDataHandlerResult.OK, added);
                         }
@@ -396,12 +401,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 _receiptStorage.Insert(1, null);
                 added = 1; // magic (not to disconnect the last peer)
             }
-            
+
             if (_receiptStorage.LowestInsertedReceiptBlock != null)
             {
                 _receiptsSyncStats.Update(_pivotNumber - (_receiptStorage.LowestInsertedReceiptBlock ?? _pivotNumber), _pivotNumber);
             }
-            
+
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {batch}");
 
             return added;
