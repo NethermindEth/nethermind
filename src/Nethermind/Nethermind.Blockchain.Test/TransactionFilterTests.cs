@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Test
     {
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
-        private ITransactionFilter _filter;
+        private ITxFilter _filter;
 
         [SetUp]
         public void Setup()
@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void should_accept_any_transaction_when_using_accept_all_filter()
         {
-            _filter = new AcceptAllTransactionFilter();
+            _filter = new AcceptAllTxFilter();
             var transactions = GetTransactions();
             var addedTransactions = ApplyFilter(transactions);
             addedTransactions.Length.Should().Be(transactions.Length);
@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void should_not_accept_any_transaction_when_using_reject_all_filter()
         {
-            _filter = new RejectAllTransactionFilter();
+            _filter = new RejectAllTxFilter();
             var transactions = GetTransactions();
             var addedTransactions = ApplyFilter(transactions);
             addedTransactions.Should().BeEmpty();
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void should_add_some_transactions_to_storage_when_using_accept_when_filter()
         {
-            _filter = AcceptWhenTransactionFilter
+            _filter = AcceptWhenTxFilter
                 .Create()
                 .Nonce(n => n >= 0)
                 .GasPrice(p => p > 2 && p < 1500)

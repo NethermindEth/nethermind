@@ -22,24 +22,24 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync
 {
+    /// <summary>
+    /// This class represents sync progress as a percentage of second level branches saved in the database.
+    /// </summary>
     internal class NodeSyncProgress
     {
+        private ILogger _logger;
+        private NodeProgressState[] _syncProgress;
+        
+        public decimal LastProgress { get; private set; }
+        public long CurrentSyncBlock { get; }
+
         public NodeSyncProgress(long syncBlockNumber, ILogger logger)
         {
             CurrentSyncBlock = syncBlockNumber;
             _logger = logger;
             _syncProgress = new NodeProgressState[256];
         }
-
-        public long CurrentSyncBlock { get; }
-
-        private readonly ILogger _logger;
-
-        private DateTime _lastProgressTime = DateTime.MinValue;
-
-        private NodeProgressState[] _syncProgress;
-        public decimal LastProgress { get; private set; }
-
+        
         private void ReportSyncedLevel1(int childIndex, NodeProgressState nodeProgressState)
         {
             if (childIndex == -1)

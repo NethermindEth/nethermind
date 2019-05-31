@@ -24,12 +24,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.TxPools.Filters
 {
-    public class AcceptWhenTransactionFilter : ITransactionFilter
+    public class AcceptWhenTxFilter : ITxFilter
     {
         private readonly Filter _filter;
         private readonly ILogger _logger;
 
-        private AcceptWhenTransactionFilter(Filter filter, ILogManager logManager)
+        private AcceptWhenTxFilter(Filter filter, ILogManager logManager)
         {
             _filter = filter;
             _logger = logManager?.GetClassLogger();
@@ -196,7 +196,7 @@ namespace Nethermind.Blockchain.TxPools.Filters
                 return this;
             }
 
-            public AcceptWhenTransactionFilter Build() => new AcceptWhenTransactionFilter(_filter, _logManager);
+            public AcceptWhenTxFilter Build() => new AcceptWhenTxFilter(_filter, _logManager);
         }
 
         public class Filter

@@ -18,7 +18,7 @@
 
 namespace Nethermind.Blockchain.TxPools
 {
-    public enum AddTransactionResult
+    public enum AddTxResult
     {
         AlreadyKnown,
         OldScheme,

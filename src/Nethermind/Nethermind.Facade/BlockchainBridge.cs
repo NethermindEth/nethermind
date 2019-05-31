@@ -38,17 +38,17 @@ namespace Nethermind.Facade
     [DoNotUseInSecuredContext("Not reviewed, work in progress")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly IBlockTree _blockTree;
         private readonly ITxPool _txPool;
-        private readonly ITxPoolInfoProvider _transactionPoolInfoProvider;
-        private readonly IFilterManager _filterManager;
+        private readonly IWallet _wallet;
+        private readonly IBlockTree _blockTree;
         private readonly IFilterStore _filterStore;
         private readonly IStateReader _stateReader;
+        private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly IWallet _wallet;
+        private readonly ITxPoolInfoProvider _transactionPoolInfoProvider;
 
         public BlockchainBridge(
             IStateReader stateReader,
@@ -100,16 +100,16 @@ namespace Nethermind.Facade
         public Block RetrieveHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, false);
         public Block RetrieveGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, true);
 
-        public (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
+        public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
-            TransactionReceipt transactionReceipt = _receiptStorage.Get(transactionHash);
-            if (transactionReceipt?.BlockHash == null) return (null, null);
+            TxReceipt txReceipt = _receiptStorage.Find(transactionHash);
+            if (txReceipt?.BlockHash == null) return (null, null);
 
-            Block block = _blockTree.FindBlock(transactionReceipt.BlockHash, true);
-            return (transactionReceipt, block.Transactions[transactionReceipt.Index]);
+            Block block = _blockTree.FindBlock(txReceipt.BlockHash, true);
+            return (txReceipt, block.Transactions[txReceipt.Index]);
         }
 
-        public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Get(transactionHash).BlockHash;
+        public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Find(transactionHash).BlockHash;
 
         private Timestamp _timestamp = new Timestamp();
 
@@ -126,9 +126,9 @@ namespace Nethermind.Facade
             return transaction.Hash;
         }
 
-        public TransactionReceipt GetTransactionReceipt(Keccak txHash)
+        public TxReceipt GetReceipt(Keccak txHash)
         {
-            var rec = _receiptStorage.Get(txHash);
+            var rec = _receiptStorage.Find(txHash);
             return rec;
         }
 

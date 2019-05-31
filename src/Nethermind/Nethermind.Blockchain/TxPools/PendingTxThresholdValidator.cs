@@ -20,12 +20,12 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TxPools
 {
-    public class PendingTransactionThresholdValidator : IPendingTransactionThresholdValidator
+    public class PendingTxThresholdValidator : IPendingTxThresholdValidator
     {
         private readonly int _obsoletePendingTransactionInterval;
         private readonly int _removePendingTransactionInterval;
 
-        public PendingTransactionThresholdValidator(int obsoletePendingTransactionInterval = 15,
+        public PendingTxThresholdValidator(int obsoletePendingTransactionInterval = 15,
             int removePendingTransactionInterval = 600)
         {
             _obsoletePendingTransactionInterval = obsoletePendingTransactionInterval;

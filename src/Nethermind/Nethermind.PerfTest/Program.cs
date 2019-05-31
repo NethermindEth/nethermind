@@ -157,8 +157,8 @@ namespace Nethermind.PerfTest
             ISnapshotableDb stateDb = new StateDb();
             IStateProvider stateProvider = new StateProvider(stateDb, new StateDb(), logManager);
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance,
-                new TxPool(NullTransactionStorage.Instance,
-                    new PendingTransactionThresholdValidator(), new Timestamp(),
+                new TxPool(NullTxStorage.Instance,
+                    new PendingTxThresholdValidator(), new Timestamp(),
                     NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, logManager), logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree, LimboLogs.Instance), logManager);
 
@@ -348,8 +348,8 @@ namespace Nethermind.PerfTest
             var receiptsDb = dbProvider.ReceiptsDb;
 
             /* store & validation */
-            var transactionPool = new TxPool(NullTransactionStorage.Instance,
-                new PendingTransactionThresholdValidator(), new Timestamp(),
+            var transactionPool = new TxPool(NullTxStorage.Instance,
+                new PendingTxThresholdValidator(), new Timestamp(),
                 NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, _logManager);
             var receiptStorage = new InMemoryReceiptStorage();
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, specProvider, transactionPool, _logManager));

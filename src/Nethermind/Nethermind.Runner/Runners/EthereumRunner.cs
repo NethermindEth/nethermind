@@ -247,18 +247,8 @@ namespace Nethermind.Runner.Runners
                 filterManager,
                 _wallet,
                 rpcState.TransactionProcessor);
-
-            TxPool debugTxPool = new TxPool(new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
-                new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval, _initConfig.RemovePendingTransactionInterval),
-                _timestamp,
-                _ethereumEcdsa,
-                _specProvider,
-                _logManager,
-                _initConfig.RemovePendingTransactionInterval,
-                _initConfig.PeerNotificationThreshold);
-
-            var debugReceiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
-            AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, debugTxPool, debugReceiptStorage);
+            
+            AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, NullTxPool.Instance, NullReceiptStorage.Instance);
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             var debugBridge = new DebugBridge(_configProvider, debugDbProvider, tracer, debugChain.Processor);
 
@@ -386,8 +376,8 @@ namespace Nethermind.Runner.Runners
 
             _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
             _txPool = new TxPool(
-                new PersistentTransactionStorage(_dbProvider.PendingTxsDb, _specProvider),
-                new PendingTransactionThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
+                new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
+                new PendingTxThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
                     _initConfig.RemovePendingTransactionInterval), new Timestamp(),
                 _ethereumEcdsa, _specProvider, _logManager, _initConfig.RemovePendingTransactionInterval,
                 _initConfig.PeerNotificationThreshold);
@@ -587,10 +577,7 @@ namespace Nethermind.Runner.Runners
                 }
             }
 
-            await InitializeNetwork(
-                _receiptStorage,
-                _sealValidator,
-                txValidator);
+            await InitializeNetwork();
         }
 
         private async Task LoadBlocksFromDb()
@@ -613,22 +600,19 @@ namespace Nethermind.Runner.Runners
             });
         }
 
-        private async Task InitializeNetwork(
-            IReceiptStorage receiptStorage,
-            ISealValidator sealValidator,
-            TxValidator txValidator)
+        private async Task InitializeNetwork()
         {
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
-            _synchronizer = new Synchronizer(_blockTree, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _logManager);
+            _synchronizer = new Synchronizer(_blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _logManager);
 
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,
                 _dbProvider.CodeDb,
                 _blockTree,
                 _receiptStorage,
-                sealValidator,
+                _sealValidator,
                 _syncPeerPool,
                 _synchronizer,
                 _logManager);
@@ -689,9 +673,9 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            foreach (KeyValuePair<Address, UInt256> allocation in chainSpec.Allocations)
+            foreach ((Address address, UInt256 balance) in chainSpec.Allocations)
             {
-                stateProvider.CreateAccount(allocation.Key, allocation.Value);
+                stateProvider.CreateAccount(address, balance);
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

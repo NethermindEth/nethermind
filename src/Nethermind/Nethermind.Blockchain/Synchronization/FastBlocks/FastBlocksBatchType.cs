@@ -16,17 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-
-namespace Nethermind.Blockchain.TxPools
+namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public interface ITransactionStorage
+    public enum FastBlocksBatchType
     {
-        Transaction Get(Keccak hash);
-        Transaction[] GetAll();
-        void Add(Transaction transaction, long blockNumber);
-        void Delete(Keccak hash);
+        None,
+        Headers,
+        Bodies,
+        Receipts
     }
 }

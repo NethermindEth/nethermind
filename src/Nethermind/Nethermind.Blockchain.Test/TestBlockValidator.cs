@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Test
             return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         }
 
-        public bool ValidateProcessedBlock(Block processedBlock, TransactionReceipt[] receipts, Block suggestedBlock)
+        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
         {
             return _alwaysSameResultForProcessed ?? _processedValidationResults.Dequeue();
         }

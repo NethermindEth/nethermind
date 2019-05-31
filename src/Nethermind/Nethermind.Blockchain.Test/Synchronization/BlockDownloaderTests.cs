@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -25,11 +26,13 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Mining;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
 using NSubstitute;
@@ -91,8 +94,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     }
                 }
 
-                return await Task.FromResult(headers);
+                BlockHeadersMessage message = new BlockHeadersMessage(headers);
+                byte[] messageSerialized = _headersSerializer.Serialize(message);
+                return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
+
+            private BlockHeadersMessageSerializer _headersSerializer = new BlockHeadersMessageSerializer();
+            private BlockBodiesMessageSerializer _bodiesSerializer = new BlockBodiesMessageSerializer();
 
             public async Task<BlockBody[]> BuildBlocksResponse(Keccak[] blockHashes, Response flags)
             {
@@ -137,7 +145,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     }
                 }
 
-                return await Task.FromResult(blockBodies);
+                BlockBodiesMessage message = new BlockBodiesMessage(blockBodies);
+                byte[] messageSerialized = _bodiesSerializer.Serialize(message);
+                return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies);
             }
         }
 
@@ -177,7 +187,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.AreEqual(Math.Max(0, headNumber - SyncModeSelector.FullSyncThreshold), _blockTree.BestSuggestedHeader.Number, "headers");
 
             peerInfo.HeadNumber *= 2;
-            await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None);
+            await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None);
             Assert.AreEqual(Math.Max(0, headNumber * 2), _blockTree.BestSuggestedHeader.Number);
         }
 
@@ -202,8 +212,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber - SyncModeSelector.FullSyncThreshold), _blockTree.BestSuggestedHeader.Number);
 
             peerInfo.HeadNumber *= 2;
-            await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None).ContinueWith(t => { });
-            await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None);
+            await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None).ContinueWith(t => { });
+            await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None);
             Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber), _blockTree.BestSuggestedHeader.Number);
         }
 
@@ -227,7 +237,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .ContinueWith(t => Assert.True(t.IsCompletedSuccessfully));
 
             peerInfo.HeadNumber = 128;
-            await blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None)
+            await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None)
                 .ContinueWith(t => Assert.True(t.IsCompletedSuccessfully));
         }
 
@@ -248,7 +258,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             peerInfo.TotalDifficulty = UInt256.MaxValue;
             peerInfo.HeadNumber = headNumber;
 
-            Task task = blockDownloader.DownloadBlocks(peerInfo, CancellationToken.None);
+            Task task = blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None);
             await task.ContinueWith(t => Assert.True(t.IsFaulted));
 
             Assert.AreEqual(0, _blockTree.BestSuggestedHeader.Number);
@@ -261,7 +271,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Task task1 = blockDownloader.DownloadHeaders(null, SyncModeSelector.FullSyncThreshold, CancellationToken.None);
             await task1.ContinueWith(t => Assert.True(t.IsFaulted));
 
-            Task task2 = blockDownloader.DownloadBlocks(null, CancellationToken.None);
+            Task task2 = blockDownloader.DownloadBlocks(null, 0, CancellationToken.None);
             await task2.ContinueWith(t => Assert.True(t.IsFaulted));
         }
 
@@ -356,7 +366,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return true;
             }
 
-            public bool ValidateProcessedBlock(Block processedBlock, TransactionReceipt[] receipts, Block suggestedBlock)
+            public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
             {
                 Thread.Sleep(1000);
                 return true;
@@ -387,7 +397,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             peerInfo.HeadNumber = 2000;
             cancellation = new CancellationTokenSource();
             cancellation.CancelAfter(1000);
-            task = blockDownloader.DownloadBlocks(peerInfo, cancellation.Token);
+            task = blockDownloader.DownloadBlocks(peerInfo, 0, cancellation.Token);
             await task.ContinueWith(t => Assert.True(t.IsCanceled, $"blocks {t.Status}"));
         }
 
@@ -462,7 +472,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 throw new NotImplementedException();
             }
 
-            public Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+            public Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

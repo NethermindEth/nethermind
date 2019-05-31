@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             throw new NotImplementedException();
         }
 
-        public Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+        public Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
         {
             throw new NotImplementedException();
         }

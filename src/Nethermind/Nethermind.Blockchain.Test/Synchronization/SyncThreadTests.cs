@@ -256,7 +256,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var receiptStorage = new InMemoryReceiptStorage();
 
             var ecdsa = new EthereumEcdsa(specProvider, logManager);
-            var txPool = new TxPool(new InMemoryTransactionStorage(), new PendingTransactionThresholdValidator(), new Timestamp(), ecdsa, specProvider, logManager);
+            var txPool = new TxPool(new InMemoryTxStorage(), new PendingTxThresholdValidator(), new Timestamp(), ecdsa, specProvider, logManager);
             var tree = new BlockTree(blockDb, headerDb, blockInfoDb, specProvider, txPool, logManager);
             var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
@@ -293,6 +293,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             NodeDataDownloader downloader = new NodeDataDownloader(syncPeerPool, feed, logManager);
             Synchronizer synchronizer = new Synchronizer(
                 tree,
+                NullReceiptStorage.Instance,
                 blockValidator,
                 sealValidator,
                 syncPeerPool, syncConfig, downloader, logManager);

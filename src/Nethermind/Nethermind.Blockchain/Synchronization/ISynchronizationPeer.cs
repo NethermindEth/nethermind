@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Synchronization
         void SendNewBlock(Block block);
         void SendNewTransaction(Transaction transaction);
         
-        Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token);
+        Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token);
         Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token);
     }
 }

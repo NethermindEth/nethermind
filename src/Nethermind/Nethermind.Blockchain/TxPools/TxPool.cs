@@ -44,11 +44,11 @@ namespace Nethermind.Blockchain.TxPools
         private readonly ConcurrentDictionary<Keccak, Transaction> _pendingTransactions =
             new ConcurrentDictionary<Keccak, Transaction>();
 
-        private readonly ConcurrentDictionary<Type, ITransactionFilter> _filters =
-            new ConcurrentDictionary<Type, ITransactionFilter>();
+        private readonly ConcurrentDictionary<Type, ITxFilter> _filters =
+            new ConcurrentDictionary<Type, ITxFilter>();
 
-        private readonly ITransactionStorage _transactionStorage;
-        private readonly IPendingTransactionThresholdValidator _pendingTransactionThresholdValidator;
+        private readonly ITxStorage _txStorage;
+        private readonly IPendingTxThresholdValidator _pendingTxThresholdValidator;
         private readonly ITimestamp _timestamp;
 
         private readonly ConcurrentDictionary<PublicKey, ISyncPeer> _peers =
@@ -60,15 +60,15 @@ namespace Nethermind.Blockchain.TxPools
 
         private readonly int _peerNotificationThreshold;
 
-        public TxPool(ITransactionStorage transactionStorage,
-            IPendingTransactionThresholdValidator pendingTransactionThresholdValidator,
+        public TxPool(ITxStorage txStorage,
+            IPendingTxThresholdValidator pendingTxThresholdValidator,
             ITimestamp timestamp, IEthereumEcdsa ecdsa, ISpecProvider specProvider, ILogManager logManager,
             int removePendingTransactionInterval = 600,
             int peerNotificationThreshold = 20)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _transactionStorage = transactionStorage ?? throw new ArgumentNullException(nameof(transactionStorage));
-            _pendingTransactionThresholdValidator = pendingTransactionThresholdValidator;
+            _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
+            _pendingTxThresholdValidator = pendingTxThresholdValidator;
             _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -105,7 +105,7 @@ namespace Nethermind.Blockchain.TxPools
 
         public Transaction[] GetPendingTransactions() => _pendingTransactions.Values.ToArray();
 
-        public void AddFilter<T>(T filter) where T : ITransactionFilter
+        public void AddFilter<T>(T filter) where T : ITxFilter
             => _filters.TryAdd(filter.GetType(), filter);
 
         public void AddPeer(ISyncPeer peer)
@@ -128,7 +128,7 @@ namespace Nethermind.Blockchain.TxPools
             if (_logger.IsTrace) _logger.Trace($"Removed a peer: {nodeId}");
         }
 
-        public AddTransactionResult AddTransaction(Transaction transaction, long blockNumber)
+        public AddTxResult AddTransaction(Transaction transaction, long blockNumber)
         {
             Metrics.PendingTransactionsReceived++;
 
@@ -136,25 +136,25 @@ namespace Nethermind.Blockchain.TxPools
             if (transaction.Signature.GetChainId == null)
             {
                 Metrics.PendingTransactionsDiscarded++;
-                return AddTransactionResult.OldScheme;
+                return AddTxResult.OldScheme;
             }
 
             if (transaction.Signature.GetChainId != _specProvider.ChainId)
             {
                 Metrics.PendingTransactionsDiscarded++;
-                return AddTransactionResult.InvalidChainId;
+                return AddTxResult.InvalidChainId;
             }
 
             if (!_pendingTransactions.TryAdd(transaction.Hash, transaction))
             {
                 Metrics.PendingTransactionsKnown++;
-                return AddTransactionResult.AlreadyKnown;
+                return AddTxResult.AlreadyKnown;
             }
 
-            if (_transactionStorage.Get(transaction.Hash) != null)
+            if (_txStorage.Get(transaction.Hash) != null)
             {
                 Metrics.PendingTransactionsKnown++;
-                return AddTransactionResult.AlreadyKnown;
+                return AddTxResult.AlreadyKnown;
             }
 
             transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, blockNumber);
@@ -172,8 +172,8 @@ namespace Nethermind.Blockchain.TxPools
             NotifySelectedPeers(transaction);
 
             FilterAndStoreTransaction(transaction, blockNumber);
-            NewPending?.Invoke(this, new TransactionEventArgs(transaction));
-            return AddTransactionResult.Added;
+            NewPending?.Invoke(this, new TxEventArgs(transaction));
+            return AddTxResult.Added;
         }
 
         private void FilterAndStoreTransaction(Transaction transaction, long blockNumber)
@@ -184,7 +184,7 @@ namespace Nethermind.Blockchain.TxPools
                 return;
             }
 
-            _transactionStorage.Add(transaction, blockNumber);
+            _txStorage.Add(transaction, blockNumber);
             if (_logger.IsTrace) _logger.Trace($"Added a transaction: {transaction.Hash}");
         }
 
@@ -199,7 +199,7 @@ namespace Nethermind.Blockchain.TxPools
             var timestamp = new UInt256(_timestamp.EpochSeconds);
             foreach (var transaction in _pendingTransactions.Values)
             {
-                if (_pendingTransactionThresholdValidator.IsRemovable(timestamp, transaction.Timestamp))
+                if (_pendingTxThresholdValidator.IsRemovable(timestamp, transaction.Timestamp))
                 {
                     hashes.Add(transaction.Hash);
                 }
@@ -209,7 +209,7 @@ namespace Nethermind.Blockchain.TxPools
             {
                 if (_pendingTransactions.TryRemove(hashes[i], out var transaction))
                 {
-                    RemovedPending?.Invoke(this, new TransactionEventArgs(transaction));
+                    RemovedPending?.Invoke(this, new TxEventArgs(transaction));
                 }
             }
         }
@@ -218,7 +218,7 @@ namespace Nethermind.Blockchain.TxPools
         {
             if (_pendingTransactions.TryRemove(hash, out var transaction))
             {
-                RemovedPending?.Invoke(this, new TransactionEventArgs(transaction));
+                RemovedPending?.Invoke(this, new TxEventArgs(transaction));
             }
 
             if (_ownTransactions.Count != 0)
@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain.TxPools
                 }
             }
 
-            _transactionStorage.Delete(hash);
+            _txStorage.Delete(hash);
             if (_logger.IsTrace) _logger.Trace($"Deleted a transaction: {hash}");
         }
 
@@ -241,13 +241,13 @@ namespace Nethermind.Blockchain.TxPools
             return found;
         }
 
-        public event EventHandler<TransactionEventArgs> NewPending;
-        public event EventHandler<TransactionEventArgs> RemovedPending;
+        public event EventHandler<TxEventArgs> NewPending;
+        public event EventHandler<TxEventArgs> RemovedPending;
 
         private void Notify(ISyncPeer peer, Transaction transaction)
         {
             var timestamp = new UInt256(_timestamp.EpochSeconds);
-            if (_pendingTransactionThresholdValidator.IsObsolete(timestamp, transaction.Timestamp))
+            if (_pendingTxThresholdValidator.IsObsolete(timestamp, transaction.Timestamp))
             {
                 return;
             }

@@ -150,7 +150,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
         }
 
-        public Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+        public Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
         {
             return Task.FromResult(_remoteSyncServer.GetReceipts(blockHash));
         }

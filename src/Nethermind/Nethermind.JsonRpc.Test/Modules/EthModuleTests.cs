@@ -237,7 +237,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.LogEntry.TestObject,
                 Build.A.LogEntry.TestObject
             };
-            bridge.GetTransactionReceipt(Arg.Any<Keccak>()).Returns(Build.A.Receipt.WithBloom(new Bloom(entries)).WithAllFieldsFilled.WithLogs(entries).TestObject);
+            bridge.GetReceipt(Arg.Any<Keccak>()).Returns(Build.A.Receipt.WithBloom(new Bloom(entries)).WithAllFieldsFilled.WithLogs(entries).TestObject);
 
             IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
 
@@ -251,7 +251,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
 
-            bridge.GetTransactionReceipt(Arg.Any<Keccak>()).Returns((TransactionReceipt) null);
+            bridge.GetReceipt(Arg.Any<Keccak>()).Returns((TxReceipt) null);
 
             IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
 

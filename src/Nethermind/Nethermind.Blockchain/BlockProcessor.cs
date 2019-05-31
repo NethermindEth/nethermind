@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain
         }
 
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
-        public event EventHandler<TransactionProcessedEventArgs> TransactionProcessed;
+        public event EventHandler<TxProcessedEventArgs> TransactionProcessed;
 
         public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain
 
         private BlockReceiptsTracer _receiptsTracer;
         
-        private TransactionReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+        private TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
             _receiptsTracer.SetOtherTracer(blockTracer);
             _receiptsTracer.StartNewBlockTrace(block);   
@@ -156,34 +156,34 @@ namespace Nethermind.Blockchain
 
                 if ((processingOptions & ProcessingOptions.ReadOnlyChain) == 0)
                 {
-                    TransactionProcessed?.Invoke(this, new TransactionProcessedEventArgs(_receiptsTracer.TransactionReceipts[i]));
+                    TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(_receiptsTracer.TxReceipts[i]));
                 }
             }
 
-            return _receiptsTracer.TransactionReceipts;
+            return _receiptsTracer.TxReceipts;
         }
 
-        private void SetReceiptsRootAndBloom(Block block, TransactionReceipt[] transactionReceipts)
+        private void SetReceiptsRootAndBloom(Block block, TxReceipt[] txReceipts)
         {
-            PatriciaTree receiptTree = transactionReceipts.Length > 0 ? new PatriciaTree(NullDb.Instance, Keccak.EmptyTreeHash, false) : null;
-            for (int i = 0; i < transactionReceipts.Length; i++)
+            PatriciaTree receiptTree = txReceipts.Length > 0 ? new PatriciaTree(NullDb.Instance, Keccak.EmptyTreeHash, false) : null;
+            for (int i = 0; i < txReceipts.Length; i++)
             {
-                Rlp receiptRlp = Rlp.Encode(transactionReceipts[i], _specProvider.GetSpec(block.Header.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                Rlp receiptRlp = Rlp.Encode(txReceipts[i], _specProvider.GetSpec(block.Header.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 receiptTree?.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 
             receiptTree?.UpdateRootHash();
 
             block.Header.ReceiptsRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
-            block.Header.Bloom = transactionReceipts.Length > 0 ? BuildBloom(transactionReceipts) : Bloom.Empty;
+            block.Header.Bloom = txReceipts.Length > 0 ? BuildBloom(txReceipts) : Bloom.Empty;
         }
 
-        private Bloom BuildBloom(TransactionReceipt[] transactionReceipts)
+        private Bloom BuildBloom(TxReceipt[] txReceipts)
         {
             Bloom bloom = new Bloom();
-            for (int i = 0; i < transactionReceipts.Length; i++)
+            for (int i = 0; i < txReceipts.Length; i++)
             {
-                bloom.Add(transactionReceipts[i].Logs);
+                bloom.Add(txReceipts[i].Logs);
             }
 
             return bloom;
@@ -253,13 +253,13 @@ namespace Nethermind.Blockchain
             return block;
         }
 
-        private void StoreTxReceipts(Block block, TransactionReceipt[] transactionReceipts)
+        private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                transactionReceipts[i].BlockHash = block.Hash;
-                _receiptStorage.Add(transactionReceipts[i]);
-                _txPool.RemoveTransaction(transactionReceipts[i].TransactionHash);
+                txReceipts[i].BlockHash = block.Hash;
+                _receiptStorage.Insert(txReceipts[i], true);
+                _txPool.RemoveTransaction(txReceipts[i].TransactionHash);
             }
         }
         

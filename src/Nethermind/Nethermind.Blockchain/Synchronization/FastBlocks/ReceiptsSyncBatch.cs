@@ -16,13 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.TxPools
+namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public interface IPendingTransactionThresholdValidator
+    public class ReceiptsSyncBatch
     {
-        bool IsObsolete(UInt256 currentTimestamp, UInt256 transactionTimestamp);
-        bool IsRemovable(UInt256 currentTimestamp, UInt256 transactionTimestamp);
+        public bool IsFinal { get; set; }
+        public Block[] Blocks { get; set; }
+        public Keccak[] Request { get; set; }
+        public TxReceipt[][] Response { get; set; }
     }
 }

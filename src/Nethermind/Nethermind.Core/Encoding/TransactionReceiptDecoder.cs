@@ -22,32 +22,32 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Encoding
 {
-    public class TransactionReceiptDecoder : IRlpDecoder<TransactionReceipt>
+    public class ReceiptDecoder : IRlpDecoder<TxReceipt>
     {
-        public TransactionReceipt Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public TxReceipt Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
-            TransactionReceipt transactionReceipt = new TransactionReceipt();
+            TxReceipt txReceipt = new TxReceipt();
             context.ReadSequenceLength();
             byte[] firstItem = context.DecodeByteArray();
             if (firstItem.Length == 1)
             {
-                transactionReceipt.StatusCode = firstItem[0];
+                txReceipt.StatusCode = firstItem[0];
             }
             else
             {
-                transactionReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
+                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
             }
 
-            if(isStorage) transactionReceipt.BlockHash = context.DecodeKeccak();
-            if(isStorage) transactionReceipt.BlockNumber = (long)context.DecodeUInt256();
-            if(isStorage) transactionReceipt.Index = context.DecodeInt();
-            if(isStorage) transactionReceipt.Sender = context.DecodeAddress();
-            if(isStorage) transactionReceipt.Recipient = context.DecodeAddress();
-            if(isStorage) transactionReceipt.ContractAddress = context.DecodeAddress();
-            if(isStorage) transactionReceipt.GasUsed = (long) context.DecodeUBigInt();
-            transactionReceipt.GasUsedTotal = (long) context.DecodeUBigInt();
-            transactionReceipt.Bloom = context.DecodeBloom();
+            if(isStorage) txReceipt.BlockHash = context.DecodeKeccak();
+            if(isStorage) txReceipt.BlockNumber = (long)context.DecodeUInt256();
+            if(isStorage) txReceipt.Index = context.DecodeInt();
+            if(isStorage) txReceipt.Sender = context.DecodeAddress();
+            if(isStorage) txReceipt.Recipient = context.DecodeAddress();
+            if(isStorage) txReceipt.ContractAddress = context.DecodeAddress();
+            if(isStorage) txReceipt.GasUsed = (long) context.DecodeUBigInt();
+            txReceipt.GasUsedTotal = (long) context.DecodeUBigInt();
+            txReceipt.Bloom = context.DecodeBloom();
 
             int lastCheck = context.ReadSequenceLength() + context.Position;
             List<LogEntry> logEntries = new List<LogEntry>();
@@ -66,14 +66,14 @@ namespace Nethermind.Core.Encoding
             // since error was added later we can only rely on it in cases where we read receipt only and no data follows
             if (isStorage && !allowExtraData && context.Position != context.Length)
             {
-                transactionReceipt.Error = context.DecodeString();
+                txReceipt.Error = context.DecodeString();
             }
 
-            transactionReceipt.Logs = logEntries.ToArray();
-            return transactionReceipt;
+            txReceipt.Logs = logEntries.ToArray();
+            return txReceipt;
         }
 
-        public Rlp Encode(TransactionReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
             {
@@ -99,12 +99,12 @@ namespace Nethermind.Core.Encoding
                 Rlp.Encode(item.Logs));
         }
 
-        public void Encode(MemoryStream stream, TransactionReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(MemoryStream stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             throw new System.NotImplementedException();
         }
 
-        public int GetLength(TransactionReceipt item, RlpBehaviors rlpBehaviors)
+        public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             throw new System.NotImplementedException();
         }

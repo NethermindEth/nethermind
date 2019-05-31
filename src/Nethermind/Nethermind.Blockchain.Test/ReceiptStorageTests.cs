@@ -53,16 +53,16 @@ namespace Nethermind.Blockchain.Test
         {
             var transaction = GetSignedTransaction();
             var receipt = GetReceipt(transaction);
-            storage.Add(receipt);
-            var fetchedReceipt = storage.Get(transaction.Hash);
+            storage.Insert(receipt, true);
+            var fetchedReceipt = storage.Find(transaction.Hash);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
         }
 
         private Transaction GetSignedTransaction(Address to = null)
             => Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
 
-        private static TransactionReceipt GetReceipt(Transaction transaction)
-            => Build.A.TransactionReceipt.WithState(TestItem.KeccakB)
+        private static TxReceipt GetReceipt(Transaction transaction)
+            => Build.A.Receipt.WithState(TestItem.KeccakB)
                 .WithTransactionHash(transaction.Hash).TestObject;
     }
 }

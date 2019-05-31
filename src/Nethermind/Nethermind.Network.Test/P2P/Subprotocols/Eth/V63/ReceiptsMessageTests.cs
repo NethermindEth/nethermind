@@ -28,24 +28,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Accepts_nulls_inside()
         {
-            TransactionReceipt[][] data = {new[] {new TransactionReceipt(), new TransactionReceipt()}, null};
+            TxReceipt[][] data = {new[] {new TxReceipt(), new TxReceipt()}, null};
             ReceiptsMessage message = new ReceiptsMessage(data);
-            Assert.AreSame(data, message.TransactionReceipts);
+            Assert.AreSame(data, message.TxReceipts);
         }
 
         [Test]
         public void Accepts_nulls_top_level()
         {
             ReceiptsMessage message = new ReceiptsMessage(null);
-            Assert.AreEqual(0, message.TransactionReceipts.Length);
+            Assert.AreEqual(0, message.TxReceipts.Length);
         }
 
         [Test]
         public void Sets_values_from_contructor_argument()
         {
-            TransactionReceipt[][] data = {new[] {new TransactionReceipt(), new TransactionReceipt()}, new[] {new TransactionReceipt(), new TransactionReceipt()}};
+            TxReceipt[][] data = {new[] {new TxReceipt(), new TxReceipt()}, new[] {new TxReceipt(), new TxReceipt()}};
             ReceiptsMessage message = new ReceiptsMessage(data);
-            Assert.AreSame(data, message.TransactionReceipts);
+            Assert.AreSame(data, message.TxReceipts);
         }
     }
 }

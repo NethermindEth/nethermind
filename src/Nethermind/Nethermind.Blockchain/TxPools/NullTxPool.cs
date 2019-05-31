@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.TxPools
 
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
 
-        public void AddFilter<T>(T filter) where T : ITransactionFilter
+        public void AddFilter<T>(T filter) where T : ITxFilter
         {
         }
 
@@ -46,9 +46,9 @@ namespace Nethermind.Blockchain.TxPools
         {
         }
 
-        public AddTransactionResult AddTransaction(Transaction transaction, long blockNumber)
+        public AddTxResult AddTransaction(Transaction transaction, long blockNumber)
         {
-            return AddTransactionResult.Added;
+            return AddTxResult.Added;
         }
 
         public void RemoveTransaction(Keccak hash)
@@ -61,13 +61,13 @@ namespace Nethermind.Blockchain.TxPools
             return false;
         }
 
-        public event EventHandler<TransactionEventArgs> NewPending
+        public event EventHandler<TxEventArgs> NewPending
         {
             add { }
             remove { }
         }
 
-        public event EventHandler<TransactionEventArgs> RemovedPending
+        public event EventHandler<TxEventArgs> RemovedPending
         {
             add { }
             remove { }

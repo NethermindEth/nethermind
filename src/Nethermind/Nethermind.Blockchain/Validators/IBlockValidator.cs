@@ -26,6 +26,6 @@ namespace Nethermind.Blockchain.Validators
         bool ValidateHeader(BlockHeader header, BlockHeader parent, bool isOmmer);
         bool ValidateHeader(BlockHeader header, bool isOmmer);
         bool ValidateSuggestedBlock(Block block);
-        bool ValidateProcessedBlock(Block processedBlock, TransactionReceipt[] receipts, Block suggestedBlock);
+        bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock);
     }
 }

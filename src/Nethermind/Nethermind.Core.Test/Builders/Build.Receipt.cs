@@ -21,6 +21,5 @@ namespace Nethermind.Core.Test.Builders
     public partial class Build
     {
         public ReceiptBuilder Receipt => new ReceiptBuilder();
-        public ReceiptBuilder TransactionReceipt => new ReceiptBuilder();
     }
 }

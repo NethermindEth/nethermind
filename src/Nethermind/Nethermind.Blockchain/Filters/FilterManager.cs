@@ -72,12 +72,12 @@ namespace Nethermind.Blockchain.Filters
             AddBlock(e.Block);
         }
 
-        private void OnTransactionProcessed(object sender, TransactionProcessedEventArgs e)
+        private void OnTransactionProcessed(object sender, TxProcessedEventArgs e)
         {
-            AddTransactionReceipts(e.TransactionReceipt);
+            AddReceipts(e.TxReceipt);
         }
 
-        private void OnNewPendingTransaction(object sender, TransactionEventArgs e)
+        private void OnNewPendingTransaction(object sender, TxEventArgs e)
         {
             var filters = _filterStore.GetFilters<PendingTransactionFilter>();
             if (filters == null || filters.Length == 0)
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        private void OnRemovedPendingTransaction(object sender, TransactionEventArgs e)
+        private void OnRemovedPendingTransaction(object sender, TxEventArgs e)
         {
             var filters = _filterStore.GetFilters<PendingTransactionFilter>();
             if (filters == null || filters.Length == 0)
@@ -170,14 +170,14 @@ namespace Nethermind.Blockchain.Filters
             return existingPendingTransactions;
         }
 
-        private void AddTransactionReceipts(params TransactionReceipt[] transactionReceipts)
+        private void AddReceipts(params TxReceipt[] txReceipts)
         {
-            if (transactionReceipts == null)
+            if (txReceipts == null)
             {
-                throw new ArgumentNullException(nameof(transactionReceipts));
+                throw new ArgumentNullException(nameof(txReceipts));
             }
 
-            if (transactionReceipts.Length == 0)
+            if (txReceipts.Length == 0)
             {
                 return;
             }
@@ -188,9 +188,9 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            for (var i = 0; i < transactionReceipts.Length; i++)
+            for (var i = 0; i < txReceipts.Length; i++)
             {
-                StoreLogs(filters, transactionReceipts[i]);
+                StoreLogs(filters, txReceipts[i]);
             }
         }
 
@@ -230,26 +230,26 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {blocks.Count} blocks.");
         }
 
-        private void StoreLogs(LogFilter[] filters, TransactionReceipt transactionReceipt)
+        private void StoreLogs(LogFilter[] filters, TxReceipt txReceipt)
         {
             for (var i = 0; i < filters.Length; i++)
             {
-                StoreLogs(filters[i], transactionReceipt);
+                StoreLogs(filters[i], txReceipt);
             }
         }
 
-        private void StoreLogs(LogFilter filter, TransactionReceipt transactionReceipt)
+        private void StoreLogs(LogFilter filter, TxReceipt txReceipt)
         {
-            if (transactionReceipt.Logs == null || transactionReceipt.Logs.Length == 0)
+            if (txReceipt.Logs == null || txReceipt.Logs.Length == 0)
             {
                 return;
             }
 
             var logs = _logs.GetOrAdd(filter.Id, i => new List<FilterLog>());
-            for (var i = 0; i < transactionReceipt.Logs.Length; i++)
+            for (var i = 0; i < txReceipt.Logs.Length; i++)
             {
-                var logEntry = transactionReceipt.Logs[i];
-                var filterLog = CreateLog(filter, transactionReceipt, logEntry);
+                var logEntry = txReceipt.Logs[i];
+                var filterLog = CreateLog(filter, txReceipt, logEntry);
                 if (!(filterLog is null))
                 {
                     logs.Add(filterLog);
@@ -264,15 +264,15 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {logs.Count} logs.");
         }
 
-        private FilterLog CreateLog(LogFilter logFilter, TransactionReceipt transactionReceipt, LogEntry logEntry)
+        private FilterLog CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry)
         {
             if (logFilter.FromBlock.Type == FilterBlockType.BlockId &&
-                logFilter.FromBlock.BlockId > transactionReceipt.BlockNumber)
+                logFilter.FromBlock.BlockId > txReceipt.BlockNumber)
             {
                 return null;
             }
 
-            if (logFilter.ToBlock.Type == FilterBlockType.BlockId && logFilter.ToBlock.BlockId < transactionReceipt.BlockNumber)
+            if (logFilter.ToBlock.Type == FilterBlockType.BlockId && logFilter.ToBlock.BlockId < txReceipt.BlockNumber)
             {
                 return null;
             }
@@ -287,23 +287,23 @@ namespace Nethermind.Blockchain.Filters
                 || logFilter.ToBlock.Type == FilterBlockType.Earliest
                 || logFilter.ToBlock.Type == FilterBlockType.Pending)
             {
-                return CreateLog(UInt256.One, transactionReceipt, logEntry);
+                return CreateLog(UInt256.One, txReceipt, logEntry);
             }
 
             if (logFilter.FromBlock.Type == FilterBlockType.Latest || logFilter.ToBlock.Type == FilterBlockType.Latest)
             {
                 //TODO: check if is last mined block
-                return CreateLog(UInt256.One, transactionReceipt, logEntry);
+                return CreateLog(UInt256.One, txReceipt, logEntry);
             }
 
-            return CreateLog(UInt256.One, transactionReceipt, logEntry);
+            return CreateLog(UInt256.One, txReceipt, logEntry);
         }
 
         //TODO: Pass a proper log index
-        private FilterLog CreateLog(UInt256 logIndex, TransactionReceipt transactionReceipt, LogEntry logEntry)
+        private FilterLog CreateLog(UInt256 logIndex, TxReceipt txReceipt, LogEntry logEntry)
         {
-            return new FilterLog(logIndex, transactionReceipt.BlockNumber, transactionReceipt.BlockHash,
-                (UInt256)transactionReceipt.Index, transactionReceipt.TransactionHash, logEntry.LoggersAddress,
+            return new FilterLog(logIndex, txReceipt.BlockNumber, txReceipt.BlockHash,
+                (UInt256)txReceipt.Index, txReceipt.TransactionHash, logEntry.LoggersAddress,
                 logEntry.Data, logEntry.Topics);
         }
     }

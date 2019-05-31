@@ -27,20 +27,20 @@ using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public class ParallelBlocksDownloader
+    public class FastBlocksDownloader
     {
         private readonly IEthSyncPeerPool _syncPeerPool;
-        private readonly IBlockRequestFeed _blockRequestFeed;
+        private readonly IFastBlocksFeed _fastBlocksFeed;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private int _pendingRequests;
         private int _downloadedHeaders;
         private ILogger _logger;
 
-        public ParallelBlocksDownloader(IEthSyncPeerPool syncPeerPool, IBlockRequestFeed blockRequestFeed, IBlockValidator blockValidator, ISealValidator sealValidator, ILogManager logManager)
+        public FastBlocksDownloader(IEthSyncPeerPool syncPeerPool, IFastBlocksFeed fastBlocksFeed, IBlockValidator blockValidator, ISealValidator sealValidator, ILogManager logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            _blockRequestFeed = blockRequestFeed ?? throw new ArgumentNullException(nameof(blockRequestFeed));
+            _fastBlocksFeed = fastBlocksFeed ?? throw new ArgumentNullException(nameof(fastBlocksFeed));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private int _lastUsefulPeerCount;
 
-        private async Task ExecuteRequest(CancellationToken token, BlockSyncBatch batch)
+        private async Task ExecuteRequest(CancellationToken token, FastBlocksBatch batch)
         {
             SyncPeerAllocation nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace | (batch.Prioritized ? BorrowOptions.None : BorrowOptions.LowPriority), "fast blocks", batch.MinNumber);
             foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
@@ -69,86 +69,112 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 if (peer != null)
                 {
                     batch.MarkSent();
-
-                    Task<BlockHeader[]> getHeadersTask = null;
-                    Task<BlockBody[]> getBodiesTask = null;
-                    if (batch.BatchType == BatchType.Headers)
+                    switch (batch.BatchType)
                     {
-                        getHeadersTask = peer.GetBlockHeaders(batch.Headers.StartNumber, batch.Headers.RequestSize, 0, token);
-                    }
-                    else
-                    {
-                        getBodiesTask = peer.GetBlocks(batch.Bodies.Request, token);
-                    }
-
-                    await (getHeadersTask?.ContinueWith(
-                        t =>
+                        case FastBlocksBatchType.Headers:
                         {
-                            if (t.IsCompletedSuccessfully)
-                            {
-                                if (batch.RequestTime > 1000)
+                            Task<BlockHeader[]> getHeadersTask = peer.GetBlockHeaders(batch.Headers.StartNumber, batch.Headers.RequestSize, 0, token);
+                            await getHeadersTask.ContinueWith(
+                                t =>
                                 {
-                                    if(_logger.IsDebug) _logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
+                                    if (t.IsCompletedSuccessfully)
+                                    {
+                                        if (batch.RequestTime > 1000)
+                                        {
+                                            if (_logger.IsDebug) _logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
+                                        }
+                                        
+                                        batch.Headers.Response = getHeadersTask.Result;
+                                        ValidateHeaders(token, batch);
+                                    }
+                                    else
+                                    {
+                                        _syncPeerPool.ReportInvalid(batch.Allocation);
+                                    }
                                 }
+                            );
 
-                                batch.Headers.Response = getHeadersTask.Result;
-                            }
-                            else
-                            {
-                                _syncPeerPool.ReportInvalid(batch.Allocation);
-                            }
+                            break;
                         }
-                    ) ?? Task.CompletedTask);
-                    
-                    await (getBodiesTask?.ContinueWith(
-                               t =>
-                               {
-                                   if (t.IsCompletedSuccessfully)
-                                   {
-                                       if (batch.RequestTime > 1000)
-                                       {
-                                           if(_logger.IsDebug) _logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
-                                       }
 
-                                       batch.Bodies.Response = getBodiesTask.Result;
-                                   }
-                                   else
-                                   {
-                                       _syncPeerPool.ReportInvalid(batch.Allocation);
-                                   }
-                               }
-                           ) ?? Task.CompletedTask);
+                        case FastBlocksBatchType.Bodies:
+                        {
+                            Task<BlockBody[]> getBodiesTask = peer.GetBlocks(batch.Bodies.Request, token);
+                            await getBodiesTask.ContinueWith(
+                                t =>
+                                {
+                                    if (t.IsCompletedSuccessfully)
+                                    {
+                                        if (batch.RequestTime > 1000)
+                                        {
+                                            if (_logger.IsDebug) _logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
+                                        }
+
+                                        batch.Bodies.Response = getBodiesTask.Result;
+                                    }
+                                    else
+                                    {
+                                        _syncPeerPool.ReportInvalid(batch.Allocation);
+                                    }
+                                }
+                            );
+
+                            break;
+                        }
+
+                        case FastBlocksBatchType.Receipts:
+                        {
+                            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(batch.Receipts.Request, token);
+                            await getReceiptsTask.ContinueWith(
+                                t =>
+                                {
+                                    if (t.IsCompletedSuccessfully)
+                                    {
+                                        if (batch.RequestTime > 1000)
+                                        {
+                                            if (_logger.IsDebug) _logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
+                                        }
+
+                                        batch.Receipts.Response = getReceiptsTask.Result;
+                                    }
+                                    else
+                                    {
+                                        _syncPeerPool.ReportInvalid(batch.Allocation);
+                                    }
+                                }
+                            );
+                            
+                            break;
+                        }
+
+                        default:
+                        {
+                            throw new InvalidOperationException($"{nameof(FastBlocksBatchType)} is {batch.BatchType}");
+                        }
+                    }
                 }
 
-                (BlocksDataHandlerResult Result, int NodesConsumed) result = (BlocksDataHandlerResult.InvalidFormat, 0);
+                (BlocksDataHandlerResult Result, int ItemsSynced) result = (BlocksDataHandlerResult.InvalidFormat, 0);
                 try
                 {
-                    batch.MarkValidation();
-                    if (batch.Headers?.Response != null)
+                    if (batch.Bodies?.Response == null
+                        && batch.Headers?.Response == null
+                        && batch.Receipts?.Response == null)
                     {
-                        ValidateBlocks(token, batch);
-                    }
-                    else if(batch.Bodies?.Response == null)
-                    {
+                        // to avoid uncontrolled loop in case of a code error
                         await Task.Delay(10);
                     }
 
-                    result = _blockRequestFeed.HandleResponse(batch);
-                    if (result.Result == BlocksDataHandlerResult.BadQuality)
-                    {
-                        if (batch.Allocation?.Current != null)
-                        {
-                            _syncPeerPool.ReportBadPeer(batch.Allocation);
-                        }
-                    }
+                    result = _fastBlocksFeed.HandleResponse(batch);
                 }
                 catch (Exception e)
                 {
+                    // possibly clear the response and handle empty response batch here (to avoid missing parts)
                     if (_logger.IsError) _logger.Error($"Error when handling response", e);
                 }
 
-                Interlocked.Add(ref _downloadedHeaders, result.NodesConsumed);
-                if (result.NodesConsumed == 0 && peer != null)
+                Interlocked.Add(ref _downloadedHeaders, result.ItemsSynced);
+                if (result.ItemsSynced == 0 && peer != null)
                 {
                     _syncPeerPool.ReportNoSyncProgress(nodeSyncAllocation);
                 }
@@ -162,33 +188,42 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
-        private void ValidateBlocks(CancellationToken cancellation, BlockSyncBatch batch)
+        private void ValidateHeaders(CancellationToken cancellation, FastBlocksBatch batch)
         {
-            if (_logger.IsTrace) _logger.Trace("Starting block validation");
-
-            BlockHeader[] headers = batch.Headers.Response;
-            for (int i = 0; i < headers.Length; i++)
+            batch.MarkValidation();
+            try
             {
-                if (cancellation.IsCancellationRequested)
-                {
-                    if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
-                    return;
-                }
+                if (_logger.IsTrace) _logger.Trace("Starting block validation");
 
-                BlockHeader header = headers[i];
-                if (header == null)
+                BlockHeader[] headers = batch.Headers.Response;
+                for (int i = 0; i < headers.Length; i++)
                 {
-                    continue;
+                    if (cancellation.IsCancellationRequested)
+                    {
+                        if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
+                        return;
+                    }
+
+                    BlockHeader header = headers[i];
+                    if (header == null)
+                    {
+                        continue;
+                    }
+
+                    bool isHashValid = _blockValidator.ValidateHash(header);
+                    bool isSealValid = _sealValidator.ValidateSeal(header);
+                    if (!(isHashValid && isSealValid))
+                    {
+                        if (_logger.IsTrace) _logger.Trace("One of the blocks is invalid");
+                        _syncPeerPool.ReportInvalid(batch.Allocation?.Current);
+                        batch.Headers.Response = null;
+                    }
                 }
-                
-                bool isHashValid = _blockValidator.ValidateHash(header);
-                bool isSealValid = _sealValidator.ValidateSeal(header);
-                if (!(isHashValid && isSealValid))
-                {
-                    if (_logger.IsTrace) _logger.Trace("One of the blocks is invalid");
-                    _syncPeerPool.ReportInvalid(batch.Allocation?.Current);
-                    batch.Headers.Response = null;
-                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Error when validating headers of {batch}", ex);
+                batch.Headers.Response = null;
             }
         }
 
@@ -249,7 +284,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                 if (_logger.IsTrace) _logger.Trace($"Successful semaphore wait");
 
-                BlockSyncBatch request = PrepareRequest();
+                FastBlocksBatch request = PrepareRequest();
                 if (request != null)
                 {
 //                    if (_logger.IsInfo) _logger.Info($"Creating new headers request {request} with current semaphore count {_semaphore.CurrentCount} and pending requests {_pendingRequests}");
@@ -276,20 +311,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_lastUsefulPeerCount} useful peers.");
         }
 
-        private BlockSyncBatch PrepareRequest()
+        private FastBlocksBatch PrepareRequest()
         {
-            BlockSyncBatch request = _blockRequestFeed.PrepareRequest();
+            FastBlocksBatch request = _fastBlocksFeed.PrepareRequest();
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             return request;
         }
 
-        private int _threshold;
-
-        public async Task<long> SyncHeaders(int threshold, CancellationToken token)
+        public async Task<long> Sync(CancellationToken token)
         {
             if (_logger.IsDebug) _logger.Debug($"Sync headers - pending: {_pendingRequests} - semaphore: {_semaphore.CurrentCount}");
-            _blockRequestFeed.StartNewRound();
-            _threshold = threshold;
+            _fastBlocksFeed.StartNewRound();
             _downloadedHeaders = 0;
             await KeepSyncing(token);
             return _downloadedHeaders;

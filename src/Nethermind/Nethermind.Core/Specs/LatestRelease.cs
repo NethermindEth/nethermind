@@ -20,7 +20,7 @@ using Nethermind.Core.Specs.Forks;
 
 namespace Nethermind.Core.Specs
 {
-    public class Latest
+    public static class Latest
     {
         public static IReleaseSpec Release => ConstantinopleFix.Instance;
     }

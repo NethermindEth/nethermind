@@ -37,8 +37,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private readonly BlockingCollection<Request<GetNodeDataMessage, byte[][]>> _nodeDataRequests
             = new BlockingCollection<Request<GetNodeDataMessage, byte[][]>>();
 
-        private readonly BlockingCollection<Request<GetReceiptsMessage, TransactionReceipt[][]>> _receiptsRequests
-            = new BlockingCollection<Request<GetReceiptsMessage, TransactionReceipt[][]>>();
+        private readonly BlockingCollection<Request<GetReceiptsMessage, TxReceipt[][]>> _receiptsRequests
+            = new BlockingCollection<Request<GetReceiptsMessage, TxReceipt[][]>>();
 
         public Eth63ProtocolHandler(
             ISession session,
@@ -91,10 +91,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         
         private void Handle(GetReceiptsMessage msg)
         {
-            TransactionReceipt[][] transactionReceipts = SyncServer.GetReceipts(msg.BlockHashes);
+            TxReceipt[][] txReceipts = SyncServer.GetReceipts(msg.BlockHashes);
             Interlocked.Increment(ref _counter);
             if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} Receipts to {Node:s}");
-            Send(new ReceiptsMessage(transactionReceipts));
+            Send(new ReceiptsMessage(txReceipts));
         }
 
         private void Handle(ReceiptsMessage msg)
@@ -102,7 +102,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             var request = _receiptsRequests.Take();
             if (IsRequestMatched(request, msg))
             {
-                request.CompletionSource.SetResult(msg.TransactionReceipts);
+                request.CompletionSource.SetResult(msg.TxReceipts);
             }
         }
 
@@ -125,16 +125,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public override async Task<byte[][]> GetNodeData(Keccak[] keys, CancellationToken token)
         {
+            if (keys.Length == 0)
+            {
+                return new byte[0][];
+            }
+            
             var msg = new GetNodeDataMessage(keys);
             byte[][] receipts = await SendRequest(msg, token);
             return receipts;
         }
         
-        public override async Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHashes, CancellationToken token)
+        public override async Task<TxReceipt[][]> GetReceipts(Keccak[] blockHashes, CancellationToken token)
         {
+            if (blockHashes.Length == 0)
+            {
+                return new TxReceipt[0][];
+            }
+            
             var msg = new GetReceiptsMessage(blockHashes);
-            TransactionReceipt[][] transactionReceipts = await SendRequest(msg, token);
-            return transactionReceipts;
+            TxReceipt[][] txReceipts = await SendRequest(msg, token);
+            return txReceipts;
         }
 
         [Todo(Improve.Refactor, "Generic approach to requests")]
@@ -177,7 +187,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         }
         
         [Todo(Improve.Refactor, "Generic approach to requests")]
-        private async Task<TransactionReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
+        private async Task<TxReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -185,12 +195,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 Logger.Trace($"Hashes count: {message.BlockHashes.Length}");
             }
 
-            var request = new Request<GetReceiptsMessage, TransactionReceipt[][]>(message);
+            var request = new Request<GetReceiptsMessage, TxReceipt[][]>(message);
             _receiptsRequests.Add(request, token);
 
             Send(request.Message);
 
-            Task<TransactionReceipt[][]> task = request.CompletionSource.Task;
+            Task<TxReceipt[][]> task = request.CompletionSource.Task;
             var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, token));
             if (firstTask.IsCanceled)
             {
@@ -215,7 +225,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         [Todo(Improve.MissingFunctionality, "Need to compare response")]
         private bool IsRequestMatched(
-            Request<GetReceiptsMessage, TransactionReceipt[][]> request,
+            Request<GetReceiptsMessage, TxReceipt[][]> request,
             ReceiptsMessage response)
         {
             return response.PacketType == Eth63MessageCode.Receipts; // TODO: more detailed

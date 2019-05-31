@@ -21,10 +21,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
     public enum BlocksDataHandlerResult
     {
         OK,
-        NoData,
         InvalidFormat,
-        NotAssigned,
-        BadQuality,
-        Emptish
     }
 }

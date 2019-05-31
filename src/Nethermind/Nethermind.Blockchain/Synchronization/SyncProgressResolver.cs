@@ -18,6 +18,7 @@
 
 
 using System;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -34,9 +35,9 @@ namespace Nethermind.Blockchain.Synchronization
         
         public SyncProgressResolver(IBlockTree blockTree, INodeDataDownloader nodeDataDownloader, ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public long FindBestFullState()
@@ -70,11 +71,6 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             return bestFullState;
-        }
-
-        public long FindLowestInserted()
-        {
-            return _blockTree.LowestInsertedHeader?.Number ?? long.MaxValue;
         }
         
         public long FindBestHeader()

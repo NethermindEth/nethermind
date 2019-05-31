@@ -306,7 +306,7 @@ namespace Nethermind.Blockchain.Test.Filters
             Action<IEnumerable<FilterLog>> logsAssertion)
         {
             var filters = new List<FilterBase>();
-            var receipts = new List<TransactionReceipt>();
+            var receipts = new List<TxReceipt>();
             foreach (var filterBuilder in filterBuilders)
             {
                 filters.Add(BuildFilter(filterBuilder));
@@ -331,7 +331,7 @@ namespace Nethermind.Blockchain.Test.Filters
             foreach (var receipt in receipts)
             {
                 _blockProcessor.TransactionProcessed +=
-                    Raise.EventWith(_blockProcessor, new TransactionProcessedEventArgs(receipt));
+                    Raise.EventWith(_blockProcessor, new TxProcessedEventArgs(receipt));
             }
 
             NUnit.Framework.Assert.Multiple(() =>
@@ -355,7 +355,7 @@ namespace Nethermind.Blockchain.Test.Filters
             return builderInstance.Build();
         }
 
-        private static TransactionReceipt BuildReceipt(Action<ReceiptBuilder> builder)
+        private static TxReceipt BuildReceipt(Action<ReceiptBuilder> builder)
         {
             var builderInstance = new ReceiptBuilder();
             builder(builderInstance);

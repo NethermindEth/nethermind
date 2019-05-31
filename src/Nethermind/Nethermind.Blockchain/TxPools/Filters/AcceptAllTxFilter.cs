@@ -17,25 +17,11 @@
  */
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.TxPools.Storages
+namespace Nethermind.Blockchain.TxPools.Filters
 {
-    public class NullTransactionStorage : ITransactionStorage
+    public class AcceptAllTxFilter : ITxFilter
     {
-        public static NullTransactionStorage Instance => new NullTransactionStorage();
-        
-        public Transaction Get(Keccak hash) => null;
-
-        public Transaction[] GetAll() => new Transaction[0];
-
-        public void Add(Transaction transaction, long blockNumber)
-        {
-        }
-
-        public void Delete(Keccak hash)
-        {
-        }
+        public bool IsValid(Transaction transaction) => true;
     }
 }

@@ -23,6 +23,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core
 {
+    [Todo(Improve.Refactor, "Remove this class and replce with an utility with IDisposable")]
     public class PerfService : IPerfService
     {
         private readonly ILogger _logger;

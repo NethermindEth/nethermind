@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs.Forks;
 
 namespace Nethermind.Core.Specs
@@ -54,7 +53,6 @@ namespace Nethermind.Core.Specs
         public static long SpuriousDragonBlockNumber { get; } = 10;
         public static long ByzantiumBlockNumber { get; } = 1700000;
         public static long ConstantinopleBlockNumber { get; } = 4230000;
-        
         public static long ConstantinopleFixBlockNumber { get; } = 4939394;
         
         public int ChainId => 3;
@@ -64,6 +62,5 @@ namespace Nethermind.Core.Specs
         }
         
         public static readonly RopstenSpecProvider Instance = new RopstenSpecProvider();
-        public static long HomesteadBlockNumber { get; } = 1150000;
     }
 }

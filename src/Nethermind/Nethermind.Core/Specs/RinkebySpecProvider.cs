@@ -53,9 +53,7 @@ namespace Nethermind.Core.Specs
 
         public static long SpuriousDragonBlockNumber { get; } = 3;
         public static long ByzantiumBlockNumber { get; } = 1035301;
-        
         public static long ConstantinopleBlockNumber { get; } = 3660663;
-        
         public static long ConstantinopleFixBlockNumber { get; } = 4321234;
         
         public int ChainId => 4;

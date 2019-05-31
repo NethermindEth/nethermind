@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,27 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Specs
+namespace Nethermind.Blockchain.TxPools
 {
-    public class FrontierSpecProvider : ISpecProvider
+    public interface ITxStorage
     {
-        public IReleaseSpec GenesisSpec => Frontier.Instance;
-
-        public IReleaseSpec GetSpec(long blockNumber)
-        {            
-            return Olympic.Instance;
-        }
-        
-        public long? DaoBlockNumber { get; } = null;
-
-        public int ChainId => Core.ChainId.MainNet;
-
-        private FrontierSpecProvider()
-        {
-        }
-        
-        public static FrontierSpecProvider Instance = new FrontierSpecProvider();
+        Transaction Get(Keccak hash);
+        Transaction[] GetAll();
+        void Add(Transaction transaction, long blockNumber);
+        void Delete(Keccak hash);
     }
 }

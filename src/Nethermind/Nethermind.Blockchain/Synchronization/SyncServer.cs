@@ -155,24 +155,32 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        public TransactionReceipt[][] GetReceipts(Keccak[] blockHashes)
+        public TxReceipt[][] GetReceipts(Keccak[] blockHashes)
         {
-            var transactionReceipts = new TransactionReceipt[blockHashes.Length][];
+            var receipts = new TxReceipt[blockHashes.Length][];
             for (int blockIndex = 0; blockIndex < blockHashes.Length; blockIndex++)
             {
                 Block block = Find(blockHashes[blockIndex]);
-                var blockTransactionReceipts = new TransactionReceipt[block?.Transactions.Length ?? 0];
+                var blockReceipts = new TxReceipt[block?.Transactions.Length ?? 0];
+                bool setNullForBlock = false;
                 for (int receiptIndex = 0; receiptIndex < (block?.Transactions.Length ?? 0); receiptIndex++)
                 {
                     if (block == null) continue;
 
-                    blockTransactionReceipts[receiptIndex] = _receiptStorage.Get(block.Transactions[receiptIndex].Hash);
+                    TxReceipt receipt = _receiptStorage.Find(block.Transactions[receiptIndex].Hash);
+                    if (receipt == null)
+                    {
+                        setNullForBlock = true;
+                        break;
+                    }
+                    
+                    blockReceipts[receiptIndex] = receipt;
                 }
 
-                transactionReceipts[blockIndex] = blockTransactionReceipts;
+                receipts[blockIndex] = setNullForBlock ? null : blockReceipts;
             }
 
-            return transactionReceipts;
+            return receipts;
         }
 
         public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)

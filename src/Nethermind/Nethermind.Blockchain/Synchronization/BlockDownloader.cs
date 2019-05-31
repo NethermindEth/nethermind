@@ -137,14 +137,14 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (headersSynced > 0)
                 {
-                    _syncStats.ReportDownloadProgress(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber);
+                    _syncStats.Update(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber);
                 }
             }
 
             return headersSynced;
         }
 
-        public async Task<long> DownloadBlocks(PeerInfo bestPeer, CancellationToken cancellation, bool shouldProcess = true)
+        public async Task<long> DownloadBlocks(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation, bool shouldProcess = true)
         {
             if (bestPeer == null)
             {
@@ -166,7 +166,7 @@ namespace Nethermind.Blockchain.Synchronization
                     throw new EthSynchronizationException("Peer with inconsistent chain in sync");
                 }
 
-                long blocksLeft = bestPeer.HeadNumber - currentNumber;
+                long blocksLeft = bestPeer.HeadNumber - currentNumber - newBlocksToSkip;
                 int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (blocksToRequest <= 1)
                 {
@@ -271,7 +271,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (blocksSynced > 0)
                 {
-                    _syncStats.ReportDownloadProgress(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber);
+                    _syncStats.Update(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber);
                 }
             }
 

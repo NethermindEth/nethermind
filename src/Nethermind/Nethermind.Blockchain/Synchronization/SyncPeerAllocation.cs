@@ -22,15 +22,12 @@ namespace Nethermind.Blockchain.Synchronization
 {   
     public class SyncPeerAllocation
     {
+        private static object _allocationLock = new object(); // why is it static? better do not touch
+        
         public long? MinBlocksAhead { get; set; }
-        
         public bool CanBeReplaced { get; set; } = true;
-        
-        public string Description { get; set; }
-
+        public string Description { get; }
         public PeerInfo Current { get; private set; }
-
-        private static object _allocationLock = new object();
 
         public SyncPeerAllocation(PeerInfo initialPeer, string description)
         {

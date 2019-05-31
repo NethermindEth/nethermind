@@ -16,17 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
+using System.Collections.Concurrent;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.Synchronization.FastSync
+namespace Nethermind.Blockchain.TxPools.Storages
 {
-    public interface INodeDataDownloader
+    public class InMemoryTxStorage : ITxStorage
     {
-        Task<long> SyncNodeData(CancellationToken cancellationToken, long number, Keccak rootNode);
+        private readonly ConcurrentDictionary<Keccak, Transaction> _transactions =
+            new ConcurrentDictionary<Keccak, Transaction>();
 
-        bool IsFullySynced(BlockHeader header);
+        public Transaction Get(Keccak hash)
+        {
+            _transactions.TryGetValue(hash, out var transaction);
+
+            return transaction;
+        }
+
+        public Transaction[] GetAll() => _transactions.Values.ToArray();
+
+        public void Add(Transaction transaction, long blockNumber)
+            => _transactions.TryAdd(transaction.Hash, transaction);
+
+        public void Delete(Keccak hash) => _transactions.TryRemove(hash, out _);
     }
 }

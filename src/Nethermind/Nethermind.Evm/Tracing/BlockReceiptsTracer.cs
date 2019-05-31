@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
-            TransactionReceipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs);
+            TxReceipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs);
             if (_currentTxTracer.IsTracingReceipt)
             {
                 _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs);
@@ -52,44 +52,44 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error)
         {
-            TransactionReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent, error);
+            TxReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent, error);
             if (_currentTxTracer.IsTracingReceipt)
             {
                 _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error);
             }
         }
 
-        private TransactionReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error)
+        private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error)
         {
-            TransactionReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, LogEntry.EmptyLogs);
+            TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, LogEntry.EmptyLogs);
             receipt.Error = error;
             return receipt;
         }
 
-        private TransactionReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries)
+        private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries)
         {
             Transaction transaction = _block.Transactions[_currentIndex];
-            TransactionReceipt transactionReceipt = new TransactionReceipt();
-            transactionReceipt.Logs = logEntries;
-            transactionReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries);
-            transactionReceipt.GasUsedTotal = _block.GasUsed;
+            TxReceipt txReceipt = new TxReceipt();
+            txReceipt.Logs = logEntries;
+            txReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries);
+            txReceipt.GasUsedTotal = _block.GasUsed;
             if (!_specProvider.GetSpec(_block.Number).IsEip658Enabled)
             {
-                transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
+                txReceipt.PostTransactionState = _stateProvider.StateRoot;
             }
 
-            transactionReceipt.StatusCode = statusCode;
-            transactionReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
+            txReceipt.StatusCode = statusCode;
+            txReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
 
-            transactionReceipt.BlockHash = _block.Hash;
-            transactionReceipt.BlockNumber = _block.Number;
-            transactionReceipt.Index = _currentIndex;
-            transactionReceipt.GasUsed = spentGas;
-            transactionReceipt.Sender = transaction.SenderAddress;
-            transactionReceipt.ContractAddress = transaction.IsContractCreation ? recipient : null;
-            transactionReceipt.TransactionHash = transaction.Hash;
+            txReceipt.BlockHash = _block.Hash;
+            txReceipt.BlockNumber = _block.Number;
+            txReceipt.Index = _currentIndex;
+            txReceipt.GasUsed = spentGas;
+            txReceipt.Sender = transaction.SenderAddress;
+            txReceipt.ContractAddress = transaction.IsContractCreation ? recipient : null;
+            txReceipt.TransactionHash = transaction.Hash;
 
-            return transactionReceipt;
+            return txReceipt;
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
@@ -159,7 +159,7 @@ namespace Nethermind.Evm.Tracing
 
         private ITxTracer _currentTxTracer;
         private int _currentIndex;
-        public TransactionReceipt[] TransactionReceipts { get; private set; }
+        public TxReceipt[] TxReceipts { get; private set; }
 
         public bool IsTracingRewards => _otherTracer.IsTracingRewards;
 
@@ -177,7 +177,7 @@ namespace Nethermind.Evm.Tracing
             
             _block = block;
             _currentIndex = 0;
-            TransactionReceipts = new TransactionReceipt[_block.Transactions.Length];
+            TxReceipts = new TxReceipt[_block.Transactions.Length];
             _otherTracer.StartNewBlockTrace(block);
         }
 

@@ -16,18 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.TxPools.Filters
 {
-    public class TransactionProcessedEventArgs : EventArgs
+    public class RejectAllTxFilter : ITxFilter
     {
-        public TransactionReceipt TransactionReceipt { get; }
-
-        public TransactionProcessedEventArgs(TransactionReceipt transactionReceipt)
-        {
-            TransactionReceipt = transactionReceipt;
-        }
+        public bool IsValid(Transaction transaction) => false;
     }
 }
