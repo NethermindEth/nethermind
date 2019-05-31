@@ -307,18 +307,33 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         case FastBlocksBatchType.Headers:
                         {
+                            if (batch.Headers?.RequestSize == 0)
+                            {
+                                return (BlocksDataHandlerResult.OK, 1);    
+                            }
+                            
                             int added = InsertHeaders(batch);
                             return (BlocksDataHandlerResult.OK, added);
                         }
 
                         case FastBlocksBatchType.Bodies:
                         {
+                            if (batch.Bodies?.Request?.Length == 0)
+                            {
+                                return (BlocksDataHandlerResult.OK, 1);    
+                            }
+                            
                             int added = InsertBodies(batch);
                             return (BlocksDataHandlerResult.OK, added);
                         }
 
                         case FastBlocksBatchType.Receipts:
                         {
+                            if (batch.Receipts?.Request?.Length == 0)
+                            {
+                                return (BlocksDataHandlerResult.OK, 1);    
+                            }
+                            
                             int added = InsertReceipts(batch);
                             return (BlocksDataHandlerResult.OK, added);
                         }
