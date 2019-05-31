@@ -84,8 +84,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                             if (_logger.IsDebug) _logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
                                         }
                                         
-                                        ValidateHeaders(token, batch);
                                         batch.Headers.Response = getHeadersTask.Result;
+                                        ValidateHeaders(token, batch);
                                     }
                                     else
                                     {
