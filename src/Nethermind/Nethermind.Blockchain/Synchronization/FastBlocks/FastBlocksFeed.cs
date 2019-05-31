@@ -329,11 +329,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                         case FastBlocksBatchType.Receipts:
                         {
-                            if (batch.Receipts?.Request?.Length == 0)
-                            {
-                                return (BlocksDataHandlerResult.OK, 1);    
-                            }
-                            
                             int added = InsertReceipts(batch);
                             return (BlocksDataHandlerResult.OK, added);
                         }
