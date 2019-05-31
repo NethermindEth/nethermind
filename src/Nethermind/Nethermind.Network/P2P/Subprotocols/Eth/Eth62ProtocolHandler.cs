@@ -539,7 +539,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
-            if (number == 0)
+            if (maxBlocks == 0)
             {
                 return new BlockHeader[0];
             }
