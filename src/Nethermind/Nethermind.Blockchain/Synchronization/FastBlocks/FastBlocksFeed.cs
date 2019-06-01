@@ -101,6 +101,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public FastBlocksBatch PrepareRequest()
         {
+            _logger.Warn("Preparing request");
             HandleDependentBatches();
 
             FastBlocksBatch batch;
@@ -321,7 +322,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     _bodiesDependencies.Remove(lowestBodyNumber.Value - 1, out _);
                     lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
                     stopwatch.Stop();
-                    _logger.Warn($"Handled dependent blocks [{dependentBatch.First().Number},{dependentBatch.Last().Number}] in {stopwatch.ElapsedMilliseconds}ms");
+                    _logger.Warn($"Handled dependent blocks [{dependentBatch.First().Number},{dependentBatch.Last().Number}]({dependentBatch.Count}) in {stopwatch.ElapsedMilliseconds}ms");
                 }
 
                 long? lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
