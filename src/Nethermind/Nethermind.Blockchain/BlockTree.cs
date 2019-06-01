@@ -471,6 +471,22 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
+        public void Insert(IEnumerable<Block> blocks)
+        {
+            try
+            {
+                _blockDb.StartBatch();
+                foreach (Block block in blocks)
+                {
+                    Insert(block);
+                }
+            }
+            finally
+            {
+                _blockDb.CommitBatch();
+            }
+        }
+
         private AddBlockResult Suggest(Block block, BlockHeader header, bool shouldProcess = true)
         {
 #if DEBUG

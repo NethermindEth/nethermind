@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class FastBlocksFeed : IFastBlocksFeed
     {
-        private const int BodiesRequestSize = 96;
+        private const int BodiesRequestSize = 512;
         private const int HeadersRequestSize = 512;
         private const int ReceiptsRequestStats = 256;
 
@@ -612,13 +612,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private void InsertBlocks(List<Block> validResponses)
         {
-            for (int i = validResponses.Count - 1; i >= 0; i--)
-            {
-                if (!validResponses[i].IsGenesis)
-                {
-                    _blockTree.Insert(validResponses[i]);
-                }
-            }
+            validResponses.Reverse();
+            _blockTree.Insert(validResponses);
         }
 
         public void StartNewRound()
