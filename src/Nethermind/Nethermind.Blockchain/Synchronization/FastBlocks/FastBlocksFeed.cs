@@ -555,13 +555,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 Block block = new Block(bodiesSyncBatch.Headers[i], blockBody.Transactions, blockBody.Ommers);
-                if (block.CalculateTxRoot() != block.TransactionsRoot ||
-                    block.CalculateOmmersHash() != block.OmmersHash)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
-                    _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
-                    break;
-                }
+//                if (block.CalculateTxRoot() != block.TransactionsRoot ||
+//                    block.CalculateOmmersHash() != block.OmmersHash)
+//                {
+//                    if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
+//                    _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
+//                    break;
+//                }
 
                 validResponses.Add(block);
             }
