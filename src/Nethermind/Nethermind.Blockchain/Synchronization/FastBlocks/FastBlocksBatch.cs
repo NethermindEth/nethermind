@@ -33,12 +33,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         
         public bool Prioritized { get; set; }
 
+        public bool IsResponseEmpty => Bodies?.Response == null && Headers?.Response == null && Receipts?.Response == null;
         public FastBlocksBatchType BatchType => Headers != null ? FastBlocksBatchType.Headers : Bodies == null ? FastBlocksBatchType.Receipts : FastBlocksBatchType.Bodies;
         public ReceiptsSyncBatch Receipts { get; set; }
         public HeadersSyncBatch Headers { get; set; }
         public BodiesSyncBatch Bodies { get; set; }
         public SyncPeerAllocation Allocation { get; set; }
-        public PeerInfo PreviousPeerInfo { get; set; }
+        public PeerInfo OriginalDataSource { get; set; }
 
         public FastBlocksBatch()
         {
@@ -91,7 +92,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public double? SchedulingTime => (_requestSentTime ?? _stopwatch.ElapsedMilliseconds) - (_scheduledLastTime ?? _stopwatch.ElapsedMilliseconds);
         public double? RequestTime => (_validationStartTime ?? _stopwatch.ElapsedMilliseconds) - (_requestSentTime ?? _stopwatch.ElapsedMilliseconds);
         public double? ValidationTime => (_waitingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_validationStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
-        
         public double? WaitingTime => (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_waitingStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
         public double? HandlingTime => (_handlingEndTime ?? _stopwatch.ElapsedMilliseconds) - (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
         public long? MinNumber { get; set; }
@@ -119,7 +119,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
             
             string priority = Prioritized ? "HIGH" : "LOW";
-            return $"{BatchType} {details} [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {Allocation?.Current ?? PreviousPeerInfo}";
+            return $"{BatchType} {details} [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {Allocation?.Current ?? OriginalDataSource}";
         }
     }
 }

@@ -32,11 +32,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
     public class LatencySyncPeerMock : ISyncPeer
     {
         public IBlockTree Tree { get; }
-
         public bool IsReported { get; set; } = false;
         public long? BusyUntil { get; set; }
         public int Latency { get; set; }
-
         public static int RemoteIndex { get; set; } = 1;
 
         public LatencySyncPeerMock(IBlockTree tree, int latency = 5)
@@ -58,9 +56,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         
         public bool IsFastSyncSupported => false;
         public Node Node { get; }
-        
         public Node LocalNode { get; }
-        
         public string ClientId => Node.ClientId;
         public UInt256 TotalDifficultyOnSessionStart => Tree.Head.TotalDifficulty ?? 0;
 

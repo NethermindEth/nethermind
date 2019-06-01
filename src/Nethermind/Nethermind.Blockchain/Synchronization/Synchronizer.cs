@@ -82,21 +82,9 @@ namespace Nethermind.Blockchain.Synchronization
 
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
 
-            BlockHeader lowestInserted = _blockTree.LowestInsertedHeader;
-            Block lowestInsertedBody = _blockTree.LowestInsertedBody;
-
             if (syncConfig.EnableExperimentalFastBlocks)
             {
-                long pivotNumber = LongConverter.FromString(syncConfig.PivotNumber ?? "0x0");
-                Keccak pivotHash = syncConfig.PivotHash == null ? null : new Keccak(syncConfig.PivotHash);
-                UInt256 pivotDifficulty = UInt256.Parse(syncConfig.PivotTotalDifficulty ?? "0x0");
                 FastBlocksFeed feed = new FastBlocksFeed(_blockTree, _receiptStorage, _syncPeerPool, syncConfig, logManager);
-                feed.StartNumber = lowestInserted?.Number ?? pivotNumber;
-                feed.StartBodyHash = lowestInsertedBody?.Hash ?? pivotHash;
-                feed.StartHeaderHash = lowestInserted?.Hash ?? pivotHash;
-                feed.StartReceiptsHash = _blockTree.FindBlock(_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue)?.Hash ?? pivotHash;
-                feed.StartTotalDifficulty = lowestInserted?.TotalDifficulty ?? pivotDifficulty;
-
                 _fastBlockDownloader = new FastBlocksDownloader(_syncPeerPool, feed, blockValidator, sealValidator, logManager);
             }
         }

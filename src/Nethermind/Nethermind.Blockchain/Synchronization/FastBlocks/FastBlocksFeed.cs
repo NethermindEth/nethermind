@@ -34,6 +34,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class FastBlocksFeed : IFastBlocksFeed
     {
+        private const int BodiesRequestSize = 512;
+        private const int HeadersRequestSize = 512;
+        private const int ReceiptsRequestStats = 256;
+        
         private ILogger _logger;
         private IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
@@ -51,25 +55,24 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private SyncStats _headersSyncStats;
         private SyncStats _receiptsSyncStats;
 
-        private const int _bodiesRequestSize = 512;
-        private const int _headersRequestSize = 512;
-        private const int _receiptsRequestStats = 256;
-
-        public long StartNumber { get; set; }
-        public Keccak StartBodyHash { get; set; }
-        public Keccak StartHeaderHash { get; set; }
-        public Keccak StartReceiptsHash { get; set; }
-        public UInt256 StartTotalDifficulty { get; set; }
-        private long? _lowestRequestedHeaderNumber;
+        private long _startNumber;
+        private Keccak _startBodyHash;
+        private Keccak _startHeaderHash;
+        private Keccak _startReceiptsHash;
+        private UInt256 _startTotalDifficulty;
+        
+        private long _lowestRequestedHeaderNumber;
         private Keccak _lowestRequestedBodyHash;
         private Keccak _lowestRequestedReceiptsHash;
 
-        private Keccak _nextHash;
-        private UInt256? _nextDiff;
+        private Keccak _nextHeaderHash;
+        private UInt256? _nextHeaderDiff;
 
         private long _pivotNumber;
         private long _requestsSent;
         private long _itemsSaved;
+        private Keccak _pivotHash;
+        private UInt256 _pivotDifficulty;
 
         public FastBlocksFeed(IBlockTree blockTree, IReceiptStorage receiptStorage, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager)
         {
@@ -82,10 +85,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _receiptsSyncStats = new SyncStats("Receipts", logManager);
             _headersSyncStats = new SyncStats("Headers", logManager);
             _bodiesSyncStats = new SyncStats("Bodies", logManager);
-
-            _pivotNumber = LongConverter.FromString(_syncConfig.PivotNumber ?? "0");
-
-            StartNewRound();
         }
 
         private FastBlocksBatchType ResolveBatchType()
@@ -96,7 +95,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (!headersDownloaded)
             {
-                return (_lowestRequestedHeaderNumber ?? long.MaxValue) == 0
+                return _lowestRequestedHeaderNumber == 0
                     ? FastBlocksBatchType.None
                     : FastBlocksBatchType.Headers;
             }
@@ -123,9 +122,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public FastBlocksBatch PrepareRequest()
         {
-            if (_nextHash == null) _nextHash = StartHeaderHash;
-            if (_nextDiff == null) _nextDiff = StartTotalDifficulty;
-
             lock (_handlerLock)
             {
                 while (_headerDependencies.ContainsKey((_blockTree.LowestInsertedHeader?.Number ?? 0) - 1))
@@ -154,14 +150,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                     case FastBlocksBatchType.Bodies:
                     {
-                        Keccak hash = _lowestRequestedBodyHash ?? StartBodyHash;
+                        Keccak hash = _lowestRequestedBodyHash;
                         BlockHeader header = _blockTree.FindHeader(hash);
                         if (header == null)
                         {
                             throw new InvalidDataException($"Last header is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
                         }
 
-                        int requestSize = (int) Math.Min(header.Number, _bodiesRequestSize);
+                        int requestSize = (int) Math.Min(header.Number, BodiesRequestSize);
                         batch = new FastBlocksBatch();
                         batch.Bodies = new BodiesSyncBatch();
                         batch.Bodies.Request = new Keccak[requestSize];
@@ -185,10 +181,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     case FastBlocksBatchType.Headers:
                     {
                         batch = new FastBlocksBatch();
-                        batch.MinNumber = _lowestRequestedHeaderNumber ?? StartNumber;
+                        batch.MinNumber = _lowestRequestedHeaderNumber  - 1;
                         batch.Headers = new HeadersSyncBatch();
-                        batch.Headers.StartNumber = Math.Max(0, (_lowestRequestedHeaderNumber - 1 ?? StartNumber) - (_headersRequestSize - 1));
-                        batch.Headers.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber ?? StartNumber + 1, _headersRequestSize);
+                        batch.Headers.StartNumber = Math.Max(0, _lowestRequestedHeaderNumber - HeadersRequestSize);
+                        batch.Headers.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber, HeadersRequestSize);
                         _lowestRequestedHeaderNumber = batch.Headers.StartNumber;
 
                         break;
@@ -196,14 +192,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                     case FastBlocksBatchType.Receipts:
                     {
-                        Keccak hash = _lowestRequestedReceiptsHash ?? StartReceiptsHash;
+                        Keccak hash = _lowestRequestedReceiptsHash;
                         Block block = _blockTree.FindBlock(hash, false);
                         if (block == null)
                         {
                             throw new InvalidDataException($"Last header is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
                         }
 
-                        int requestSize = (int) Math.Min(block.Number, _receiptsRequestStats);
+                        int requestSize = (int) Math.Min(block.Number, ReceiptsRequestStats);
                         batch = new FastBlocksBatch();
                         batch.Receipts = new ReceiptsSyncBatch();
                         batch.Receipts.Blocks = new Block[requestSize];
@@ -303,6 +299,16 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(FastBlocksBatch batch)
         {
+            if (batch.IsResponseEmpty)
+            {
+                batch.MarkHandlingStart();
+                if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
+                batch.Allocation = null;
+                _pendingBatches.Push(batch);
+                batch.MarkHandlingEnd();
+                return (BlocksDataHandlerResult.OK, 0);
+            }
+            
             lock (_handlerLock)
             {
                 try
@@ -355,14 +361,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private int InsertReceipts(FastBlocksBatch batch)
         {
             var receiptsSyncBatch = batch.Receipts;
-            if (receiptsSyncBatch.Response == null)
-            {
-                if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                batch.Allocation = null;
-                _pendingBatches.Push(batch);
-                return 0;
-            }
-
             int added = 0;
             for (int blockIndex = 0; blockIndex < receiptsSyncBatch.Response.Length; blockIndex++)
             {
@@ -433,14 +431,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private int InsertBodies(FastBlocksBatch batch)
         {
             var bodiesSyncBatch = batch.Bodies;
-            if (bodiesSyncBatch.Response == null)
-            {
-                if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                batch.Allocation = null;
-                _pendingBatches.Push(batch);
-                return 0;
-            }
-
             int added = 0;
             for (int i = 0; i < bodiesSyncBatch.Response.Length; i++)
             {
@@ -455,7 +445,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     block.CalculateOmmersHash() != block.OmmersHash)
                 {
                     if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
-                    _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
+                    _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                     break;
                 }
 
@@ -498,8 +488,24 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public void StartNewRound()
         {
-            _lowestRequestedHeaderNumber = null;
-            _lowestRequestedBodyHash = null;
+            _pivotNumber = LongConverter.FromString(_syncConfig.PivotNumber ?? "0x0");
+            _pivotHash = _syncConfig.PivotHash == null ? null : new Keccak(_syncConfig.PivotHash);
+            _pivotDifficulty = UInt256.Parse(_syncConfig.PivotTotalDifficulty ?? "0x0");
+            
+            BlockHeader lowestInserted = _blockTree.LowestInsertedHeader;
+            Block lowestInsertedBody = _blockTree.LowestInsertedBody;
+            _startNumber = lowestInserted?.Number ?? _pivotNumber;
+            _startBodyHash = lowestInsertedBody?.Hash ?? _pivotHash;
+            _startHeaderHash = lowestInserted?.Hash ?? _pivotHash;
+            _startReceiptsHash = _blockTree.FindBlock(_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue)?.Hash ?? _pivotHash;
+            _startTotalDifficulty = lowestInserted?.TotalDifficulty ?? _pivotDifficulty;
+            
+            _nextHeaderHash = _startHeaderHash;
+            _nextHeaderDiff = _startTotalDifficulty;
+            
+            _lowestRequestedHeaderNumber = _startNumber + 1;
+            _lowestRequestedBodyHash = _startBodyHash;
+            _lowestRequestedReceiptsHash = _startReceiptsHash;
 
             _sentBatches.Clear();
             _pendingBatches.Clear();
@@ -509,18 +515,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private int InsertHeaders(FastBlocksBatch batch)
         {
             var headersSyncBatch = batch.Headers;
-            if (headersSyncBatch.Response == null)
-            {
-                if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                batch.Allocation = null;
-                _pendingBatches.Push(batch);
-                return 0;
-            }
-
             if (headersSyncBatch.Response.Length > batch.Headers.RequestSize)
             {
                 if (_logger.IsWarn) _logger.Warn($"Peer sent too long response ({headersSyncBatch.Response.Length}) to {batch}");
-                _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
+                _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                 _pendingBatches.Push(batch);
                 return 0;
             }
@@ -563,19 +561,19 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     }
 
                     // response needs to be cached until predecessors arrive
-                    if (header.Hash != _nextHash)
+                    if (header.Hash != _nextHeaderHash)
                     {
                         if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
                         {
                             if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
-                            _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
+                            _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                             break;
                         }
 
                         if (header.Number == _blockTree.LowestInsertedHeader?.Number)
                         {
                             if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
-                            _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
+                            _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                             break;
                         }
 
@@ -614,21 +612,21 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         if (batch.Allocation != null)
                         {
                             if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID inconsistent");
-                            _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
+                            _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                         }
 
                         break;
                     }
                 }
 
-                header.TotalDifficulty = _nextDiff;
+                header.TotalDifficulty = _nextHeaderDiff;
                 AddBlockResult addBlockResult = InsertHeader(header);
                 if (addBlockResult == AddBlockResult.InvalidBlock)
                 {
                     if (batch.Allocation != null)
                     {
                         if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID bad block");
-                        _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.PreviousPeerInfo);
+                        _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                     }
 
                     break;
@@ -675,10 +673,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (added == 0)
             {
+                if (_logger.IsWarn) _logger.Warn($"{batch} - reporting no progress");
                 if (batch.Allocation != null)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"{batch} - reporting no progress");
                     _syncPeerPool.ReportNoSyncProgress(batch.Allocation);
+                }
+                else if (batch.OriginalDataSource != null)
+                {
+                    _syncPeerPool.ReportNoSyncProgress(batch.OriginalDataSource);
                 }
             }
 
@@ -725,7 +727,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             dependentBatch.Headers.Response = batch.Headers.Response
                 .Skip((int) (addedEarliest - batch.Headers.StartNumber))
                 .Take((int) (addedLast - addedEarliest + 1)).ToArray();
-            dependentBatch.PreviousPeerInfo = batch.Allocation?.Current ?? batch.PreviousPeerInfo;
+            dependentBatch.OriginalDataSource = batch.Allocation?.Current ?? batch.OriginalDataSource;
             return dependentBatch;
         }
 
@@ -740,8 +742,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (addBlockResult == AddBlockResult.Added || addBlockResult == AddBlockResult.AlreadyKnown)
             {
-                _nextHash = header.ParentHash;
-                _nextDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
+                _nextHeaderHash = header.ParentHash;
+                _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
                 if (addBlockResult == AddBlockResult.Added)
                 {
                     _itemsSaved++;
