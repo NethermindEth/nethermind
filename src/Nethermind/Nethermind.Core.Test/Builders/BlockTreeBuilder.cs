@@ -112,9 +112,9 @@ namespace Nethermind.Core.Test.Builders
         private Block CreateBlock(int splitVariant, int splitFrom, int i, Block parent)
         {
             Block current;
-            if (_receiptStorage != null)
+            if (_receiptStorage != null && i % 3 == 0)
             {
-                Transaction[] transactions = new[] {Build.A.Transaction.Signed(_ecdsa, TestItem.PrivateKeyA, i + 1).TestObject};
+                Transaction[] transactions = new[] {Build.A.Transaction.WithData(Rlp.Encode(i).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, i + 1).TestObject};
                 current = Build.A.Block
                     .WithNumber(i + 1)
                     .WithParent(parent)

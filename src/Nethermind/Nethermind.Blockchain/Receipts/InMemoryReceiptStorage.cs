@@ -38,10 +38,12 @@ namespace Nethermind.Blockchain.Receipts
 
         public void Insert(long blockNumber, TxReceipt txReceipt)
         {
-            if (_receipts.TryAdd(txReceipt.TransactionHash, txReceipt))
+            if (txReceipt != null)
             {
-                LowestInsertedReceiptBlock = blockNumber;    
+                _receipts.TryAdd(txReceipt.TransactionHash, txReceipt);
             }
+
+            LowestInsertedReceiptBlock = blockNumber;
         }
 
         public long? LowestInsertedReceiptBlock { get; private set; }

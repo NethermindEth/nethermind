@@ -690,6 +690,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
                 nextHash = header.ParentHash;
             }
+            
+            Assert.True(_feed.IsFinished);
         }
 
         private void RunFeed(int timeLimit = 5000, int restartEvery = 100000)

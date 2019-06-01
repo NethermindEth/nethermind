@@ -80,6 +80,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public bool IsFinished =>
             _pendingBatches.Count
             + _sentBatches.Count
+            + _receiptDependencies.Count
             + _headerDependencies.Count
             + _bodiesDependencies.Count == 0;
 
@@ -94,39 +95,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _receiptsSyncStats = new SyncStats("Receipts", logManager);
             _headersSyncStats = new SyncStats("Headers", logManager);
             _bodiesSyncStats = new SyncStats("Bodies", logManager);
-        }
-
-        private FastBlocksBatchType ResolveBatchType()
-        {
-            bool bodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
-            bool headersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? 0) == 1;
-            bool receiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
-
-            if (!headersDownloaded)
-            {
-                return _lowestRequestedHeaderNumber == 0
-                    ? FastBlocksBatchType.None
-                    : FastBlocksBatchType.Headers;
-            }
-
-            if (!bodiesDownloaded
-                && _syncConfig.DownloadBodiesInFastSync
-            )
-            {
-                return _lowestRequestedBodyHash == _blockTree.Genesis.Hash
-                    ? FastBlocksBatchType.None
-                    : FastBlocksBatchType.Bodies;
-            }
-
-            if (!receiptsDownloaded
-                && _syncConfig.DownloadReceiptsInFastSync)
-            {
-                return _lowestRequestedReceiptsHash == _blockTree.Genesis.Hash
-                    ? FastBlocksBatchType.None
-                    : FastBlocksBatchType.Receipts;
-            }
-
-            return FastBlocksBatchType.None;
         }
 
         public FastBlocksBatch PrepareRequest()
@@ -291,6 +259,39 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             LogStateOnPrepare();
             return batch;
         }
+        
+        private FastBlocksBatchType ResolveBatchType()
+        {
+            bool bodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
+            bool headersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? 0) == 1;
+            bool receiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
+
+            if (!headersDownloaded)
+            {
+                return _lowestRequestedHeaderNumber == 0
+                    ? FastBlocksBatchType.None
+                    : FastBlocksBatchType.Headers;
+            }
+
+            if (!bodiesDownloaded
+                && _syncConfig.DownloadBodiesInFastSync
+            )
+            {
+                return _lowestRequestedBodyHash == _blockTree.Genesis.Hash
+                    ? FastBlocksBatchType.None
+                    : FastBlocksBatchType.Bodies;
+            }
+
+            if (!receiptsDownloaded
+                && _syncConfig.DownloadReceiptsInFastSync)
+            {
+                return _lowestRequestedReceiptsHash == _blockTree.Genesis.Hash
+                    ? FastBlocksBatchType.None
+                    : FastBlocksBatchType.Receipts;
+            }
+
+            return FastBlocksBatchType.None;
+        }
 
         private void HandleDependentBatches()
         {
@@ -314,10 +315,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 long? lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
-                while (lowestReceiptNumber.HasValue && _receiptDependencies.ContainsKey(lowestReceiptNumber.Value - 1))
+                while (lowestReceiptNumber.HasValue && _receiptDependencies.ContainsKey(lowestReceiptNumber.Value))
                 {
-                    InsertBlocks(_bodiesDependencies[lowestReceiptNumber.Value - 1]);
-                    _bodiesDependencies.Remove(lowestReceiptNumber.Value - 1, out _);
+                    InsertReceipts(_receiptDependencies[lowestReceiptNumber.Value]);
+                    _receiptDependencies.Remove(lowestReceiptNumber.Value, out _);
                     lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
                 }
             }
@@ -434,7 +435,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             int added = 0;
             long? lastPredecessor = null;
             List<(long, TxReceipt)> validReceipts = new List<(long, TxReceipt)>();
-            for (int blockIndex = receiptSyncBatch.Response.Length - 1; blockIndex >= 0; blockIndex--)
+
+            if (receiptSyncBatch.Response[0] != null)
+            {
+                lastPredecessor = receiptSyncBatch.Predecessors[0];
+            }
+            
+            for (int blockIndex = 0; blockIndex < receiptSyncBatch.Response.Length; blockIndex++)
             {
                 TxReceipt[] receipts = receiptSyncBatch.Response[blockIndex];
                 if (receipts == null)
@@ -457,8 +464,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                     validReceipts.Add((receiptSyncBatch.Blocks[blockIndex].Number, receipt));
                 }
-
-                lastPredecessor = receiptSyncBatch.Predecessors[blockIndex];
+                
                 added++;
             }
 
@@ -468,6 +474,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 _pendingBatches.Push(fillerBatch);
             }
 
+            if (added == receiptSyncBatch.Request.Length && receiptSyncBatch.IsFinal)
+            {
+                validReceipts.Add((1, null)); // special finisher
+            }
+            
             if (added > 0)
             {
                 if (lastPredecessor.HasValue && lastPredecessor.Value != _receiptStorage.LowestInsertedReceiptBlock)
@@ -478,12 +489,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     InsertReceipts(validReceipts);
                 }
-            }
-
-            if (added == receiptSyncBatch.Request.Length && receiptSyncBatch.IsFinal)
-            {
-                _receiptStorage.Insert(1, null);
-                added = 1; // magic (not to disconnect the last peer)
             }
 
             if (_receiptStorage.LowestInsertedReceiptBlock != null)
