@@ -265,7 +265,7 @@ namespace Nethermind.Blockchain
                     Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1)?.Header;
                 }
 
-                bool fastSyncFinished = Head?.Number > 0;  
+                bool fastSyncFinished = Head?.Number > 0;
                 if (!fastSyncFinished)
                 {
                     if (_logger.IsInfo) _logger.Info("Fast sync in progress - skipping loading blocks from DB");
@@ -455,6 +455,12 @@ namespace Nethermind.Blockchain
                 byte[] newRlp = stream.ToArray();
 
                 _blockDb.Set(block.Hash, newRlp);
+            }
+
+            long expectedNumber = (LowestInsertedBody?.Number - 1 ?? LongConverter.FromString(_syncConfig.PivotNumber ?? "0")); 
+            if (block.Number != expectedNumber)
+            {
+                throw new InvalidOperationException($"Trying to insert out of order block {block.Number} when expected number was {expectedNumber}");
             }
 
             if (block.Number < (LowestInsertedBody?.Number ?? long.MaxValue))

@@ -50,6 +50,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private Dictionary<LatencySyncPeerMock, HashSet<long>> _invalidBlocks;
         private Dictionary<LatencySyncPeerMock, IBlockTree> _peerTrees;
         private Dictionary<LatencySyncPeerMock, FastBlocksBatch> _pendingResponses;
+        private Dictionary<long, Action> _scheduledActions;
         private HashSet<LatencySyncPeerMock> _maliciousByRepetition;
         private HashSet<LatencySyncPeerMock> _maliciousByInvalidTxs;
         private HashSet<LatencySyncPeerMock> _maliciousByInvalidOmmers;
@@ -62,6 +63,10 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private BlockTree _localBlockTree;
         private FastBlocksFeed _feed;
         private long _time;
+        private int _timeoutTime = 5000;
+        
+        private IEthSyncPeerPool _syncPeerPool;
+        private SyncConfig _syncConfig;
 
         public FastBlocksFeedTests()
         {
@@ -89,6 +94,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _incorrectByTooShortMessages = new HashSet<LatencySyncPeerMock>();
             _incorrectByTooLongMessages = new HashSet<LatencySyncPeerMock>();
             _timingOut = new HashSet<LatencySyncPeerMock>();
+            _scheduledActions = new Dictionary<long, Action>();
 
             LatencySyncPeerMock.RemoteIndex = 1;
             _time = 0;
@@ -126,14 +132,19 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 });
 
             _syncPeerPool.AllPeers.Returns((ci) => _syncPeers.Select(sp => new PeerInfo(sp) {HeadNumber = sp.Tree.Head.Number}));
-
+            
+            _syncConfig = new SyncConfig();
+            _syncConfig.PivotHash = _validTree2048.Head.Hash.ToString();
+            _syncConfig.PivotNumber = _validTree2048.Head.Number.ToString();
+            _syncConfig.PivotTotalDifficulty = _validTree2048.Head.TotalDifficulty.ToString();
+            
             SetupLocalTree();
             SetupFeed();
         }
 
         private void SetupLocalTree(int length = 1)
         {
-            _localBlockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            _localBlockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTxPool.Instance, _syncConfig, LimboLogs.Instance);
             for (int i = 0; i < length; i++)
             {
                 _localBlockTree.SuggestBlock(_validTree2048.FindBlock(i));
@@ -142,10 +153,6 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
         private void SetupFeed(bool syncBodies = false)
         {
-            _syncConfig = new SyncConfig();
-            _syncConfig.PivotHash = _validTree2048.Head.Hash.ToString();
-            _syncConfig.PivotNumber = _validTree2048.Head.Number.ToString();
-            _syncConfig.PivotTotalDifficulty = _validTree2048.Head.TotalDifficulty.ToString();
             if (syncBodies)
             {
                 _syncConfig.DownloadBodiesInFastSync = true;
@@ -161,7 +168,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             SetupFeed(true);
             SetupSyncPeers(syncPeer);
             RunFeed(5000, 9);
-            Assert.AreEqual(87, _time);
+            Assert.AreEqual(78, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -173,7 +180,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             SetupFeed(true);
             SetupSyncPeers(syncPeer);
             RunFeed();
-            Assert.AreEqual(54, _time);
+            Assert.AreEqual(48, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -197,7 +204,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             SetupFeed(true);
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(32, _time);
+            Assert.AreEqual(26, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -271,7 +278,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(44, _time);
+            Assert.AreEqual(38, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -286,7 +293,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(44, _time);
+            Assert.AreEqual(38, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -315,7 +322,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(55, _time);
+            Assert.AreEqual(49, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -344,7 +351,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(55, _time);
+            Assert.AreEqual(49, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -373,7 +380,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(55, _time);
+            Assert.AreEqual(49, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -431,7 +438,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(55, _time);
+            Assert.AreEqual(49, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -460,7 +467,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed(20000);
-            Assert.AreEqual(5037, _time);
+            Assert.AreEqual(5031, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -487,7 +494,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(2710, _time);
+            Assert.AreEqual(2409, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -514,7 +521,23 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(2107, _time);
+            Assert.AreEqual(1806, _time);
+
+            AssertTreeSynced(_validTree2048, true);
+        }
+        
+        [Test(Description = "Test if bodies dependencies are handled correctly")]
+        public void Two_valid_one_slower_with_bodies_and_one_restart()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 300);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            SetupFeed(true);
+
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            _scheduledActions[312] = ResetAndStartNewRound;
+            
+            RunFeed(5000);
+//            Assert.AreEqual(2116, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -540,7 +563,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             SetupSyncPeers(syncPeer1, syncPeer2);
             SetupFeed(true);
             RunFeed();
-            Assert.AreEqual(43, _time);
+            Assert.AreEqual(36, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -574,7 +597,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _syncConfig.PivotNumber = _validTree8.Head.Number.ToString();
             _syncConfig.PivotTotalDifficulty = _validTree8.Head.Difficulty.ToString();
             RunFeed();
-            Assert.AreEqual(13, _time);
+            Assert.AreEqual(12, _time);
 
             AssertTreeSynced(_validTree8, true);
         }
@@ -605,7 +628,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             RunFeed();
 
-            Assert.AreEqual(498, _time);
+            Assert.AreEqual(480, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -620,30 +643,32 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 if (bodiesSync)
                 {
                     Block block = _localBlockTree.FindBlock(nextHash, false);
-                    Assert.AreEqual(nextHash, block.Hash, $"hash difference {tree.Head.Number - i}");
-                    Rlp saved = Rlp.Encode(tree.FindBlock(block.Hash, false));
-                    Rlp expected = Rlp.Encode(block);
-                    Assert.AreEqual(expected, saved, $"body {tree.Head.Number - i}");
+                    Assert.AreEqual(nextHash, block?.Hash, $"hash difference {tree.Head.Number - i}");
+                    if (block != null)
+                    {
+                        Rlp saved = Rlp.Encode(tree.FindBlock(block.Hash, false));
+                        Rlp expected = Rlp.Encode(block);
+                        Assert.AreEqual(expected, saved, $"body {tree.Head.Number - i}");
+                    }
                 }
 
                 nextHash = header.ParentHash;
             }
         }
-        
-        private int _timeoutTime = 5000;
-        private IEthSyncPeerPool _syncPeerPool;
-        private SyncConfig _syncConfig;
 
         private void RunFeed(int timeLimit = 5000, int restartEvery = 100000)
         {
             _feed.StartNewRound();
             while (true)
             {
+                if (_scheduledActions.ContainsKey(_time))
+                {
+                    _scheduledActions[_time].Invoke();
+                }
+                
                 if (_time % restartEvery == 0)
                 {
-                    _pendingResponses.Clear();
-                    _syncPeers.ForEach(p => p.BusyUntil = null);
-                    _feed.StartNewRound();
+                    ResetAndStartNewRound();
                 }
                 
                 if (_time > timeLimit)
@@ -706,6 +731,14 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
                 _time++;
             }
+        }
+
+        private void ResetAndStartNewRound()
+        {
+            TestContext.WriteLine("RESET AND START NEW ROUND");
+            _pendingResponses.Clear();
+            _syncPeers.ForEach(p => p.BusyUntil = null);
+            _feed.StartNewRound();
         }
 
         private void SetupSyncPeers(params LatencySyncPeerMock[] syncPeers)

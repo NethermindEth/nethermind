@@ -25,5 +25,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         (BlocksDataHandlerResult Result, int BlocksConsumed) HandleResponse(FastBlocksBatch batch);
         
         void StartNewRound();
+
+        bool IsFinished { get; }
     }
 }

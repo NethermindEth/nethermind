@@ -306,7 +306,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     _semaphore.Release();
                     if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests.");
                 }
-            } while (_pendingRequests != 0 || finalizeSignalsCount < 3);
+            } while ((_pendingRequests != 0 || finalizeSignalsCount < 3) && !_fastBlocksFeed.IsFinished);
 
             if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_lastUsefulPeerCount} useful peers.");
         }

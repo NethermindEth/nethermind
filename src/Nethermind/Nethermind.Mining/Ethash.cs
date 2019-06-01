@@ -232,11 +232,11 @@ namespace Nethermind.Mining
             {
                 uint cacheSize = GetCacheSize(epoch);
                 Keccak seed = GetSeedHash(epoch);
-                if (_logger.IsWarn) _logger.Warn($"Building cache for epoch {epoch}");
+                if (_logger.IsInfo) _logger.Info($"Building ethash cache for epoch {epoch}");
                 _cacheStopwatch.Restart();
                 IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
                 _cacheStopwatch.Stop();
-                if (_logger.IsDebug) _logger.Debug($"Cache for epoch {epoch} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
+                if (_logger.IsInfo) _logger.Info($"Cache for epoch {epoch} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
                 return dataSet;
             });
         }
