@@ -449,13 +449,13 @@ namespace Nethermind.Blockchain
             }
 
             // validate hash here
-            using (MemoryStream stream = Rlp.BorrowStream())
-            {
-                Rlp.Encode(stream, block);
-                byte[] newRlp = stream.ToArray();
-
-                _blockDb.Set(block.Hash, newRlp);
-            }
+//            using (MemoryStream stream = Rlp.BorrowStream())
+//            {
+//                Rlp.Encode(stream, block);
+//                byte[] newRlp = stream.ToArray();
+//
+//                _blockDb.Set(block.Hash, newRlp);
+//            }
 
             long expectedNumber = (LowestInsertedBody?.Number - 1 ?? LongConverter.FromString(_syncConfig.PivotNumber ?? "0")); 
             if (block.Number != expectedNumber)
