@@ -19,9 +19,11 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -121,6 +123,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                     case FastBlocksBatchType.Bodies:
                     {
+                        Stopwatch stopwatch = Stopwatch.StartNew();
                         Keccak hash = _lowestRequestedBodyHash;
                         BlockHeader header = _blockTree.FindHeader(hash);
                         if (header == null)
@@ -160,6 +163,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             }
                         }
 
+                        stopwatch.Stop();
+                        _logger.Warn($"Prepared blocks request in {stopwatch.ElapsedMilliseconds}ms");
                         break;
                     }
 
@@ -309,9 +314,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 long? lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
                 while (lowestBodyNumber.HasValue && _bodiesDependencies.ContainsKey(lowestBodyNumber.Value - 1))
                 {
+                    Stopwatch stopwatch = new Stopwatch();
+                    stopwatch.Start();
                     InsertBlocks(_bodiesDependencies[lowestBodyNumber.Value - 1]);
                     _bodiesDependencies.Remove(lowestBodyNumber.Value - 1, out _);
                     lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
+                    stopwatch.Stop();
+                    _logger.Warn($"Handled dependent blocks in {stopwatch.ElapsedMilliseconds}ms");
                 }
 
                 long? lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
@@ -405,7 +414,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 return (BlocksDataHandlerResult.OK, 1);
                             }
 
+                            Stopwatch stopwatch = Stopwatch.StartNew();
                             int added = InsertBodies(batch);
+                            stopwatch.Stop();
+                            _logger.Warn($"Handler blocks response on {Thread.CurrentThread.ManagedThreadId} in {stopwatch.ElapsedMilliseconds}ms");
                             return (BlocksDataHandlerResult.OK, added);
                         }
 
