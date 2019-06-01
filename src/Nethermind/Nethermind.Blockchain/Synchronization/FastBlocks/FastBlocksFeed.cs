@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class FastBlocksFeed : IFastBlocksFeed
     {
-        private const int BodiesRequestSize = 512;
+        private const int BodiesRequestSize = 128;
         private const int HeadersRequestSize = 512;
         private const int ReceiptsRequestStats = 256;
 
