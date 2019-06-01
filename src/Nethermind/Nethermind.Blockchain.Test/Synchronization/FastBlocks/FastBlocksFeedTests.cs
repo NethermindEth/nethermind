@@ -41,6 +41,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
     [SingleThreaded]
     public class FastBlocksFeedTests
     {
+        private ISpecProvider _specProvider = MainNetSpecProvider.Instance;
+        private InMemoryReceiptStorage _remoteReceiptStorage;
         private BlockTree _validTree2048;
         private BlockTree _validTree1024;
         private BlockTree _validTree8;
@@ -60,6 +62,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private HashSet<LatencySyncPeerMock> _incorrectByTooShortMessages;
         private HashSet<LatencySyncPeerMock> _incorrectByTooLongMessages;
         private HashSet<LatencySyncPeerMock> _timingOut;
+        private InMemoryReceiptStorage _localReceiptStorage;
         private BlockTree _localBlockTree;
         private FastBlocksFeed _feed;
         private long _time;
@@ -71,15 +74,17 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         public FastBlocksFeedTests()
         {
             // make trees lazy
-            _validTree2048 = Build.A.BlockTree().OfChainLength(2048).TestObject;
-            _validTree1024 = Build.A.BlockTree().OfChainLength(1024).TestObject;
-            _validTree8 = Build.A.BlockTree().OfChainLength(8).TestObject;
-            _badTreeAfter1024 = Build.A.BlockTree().OfChainLength(2048, 1, 1024).TestObject;
+            _remoteReceiptStorage = new InMemoryReceiptStorage();
+            _validTree2048 = Build.A.BlockTree().WithTransactions(_remoteReceiptStorage, _specProvider).OfChainLength(2048).TestObject;
+            _validTree1024 = Build.A.BlockTree().WithTransactions(_remoteReceiptStorage, _specProvider).OfChainLength(1024).TestObject;
+            _validTree8 = Build.A.BlockTree().WithTransactions(_remoteReceiptStorage, _specProvider).OfChainLength(8).TestObject;
+            _badTreeAfter1024 = Build.A.BlockTree().WithTransactions(_remoteReceiptStorage, _specProvider).OfChainLength(2048, 1, 1024).TestObject;
         }
 
         [SetUp]
         public void Setup()
         {
+            _localReceiptStorage = new InMemoryReceiptStorage();
             _syncPeers = new List<LatencySyncPeerMock>();
             _peerTrees = new Dictionary<LatencySyncPeerMock, IBlockTree>();
             _peerMaxResponseSizes = new Dictionary<LatencySyncPeerMock, int>();
@@ -151,14 +156,19 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             }
         }
 
-        private void SetupFeed(bool syncBodies = false)
+        private void SetupFeed(bool syncBodies = false, bool syncReceipts = false)
         {
             if (syncBodies)
             {
                 _syncConfig.DownloadBodiesInFastSync = true;
             }
 
-            _feed = new FastBlocksFeed(_localBlockTree, NullReceiptStorage.Instance,  _syncPeerPool, _syncConfig, LimboLogs.Instance);
+            if (syncReceipts)
+            {
+                _syncConfig.DownloadReceiptsInFastSync = true;
+            }
+
+            _feed = new FastBlocksFeed(_localBlockTree, _localReceiptStorage,  _syncPeerPool, _syncConfig, LimboLogs.Instance);
         }
         
         [Test]
@@ -536,13 +546,28 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             SetupSyncPeers(syncPeer1, syncPeer2);
             _scheduledActions[312] = ResetAndStartNewRound;
             
-            RunFeed(5000);
-//            Assert.AreEqual(2116, _time);
+            RunFeed();
+            Assert.AreEqual(613, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
+        
+        [Test(Description = "Test if receipt dependencies are handled correctly")]
+        public void Two_valid_one_slower_with_receipts_and_one_restart()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 300);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            SetupFeed(true, true);
 
+            SetupSyncPeers(syncPeer1, syncPeer2);
+            _scheduledActions[906] = ResetAndStartNewRound;
+            
+            RunFeed(5000);
+//            Assert.AreEqual(2116, _time);
 
+            AssertTreeSynced(_validTree2048, true, true);
+        }
+        
         [Test]
         public void Two_peers_with_valid_chain_one_shorter()
         {
@@ -633,7 +658,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             AssertTreeSynced(_validTree2048, true);
         }
 
-        private void AssertTreeSynced(IBlockTree tree, bool bodiesSync = false)
+        private void AssertTreeSynced(IBlockTree tree, bool bodiesSync = false, bool receiptSync = false)
         {
             Keccak nextHash = tree.Head.Hash;
             for (int i = 0; i < tree.Head.Number; i++)
@@ -642,13 +667,24 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 Assert.NotNull(header, $"header {tree.Head.Number - i}");
                 if (bodiesSync)
                 {
-                    Block block = _localBlockTree.FindBlock(nextHash, false);
-                    Assert.AreEqual(nextHash, block?.Hash, $"hash difference {tree.Head.Number - i}");
-                    if (block != null)
+                    Block expectedBlock = _localBlockTree.FindBlock(nextHash, false);
+                    Assert.AreEqual(nextHash, expectedBlock?.Hash, $"hash difference {tree.Head.Number - i}");
+                    if (expectedBlock != null)
                     {
-                        Rlp saved = Rlp.Encode(tree.FindBlock(block.Hash, false));
-                        Rlp expected = Rlp.Encode(block);
+                        Block actualBlock = tree.FindBlock(expectedBlock.Hash, false);
+                        Rlp saved = Rlp.Encode(actualBlock);
+                        Rlp expected = Rlp.Encode(expectedBlock);
                         Assert.AreEqual(expected, saved, $"body {tree.Head.Number - i}");
+
+                        if (receiptSync)
+                        {
+                            int txIndex = 0;
+                            foreach (Transaction transaction in expectedBlock.Transactions)
+                            {
+                                Assert.NotNull(_localReceiptStorage.Find(transaction.Hash), $"receipt {expectedBlock.Number}.{txIndex}");
+                                txIndex++;
+                            }
+                        }
                     }
                 }
 
@@ -773,20 +809,44 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             }
 
             TestContext.WriteLine($"{_time,6} |SYNC PEER {syncPeer.Node:s} RESPONDING TO {responseBatch}");
-            var headersSyncBatch = responseBatch.Headers;
-            var bodiesSyncBatch = responseBatch.Bodies;
-            if (headersSyncBatch != null)
+            
+            switch (responseBatch.BatchType)
             {
-                PrepareHeadersResponse(headersSyncBatch, syncPeer, tree);
-            }
-            else if (bodiesSyncBatch != null)
-            {
-                PrepareBodiesResponse(bodiesSyncBatch, syncPeer, tree);
+                case FastBlocksBatchType.None:
+                    break;
+                case FastBlocksBatchType.Headers:
+                    var headersSyncBatch = responseBatch.Headers;
+                    PrepareHeadersResponse(headersSyncBatch, syncPeer, tree);
+                    break;
+                case FastBlocksBatchType.Bodies:
+                    var bodiesSyncBatch = responseBatch.Bodies;
+                    PrepareBodiesResponse(bodiesSyncBatch, syncPeer, tree);
+                    break;
+                case FastBlocksBatchType.Receipts:
+                    var receiptSyncBatch = responseBatch.Receipts;
+                    PrepareReceiptsResponse(receiptSyncBatch, syncPeer, tree);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
             }
 
             return responseBatch;
         }
 
+        private void PrepareReceiptsResponse(ReceiptsSyncBatch receiptSyncBatch, LatencySyncPeerMock syncPeer, IBlockTree tree)
+        {
+            receiptSyncBatch.Response = new TxReceipt[receiptSyncBatch.Request.Length][];
+            for (int i = 0; i < receiptSyncBatch.Request.Length; i++)
+            {
+                Block block = tree.FindBlock(receiptSyncBatch.Request[i], false);
+                receiptSyncBatch.Response[i] = new TxReceipt[block.Transactions.Length];
+                for (int j = 0; j < block.Transactions.Length; j++)
+                {
+                    receiptSyncBatch.Response[i][j] = _remoteReceiptStorage.Find(block.Transactions[j].Hash);
+                }
+            }
+        }
+        
         private void PrepareBodiesResponse(BodiesSyncBatch bodiesSyncBatch, LatencySyncPeerMock syncPeer, IBlockTree tree)
         {
             int requestSize = bodiesSyncBatch.Request.Length;

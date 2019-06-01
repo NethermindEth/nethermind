@@ -165,16 +165,7 @@ namespace Nethermind.Blockchain
 
         private void SetReceiptsRootAndBloom(Block block, TxReceipt[] txReceipts)
         {
-            PatriciaTree receiptTree = txReceipts.Length > 0 ? new PatriciaTree(NullDb.Instance, Keccak.EmptyTreeHash, false) : null;
-            for (int i = 0; i < txReceipts.Length; i++)
-            {
-                Rlp receiptRlp = Rlp.Encode(txReceipts[i], _specProvider.GetSpec(block.Header.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
-                receiptTree?.Set(Rlp.Encode(i).Bytes, receiptRlp);
-            }
-
-            receiptTree?.UpdateRootHash();
-
-            block.Header.ReceiptsRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
+            block.Header.ReceiptsRoot = block.CalculateReceiptRoot(_specProvider, txReceipts);
             block.Header.Bloom = txReceipts.Length > 0 ? BuildBloom(txReceipts) : Bloom.Empty;
         }
 
@@ -258,7 +249,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 txReceipts[i].BlockHash = block.Hash;
-                _receiptStorage.Insert(txReceipts[i], true);
+                _receiptStorage.Add(txReceipts[i], true);
                 _txPool.RemoveTransaction(txReceipts[i].TransactionHash);
             }
         }

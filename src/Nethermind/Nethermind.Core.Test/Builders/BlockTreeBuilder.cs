@@ -16,7 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
@@ -32,6 +34,7 @@ namespace Nethermind.Core.Test.Builders
     public class BlockTreeBuilder : BuilderBase<BlockTree>
     {
         private readonly Block _genesisBlock;
+        private IReceiptStorage _receiptStorage;
 
         private bool _onlyHeaders;
 
@@ -66,6 +69,9 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        private ISpecProvider _specProvider;
+        private IEthereumEcdsa _ecdsa;
+
         public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0)
         {
             Block current = _genesisBlock;
@@ -82,7 +88,8 @@ namespace Nethermind.Core.Test.Builders
                         TestObjectInternal.SuggestHeader(current.Header);
                     }
 
-                    current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > current.Number ? 0 : (ulong) splitVariant)).TestObject;
+                    Block parent = current;
+                    current = CreateBlock(splitVariant, splitFrom, i, parent);
                 }
                 else
                 {
@@ -94,11 +101,45 @@ namespace Nethermind.Core.Test.Builders
                         TestObjectInternal.UpdateMainChain(current);
                     }
 
-                    current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > current.Number ? 0 : (ulong) splitVariant)).TestObject;
+                    Block parent = current;
+                    current = CreateBlock(splitVariant, splitFrom, i, parent);
                 }
             }
 
             return this;
+        }
+
+        private Block CreateBlock(int splitVariant, int splitFrom, int i, Block parent)
+        {
+            Block current;
+            if (_receiptStorage != null)
+            {
+                Transaction[] transactions = new[] {Build.A.Transaction.Signed(_ecdsa, TestItem.PrivateKeyA, i + 1).TestObject};
+                current = Build.A.Block
+                    .WithNumber(i + 1)
+                    .WithParent(parent)
+                    .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
+                    .WithTransactions(transactions)
+                    .TestObject;
+
+                List<TxReceipt> receipts = new List<TxReceipt>();
+                foreach (Transaction transaction in current.Transactions)
+                {
+                    TxReceipt receipt = new TxReceipt();
+                    receipt.TransactionHash = transaction.Hash;
+                    _receiptStorage.Add(receipt, false);
+                }
+
+                current.Header.TxRoot = current.CalculateTxRoot();
+                current.Header.ReceiptsRoot = current.CalculateReceiptRoot(_specProvider, receipts.ToArray());
+                current.Hash = BlockHeader.CalculateHash(current);
+            }
+            else
+            {
+                current = Build.A.Block.WithNumber(i + 1).WithParent(parent).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant)).TestObject;
+            }
+
+            return current;
         }
 
         public BlockTreeBuilder WithOnlySomeBlocksProcessed(int chainLength, int processedChainLength)
@@ -128,6 +169,14 @@ namespace Nethermind.Core.Test.Builders
                 blockTree.SuggestBlock(previous);
                 blockTree.UpdateMainChain(new[] {previous});
             }
+        }
+
+        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider)
+        {
+            _specProvider = specProvider;
+            _ecdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
+            _receiptStorage = receiptStorage;
+            return this;
         }
     }
 }

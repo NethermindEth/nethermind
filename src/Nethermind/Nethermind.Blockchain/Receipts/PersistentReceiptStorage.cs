@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Receipts
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
 
             byte[] lowestBytes = _database.Get(Keccak.Zero);
-            LowestInsertedReceiptBlock = lowestBytes == null ? (long?)null : new Rlp.DecoderContext( lowestBytes).DecodeLong();
+            LowestInsertedReceiptBlock = lowestBytes == null ? (long?) null : new Rlp.DecoderContext(lowestBytes).DecodeLong();
         }
 
         public TxReceipt Find(Keccak hash)
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Receipts
                 : Rlp.Decode<TxReceipt>(new Rlp(receiptData), RlpBehaviors.Storage);
         }
 
-        public void Insert(TxReceipt txReceipt, bool isProcessed)
+        public void Add(TxReceipt txReceipt, bool isProcessed)
         {
             if (txReceipt == null)
             {
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 behaviors = behaviors | RlpBehaviors.Storage;
             }
-            
+
             _database.Set(txReceipt.TransactionHash,
                 Rlp.Encode(txReceipt, behaviors).Bytes);
         }
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Receipts
                 RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                 _database.Set(txReceipt.TransactionHash, Rlp.Encode(txReceipt, behaviors).Bytes);
             }
-            
+
             LowestInsertedReceiptBlock = blockNumber;
             _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
         }

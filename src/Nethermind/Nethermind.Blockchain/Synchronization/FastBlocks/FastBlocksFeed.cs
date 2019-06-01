@@ -47,6 +47,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private ConcurrentDictionary<long, FastBlocksBatch> _headerDependencies = new ConcurrentDictionary<long, FastBlocksBatch>();
         private ConcurrentDictionary<long, List<Block>> _bodiesDependencies = new ConcurrentDictionary<long, List<Block>>();
+        private ConcurrentDictionary<long, List<(long, TxReceipt)>> _receiptDependencies = new ConcurrentDictionary<long, List<(long, TxReceipt)>>();
         private ConcurrentDictionary<FastBlocksBatch, object> _sentBatches = new ConcurrentDictionary<FastBlocksBatch, object>();
         private ConcurrentStack<FastBlocksBatch> _pendingBatches = new ConcurrentStack<FastBlocksBatch>();
 
@@ -209,15 +210,35 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     case FastBlocksBatchType.Receipts:
                     {
                         Keccak hash = _lowestRequestedReceiptsHash;
-                        Block block = _blockTree.FindBlock(hash, false);
+                        Block predecessorBlock = _blockTree.FindBlock(hash, false);
+                        Block block = predecessorBlock;
                         if (block == null)
                         {
-                            throw new InvalidDataException($"Last header is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
+                            throw new InvalidDataException($"Last block is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
+                        }
+
+                        if (_lowestRequestedReceiptsHash != _pivotHash)
+                        {
+                            if (block.ParentHash == _blockTree.Genesis.Hash)
+                            {
+                                return null;
+                            }
+
+                            block = _blockTree.FindParent(predecessorBlock);
+                            if (block == null)
+                            {
+                                throw new InvalidDataException($"Parent block is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
+                            }
+                        }
+                        else
+                        {
+                            predecessorBlock = null;
                         }
 
                         int requestSize = (int) Math.Min(block.Number, ReceiptsRequestStats);
                         batch = new FastBlocksBatch();
                         batch.Receipts = new ReceiptsSyncBatch();
+                        batch.Receipts.Predecessors = new long?[requestSize];
                         batch.Receipts.Blocks = new Block[requestSize];
                         batch.Receipts.Request = new Keccak[requestSize];
                         batch.MinNumber = block.Number;
@@ -228,8 +249,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             _lowestRequestedReceiptsHash = block.Hash;
                             if (block.Transactions.Length > 0)
                             {
+                                batch.Receipts.Predecessors[collectedRequests] = predecessorBlock?.Number;
                                 batch.Receipts.Blocks[collectedRequests] = block;
                                 batch.Receipts.Request[collectedRequests] = block.Hash;
+                                predecessorBlock = block;
                                 collectedRequests++;
                             }
 
@@ -288,6 +311,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     InsertBlocks(_bodiesDependencies[lowestBodyNumber.Value - 1]);
                     _bodiesDependencies.Remove(lowestBodyNumber.Value - 1, out _);
                     lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
+                }
+
+                long? lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
+                while (lowestReceiptNumber.HasValue && _receiptDependencies.ContainsKey(lowestReceiptNumber.Value - 1))
+                {
+                    InsertBlocks(_bodiesDependencies[lowestReceiptNumber.Value - 1]);
+                    _bodiesDependencies.Remove(lowestReceiptNumber.Value - 1, out _);
+                    lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
                 }
             }
         }
@@ -399,17 +430,16 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private int InsertReceipts(FastBlocksBatch batch)
         {
-            var receiptsSyncBatch = batch.Receipts;
+            var receiptSyncBatch = batch.Receipts;
             int added = 0;
-            for (int blockIndex = 0; blockIndex < receiptsSyncBatch.Response.Length; blockIndex++)
+            long? lastPredecessor = null;
+            List<(long, TxReceipt)> validReceipts = new List<(long, TxReceipt)>();
+            for (int blockIndex = receiptSyncBatch.Response.Length - 1; blockIndex >= 0; blockIndex--)
             {
-                TxReceipt[] receipts = receiptsSyncBatch.Response[blockIndex];
+                TxReceipt[] receipts = receiptSyncBatch.Response[blockIndex];
                 if (receipts == null)
                 {
-                    FastBlocksBatch filler = PrepareReceiptFiller(added, receiptsSyncBatch);
-                    _pendingBatches.Push(filler);
-                    if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {filler}");
-                    return added;
+                    break;
                 }
 
                 for (int receiptIndex = 0; receiptIndex < receipts.Length; receiptIndex++)
@@ -417,23 +447,40 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     TxReceipt receipt = receipts[receiptIndex];
                     if (receipt == null)
                     {
-                        // invalid Nethermind 0.9.9 responses
-                        FastBlocksBatch filler = PrepareReceiptFiller(added, receiptsSyncBatch);
-                        _pendingBatches.Push(filler);
-                        return added;
+                        break;
                     }
 
-                    receipt.TransactionHash = receiptsSyncBatch
+                    receipt.TransactionHash = receiptSyncBatch
                         .Blocks[blockIndex]
                         .Transactions[receiptIndex]
                         .Hash;
 
-                    _receiptStorage.Insert(receiptsSyncBatch.Blocks[blockIndex].Number, receipt);
-                    added++;
+                    validReceipts.Add((receiptSyncBatch.Blocks[blockIndex].Number, receipt));
+                }
+
+                lastPredecessor = receiptSyncBatch.Predecessors[blockIndex];
+                added++;
+            }
+
+            if (added < receiptSyncBatch.Request.Length)
+            {
+                FastBlocksBatch fillerBatch = PrepareReceiptFiller(added, receiptSyncBatch);
+                _pendingBatches.Push(fillerBatch);
+            }
+
+            if (added > 0)
+            {
+                if (lastPredecessor.HasValue && lastPredecessor.Value != _receiptStorage.LowestInsertedReceiptBlock)
+                {
+                    _receiptDependencies.TryAdd(lastPredecessor.Value, validReceipts);
+                }
+                else
+                {
+                    InsertReceipts(validReceipts);
                 }
             }
 
-            if (added == receiptsSyncBatch.Request.Length && receiptsSyncBatch.IsFinal)
+            if (added == receiptSyncBatch.Request.Length && receiptSyncBatch.IsFinal)
             {
                 _receiptStorage.Insert(1, null);
                 added = 1; // magic (not to disconnect the last peer)
@@ -447,6 +494,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {batch}");
 
             return added;
+        }
+
+        private void InsertReceipts(List<(long, TxReceipt)> receipts)
+        {
+            foreach ((long blockNumber, TxReceipt receipt) in receipts)
+            {
+                _receiptStorage.Insert(blockNumber, receipt);
+            }
         }
 
         private static FastBlocksBatch PrepareReceiptFiller(int added, ReceiptsSyncBatch receiptsSyncBatch)

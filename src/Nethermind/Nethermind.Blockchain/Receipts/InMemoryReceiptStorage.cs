@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Receipts
             return transaction;
         }
 
-        public void Insert(TxReceipt txReceipt, bool isProcessed)
+        public void Add(TxReceipt txReceipt, bool isProcessed)
             => _receipts.TryAdd(txReceipt.TransactionHash, txReceipt);
 
         public void Insert(long blockNumber, TxReceipt txReceipt)
