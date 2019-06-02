@@ -233,7 +233,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         batch.Receipts.Blocks = new Block[requestSize];
                         batch.Receipts.Request = new Keccak[requestSize];
                         batch.MinNumber = block.Number;
-                        if (_receiptStorage.LowestInsertedReceiptBlock - block.Number < 256)
+                        if (_receiptStorage.LowestInsertedReceiptBlock - block.Number < 1024)
                         {
                             batch.Prioritized = true;
                         }
