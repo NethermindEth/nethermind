@@ -185,7 +185,7 @@ namespace Nethermind.Blockchain
                 }
             }
             
-            if (right <= 0)
+            if (right < 0)
             {
                 if(_logger.IsDebug) _logger.Debug($"Lowest inserted header is null - L {left} | R {right}");
                 LowestInsertedHeader = null;
@@ -226,7 +226,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (right <= 0)
+            if (right < 0)
             {
                 if(_logger.IsDebug) _logger.Debug($"Lowest inserted body is null - L {left} | R {right}");
                 LowestInsertedBody = null;
