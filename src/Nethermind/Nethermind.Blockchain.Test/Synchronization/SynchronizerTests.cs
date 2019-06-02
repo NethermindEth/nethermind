@@ -300,7 +300,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     nodeDataDownloader,
                     _logManager); 
                 
-                SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, _logManager);
+                SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, syncConfig, _logManager);
                 SyncPeerPool.Start();
 
                 Synchronizer.Start();

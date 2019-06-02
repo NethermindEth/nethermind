@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
+using Nethermind.Logging;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Receipts
@@ -29,9 +30,11 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly IDb _database;
         private readonly ISpecProvider _specProvider;
+        private readonly ILogger _logger;
 
-        public PersistentReceiptStorage(IDb database, ISpecProvider specProvider)
+        public PersistentReceiptStorage(IDb database, ISpecProvider specProvider, ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _database = database ?? throw new ArgumentNullException(nameof(database));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
 
@@ -80,6 +83,7 @@ namespace Nethermind.Blockchain.Receipts
                 _database.Set(txReceipt.TransactionHash, Rlp.Encode(txReceipt, behaviors).Bytes);
             }
 
+            _logger.Warn($"Setting lowest inserted receipt to {blockNumber}");
             LowestInsertedReceiptBlock = blockNumber;
             _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
         }

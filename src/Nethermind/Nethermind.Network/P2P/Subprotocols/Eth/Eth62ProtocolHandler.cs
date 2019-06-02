@@ -116,12 +116,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 throw new InvalidOperationException($"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
             }
 
+            
             BlockHeader head = SyncServer.Head;
             StatusMessage statusMessage = new StatusMessage();
             statusMessage.ChainId = (UInt256) SyncServer.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
-            statusMessage.BestHash = head.Hash;
+            statusMessage.BestHash = head.Hash ;
             statusMessage.GenesisHash = SyncServer.Genesis.Hash;
 
             Send(statusMessage);

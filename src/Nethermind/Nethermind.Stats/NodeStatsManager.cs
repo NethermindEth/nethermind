@@ -92,6 +92,12 @@ namespace Nethermind.Stats
             stats.AddNodeStatsHandshakeEvent(direction);
         }
 
+        public void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent)
+        {
+            INodeStats stats = GetOrAdd(node);
+            stats.AddNodeStatsSyncEvent(nodeStatsEvent);
+        }
+        
         public void ReportEvent(Node node, NodeStatsEventType eventType)
         {
             INodeStats stats = GetOrAdd(node);
@@ -161,12 +167,6 @@ namespace Nethermind.Stats
         {
             INodeStats stats = GetOrAdd(node);
             return stats.CurrentPersistedNodeReputation;
-        }
-
-        public void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent)
-        {
-            INodeStats stats = GetOrAdd(node);
-            stats.AddNodeStatsSyncEvent(nodeStatsEvent);
         }
 
         public bool HasFailedValidation(Node node)

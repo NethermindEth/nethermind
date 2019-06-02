@@ -74,56 +74,11 @@ namespace Nethermind.Network
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager.GetClassLogger();
-
-            _syncPool.SyncEvent += OnSyncEvent;
+            
             localPeer.SessionCreated += SessionCreated;
         }
 
-        private NodeStatsEventType GetSyncEventType(SyncEvent syncEvent)
-        {
-            switch (syncEvent)
-            {
-                case SyncEvent.InitCompleted:
-                    return NodeStatsEventType.SyncInitCompleted;
-                case SyncEvent.InitCancelled:
-                    return NodeStatsEventType.SyncInitCancelled;
-                case SyncEvent.InitFailed:
-                    return NodeStatsEventType.SyncInitFailed;
-                case SyncEvent.Started:
-                    return NodeStatsEventType.SyncStarted;
-                case SyncEvent.Completed:
-                    return NodeStatsEventType.SyncCompleted;
-                case SyncEvent.Failed:
-                    return NodeStatsEventType.SyncFailed;
-                case SyncEvent.Cancelled:
-                    return NodeStatsEventType.SyncCancelled;
-            }
-
-            throw new Exception($"SyncStatus not supported: {syncEvent.ToString()}");
-        }
-
         private ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
-
-        [Todo(Improve.Refactor, "this can be all in SyncManager now")]
-        private void OnSyncEvent(object sender, SyncEventArgs e)
-        {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| sync event {e.SyncEvent.ToString()} on {e.Peer.Node:s}");
-
-            if (!_sessions.TryGetValue(e.Peer.SessionId, out ISession session))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Sync failed for an unknown session {e.Peer.Node:s} {e.Peer.SessionId}");
-                return;
-            }
-
-            var nodeStatsEvent = GetSyncEventType(e.SyncEvent);
-            _stats.ReportSyncEvent(session.Node, nodeStatsEvent);
-
-            if (new[] {SyncEvent.InitFailed, SyncEvent.InitCancelled, SyncEvent.Failed, SyncEvent.Cancelled}.Contains(e.SyncEvent))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Initializing disconnect {session} on sync {e.SyncEvent.ToString()} with {e.Peer.Node:s}");
-                session.InitiateDisconnect(DisconnectReason.Other, $"sync failed {e.SyncEvent}");
-            }
-        }
 
         private void SessionCreated(object sender, SessionEventArgs e)
         {

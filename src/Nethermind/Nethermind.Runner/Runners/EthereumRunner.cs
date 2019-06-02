@@ -381,7 +381,7 @@ namespace Nethermind.Runner.Runners
                     _initConfig.RemovePendingTransactionInterval), new Timestamp(),
                 _ethereumEcdsa, _specProvider, _logManager, _initConfig.RemovePendingTransactionInterval,
                 _initConfig.PeerNotificationThreshold);
-            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
+            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
 
 //            IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig);
 //            _dbProvider = new RpcDbProvider(_jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.NethVm1, _jsonSerializer, _logManager), _logManager, debugRecorder);
@@ -615,6 +615,7 @@ namespace Nethermind.Runner.Runners
                 _sealValidator,
                 _syncPeerPool,
                 _synchronizer,
+                _syncConfig,
                 _logManager);
 
             InitDiscovery();
