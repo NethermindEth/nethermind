@@ -39,6 +39,7 @@ namespace Nethermind.Blockchain.Synchronization
     public class Synchronizer : ISynchronizer
     {
         private readonly ILogger _logger;
+        private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncConfig _syncConfig;
@@ -61,6 +62,7 @@ namespace Nethermind.Blockchain.Synchronization
         public event EventHandler<SyncEventArgs> SyncEvent;
 
         public Synchronizer(
+            ISpecProvider specProvider,
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
             IBlockValidator blockValidator,
@@ -71,6 +73,7 @@ namespace Nethermind.Blockchain.Synchronization
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -84,7 +87,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (syncConfig.EnableExperimentalFastBlocks)
             {
-                FastBlocksFeed feed = new FastBlocksFeed(_blockTree, _receiptStorage, _syncPeerPool, syncConfig, logManager);
+                FastBlocksFeed feed = new FastBlocksFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, syncConfig, logManager);
                 _fastBlockDownloader = new FastBlocksDownloader(_syncPeerPool, feed, blockValidator, sealValidator, logManager);
             }
         }

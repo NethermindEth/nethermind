@@ -128,6 +128,7 @@ namespace Nethermind.Core.Test.Builders
                     TxReceipt receipt = new TxReceipt();
                     receipt.TransactionHash = transaction.Hash;
                     _receiptStorage.Add(receipt, false);
+                    receipts.Add(receipt);
                 }
 
                 current.Header.TxRoot = current.CalculateTxRoot();

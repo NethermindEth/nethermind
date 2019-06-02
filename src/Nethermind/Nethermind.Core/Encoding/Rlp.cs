@@ -175,6 +175,11 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
+            if (items == null)
+            {
+                return OfEmptySequence;
+            }
+            
             if (Decoders.ContainsKey(typeof(T)))
             {
                 IRlpDecoder<T> decoder = (IRlpDecoder<T>) Decoders[typeof(T)];

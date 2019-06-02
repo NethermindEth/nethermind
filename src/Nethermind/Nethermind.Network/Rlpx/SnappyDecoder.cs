@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Snappy;
 
@@ -51,7 +52,16 @@ namespace Nethermind.Network.Rlpx
                 if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {message.Data.Length}");
             }
 
-            message.Data = SnappyCodec.Uncompress(message.Data);
+            try
+            {
+                message.Data = SnappyCodec.Uncompress(message.Data);
+            }
+            catch
+            {
+                _logger.Error($"{message.Data.ToHexString()}");
+                throw;
+            }
+            
             output.Add(message);
         }
     }

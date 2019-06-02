@@ -291,6 +291,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, _logManager);
                 NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(SyncPeerPool, feed, _logManager);
                 Synchronizer = new Synchronizer(
+                    MainNetSpecProvider.Instance, 
                     BlockTree,
                     NullReceiptStorage.Instance,
                     TestBlockValidator.AlwaysValid,
