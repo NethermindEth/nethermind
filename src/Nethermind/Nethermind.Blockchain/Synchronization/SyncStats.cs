@@ -49,11 +49,9 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     double bps = (current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds;
                     string bpsString = _isFirst ? "N/A" : $"{bps:F2}bps";
-                    double bpspp = bps/usefulPeerCount;
-                    string bpsppString = _isFirst ? "N/A" : $"{bpspp:F2}bpspp";
                     if (current != _firstCurrent)
                     {
-                        _logger.Info($"{_prefix.PadRight(7, ' ')} download        {current.ToString().PadLeft(9, ' ')}/{total} | {bpsString} | {bpsppString}");
+                        _logger.Info($"{_prefix.PadRight(7, ' ')} download        {current.ToString().PadLeft(9, ' ')}/{total} | {bpsString}");
                     }
                 }
 
