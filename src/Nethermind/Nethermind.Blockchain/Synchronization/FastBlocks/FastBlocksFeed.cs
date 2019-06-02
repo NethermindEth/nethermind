@@ -472,7 +472,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             long? lastPredecessor = null;
             List<(long, TxReceipt)> validReceipts = new List<(long, TxReceipt)>();
 
-            if (receiptSyncBatch.Response[0] != null)
+            if (receiptSyncBatch.Response.Any() && receiptSyncBatch.Response[0] != null)
             {
                 lastPredecessor = receiptSyncBatch.Predecessors[0];
             }
