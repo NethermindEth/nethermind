@@ -334,12 +334,15 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 long? lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
+                List<(long, TxReceipt)> receiptsToInsert = new List<(long, TxReceipt)>();
                 while (lowestReceiptNumber.HasValue && _receiptDependencies.ContainsKey(lowestReceiptNumber.Value))
                 {
-                    InsertReceipts(_receiptDependencies[lowestReceiptNumber.Value]);
+                    receiptsToInsert.AddRange(_receiptDependencies[lowestReceiptNumber.Value]);
                     _receiptDependencies.Remove(lowestReceiptNumber.Value, out _);
                     lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
                 }
+                
+                InsertReceipts(receiptsToInsert);
             }
         }
 
