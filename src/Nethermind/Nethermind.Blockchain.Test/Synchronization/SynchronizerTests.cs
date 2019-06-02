@@ -291,6 +291,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, _logManager);
                 NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(SyncPeerPool, feed, _logManager);
                 Synchronizer = new Synchronizer(
+                    MainNetSpecProvider.Instance, 
                     BlockTree,
                     NullReceiptStorage.Instance,
                     TestBlockValidator.AlwaysValid,
@@ -300,7 +301,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     nodeDataDownloader,
                     _logManager); 
                 
-                SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, _logManager);
+                SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, syncConfig, _logManager);
                 SyncPeerPool.Start();
 
                 Synchronizer.Start();

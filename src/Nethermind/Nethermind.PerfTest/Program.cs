@@ -218,6 +218,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.Insert(block);
             }
 
+            public void Insert(IEnumerable<Block> blocks)
+            {
+                _blockTree.Insert(blocks);
+            }
+
             public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true)
             {
                 return _blockTree.SuggestBlock(block, shouldProcess);

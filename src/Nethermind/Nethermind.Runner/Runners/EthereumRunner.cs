@@ -381,7 +381,7 @@ namespace Nethermind.Runner.Runners
                     _initConfig.RemovePendingTransactionInterval), new Timestamp(),
                 _ethereumEcdsa, _specProvider, _logManager, _initConfig.RemovePendingTransactionInterval,
                 _initConfig.PeerNotificationThreshold);
-            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider);
+            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
 
 //            IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig);
 //            _dbProvider = new RpcDbProvider(_jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.NethVm1, _jsonSerializer, _logManager), _logManager, debugRecorder);
@@ -605,7 +605,7 @@ namespace Nethermind.Runner.Runners
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
-            _synchronizer = new Synchronizer(_blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _logManager);
+            _synchronizer = new Synchronizer(_specProvider, _blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _logManager);
 
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,
@@ -615,6 +615,7 @@ namespace Nethermind.Runner.Runners
                 _sealValidator,
                 _syncPeerPool,
                 _synchronizer,
+                _syncConfig,
                 _logManager);
 
             InitDiscovery();

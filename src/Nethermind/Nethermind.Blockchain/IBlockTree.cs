@@ -17,6 +17,8 @@
  */
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -80,6 +82,8 @@ namespace Nethermind.Blockchain
         /// <param name="block">Block to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult Insert(Block block);
+        
+        void Insert(IEnumerable<Block> blocks);
         
         /// <summary>
         /// Suggests block for inclusion in the block tree.

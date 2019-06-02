@@ -39,12 +39,14 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISnapshotableDb _stateDb;
         private readonly ISnapshotableDb _codeDb;
         private readonly ISynchronizer _synchronizer;
+        private readonly ISyncConfig _syncConfig;
         private object _dummyValue = new object();
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
 
-        public SyncServer(ISnapshotableDb stateDb, ISnapshotableDb codeDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ILogManager logManager)
+        public SyncServer(ISnapshotableDb stateDb, ISnapshotableDb codeDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ISyncConfig syncConfig, ILogManager logManager)
         {
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
@@ -58,7 +60,22 @@ namespace Nethermind.Blockchain.Synchronization
 
         public int ChainId => _blockTree.ChainId;
         public BlockHeader Genesis => _blockTree.Genesis;
-        public BlockHeader Head => _blockTree.Head;
+
+        public BlockHeader Head
+        {
+            get
+            {
+                if (_blockTree.Head == null)
+                {
+                    return null;
+                }
+
+                bool headIsGenesis = _blockTree.Head.Hash == _blockTree.Genesis.Hash;
+                return headIsGenesis
+                    ? _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString())) ?? _blockTree.Genesis
+                    : _blockTree.Head;
+            }
+        }
 
         public int GetPeerCount()
         {

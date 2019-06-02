@@ -66,7 +66,22 @@ namespace Nethermind.Network.P2P
                     if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {msg.Data.Length}");
                 }
 
-                msg.Data = SnappyCodec.Uncompress(msg.Data);
+                try
+                {
+                    msg.Data = SnappyCodec.Uncompress(msg.Data);
+                }
+                catch
+                {
+                    if (msg.Data.Length == 2 && msg.Data[0] == 193)
+                    {
+                        // this is a Parity disconnect sent as a non-snappy-encoded message
+                        // e.g. 0xc103
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
             }
             
             if (_logger.IsTrace) _logger.Trace($"Channel read... data length {msg.Data.Length}");

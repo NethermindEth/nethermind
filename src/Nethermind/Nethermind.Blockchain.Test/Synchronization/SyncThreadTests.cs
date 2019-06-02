@@ -292,12 +292,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
             NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, logManager);
             NodeDataDownloader downloader = new NodeDataDownloader(syncPeerPool, feed, logManager);
             Synchronizer synchronizer = new Synchronizer(
+                MainNetSpecProvider.Instance,
                 tree,
                 NullReceiptStorage.Instance,
                 blockValidator,
                 sealValidator,
                 syncPeerPool, syncConfig, downloader, logManager);
-            var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, logManager);
+            var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, syncConfig, logManager);
 
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();
             tree.NewHeadBlock += (s, e) => waitEvent.Set();

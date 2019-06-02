@@ -42,8 +42,6 @@ namespace Nethermind.Blockchain.Synchronization
         
         void ReportInvalid(PeerInfo peerInfo);
         
-        event EventHandler<SyncEventArgs> SyncEvent;
-        
         IEnumerable<PeerInfo> AllPeers { get; }
         
         IEnumerable<PeerInfo> UsefulPeers { get; }

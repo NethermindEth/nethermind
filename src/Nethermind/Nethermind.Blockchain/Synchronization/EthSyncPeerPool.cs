@@ -49,21 +49,16 @@ namespace Nethermind.Blockchain.Synchronization
         private Task _refreshLoopTask;
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
+        private ConcurrentDictionary<PeerInfo, DateTime> _sleepingPeers = new ConcurrentDictionary<PeerInfo, DateTime>();
+        private TimeSpan _timeBeforeWakingPeerUp = TimeSpan.FromSeconds(3);
 
-        public void ReportNoSyncProgress(PeerInfo peerInfo)
-        {
-            if (peerInfo == null)
-            {
-                return;
-            }
-            
-            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
-            _sleepingPeers.TryAdd(peerInfo, DateTime.UtcNow);
-        }
-        
         public void ReportNoSyncProgress(SyncPeerAllocation allocation)
         {
-            PeerInfo peerInfo = allocation?.Current;
+            ReportNoSyncProgress(allocation?.Current);
+        }
+        
+        public void ReportNoSyncProgress(PeerInfo peerInfo)
+        {
             if (peerInfo == null)
             {
                 return;
@@ -75,18 +70,17 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void ReportInvalid(SyncPeerAllocation allocation)
         {
-            allocation?.Current?.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "SYNC BREACH");
+            ReportInvalid(allocation?.Current);
         }
         
         public void ReportInvalid(PeerInfo peerInfo)
         {
-            peerInfo?.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "SYNC BREACH");
+            if (peerInfo != null)
+            {
+                _stats.ReportSyncEvent(peerInfo.SyncPeer.Node, NodeStatsEventType.SyncFailed);
+                peerInfo.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, "SYNC BREACH");
+            }
         }
-
-        public event EventHandler<SyncEventArgs> SyncEvent;
-
-        private ConcurrentDictionary<PeerInfo, DateTime> _sleepingPeers = new ConcurrentDictionary<PeerInfo, DateTime>();
-        private TimeSpan _timeBeforeWakingPeerUp = TimeSpan.FromSeconds(3);
 
         public EthSyncPeerPool(IBlockTree blockTree, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ILogManager logManager)
         {
@@ -255,8 +249,10 @@ namespace Nethermind.Blockchain.Synchronization
                     // as long as we are behind we can use the stuck peers
                     continue;
                 }
-
-                if (peerInfo.HeadNumber == 0 && ourNumber != 0)
+                
+                if (peerInfo.HeadNumber == 0
+                    && ourNumber != 0
+                    && !peerInfo.SyncPeer.ClientId.Contains("Nethermind"))
                 {
                     peersDropped++;
                     peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
@@ -346,13 +342,13 @@ namespace Nethermind.Blockchain.Synchronization
                     if (firstToComplete.IsFaulted || firstToComplete == delayTask)
                     {
                         if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
+                        _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
                         syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault");
-                        SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Failed : Synchronization.SyncEvent.InitFailed));
                     }
                     else if (firstToComplete.IsCanceled)
                     {
                         if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
-                        SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Cancelled : Synchronization.SyncEvent.InitCancelled));
+                        _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncCancelled : NodeStatsEventType.SyncInitCancelled);
                         token.ThrowIfCancellationRequested();
                     }
                     else
@@ -361,17 +357,16 @@ namespace Nethermind.Blockchain.Synchronization
                         if (header == null)
                         {
                             if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
+                            
+                            _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncFailed: NodeStatsEventType.SyncInitFailed);
                             syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault");
-                            SyncEvent?.Invoke(this, new SyncEventArgs(syncPeer, peerInfo.IsInitialized ? Synchronization.SyncEvent.Failed : Synchronization.SyncEvent.InitFailed));
                             return;
                         }
 
                         if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:c} with head block numer {header.Number}");
                         if (!peerInfo.IsInitialized)
                         {
-                            SyncEvent?.Invoke(
-                                this,
-                                new SyncEventArgs(syncPeer, Synchronization.SyncEvent.InitCompleted));
+                            _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
                         }
 
                         if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} to {header.Number}");

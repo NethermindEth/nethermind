@@ -220,12 +220,6 @@ namespace Nethermind.Network.Test
                 return this;
             }
 
-            public Context RaiseSyncPoolFailed()
-            {
-                _syncPeerPool.SyncEvent += Raise.EventWith(new SyncEventArgs(new Eth62ProtocolHandler(_currentSession, _serializer, _nodeStatsManager, _syncServer, LimboLogs.Instance, _perfService, _txPool), SyncEvent.InitFailed));
-                return this;
-            }
-
             public Context ReceiveHello(byte p2pVersion = 5)
             {
                 HelloMessage msg = new HelloMessage();
@@ -414,22 +408,6 @@ namespace Nethermind.Network.Test
                 .Disconnect()
                 .VerifySyncPeersRemoved();
         }
-        
-        [Test]
-        public void Disconnects_on_pool_sync_failed()
-        {
-            When
-                .CreateIncomingSession()
-                .ActivateChannel()
-                .Handshake()
-                .Init()
-                .VerifyInitialized()
-                .ReceiveHello()
-                .ReceiveStatus()
-                .VerifyEthInitialized()
-                .RaiseSyncPoolFailed()
-                .VerifyDisconnected();
-        }
 
         [Test]
         public void Disconnects_on_missing_eth()
@@ -483,23 +461,6 @@ namespace Nethermind.Network.Test
                 .ReceiveHello()
                 .ReceiveStatusWrongGenesis()
                 .VerifyDisconnected();
-        }
-
-        [Test]
-        public void Sync_failed_after_disconnect_does_not_cause_trouble()
-        {
-            When
-                .CreateIncomingSession()
-                .ActivateChannel()
-                .Handshake()
-                .Init()
-                .VerifyInitialized()
-                .ReceiveHello()
-                .ReceiveStatus()
-                .VerifyEthInitialized()
-                .Disconnect()
-                .VerifyDisconnected()
-                .RaiseSyncPoolFailed();
         }
     }
 }

@@ -29,10 +29,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_keep_going()
         {
             SyncStats stats = new SyncStats("Test", NoErrorLimboLogs.Instance);
-            stats.Update(0, 1024);
-            stats.Update(256, 1024);
-            stats.Update(512, 1024);
-            stats.Update(1024, 1024);
+            stats.Update(0, 1024, 1);
+            stats.Update(256, 1024, 1);
+            stats.Update(512, 1024, 1);
+            stats.Update(1024, 1024, 1);
         }
     }
 }

@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain.Test
             MemDb traceDb = new MemDb();
             TxPool txPool = new TxPool(new NullTxStorage(),
                 new PendingTxThresholdValidator(), new Timestamp(), ethereumEcdsa, specProvider, logManager);
-            IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider);
+            IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider, logManager);
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, txPool, logManager);
             Timestamp timestamp = new Timestamp();
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
