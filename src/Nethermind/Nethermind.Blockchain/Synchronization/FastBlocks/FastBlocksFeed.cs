@@ -155,6 +155,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         batch.Bodies.Request = new Keccak[requestSize];
                         batch.Bodies.Headers = new BlockHeader[requestSize];
                         batch.MinNumber = header.Number;
+                        if ((_blockTree.LowestInsertedBody?.Number ?? 0) - header.Number < 1024)
+                        {
+                            batch.Prioritized = true;
+                        }
 
                         for (int i = requestSize - 1; i >= 0; i--)
                         {
