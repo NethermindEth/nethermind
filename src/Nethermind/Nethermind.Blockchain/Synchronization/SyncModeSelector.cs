@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             SyncMode newSyncMode;
-            if (_syncConfig.EnableExperimentalFastBlocks && bestHeader < LongConverter.FromString(_syncConfig.PivotNumber ?? "0"))
+            if (!_syncProgressResolver.IsFastBlocksFinished())
             {
                 newSyncMode = SyncMode.FastBlocks;
             }
