@@ -304,43 +304,44 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private void HandleDependentBatches()
         {
+            long? lowestHeaderNumber = _blockTree.LowestInsertedHeader?.Number;
             lock (_handlerLock)
             {
-                long? lowestHeaderNumber = _blockTree.LowestInsertedHeader?.Number;
                 while (lowestHeaderNumber.HasValue && _headerDependencies.ContainsKey(lowestHeaderNumber.Value - 1))
                 {
                     FastBlocksBatch dependentBatch = _headerDependencies[lowestHeaderNumber.Value - 1];
                     _headerDependencies.TryRemove(lowestHeaderNumber.Value - 1, out _);
+
                     InsertHeaders(dependentBatch);
                     lowestHeaderNumber = _blockTree.LowestInsertedHeader?.Number;
                 }
+            }
 
-                long? lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
-                while (lowestBodyNumber.HasValue && _bodiesDependencies.ContainsKey(lowestBodyNumber.Value - 1))
-                {
-                    Stopwatch stopwatch = new Stopwatch();
-                    stopwatch.Start();
-                    List<Block> dependentBatch = _bodiesDependencies[lowestBodyNumber.Value - 1];
-                    dependentBatch.Reverse();
-                    InsertBlocks(dependentBatch);
-                    _bodiesDependencies.Remove(lowestBodyNumber.Value - 1, out _);
-                    lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
-                    stopwatch.Stop();
-                    _logger.Warn($"Handled dependent blocks [{dependentBatch.First().Number},{dependentBatch.Last().Number}]({dependentBatch.Count}) in {stopwatch.ElapsedMilliseconds}ms");
-                }
+            long? lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
+            while (lowestBodyNumber.HasValue && _bodiesDependencies.ContainsKey(lowestBodyNumber.Value - 1))
+            {
+                Stopwatch stopwatch = new Stopwatch();
+                stopwatch.Start();
+                List<Block> dependentBatch = _bodiesDependencies[lowestBodyNumber.Value - 1];
+                dependentBatch.Reverse();
+                InsertBlocks(dependentBatch);
+                _bodiesDependencies.Remove(lowestBodyNumber.Value - 1, out _);
+                lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
+                stopwatch.Stop();
+                _logger.Warn($"Handled dependent blocks [{dependentBatch.First().Number},{dependentBatch.Last().Number}]({dependentBatch.Count}) in {stopwatch.ElapsedMilliseconds}ms");
+            }
 
-                foreach (KeyValuePair<long, List<(long, TxReceipt)>> item in _receiptDependencies)
-                {
-                    _logger.Warn($"Receipt dependency - {item.Key} -> {item.Value.Count} receipts");
-                }
+            foreach (KeyValuePair<long, List<(long, TxReceipt)>> item in _receiptDependencies)
+            {
+                _logger.Warn($"Receipt dependency - {item.Key} -> {item.Value.Count} receipts");
+            }
 
-                long? lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
-                while (lowestReceiptNumber.HasValue && _receiptDependencies.ContainsKey(lowestReceiptNumber.Value))
-                {
-                    InsertReceipts(_receiptDependencies[lowestReceiptNumber.Value]);
-                    _receiptDependencies.Remove(lowestReceiptNumber.Value, out _);
-                    lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
-                }
+            long? lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
+            while (lowestReceiptNumber.HasValue && _receiptDependencies.ContainsKey(lowestReceiptNumber.Value))
+            {
+                InsertReceipts(_receiptDependencies[lowestReceiptNumber.Value]);
+                _receiptDependencies.Remove(lowestReceiptNumber.Value, out _);
+                lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
             }
         }
 
@@ -647,7 +648,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private void InsertBlocks(List<Block> validResponses)
         {
-            _blockTree.Insert(validResponses);
+            lock (_handlerLock)
+            {
+                _blockTree.Insert(validResponses);
+            }
         }
 
         public void StartNewRound()
