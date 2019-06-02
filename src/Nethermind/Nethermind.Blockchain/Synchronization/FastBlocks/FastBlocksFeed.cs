@@ -328,7 +328,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     stopwatch.Stop();
                     _logger.Warn($"Handled dependent blocks [{dependentBatch.First().Number},{dependentBatch.Last().Number}]({dependentBatch.Count}) in {stopwatch.ElapsedMilliseconds}ms");
                 }
-                
+
                 foreach (KeyValuePair<long, List<(long, TxReceipt)>> item in _receiptDependencies)
                 {
                     _logger.Warn($"Receipt dependency - {item.Key} -> {item.Value.Count} receipts");
@@ -621,31 +621,28 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 _pendingBatches.Push(fillerBatch);
             }
 
-            lock (_handlerLock)
+            if (validResponses.Any())
             {
                 long expectedNumber = _blockTree.LowestInsertedBody?.Number - 1 ?? LongConverter.FromString(_syncConfig.PivotNumber ?? "0");
-                if (validResponses.Any())
+                if (validResponses.Last().Number != expectedNumber)
                 {
-                    if (validResponses.Last().Number != expectedNumber)
-                    {
-                        _bodiesDependencies.TryAdd(validResponses.Last().Number, validResponses);
-                    }
-                    else
-                    {
-                        validResponses.Reverse();
-                        InsertBlocks(validResponses);
-                    }
+                    _bodiesDependencies.TryAdd(validResponses.Last().Number, validResponses);
+                }
+                else
+                {
+                    validResponses.Reverse();
+                    InsertBlocks(validResponses);
                 }
 
                 if (_blockTree.LowestInsertedBody != null)
                 {
                     _bodiesSyncStats.Update(_pivotNumber - _blockTree.LowestInsertedBody.Number, _pivotNumber, _syncPeerPool.UsefulPeerCount);
                 }
-
-                if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
-
-                return validResponsesCount;
             }
+
+            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
+
+            return validResponsesCount;
         }
 
         private void InsertBlocks(List<Block> validResponses)
