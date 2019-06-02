@@ -103,9 +103,22 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _bodiesSyncStats = new SyncStats("Bodies", logManager);
         }
 
+        private bool _isMoreLikelyToBeHandlingDependenciesNow;
+        
         public FastBlocksBatch PrepareRequest()
         {
-            HandleDependentBatches();
+            if (!_isMoreLikelyToBeHandlingDependenciesNow)
+            {
+                _isMoreLikelyToBeHandlingDependenciesNow = true;
+                try
+                {
+                    HandleDependentBatches();
+                }
+                finally
+                {
+                    _isMoreLikelyToBeHandlingDependenciesNow = false;
+                }
+            }
 
             FastBlocksBatch batch;
             if (_pendingBatches.Any())
