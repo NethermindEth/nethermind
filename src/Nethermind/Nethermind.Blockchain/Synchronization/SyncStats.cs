@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public void Update(long current, long total, decimal? ratio = null)
+        public void Update(long current, long total, int usefulPeerCount)
         {
             // create sync stats like processing stats?
             if (DateTime.UtcNow - _lastSyncNotificationTime >= TimeSpan.FromSeconds(1)
@@ -47,10 +47,13 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_logger.IsInfo)
                 {
-                    string bps = _isFirst ? "N/A" : $"{(current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds:F2}bps";
+                    double bps = (current - _firstCurrent) / (DateTime.UtcNow - _firstNotificationTime).TotalSeconds;
+                    string bpsString = _isFirst ? "N/A" : $"{bps:F2}bps";
+                    double bpspp = bps/usefulPeerCount;
+                    string bpsppString = _isFirst ? "N/A" : $"{bpspp:F2}bpspp";
                     if (current != _firstCurrent)
                     {
-                        _logger.Info($"{_prefix.PadRight(7, ' ')} download        {current.ToString().PadLeft(9, ' ')}/{total} | {bps}" + (ratio == null ? string.Empty : $" | hit ratio: {ratio:p2}"));
+                        _logger.Info($"{_prefix.PadRight(7, ' ')} download        {current.ToString().PadLeft(9, ' ')}/{total} | {bpsString} | {bpsppString}");
                     }
                 }
 

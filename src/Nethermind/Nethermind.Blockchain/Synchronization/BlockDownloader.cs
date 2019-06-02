@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (headersSynced > 0)
                 {
-                    _syncStats.Update(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber);
+                    _syncStats.Update(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber, 1);
                 }
             }
 
@@ -271,7 +271,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (blocksSynced > 0)
                 {
-                    _syncStats.Update(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber);
+                    _syncStats.Update(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber, 1);
                 }
             }
 

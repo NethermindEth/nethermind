@@ -508,7 +508,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_receiptStorage.LowestInsertedReceiptBlock != null)
             {
-                _receiptsSyncStats.Update(_pivotNumber - (_receiptStorage.LowestInsertedReceiptBlock ?? _pivotNumber), _pivotNumber);
+                _receiptsSyncStats.Update(_pivotNumber - (_receiptStorage.LowestInsertedReceiptBlock ?? _pivotNumber), _pivotNumber, _syncPeerPool.UsefulPeerCount);
             }
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {batch}");
@@ -602,7 +602,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_blockTree.LowestInsertedBody != null)
             {
-                _bodiesSyncStats.Update(_pivotNumber - _blockTree.LowestInsertedBody.Number, _pivotNumber);
+                _bodiesSyncStats.Update(_pivotNumber - _blockTree.LowestInsertedBody.Number, _pivotNumber, _syncPeerPool.UsefulPeerCount);
             }
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
@@ -816,7 +816,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_blockTree.LowestInsertedHeader != null)
             {
-                _headersSyncStats.Update(_pivotNumber - (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber), _pivotNumber, ratio);
+                _headersSyncStats.Update(_pivotNumber - (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber), _pivotNumber, _syncPeerPool.UsefulPeerCount);
             }
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
