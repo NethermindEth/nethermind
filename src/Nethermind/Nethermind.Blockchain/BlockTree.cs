@@ -183,20 +183,17 @@ namespace Nethermind.Blockchain
                     right = index;
                 }
             }
-
+            
+            if (right <= 0)
+            {
+                LowestInsertedHeader = null;
+                return;
+            }
+            
             long result = right + 1;
 
-            if (result == 0)
-            {
-                result = long.MaxValue;
-            }
-
-            if (result <= 0)
-            {
-                throw new InvalidOperationException($"Lowest inserted is is {result} and best known is {BestKnownNumber}");
-            }
-
-            LowestInsertedHeader = FindHeader(result);
+            BlockInfo blockInfo = LoadLevel(result, true).BlockInfos[0];
+            LowestInsertedHeader = FindHeader(blockInfo.BlockHash);
         }
 
         private void LoadLowestInsertedBody()
@@ -225,19 +222,16 @@ namespace Nethermind.Blockchain
                 }
             }
 
+            if (right <= 0)
+            {
+                LowestInsertedBody = null;
+                return;
+            }
+            
             long result = right + 1;
 
-            if (result == 0)
-            {
-                result = long.MaxValue;
-            }
-
-            if (result <= 0)
-            {
-                throw new InvalidOperationException($"Lowest inserted is is {result} and best known is {BestKnownNumber}");
-            }
-
-            LowestInsertedBody = FindBlock(result);
+            BlockInfo blockInfo = LoadLevel(result, true).BlockInfos[0];
+            LowestInsertedBody = FindBlock(blockInfo.BlockHash, false);
         }
 
         public async Task LoadBlocksFromDb(
@@ -765,7 +759,7 @@ namespace Nethermind.Blockchain
                 });
 
             BestSuggestedHeader = Head;
-            BestSuggestedBody = FindBlock(Head.Hash, false);
+            BestSuggestedBody = Head == null ? null : FindBlock(Head.Hash, false);
 
             try
             {
