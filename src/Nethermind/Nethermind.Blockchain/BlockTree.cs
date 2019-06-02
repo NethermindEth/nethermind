@@ -195,7 +195,7 @@ namespace Nethermind.Blockchain
             long result = right + 1;
             
             BlockInfo blockInfo = LoadLevel(result, true).BlockInfos[0];
-            LowestInsertedHeader = FindHeader(blockInfo.BlockHash);
+            LowestInsertedHeader = blockInfo == null ? null : FindHeader(blockInfo.BlockHash);
             if(_logger.IsDebug) _logger.Debug($"Lowest inserted header is {LowestInsertedHeader?.ToString(BlockHeader.Format.Short)} {result} - L {left} | R {right}");
         }
 
@@ -236,7 +236,7 @@ namespace Nethermind.Blockchain
             long result = right + 1;
 
             BlockInfo blockInfo = LoadLevel(result, true).BlockInfos[0];
-            LowestInsertedBody = FindBlock(blockInfo.BlockHash, false);
+            LowestInsertedBody = blockInfo == null ? null : FindBlock(blockInfo.BlockHash, false);
             if(_logger.IsDebug) _logger.Debug($"Lowest inserted body is {LowestInsertedBody?.ToString(Block.Format.Short)} {result} - L {left} | R {right}");
         }
 
