@@ -116,13 +116,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 throw new InvalidOperationException($"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
             }
 
-            
+
             BlockHeader head = SyncServer.Head;
             StatusMessage statusMessage = new StatusMessage();
             statusMessage.ChainId = (UInt256) SyncServer.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
-            statusMessage.BestHash = head.Hash ;
+            statusMessage.BestHash = head.Hash;
             statusMessage.GenesisHash = SyncServer.Genesis.Hash;
 
             Send(statusMessage);
@@ -143,7 +143,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private Random _random = new Random();
 
         protected long _counter = 0;
-        
+
         public virtual void HandleMessage(Packet message)
         {
             if (Logger.IsTrace)
@@ -159,21 +159,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             switch (message.PacketType)
             {
                 case Eth62MessageCode.Status:
-                    try
-                    {
-                        StatusMessage statusMessage = Deserialize<StatusMessage>(message.Data);
-                        Handle(statusMessage);
-                    }
-                    catch (Exception e)
-                    {
-                        Logger.Warn($"Could not handle the status message {message.Data.ToHexString()} | {e}");
-                        throw;
-                    }
-
+                    StatusMessage statusMessage = Deserialize<StatusMessage>(message.Data);
+                    Handle(statusMessage);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
                     Interlocked.Increment(ref _counter);
-                    if(Logger.IsTrace) Logger.Trace($"{_counter:D5} NewBlockHashes from {Node:s}");
+                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} NewBlockHashes from {Node:s}");
                     Metrics.Eth62NewBlockHashesReceived++;
                     Handle(Deserialize<NewBlockHashesMessage>(message.Data));
                     break;
@@ -188,31 +179,31 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     Interlocked.Increment(ref _counter);
-                    if(Logger.IsTrace) Logger.Trace($"{_counter:D5} GetBlockHeaders from {Node:s}");
+                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} GetBlockHeaders from {Node:s}");
                     Metrics.Eth62GetBlockHeadersReceived++;
                     Handle(Deserialize<GetBlockHeadersMessage>(message.Data));
                     break;
                 case Eth62MessageCode.BlockHeaders:
                     Interlocked.Increment(ref _counter);
-                    if(Logger.IsTrace) Logger.Trace($"{_counter:D5} BlockHeaders from {Node:s}");
+                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} BlockHeaders from {Node:s}");
                     Metrics.Eth62BlockHeadersReceived++;
                     Handle(Deserialize<BlockHeadersMessage>(message.Data));
                     break;
                 case Eth62MessageCode.GetBlockBodies:
                     Interlocked.Increment(ref _counter);
-                    if(Logger.IsTrace) Logger.Trace($"{_counter:D5} GetBlockBodies from {Node:s}");
+                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} GetBlockBodies from {Node:s}");
                     Metrics.Eth62GetBlockBodiesReceived++;
                     Handle(Deserialize<GetBlockBodiesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.BlockBodies:
                     Interlocked.Increment(ref _counter);
-                    if(Logger.IsTrace) Logger.Trace($"{_counter:D5} BlockBodies from {Node:s}");
+                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} BlockBodies from {Node:s}");
                     Metrics.Eth62BlockBodiesReceived++;
                     Handle(Deserialize<BlockBodiesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.NewBlock:
                     Interlocked.Increment(ref _counter);
-                    if(Logger.IsTrace) Logger.Trace($"{_counter:D5} NewBlock from {Node:s}");
+                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} NewBlock from {Node:s}");
                     Metrics.Eth62NewBlockReceived++;
                     Handle(Deserialize<NewBlockMessage>(message.Data));
                     break;
@@ -242,7 +233,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void SendNewBlock(Block block)
         {
-            if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} NewBlock to {Node:s}");
+            if (Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} NewBlock to {Node:s}");
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
@@ -352,7 +343,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             Interlocked.Increment(ref _counter);
-            if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} BlockBodies to {Node:s}");
+            if (Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} BlockBodies to {Node:s}");
             Send(new BlockBodiesMessage(blocks));
         }
 
@@ -386,9 +377,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 startingHash == null
                     ? new BlockHeader[0]
                     : SyncServer.FindHeaders(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
-            
+
             Interlocked.Increment(ref _counter);
-            if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} BlockHeaders to {Node:s}");
+            if (Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} BlockHeaders to {Node:s}");
             Send(new BlockHeadersMessage(headers));
         }
 
@@ -450,7 +441,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 throw new TimeoutException("Session disposed");
             }
-            
+
             if (Logger.IsTrace)
             {
                 Logger.Trace("Sending headers request:");
@@ -496,7 +487,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 throw new TimeoutException("Session disposed");
             }
-            
+
             if (Logger.IsTrace)
             {
                 Logger.Trace("Sending bodies request:");
@@ -548,7 +539,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 return new BlockHeader[0];
             }
-            
+
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
@@ -561,7 +552,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Disconnect(DisconnectReason reason, string details)
         {
-            if(Logger.IsDebug) Logger.Debug($"Disconnecting {Node:s} bacause of the {details}");
+            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node:s} bacause of the {details}");
             Session.InitiateDisconnect(reason, details);
         }
 
@@ -571,7 +562,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 return new BlockBody[0];
             }
-            
+
             var bodiesMsg = new GetBlockBodiesMessage(blockHashes);
 
             BlockBody[] blocks = await SendRequest(bodiesMsg, token);
@@ -591,14 +582,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         }
 
         private bool _isDisposed;
-        
+
         public void Dispose()
         {
-            if(_isDisposed)
+            if (_isDisposed)
             {
                 return;
             }
-            
+
             _headersRequests.CompleteAdding();
             _bodiesRequests.CompleteAdding();
 
