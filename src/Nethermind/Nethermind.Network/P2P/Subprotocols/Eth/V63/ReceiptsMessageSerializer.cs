@@ -41,11 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             var data = decoderContext.DecodeArray(itemContext =>
                 itemContext.DecodeArray(nestedContext => Rlp.Decode<TxReceipt>(nestedContext)) ?? new TxReceipt[0]);
             ReceiptsMessage message = new ReceiptsMessage(data);
-
-            if (message.TxReceipts.Any(tr => tr.Any(trr => trr == null)))
-            {
-                
-            }
+            
             return message;
         }
     }
