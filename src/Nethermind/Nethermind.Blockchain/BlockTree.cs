@@ -54,6 +54,8 @@ namespace Nethermind.Blockchain
         private long _currentDbLoadBatchEnd;
 
         private ReaderWriterLockSlim _blockInfoLock = new ReaderWriterLockSlim();
+        
+        private object _batchInsertLock = new object();
 
         private readonly IDb _blockDb;
 
@@ -472,17 +474,20 @@ namespace Nethermind.Blockchain
 
         public void Insert(IEnumerable<Block> blocks)
         {
-            try
+            lock (_batchInsertLock)
             {
-                _blockDb.StartBatch();
-                foreach (Block block in blocks)
+                try
                 {
-                    Insert(block);
+                    _blockDb.StartBatch();
+                    foreach (Block block in blocks)
+                    {
+                        Insert(block);
+                    }
                 }
-            }
-            finally
-            {
-                _blockDb.CommitBatch();
+                finally
+                {
+                    _blockDb.CommitBatch();
+                }
             }
         }
 

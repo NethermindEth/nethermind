@@ -644,10 +644,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private void InsertBlocks(List<Block> validResponses)
         {
-            lock (_handlerLock)
-            {
-                _blockTree.Insert(validResponses);
-            }
+            _blockTree.Insert(validResponses);
         }
 
         public void StartNewRound()
