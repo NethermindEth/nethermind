@@ -172,6 +172,7 @@ namespace Nethermind.Blockchain
 
             while (left != right)
             {
+                if(_logger.IsDebug) _logger.Debug($"Finding lowest inserted header - L {left} | R {right}");
                 long index = left + (right - left) / 2;
                 ChainLevelInfo level = LoadLevel(index, true);
                 if (level == null)
@@ -186,14 +187,16 @@ namespace Nethermind.Blockchain
             
             if (right <= 0)
             {
+                if(_logger.IsDebug) _logger.Debug($"Lowest inserted header is null - L {left} | R {right}");
                 LowestInsertedHeader = null;
                 return;
             }
             
             long result = right + 1;
-
+            
             BlockInfo blockInfo = LoadLevel(result, true).BlockInfos[0];
             LowestInsertedHeader = FindHeader(blockInfo.BlockHash);
+            if(_logger.IsDebug) _logger.Debug($"Lowest inserted header is {LowestInsertedHeader?.ToString(BlockHeader.Format.Short)} {result} - L {left} | R {right}");
         }
 
         private void LoadLowestInsertedBody()
@@ -209,6 +212,7 @@ namespace Nethermind.Blockchain
 
             while (left != right)
             {
+                if(_logger.IsDebug) _logger.Debug($"Finding lowest inserted body - L {left} | R {right}");
                 long index = left + (right - left) / 2;
                 ChainLevelInfo level = LoadLevel(index, true);
                 Block block = level == null ? null : FindBlock(level.BlockInfos[0].BlockHash, false);
@@ -224,6 +228,7 @@ namespace Nethermind.Blockchain
 
             if (right <= 0)
             {
+                if(_logger.IsDebug) _logger.Debug($"Lowest inserted body is null - L {left} | R {right}");
                 LowestInsertedBody = null;
                 return;
             }
@@ -232,6 +237,7 @@ namespace Nethermind.Blockchain
 
             BlockInfo blockInfo = LoadLevel(result, true).BlockInfos[0];
             LowestInsertedBody = FindBlock(blockInfo.BlockHash, false);
+            if(_logger.IsDebug) _logger.Debug($"Lowest inserted body is {LowestInsertedBody?.ToString(Block.Format.Short)} {result} - L {left} | R {right}");
         }
 
         public async Task LoadBlocksFromDb(
