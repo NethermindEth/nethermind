@@ -316,17 +316,23 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 long? lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
+                List<Block> blocksToAdd = new List<Block>();
+                Stopwatch stopwatchAll = Stopwatch.StartNew();
                 while (lowestBodyNumber.HasValue && _bodiesDependencies.ContainsKey(lowestBodyNumber.Value - 1))
                 {
                     Stopwatch stopwatch = new Stopwatch();
                     stopwatch.Start();
                     List<Block> dependentBatch = _bodiesDependencies[lowestBodyNumber.Value - 1];
-                    InsertBlocks(dependentBatch);
+                    blocksToAdd.AddRange(dependentBatch);
                     _bodiesDependencies.Remove(lowestBodyNumber.Value - 1, out _);
                     lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
                     stopwatch.Stop();
                     _logger.Warn($"Handled dependent blocks [{dependentBatch.First().Number},{dependentBatch.Last().Number}]({dependentBatch.Count}) in {stopwatch.ElapsedMilliseconds}ms");
                 }
+                
+                InsertBlocks(blocksToAdd);
+                stopwatchAll.Stop();
+                _logger.Warn($"Handled all dependent blocks in {stopwatchAll.ElapsedMilliseconds}ms");
 
                 foreach (KeyValuePair<long, List<(long, TxReceipt)>> item in _receiptDependencies)
                 {
