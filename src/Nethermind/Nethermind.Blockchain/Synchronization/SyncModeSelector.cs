@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             SyncMode newSyncMode;
-            if (_syncConfig.EnableExperimentalFastBlocks && bestHeader < LongConverter.FromString(_syncConfig.PivotNumber ?? "0"))
+            if (!_syncProgressResolver.IsFastBlocksFinished())
             {
                 newSyncMode = SyncMode.FastBlocks;
             }
@@ -100,13 +100,13 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (newSyncMode != Current)
             {
-                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullBlock, maxBlockNumberAmongPeers)}");
+                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
                 Current = newSyncMode;
                 Changed?.Invoke(this, EventArgs.Empty);
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullBlock, maxBlockNumberAmongPeers)}");
+                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
             }
         }
 

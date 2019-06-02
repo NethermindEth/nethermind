@@ -266,14 +266,7 @@ namespace Nethermind.Blockchain
                 {
                     Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1)?.Header;
                 }
-
-                bool fastSyncFinished = Head?.Number > 0;
-                if (!fastSyncFinished)
-                {
-                    if (_logger.IsInfo) _logger.Info("Fast sync in progress - skipping loading blocks from DB");
-                    return;
-                }
-
+                
                 long blocksToLoad = Math.Min(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
                 if (blocksToLoad == 0)
                 {

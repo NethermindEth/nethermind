@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization
 {
@@ -30,14 +31,18 @@ namespace Nethermind.Blockchain.Synchronization
         private const int _maxLookup = 64;
         
         private readonly IBlockTree _blockTree;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly INodeDataDownloader _nodeDataDownloader;
+        private readonly ISyncConfig _syncConfig;
         private ILogger _logger;
         
-        public SyncProgressResolver(IBlockTree blockTree, INodeDataDownloader nodeDataDownloader, ILogManager logManager)
+        public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, INodeDataDownloader nodeDataDownloader, ISyncConfig syncConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
         }
         
         public long FindBestFullState()
@@ -82,6 +87,19 @@ namespace Nethermind.Blockchain.Synchronization
         {
             /* avoiding any potential concurrency issue */
             return Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0);
+        }
+        
+        public bool IsFastBlocksFinished()
+        {
+            if (!_syncConfig.EnableExperimentalFastBlocks)
+            {
+                return true;
+            }
+            
+            return (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1
+                   && (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1
+                   && (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1)
+                   && (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1);
         }
     }
 }

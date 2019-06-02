@@ -103,9 +103,22 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _bodiesSyncStats = new SyncStats("Bodies", logManager);
         }
 
+        private bool _isMoreLikelyToBeHandlingDependenciesNow;
+        
         public FastBlocksBatch PrepareRequest()
         {
-            HandleDependentBatches();
+            if (!_isMoreLikelyToBeHandlingDependenciesNow)
+            {
+                _isMoreLikelyToBeHandlingDependenciesNow = true;
+                try
+                {
+                    HandleDependentBatches();
+                }
+                finally
+                {
+                    _isMoreLikelyToBeHandlingDependenciesNow = false;
+                }
+            }
 
             FastBlocksBatch batch;
             if (_pendingBatches.Any())
@@ -329,7 +342,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 _bodiesDependencies.Remove(lowestBodyNumber.Value - 1, out _);
                 lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
                 stopwatch.Stop();
-//                _logger.Warn($"Handled dependent blocks [{dependentBatch.First().Number},{dependentBatch.Last().Number}]({dependentBatch.Count}) in {stopwatch.ElapsedMilliseconds}ms");
+                _logger.Warn($"Handled dependent blocks [{dependentBatch.First().Number},{dependentBatch.Last().Number}]({dependentBatch.Count}) in {stopwatch.ElapsedMilliseconds}ms");
             }
 
             long? lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
@@ -427,8 +440,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         Stopwatch stopwatch = Stopwatch.StartNew();
                         int added = InsertBodies(batch);
                         stopwatch.Stop();
-//                        var nonNull = batch.Bodies.Headers.Where(h => h != null).OrderBy(h => h.Number).ToArray();
-//                        _logger.Warn($"Handled blocks response blocks [{nonNull.First().Number},{nonNull.Last().Number}]{batch.Bodies.Request.Length} in {stopwatch.ElapsedMilliseconds}ms");
+                        var nonNull = batch.Bodies.Headers.Where(h => h != null).OrderBy(h => h.Number).ToArray();
+                        _logger.Warn($"Handled blocks response blocks [{nonNull.First().Number},{nonNull.Last().Number}]{batch.Bodies.Request.Length} in {stopwatch.ElapsedMilliseconds}ms");
                         return (BlocksDataHandlerResult.OK, added);
                     }
 

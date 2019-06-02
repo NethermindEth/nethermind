@@ -50,7 +50,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Assert.AreEqual(statusMessage.ChainId, deserialized.ChainId, $"{nameof(deserialized.ChainId)}");
             Assert.AreEqual(statusMessage.ProtocolVersion, deserialized.ProtocolVersion, $"{nameof(deserialized.ProtocolVersion)}");
         }
-
+        
+        // test this: Could not handle the status message f8663f01a10b1384fef432c32604ecc309ae15fde43da78437221d727a2b65a28992347fabc0a0998aa1f94497add0c9418778c253d356b6583d78b8749023c6b7072022c1924ba0a88f396f62072ae90659133b0d77b5f17f5fc9389a02d82e4e148ba26cf5909d
+        
         [Test]
         public void Can_deserialize_example_from_ethereumJ()
         {

@@ -587,17 +587,20 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            await _blockTree.LoadBlocksFromDb(_runnerCancellation.Token, null).ContinueWith(t =>
+            if (!_syncConfig.FastSync)
             {
-                if (t.IsFaulted)
+                await _blockTree.LoadBlocksFromDb(_runnerCancellation.Token, null).ContinueWith(t =>
                 {
-                    if (_logger.IsError) _logger.Error("Loading blocks from the DB failed.", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsWarn) _logger.Warn("Loading blocks from the DB canceled.");
-                }
-            });
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error("Loading blocks from the DB failed.", t.Exception);
+                    }
+                    else if (t.IsCanceled)
+                    {
+                        if (_logger.IsWarn) _logger.Warn("Loading blocks from the DB canceled.");
+                    }
+                });
+            }
         }
 
         private async Task InitializeNetwork()

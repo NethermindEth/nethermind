@@ -298,11 +298,14 @@ namespace Nethermind.Blockchain
                     {
                         break; //failure here
                     }
-                    
-                    toBeProcessed = _blockTree.FindParent(toBeProcessed.Header);
-                    if (toBeProcessed == null)
+
+                    bool isFastSyncTransition = _blockTree.Head == _blockTree.Genesis && toBeProcessed.Number > 1; 
+                    if (!isFastSyncTransition)
                     {
-                        // fast synced from here
+                        toBeProcessed = _blockTree.FindParent(toBeProcessed.Header);    
+                    }
+                    else
+                    {
                         break;
                     }
                 } while (!_blockTree.IsMainChain(branchingPoint.Hash));

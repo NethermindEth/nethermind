@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Synchronization
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, _nodeDataDownloader, logManager);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, receiptStorage, _nodeDataDownloader, syncConfig, logManager);
             _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
 
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
@@ -224,7 +224,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (!_blockTree.CanAcceptNewBlocks) continue;
 
                 _syncMode.Update();
-                if (!_syncMode.IsParallel && _blocksSyncAllocation == null)
+                if (_blocksSyncAllocation == null)
                 {
                     AllocateBlocksSync();
                     if (_syncMode.Current == SyncMode.Headers)
@@ -307,21 +307,6 @@ namespace Nethermind.Blockchain.Synchronization
                 var source = _peerSyncCancellation;
                 _peerSyncCancellation = null;
                 source?.Dispose();
-
-                FinalizeFastBlocks();
-            }
-        }
-
-        private void FinalizeFastBlocks()
-        {
-            if (_syncMode.Current == SyncMode.FastBlocks
-                && (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1
-                && (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1
-                && (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1)
-                && (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1))
-            {
-                BlockHeader header = _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash));
-                _blockTree.SuggestHeader(header);
             }
         }
 
