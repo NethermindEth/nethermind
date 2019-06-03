@@ -17,7 +17,11 @@
  */
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
+using System.Linq;
+using System.Runtime.InteropServices;
 using Console = Colorful.Console;
 
 namespace Nethermind.Cli
@@ -25,13 +29,29 @@ namespace Nethermind.Cli
     public static class CliConsole
     {
         private static ColorScheme _colorScheme;
+        private static readonly Dictionary<string, Terminal> Terminals = new Dictionary<string, Terminal>
+        {
+            ["cmd.exe"] = Terminal.Cmd,
+            ["cmd"] = Terminal.Cmder,
+            ["powershell"] = Terminal.Powershell,
+            ["cygwin"] = Terminal.Cygwin
+        };
 
-        public static void Init(ColorScheme colorScheme)
+        public static Terminal Init(ColorScheme colorScheme)
         {
             _colorScheme = colorScheme;
             Console.BackgroundColor = colorScheme.BackgroundColor;
             Console.ForegroundColor = colorScheme.Text;
-            Console.Clear();
+            var terminal = GetTerminal();
+            if (terminal != Terminal.Powershell)
+            {
+                Console.ResetColor();
+            }
+
+            if (terminal != Terminal.Cygwin)
+            {
+                Console.Clear();
+            }
 
             Console.WriteLine("**********************************************", _colorScheme.Comment);
             Console.WriteLine();
@@ -46,8 +66,30 @@ namespace Nethermind.Cli
             Console.WriteLine();
             Console.WriteLine("**********************************************", _colorScheme.Comment);
             Console.WriteLine();
+
+            return terminal;
         }
 
+        private static Terminal GetTerminal()
+        {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? Terminal.LinuxBash :
+                    RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? Terminal.MacBash : Terminal.Unknown;
+            }
+            
+            var title = Console.Title.ToLowerInvariant();
+            foreach (var (key, value) in Terminals)
+            {
+                if (title.Contains(key))
+                {
+                    return value;
+                }
+            }
+
+            return Terminal.Unknown;
+        }
+        
         public static void WriteException(Exception e)
         {
             Console.WriteLine(e.ToString(), _colorScheme.ErrorColor);
