@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using Jint.Native;
@@ -32,26 +33,29 @@ namespace Nethermind.Cli
 {
     static class Program
     {
-        private static IJsonSerializer _serializer = new EthereumJsonSerializer();
+        private static readonly IJsonSerializer Serializer = new EthereumJsonSerializer();
         private static INodeManager _nodeManager;
         private static ILogManager _logManager;
         private static ICliEngine _engine;
+        private static Terminal _terminal;
 
         // ReSharper disable once InconsistentNaming
         private static CliModuleLoader ModuleLoader;
 
-        private const string _historyFilePath = "cli.cmd.history";
+        private const string HistoryFilePath = "cli.cmd.history";
+        private static readonly ColorScheme ColorScheme = new DraculaColorScheme();
 
         private static void CurrentDomainOnProcessExit(object sender, EventArgs e)
         {
-            File.WriteAllLines(_historyFilePath, ReadLine.GetHistory().TakeLast(60));
+            File.WriteAllLines(HistoryFilePath, ReadLine.GetHistory().TakeLast(60));
         }
 
-        private static ColorScheme _colorScheme = new DraculaColorScheme();
         
         static void Main(string[] args)
         {
-            CliConsole.Init(_colorScheme);
+            _terminal = CliConsole.Init(ColorScheme);
+//            Console.BackgroundColor = Color.FromArgb(248, 167, 95);
+//            Console.BackgroundColor = Color.Aqua;
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
 
@@ -116,9 +120,9 @@ namespace Nethermind.Cli
         {
             try
             {
-                if (File.Exists(_historyFilePath))
+                if (File.Exists(HistoryFilePath))
                 {
-                    foreach (string line in File.ReadLines(_historyFilePath).TakeLast(60))
+                    foreach (string line in File.ReadLines(HistoryFilePath).TakeLast(60))
                     {
                         if (line != _removedString)
                         {
@@ -129,7 +133,7 @@ namespace Nethermind.Cli
             }
             catch (Exception e)
             {
-                CliConsole.WriteErrorLine($"Could not load cmd history from {_historyFilePath} {e.Message}");
+                CliConsole.WriteErrorLine($"Could not load cmd history from {HistoryFilePath} {e.Message}");
             }
 
             ReadLine.AutoCompletionHandler = new AutoCompletionHandler();
@@ -144,7 +148,8 @@ namespace Nethermind.Cli
                     {
                         Console.SetIn(new StreamReader(inStream, Console.InputEncoding, false, bufferSize));
                         CliConsole.WriteLessImportant("nethermind> ");
-                        statement = ReadLine.Read();
+                        statement = _terminal == Terminal.Cygwin ? Console.ReadLine() : ReadLine.Read();
+
                         if (!SecuredCommands.Any(sc => statement.Contains(sc)))
                         {
                             ReadLine.AddHistory(statement);
@@ -168,7 +173,7 @@ namespace Nethermind.Cli
                     }
                     else if (!result.IsNull())
                     {
-                        CliConsole.WriteGood(_serializer.Serialize(result.ToObject(), true));
+                        CliConsole.WriteGood(Serializer.Serialize(result.ToObject(), true));
                     }
                     else
                     {
@@ -229,14 +234,14 @@ namespace Nethermind.Cli
 
         private static void Setup()
         {
-            _serializer.RegisterConverter(new ParityLikeTxTraceConverter());
-            _serializer.RegisterConverter(new ParityAccountStateChangeConverter());
-            _serializer.RegisterConverter(new ParityTraceActionConverter());
-            _serializer.RegisterConverter(new ParityTraceResultConverter());
+            Serializer.RegisterConverter(new ParityLikeTxTraceConverter());
+            Serializer.RegisterConverter(new ParityAccountStateChangeConverter());
+            Serializer.RegisterConverter(new ParityTraceActionConverter());
+            Serializer.RegisterConverter(new ParityTraceResultConverter());
 
             
             _logManager = new OneLoggerLogManager(new CliLogger());
-            _nodeManager = new NodeManager(_serializer, _logManager);
+            _nodeManager = new NodeManager(Serializer, _logManager);
             _nodeManager.SwitchUri(new Uri("http://localhost:8545"));
             _engine = new CliEngine();
         }
