@@ -17,21 +17,22 @@
  */
 
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.TxPools;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test
+namespace Nethermind.Blockchain.Test
 {
     [TestFixture]
     public class BlockTreeTests
@@ -1099,6 +1100,52 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(1, tree.LowestInsertedHeader?.Number, "loaded tree - lowest header");
             Assert.AreEqual(null, tree.LowestInsertedBody?.Number, "loaded tree - lowest body");
             Assert.AreEqual(pivotNumber + 1, loadedTree.BestKnownNumber, "loaded tree");
+        }
+        
+        [Test]
+        public void Cannot_insert_genesis()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+
+            long pivotNumber = 0L;
+            
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotNumber = pivotNumber.ToString();
+
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            tree.SuggestBlock(genesis);
+            Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis));
+            Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
+            Assert.Throws<InvalidOperationException>(() => tree.Insert(new[] {genesis}));
+        }
+        
+        [Test]
+        public void Can_batch_insert_blocks()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+
+            long pivotNumber = 5L;
+            
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotNumber = pivotNumber.ToString();
+
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
+            tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+            
+            List<Block> blocks = new List<Block>();
+            for (long i = 5; i > 0; i--)
+            {
+                Block block = Build.A.Block.WithNumber(i).TestObject;
+                tree.Insert(block.Header);
+                blocks.Add(block);
+            }
+
+            tree.Insert(blocks);
         }
 
         static object[] SourceOfBSearchTestCases =

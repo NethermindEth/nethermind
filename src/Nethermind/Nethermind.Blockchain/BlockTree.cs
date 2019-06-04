@@ -673,18 +673,6 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        private Keccak GetFirstBlockHashAtLevel(long blockNumber)
-        {
-            if (blockNumber < 0)
-            {
-                throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}",
-                    nameof(blockNumber));
-            }
-
-            ChainLevelInfo level = LoadLevel(blockNumber);
-            return level?.BlockInfos[0].BlockHash;
-        }
-
         private Keccak GetBlockHashOnMainOrOnlyHash(long blockNumber)
         {
             if (blockNumber < 0)
@@ -711,33 +699,6 @@ namespace Nethermind.Blockchain
             }
 
             return level.BlockInfos[0].BlockHash;
-        }
-
-        private Keccak GetBlockHashOnMain(long blockNumber)
-        {
-            if (blockNumber < 0)
-            {
-                throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}",
-                    nameof(blockNumber));
-            }
-
-            ChainLevelInfo level = LoadLevel(blockNumber);
-            if (level == null)
-            {
-                return null;
-            }
-
-            if (level.HasBlockOnMainChain)
-            {
-                return level.BlockInfos[0].BlockHash;
-            }
-
-            if (level.BlockInfos.Length > 0)
-            {
-                throw new InvalidOperationException($"Unexpected request by number for a block {blockNumber} that is not on the main chain");
-            }
-
-            return null;
         }
 
         public Block FindBlock(long blockNumber)
