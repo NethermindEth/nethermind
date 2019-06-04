@@ -172,7 +172,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         private int _chainLength = 100;
 
-        [Test]
+        [Test, Ignore("Fails when running with other tests due to pool starvation in NUnit adapter")]
         public void Can_sync_when_initially_disconnected()
         {
             foreach (var peer in _peers)
