@@ -984,33 +984,11 @@ namespace Nethermind.Core.Test
             Assert.IsNull(blockInfosDb.Get(3), "level 3");
         }
 
-        [TestCase(3L, 1L)]
-        [TestCase(1L, 0L)]
-        [TestCase(1L, 1L)]
-        [TestCase(2L, 0L)]
-        [TestCase(2L, 1L)]
-        [TestCase(2L, 2L)]
-        [TestCase(3L, 0L)]
-        [TestCase(3L, 1L)]
-        [TestCase(3L, 2L)]
-        [TestCase(3L, 3L)]
-        [TestCase(4L, 0L)]
-        [TestCase(4L, 1L)]
-        [TestCase(4L, 2L)]
-        [TestCase(4L, 3L)]
-        [TestCase(4L, 4L)]
-        [TestCase(5L, 0L)]
-        [TestCase(5L, 1L)]
-        [TestCase(5L, 2L)]
-        [TestCase(5L, 3L)]
-        [TestCase(5L, 4L)]
-        [TestCase(5L, 5L)]
-        [TestCase(7280000L, 0L)]
-        [TestCase(7280000L, 1L)]
+        [Test, TestCaseSource("SourceOfBSearchTestCases")]
         public void Loads_lowest_inserted_header_correctly(long beginIndex, long insertedBlocks)
         {
-            long? expectedResult = insertedBlocks == 0L ? (long?)null : beginIndex - insertedBlocks + 1L;
-            
+            long? expectedResult = insertedBlocks == 0L ? (long?) null : beginIndex - insertedBlocks + 1L;
+
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
@@ -1020,7 +998,7 @@ namespace Nethermind.Core.Test
 
             BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
-            
+
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
             {
                 tree.Insert(Build.A.BlockHeader.WithNumber(i).TestObject);
@@ -1031,34 +1009,12 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(expectedResult, tree.LowestInsertedHeader?.Number, "tree");
             Assert.AreEqual(expectedResult, loadedTree.LowestInsertedHeader?.Number, "loaded tree");
         }
-        
-        [TestCase(3L, 1L)]
-        [TestCase(1L, 0L)]
-        [TestCase(1L, 1L)]
-        [TestCase(2L, 0L)]
-        [TestCase(2L, 1L)]
-        [TestCase(2L, 2L)]
-        [TestCase(3L, 0L)]
-        [TestCase(3L, 1L)]
-        [TestCase(3L, 2L)]
-        [TestCase(3L, 3L)]
-        [TestCase(4L, 0L)]
-        [TestCase(4L, 1L)]
-        [TestCase(4L, 2L)]
-        [TestCase(4L, 3L)]
-        [TestCase(4L, 4L)]
-        [TestCase(5L, 0L)]
-        [TestCase(5L, 1L)]
-        [TestCase(5L, 2L)]
-        [TestCase(5L, 3L)]
-        [TestCase(5L, 4L)]
-        [TestCase(5L, 5L)]
-        [TestCase(7280000L, 0L)]
-        [TestCase(7280000L, 1L)]
+
+        [Test, TestCaseSource("SourceOfBSearchTestCases")]
         public void Loads_lowest_inserted_body_correctly(long beginIndex, long insertedBlocks)
         {
-            long? expectedResult = insertedBlocks == 0L ? (long?)null : beginIndex - insertedBlocks + 1L;
-            
+            long? expectedResult = insertedBlocks == 0L ? (long?) null : beginIndex - insertedBlocks + 1L;
+
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
@@ -1068,16 +1024,107 @@ namespace Nethermind.Core.Test
 
             BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
-            
+
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
             {
-                tree.Insert(Build.A.Block.WithNumber(i).TestObject);
+                Block block = Build.A.Block.WithNumber(i).TestObject;
+                tree.Insert(block.Header);
+                tree.Insert(block);
             }
 
             BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
 
-            Assert.AreEqual(expectedResult, tree.LowestInsertedHeader?.Number, "tree");
-            Assert.AreEqual(expectedResult, loadedTree.LowestInsertedHeader?.Number, "loaded tree");
+            Assert.AreEqual(expectedResult, tree.LowestInsertedBody?.Number, "tree");
+            Assert.AreEqual(expectedResult, loadedTree.LowestInsertedBody?.Number, "loaded tree");
         }
+
+        [Test, TestCaseSource("SourceOfBSearchTestCases")]
+        public void Loads_best_known_correctly_on_inserts(long beginIndex, long insertedBlocks)
+        {
+            long expectedResult = insertedBlocks == 0L ? 0L : beginIndex;
+
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotNumber = beginIndex.ToString();
+
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
+            tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+
+            for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
+            {
+                Block block = Build.A.Block.WithNumber(i).TestObject;
+                tree.Insert(block.Header);
+                tree.Insert(block);
+            }
+
+            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
+
+            Assert.AreEqual(expectedResult, tree.BestKnownNumber, "tree");
+            Assert.AreEqual(expectedResult, loadedTree.BestKnownNumber, "loaded tree");
+        }
+
+        [TestCase(1L)]
+        [TestCase(2L)]
+        [TestCase(3L)]
+        public void Loads_best_known_correctly_on_inserts_followed_by_suggests(long pivotNumber)
+        {
+            long expectedResult = pivotNumber + 1;
+
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotNumber = pivotNumber.ToString();
+
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
+            tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+
+            Block pivotBlock = null;
+            for (long i = pivotNumber; i > 0; i--)
+            {
+                Block block = Build.A.Block.WithNumber(i).TestObject;
+                if (pivotBlock == null) pivotBlock = block;
+                tree.Insert(block.Header);
+            }
+
+            tree.SuggestHeader(Build.A.BlockHeader.WithNumber(pivotNumber + 1).WithParent(pivotBlock.Header).TestObject);
+
+            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
+            
+            Assert.AreEqual(pivotNumber + 1, tree.BestKnownNumber, "tree");
+            Assert.AreEqual(1, tree.LowestInsertedHeader?.Number, "loaded tree - lowest header");
+            Assert.AreEqual(null, tree.LowestInsertedBody?.Number, "loaded tree - lowest body");
+            Assert.AreEqual(pivotNumber + 1, loadedTree.BestKnownNumber, "loaded tree");
+        }
+
+        static object[] SourceOfBSearchTestCases =
+        {
+            new object[] {1L, 0L},
+            new object[] {1L, 1L},
+            new object[] {2L, 0L},
+            new object[] {2L, 1L},
+            new object[] {2L, 2L},
+            new object[] {3L, 0L},
+            new object[] {3L, 1L},
+            new object[] {3L, 2L},
+            new object[] {3L, 3L},
+            new object[] {4L, 0L},
+            new object[] {4L, 1L},
+            new object[] {4L, 2L},
+            new object[] {4L, 3L},
+            new object[] {4L, 4L},
+            new object[] {5L, 0L},
+            new object[] {5L, 1L},
+            new object[] {5L, 2L},
+            new object[] {5L, 3L},
+            new object[] {5L, 4L},
+            new object[] {5L, 5L},
+            new object[] {728000, 0L},
+            new object[] {7280000L, 1L}
+        };
     }
 }
