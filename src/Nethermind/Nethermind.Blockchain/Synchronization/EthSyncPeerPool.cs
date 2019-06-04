@@ -638,7 +638,7 @@ namespace Nethermind.Blockchain.Synchronization
         public SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description, long? minNumber = null)
         {
             SyncPeerAllocation allocation = new SyncPeerAllocation(description);
-            allocation.MinBlocksAhead = minNumber - _blockTree.BestSuggestedHeader?.Number ?? 0;
+            allocation.MinBlocksAhead = minNumber - _blockTree.BestSuggestedHeader?.Number;
 
             if ((borrowOptions & BorrowOptions.DoNotReplace) == BorrowOptions.DoNotReplace)
             {

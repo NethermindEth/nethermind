@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Synchronization
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
-            Current = _syncConfig.FastSync ? SyncMode.FastBlocks : SyncMode.Full;
+            Current = SyncMode.NotStarted;
         }
 
         public SyncMode Current { get; private set; }
@@ -50,11 +50,6 @@ namespace Nethermind.Blockchain.Synchronization
         
         public void Update()
         {
-            if (!_syncConfig.FastSync)
-            {
-                return;
-            }
-            
             if (_syncPeerPool.PeerCount == 0)
             {
                 return;

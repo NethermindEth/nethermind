@@ -279,20 +279,28 @@ namespace Nethermind.Blockchain.Synchronization
                     case SyncMode.Full:
                         syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, 0, linkedCancellation.Token);
                         break;
+                    case SyncMode.NotStarted:
+                        syncProgressTask = Task.Delay(1000).ContinueWith(_ => 0L);
+                        break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
 
-                if (_syncMode.Current != SyncMode.WaitForProcessor)
+                switch (_syncMode.Current)
                 {
-                    await syncProgressTask.ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                    case SyncMode.WaitForProcessor:
+                        if (_logger.IsInfo) _logger.Info("Waiting for the block processor to catch up before the next sync round...");
+                        await syncProgressTask;
+                        break;
+                    case SyncMode.NotStarted:
+                        if (_logger.IsInfo) _logger.Info("Waiting for peers to connect before selecting the sync mode...");
+                        await syncProgressTask;
+                        break;
+                    default:
+                        await syncProgressTask.ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                        break;
                 }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info("Waiting for the block processor to catch up before the next sync round...");
-                    await syncProgressTask;
-                }
-
+                
                 if (syncProgressTask.IsCompletedSuccessfully)
                 {
                     long progress = syncProgressTask.Result;
