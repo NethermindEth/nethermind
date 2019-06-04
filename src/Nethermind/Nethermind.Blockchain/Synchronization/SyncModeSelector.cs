@@ -54,54 +54,65 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 return;
             }
-            
-            long bestHeader = _syncProgressResolver.FindBestHeader();
-            long bestFullBlock = _syncProgressResolver.FindBestFullBlock();
-            long bestFullState = _syncProgressResolver.FindBestFullState();
-            long maxBlockNumberAmongPeers = 0;
-            if (bestFullBlock < 0
-                || bestHeader < 0
-                || bestFullState < 0
-                || bestFullBlock > bestHeader)
-            {
-                string errorMessage = $"Invalid best state calculation: {BuildStateString(bestHeader, bestFullBlock, bestFullBlock, maxBlockNumberAmongPeers)}";
-                if(_logger.IsError) _logger.Error(errorMessage);
-                throw new InvalidOperationException(errorMessage);
-            }
-            
-            foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
-            {
-                maxBlockNumberAmongPeers = Math.Max(maxBlockNumberAmongPeers, peerInfo.HeadNumber);
-            }
 
-            SyncMode newSyncMode;
-            if (!_syncProgressResolver.IsFastBlocksFinished())
+            if (!_syncConfig.FastSync)
             {
-                newSyncMode = SyncMode.FastBlocks;
-            }
-            else if (maxBlockNumberAmongPeers - Math.Max(bestFullState, bestFullBlock) <= FullSyncThreshold)
-            {
-                newSyncMode = Math.Max(bestFullState, bestFullBlock) >= bestHeader ? SyncMode.Full : SyncMode.StateNodes;
-            }
-            else if (maxBlockNumberAmongPeers - bestHeader <= FullSyncThreshold)
-            {
-                // TODO: we need to check here if there are any blocks in processing queue... any other checks are wrong
-                newSyncMode = bestFullBlock > bestFullState ? SyncMode.WaitForProcessor : SyncMode.StateNodes;
+                if (Current == SyncMode.NotStarted)
+                {
+                    Current = SyncMode.Full;
+                    Changed?.Invoke(this, EventArgs.Empty);
+                }
             }
             else
             {
-                newSyncMode = bestFullBlock > bestFullState ? SyncMode.WaitForProcessor : SyncMode.Headers;
-            }
+                long bestHeader = _syncProgressResolver.FindBestHeader();
+                long bestFullBlock = _syncProgressResolver.FindBestFullBlock();
+                long bestFullState = _syncProgressResolver.FindBestFullState();
+                long maxBlockNumberAmongPeers = 0;
+                if (bestFullBlock < 0
+                    || bestHeader < 0
+                    || bestFullState < 0
+                    || bestFullBlock > bestHeader)
+                {
+                    string errorMessage = $"Invalid best state calculation: {BuildStateString(bestHeader, bestFullBlock, bestFullBlock, maxBlockNumberAmongPeers)}";
+                    if (_logger.IsError) _logger.Error(errorMessage);
+                    throw new InvalidOperationException(errorMessage);
+                }
 
-            if (newSyncMode != Current)
-            {
-                if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
-                Current = newSyncMode;
-                Changed?.Invoke(this, EventArgs.Empty);
-            }
-            else
-            {
-                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
+                foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
+                {
+                    maxBlockNumberAmongPeers = Math.Max(maxBlockNumberAmongPeers, peerInfo.HeadNumber);
+                }
+
+                SyncMode newSyncMode;
+                if (!_syncProgressResolver.IsFastBlocksFinished())
+                {
+                    newSyncMode = SyncMode.FastBlocks;
+                }
+                else if (maxBlockNumberAmongPeers - Math.Max(bestFullState, bestFullBlock) <= FullSyncThreshold)
+                {
+                    newSyncMode = Math.Max(bestFullState, bestFullBlock) >= bestHeader ? SyncMode.Full : SyncMode.StateNodes;
+                }
+                else if (maxBlockNumberAmongPeers - bestHeader <= FullSyncThreshold)
+                {
+                    // TODO: we need to check here if there are any blocks in processing queue... any other checks are wrong
+                    newSyncMode = bestFullBlock > bestFullState ? SyncMode.WaitForProcessor : SyncMode.StateNodes;
+                }
+                else
+                {
+                    newSyncMode = bestFullBlock > bestFullState ? SyncMode.WaitForProcessor : SyncMode.Headers;
+                }
+                
+                if (newSyncMode != Current)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
+                    Current = newSyncMode;
+                    Changed?.Invoke(this, EventArgs.Empty);
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
+                }
             }
         }
 

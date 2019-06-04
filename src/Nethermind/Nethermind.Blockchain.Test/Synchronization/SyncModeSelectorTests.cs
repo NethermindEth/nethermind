@@ -29,17 +29,17 @@ namespace Nethermind.Blockchain.Test.Synchronization
     public class SyncModeSelectorTests
     {
         [Test]
-        public void Starts_with_headers_when_fast_sync_is_enabled()
+        public void Starts_with_not_started_in_fast_sync_enabled()
         {
             SyncModeSelector selector = BuildSelector(true);
-            Assert.AreEqual(SyncMode.FastBlocks, selector.Current);
+            Assert.AreEqual(SyncMode.NotStarted, selector.Current);
         }
 
         [Test]
-        public void Starts_with_full_when_fast_sync_is_disabled()
+        public void Starts_with_not_started()
         {
             SyncModeSelector selector = BuildSelector(false);
-            Assert.AreEqual(SyncMode.Full, selector.Current);
+            Assert.AreEqual(SyncMode.NotStarted, selector.Current);
         }
 
         [Test]
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             
             SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
-            Assert.AreEqual(SyncMode.FastBlocks, selector.Current);
+            Assert.AreEqual(SyncMode.NotStarted, selector.Current);
 
             (long BestRemote, long BestLocalHeader, long BestLocalFullBlock, long BestLocalState, SyncMode ExpectedState, string Description)[] states =
             {
@@ -120,12 +120,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
-        [TestCase(true, 1032, 0, 0, 0, SyncMode.FastBlocks)]
-        [TestCase(false, 1032, 0, 0, 0, SyncMode.Full)]
-        [TestCase(true, 1032, 1000, 0, 0, SyncMode.FastBlocks)]
-        [TestCase(false, 1032, 1000, 0, 0, SyncMode.Full)]
-        [TestCase(true, 1032, 1000, 0, 1000, SyncMode.FastBlocks)]
-        [TestCase(false, 1032, 1000, 0, 1000, SyncMode.Full)]
+        [TestCase(true, 1032, 0, 0, 0, SyncMode.NotStarted)]
+        [TestCase(false, 1032, 0, 0, 0, SyncMode.NotStarted)]
+        [TestCase(true, 1032, 1000, 0, 0, SyncMode.NotStarted)]
+        [TestCase(false, 1032, 1000, 0, 0, SyncMode.NotStarted)]
+        [TestCase(true, 1032, 1000, 0, 1000, SyncMode.NotStarted)]
+        [TestCase(false, 1032, 1000, 0, 1000, SyncMode.NotStarted)]
         public void Does_not_change_when_no_peers(bool useFastSync, long bestRemote, long bestLocalHeader, long bestLocalFullBLock, long bestLocalState, SyncMode expected)
         {
             SyncModeSelector selector = BuildSelectorNoPeers(useFastSync, bestRemote,  bestLocalHeader, bestLocalFullBLock, bestLocalState);
