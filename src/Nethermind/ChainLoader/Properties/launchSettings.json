@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    
+    "Test": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\mainnet.cfg --baseDbPath c:\\mainnet_fast --SyncConfig.FastSync true",
+      "environmentVariables": {
+        " ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+    
+  }
+}
