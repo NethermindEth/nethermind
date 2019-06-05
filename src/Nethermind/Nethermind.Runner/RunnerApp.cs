@@ -19,13 +19,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db.Config;
+using Nethermind.EthStats.Configs;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -42,7 +42,7 @@ namespace Nethermind.Runner
         public RunnerApp(ILogger logger) : base(logger)
         {
         }
-        
+
         private static List<Type> _configs = new List<Type>
         {
             typeof(KeyStoreConfig),
@@ -51,7 +51,8 @@ namespace Nethermind.Runner
             typeof(InitConfig),
             typeof(DbConfig),
             typeof(StatsConfig),
-            typeof(SyncConfig)
+            typeof(SyncConfig),
+            typeof(EthStatsConfig)
         };
 
         [Todo("find better way to enforce assemblies with config impl are loaded")]

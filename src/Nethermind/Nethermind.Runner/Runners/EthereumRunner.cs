@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -42,6 +41,10 @@ using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.EthStats;
+using Nethermind.EthStats.Clients;
+using Nethermind.EthStats.Integrations;
+using Nethermind.EthStats.Senders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
@@ -161,6 +164,7 @@ namespace Nethermind.Runner.Runners
             UpdateNetworkConfig();
             await InitBlockchain();
             RegisterJsonRpcModules();
+            InitEthStats();
             if (HiveEnabled)
             {
                 await InitHive();
@@ -871,6 +875,33 @@ namespace Nethermind.Runner.Runners
             _hiveRunner = new HiveRunner(_jsonSerializer, _blockchainProcessor, _blockTree as BlockTree,
                 _stateProvider, _dbProvider.StateDb, _logger, _configProvider, _specProvider, _wallet as HiveWallet);
             await _hiveRunner.Start();
+        }
+
+        private void InitEthStats()
+        {
+            var config = _configProvider.GetConfig<IEthStatsConfig>();
+            if (!config.Enabled)
+            {
+                if (_logger.IsInfo) _logger.Info($"ETH Stats integration is disabled.");
+                return;
+            }
+
+            var instanceId = $"{config.Name}-{Keccak.Compute(_enode.Info)}";
+            if (_logger.IsInfo) _logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {config.Server}");
+            var sender = new MessageSender(instanceId, _logManager);
+            const int reconnectionInterval = 5000;
+            const string api = "no";
+            const string client = "0.1.1";
+            const bool canUpdateHistory = false;
+            var node = ClientVersion.Description;
+            var port = _configProvider.GetConfig<IInitConfig>().P2PPort;
+            var network = _specProvider.ChainId.ToString();
+            var protocol = _syncConfig.FastSync ? "eth/63" : "eth/62";
+            var ethStatsClient = new EthStatsClient(config.Server, reconnectionInterval, sender, _logManager);
+            var ethStatsIntegration = new EthStatsIntegration(config.Name, node, port, network, protocol, api, client,
+                config.Contact, canUpdateHistory, config.Secret, ethStatsClient, sender, _blockProcessor, _peerManager,
+                _logManager);
+            Task.Run(() => ethStatsIntegration.InitAsync());
         }
     }
 }

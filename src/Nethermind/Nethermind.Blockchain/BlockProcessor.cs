@@ -304,6 +304,7 @@ namespace Nethermind.Blockchain
             header.MixHash = s.MixHash;
             header.Nonce = s.Nonce;
             header.TxRoot = suggestedBlock.TransactionsRoot;
+            header.TotalDifficulty = suggestedBlock.TotalDifficulty;
             return processedBlock;
         }
 
