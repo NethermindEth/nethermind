@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netcoreapp2.2</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Newtonsoft.Json" Version="12.0.2" />
+      <PackageReference Include="Websocket.Client" Version="3.0.20" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+      <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+    </ItemGroup>
+
+</Project>

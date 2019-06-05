@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -11,18 +11,18 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU Lesser General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
 using System.Threading.Tasks;
+using Websocket.Client;
 
-namespace Nethermind.Runner.Runners
+namespace Nethermind.EthStats
 {
-    public interface IRunner
+    public interface IMessageSender
     {
-        Task Start();
-        Task StopAsync();
+        Task SendAsync<T>(IWebsocketClient client, T message, string type = null) where T : IMessage;
     }
 }

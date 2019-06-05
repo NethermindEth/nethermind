@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -11,18 +11,25 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU Lesser General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
+using Nethermind.EthStats.Messages.Models;
 
-namespace Nethermind.Runner.Runners
+namespace Nethermind.EthStats.Messages
 {
-    public interface IRunner
+    public class HelloMessage : IMessage
     {
-        Task Start();
-        Task StopAsync();
+        public string Id { get; set; }
+        public string Secret { get; }
+        public Info Info { get; }
+
+        public HelloMessage(string secret, Info info)
+        {
+            Secret = secret;
+            Info = info;
+        }
     }
 }

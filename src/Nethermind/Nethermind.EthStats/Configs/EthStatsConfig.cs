@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -11,18 +11,19 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU Lesser General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
-
-namespace Nethermind.Runner.Runners
+namespace Nethermind.EthStats.Configs
 {
-    public interface IRunner
+    public class EthStatsConfig : IEthStatsConfig
     {
-        Task Start();
-        Task StopAsync();
+        public bool Enabled { get; set; }
+        public string Server { get; set; }
+        public string Name { get; set; }
+        public string Secret { get; set; }
+        public string Contact { get; set; }
     }
 }

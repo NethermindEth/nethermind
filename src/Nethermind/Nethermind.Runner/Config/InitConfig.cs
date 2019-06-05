@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
-
 namespace Nethermind.Runner.Config
 {
     public class InitConfig : IInitConfig

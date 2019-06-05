@@ -26,7 +26,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Config;
 using Nethermind.Runner.Config;
 using Microsoft.Extensions.Logging;
-using Nethermind.Core.Model;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;

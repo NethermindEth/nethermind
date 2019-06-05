@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -11,18 +11,32 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU Lesser General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
-
-namespace Nethermind.Runner.Runners
+namespace Nethermind.EthStats.Messages.Models
 {
-    public interface IRunner
+    public class Stats
     {
-        Task Start();
-        Task StopAsync();
+        public bool Active { get; }
+        public bool Syncing { get; }
+        public bool Mining { get; }
+        public int Hashrate { get; }
+        public int Peers { get; }
+        public long GasPrice { get; }
+        public int Uptime { get; }
+
+        public Stats(bool active, bool syncing, bool mining, int hashrate, int peers, long gasPrice, int uptime)
+        {
+            Active = active;
+            Syncing = syncing;
+            Mining = mining;
+            Hashrate = hashrate;
+            Peers = peers;
+            GasPrice = gasPrice;
+            Uptime = uptime;
+        }
     }
 }
