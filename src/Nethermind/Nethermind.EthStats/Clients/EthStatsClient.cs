@@ -75,15 +75,14 @@ namespace Nethermind.EthStats.Clients
 
         private async Task HandlePingAsync(string message)
         {
-            var timestamp = long.Parse(message.Split("::").LastOrDefault()?.Replace("\"", string.Empty));
-            var latency = GetTime() - timestamp;
-            var pong = $"\"primus::pong::{timestamp}\"";
+            var serverTime = long.Parse(message.Split("::").LastOrDefault()?.Replace("\"", string.Empty));
+            var clientTime = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+            var latency = clientTime >= serverTime ? clientTime - serverTime : serverTime - clientTime;
+            var pong = $"\"primus::pong::{serverTime}\"";
             if (_logger.IsTrace) _logger.Trace($"Sending 'pong' message to ETH stats...");
             await _client.Send(pong);
             await _messageSender.SendAsync(_client, new LatencyMessage(latency));
         }
-
-        private static long GetTime() => new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
 
         public void Dispose()
         {

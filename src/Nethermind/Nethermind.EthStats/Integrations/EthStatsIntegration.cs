@@ -116,11 +116,11 @@ namespace Nethermind.EthStats.Integrations
                 _contact, _canUpdateHistory)));
 
         private Task SendBlockAsync(IWebsocketClient client, Core.Block block)
-            => _sender.SendAsync(client, new BlockMessage(new Block(block.Number, block.Hash.ToString(),
-                block.ParentHash.ToString(),
-                (long) block.Timestamp, block.Author.ToString(), block.GasUsed, block.GasLimit,
+            => _sender.SendAsync(client, new BlockMessage(new Block(block.Number, block.Hash?.ToString(),
+                block.ParentHash?.ToString(),
+                (long) block.Timestamp, block.Author?.ToString(), block.GasUsed, block.GasLimit,
                 block.Difficulty.ToString(), block.TotalDifficulty?.ToString(),
-                block.Transactions?.Select(t => new Transaction(t.Hash.ToString())) ?? Enumerable.Empty<Transaction>(),
+                block.Transactions?.Select(t => new Transaction(t.Hash?.ToString())) ?? Enumerable.Empty<Transaction>(),
                 block.TransactionsRoot.ToString(), block.StateRoot.ToString(),
                 block.Ommers?.Select(o => new Uncle()) ?? Enumerable.Empty<Uncle>())));
 
