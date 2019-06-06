@@ -26,6 +26,10 @@
     <Content Include="Specs\hive.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <None Remove="Specs\rinkeby.json" />
+    <Content Include="Specs\rinkeby.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Content Include="Specs\genesis_test.json">
