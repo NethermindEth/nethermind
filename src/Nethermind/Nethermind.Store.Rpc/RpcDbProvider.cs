@@ -33,7 +33,7 @@ namespace Nethermind.Store.Rpc
             CodeDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Code, serializer, client, logManager, recordDbProvider?.CodeDb), true));
             ReceiptsDb = new ReadOnlyDb(new RpcDb(DbNames.Receipts, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
             BlocksDb = new ReadOnlyDb(new RpcDb(DbNames.Blocks, serializer, client, logManager, recordDbProvider?.BlocksDb), true);
-            HeadersDb = new ReadOnlyDb(new RpcDb(DbNames.Blocks, serializer, client, logManager, recordDbProvider?.BlocksDb), true);
+            HeadersDb = new ReadOnlyDb(new RpcDb(DbNames.Headers, serializer, client, logManager, recordDbProvider?.HeadersDb), true);
             BlockInfosDb = new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb), true);
             PendingTxsDb = new ReadOnlyDb(new RpcDb(DbNames.PendingTxs, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
             TraceDb = new ReadOnlyDb(new RpcDb(DbNames.Trace, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
