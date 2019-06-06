@@ -34,7 +34,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
         public void Rinkeby_loads_properly()
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/rinkeby.json");
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/rinkeby.json");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             RinkebySpecProvider rinkeby = RinkebySpecProvider.Instance;
@@ -52,6 +52,28 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             {
                 object a = propertyInfo.GetValue(oldRinkebySpec);
                 object b = propertyInfo.GetValue(newRinkebySpec);
+
+                Assert.AreEqual(a, b, propertyInfo.Name);
+            }
+        }
+        
+        [Test]
+        public void Mainnet_loads_properly()
+        {
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/foundation.json");
+            ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
+            MainNetSpecProvider mainnet = MainNetSpecProvider.Instance;
+
+            IReleaseSpec oldSpec = mainnet.GetSpec(7280000);
+            IReleaseSpec newSpec = provider.GetSpec(7280000);
+
+            PropertyInfo[] propertyInfos = typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            foreach (PropertyInfo propertyInfo in propertyInfos)
+            {
+                object a = propertyInfo.GetValue(oldSpec);
+                object b = propertyInfo.GetValue(newSpec);
 
                 Assert.AreEqual(a, b, propertyInfo.Name);
             }
