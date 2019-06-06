@@ -137,7 +137,7 @@ namespace Nethermind.Runner.Runners
         private HiveRunner _hiveRunner;
         private ISessionMonitor _sessionMonitor;
         private ISyncConfig _syncConfig;
-
+        public IEnode Enode => _enode;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
