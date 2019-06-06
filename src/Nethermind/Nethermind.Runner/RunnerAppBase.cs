@@ -28,6 +28,8 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.JsonRpc.WebSockets;
+using Nethermind.Monitoring;
+using Nethermind.Monitoring.Metrics;
 using Nethermind.Logging;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
@@ -41,6 +43,7 @@ namespace Nethermind.Runner
         private IRunner _jsonRpcRunner = NullRunner.Instance;
         private IRunner _ethereumRunner = NullRunner.Instance;
         private TaskCompletionSource<object> _cancelKeySource;
+        private IMonitoringService _monitoringService;
         
         protected RunnerAppBase(ILogger logger)
         {
@@ -118,6 +121,7 @@ namespace Nethermind.Runner
         protected async Task StartRunners(IConfigProvider configProvider)
         {
             var initParams = configProvider.GetConfig<IInitConfig>();
+            var metricsParams = configProvider.GetConfig<IMetricsConfig>();
             var logManager = new NLogManager(initParams.LogFileName, initParams.LogDirectory);
             IRpcModuleProvider rpcModuleProvider = initParams.JsonRpcEnabled
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>())
@@ -151,12 +155,29 @@ namespace Nethermind.Runner
             {
                 if (Logger.IsInfo) Logger.Info("Json RPC is disabled");
             }
+
+            if (metricsParams.MetricsEnabled)
+            {
+                var intervalSeconds = metricsParams.MetricsIntervalSeconds;
+                _monitoringService = new MonitoringService(new MetricsUpdater(intervalSeconds),
+                    metricsParams.MetricsPushGatewayUrl, ClientVersion.Description,
+                    metricsParams.NodeName, intervalSeconds, logManager);
+                await _monitoringService.StartAsync().ContinueWith(x =>
+                {
+                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during starting a monitoring.", x.Exception);
+                });
+            }
+            else
+            {
+                if (Logger.IsInfo) Logger.Info("Monitoring is disabled");
+            }
         }
 
         protected abstract (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp();
 
         protected async Task StopAsync()
         {
+            _monitoringService?.StopAsync();
             _jsonRpcRunner?.StopAsync(); // do not await
             var ethereumTask = _ethereumRunner?.StopAsync() ?? Task.CompletedTask;
             await ethereumTask;

@@ -107,6 +107,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Abi", "Nethermin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Abi.Test", "Nethermind.Abi.Test\Nethermind.Abi.Test.csproj", "{E513347C-7082-42B8-B3A8-39C3D6992A9B}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Monitoring", "Nethermind.Monitoring\Nethermind.Monitoring.csproj", "{4796E327-D5A1-4CEF-B402-3FB155ED400A}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli", "Nethermind.Cli\Nethermind.Cli.csproj", "{AABF177A-9E50-4736-AE65-0152B0C26121}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Facade", "Nethermind.Facade\Nethermind.Facade.csproj", "{B71A6E5F-73A4-4A45-A324-A10496F80DAA}"

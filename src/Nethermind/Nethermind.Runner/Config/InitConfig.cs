@@ -34,6 +34,9 @@ namespace Nethermind.Runner.Config
         public bool SynchronizationEnabled { get; set; } = true;
         public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;
+        public bool MetricsEnabled { get; set; } = false;
+        public int MetricsIntervalSeconds { get; set; } = 5;
+        public string MetricsPushGatewayUrl { get; set; } = "http://localhost:9091/metrics";
         public bool IsMining { get; set; } = false;
         public string HttpHost { get; set; } = "127.0.0.1";
         public int HttpPort { get; set; } = 8545;
