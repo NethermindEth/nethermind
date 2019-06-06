@@ -33,7 +33,7 @@ namespace Nethermind.Core.Specs.Forks
 
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => 24576;
-        public long MinGasLimit => 21000;
+        public long MinGasLimit => 5000;
         public long GasLimitBoundDivisor => 0x0400;
         public Address Registrar => new Address("0xe3389675d0338462dC76C6f9A3e432550c36A142");
         public UInt256 BlockReward => UInt256.Parse("5000000000000000000");

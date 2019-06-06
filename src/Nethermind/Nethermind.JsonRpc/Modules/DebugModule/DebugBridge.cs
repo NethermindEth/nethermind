@@ -45,8 +45,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
+            IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
             IDb receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
             IDb codeDb = dbProvider.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
+            IDb pendingTxsDb = dbProvider.PendingTxsDb ?? throw new ArgumentNullException(nameof(dbProvider.PendingTxsDb));
+            IDb traceDb = dbProvider.TraceDb ?? throw new ArgumentNullException(nameof(dbProvider.TraceDb));
             
             _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
             {
@@ -54,8 +57,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 {DbNames.Storage, dbProvider.StateDb},
                 {DbNames.BlockInfos, blockInfosDb},
                 {DbNames.Blocks, blocksDb},
+                {DbNames.Headers, headersDb},
                 {DbNames.Code, codeDb},
-                {DbNames.Receipts, receiptsDb}
+                {DbNames.Receipts, receiptsDb},
+                {DbNames.PendingTxs, pendingTxsDb},
+                {DbNames.Trace, traceDb}
             };    
         }
         

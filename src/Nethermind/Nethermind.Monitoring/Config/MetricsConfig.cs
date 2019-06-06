@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,18 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Store
+ namespace Nethermind.Monitoring
 {
-    public static class DbNames
+    public class MetricsConfig : IMetricsConfig
     {
-        public const string Storage = "storage";
-        public const string State = "state";
-        public const string Code = "code";
-        public const string Blocks = "blocks";
-        public const string Headers = "headers";
-        public const string Receipts = "receipts";
-        public const string BlockInfos = "blockInfos";
-        public const string PendingTxs = "pendingtxs";
-        public const string Trace = "trace";
+        public bool MetricsEnabled { get; set; } = false;
+        public string MetricsPushGatewayUrl {get; set; } =  "http://localhost:9091/metrics";
+        public int MetricsIntervalSeconds {get; set; } = 5;
+        public string NodeName { get; set;} = null;
     }
 }

@@ -282,10 +282,9 @@ namespace Nethermind.Db
         
         public bool KeyExists(byte[] key)
         {
-            // temporary comparing the perf difference (if any)
+            // seems it has no performance impact
             return _db.Get(key) != null;
-            
-            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
+//            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
         }
         
         public void StartBatch()

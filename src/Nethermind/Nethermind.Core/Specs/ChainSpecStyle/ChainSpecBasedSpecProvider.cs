@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpecStyle
 {
@@ -117,10 +118,18 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 releaseSpec.IsEip1014Enabled = (_chainSpec.Parameters.Eip1014Transition ?? 0) <= releaseStartBlock;
                 releaseSpec.IsEip1052Enabled = (_chainSpec.Parameters.Eip1052Transition ?? 0) <= releaseStartBlock;
                 releaseSpec.IsEip1234Enabled = (_chainSpec.ConstantinopleBlockNumber ?? 0) <= releaseStartBlock;
-                releaseSpec.IsEip1283Enabled = (_chainSpec.Parameters.Eip1283Transition ?? 0) <= releaseStartBlock && (_chainSpec.Parameters.Eip1283DisableTransition ?? 0) > releaseStartBlock;
-
+                releaseSpec.IsEip1283Enabled = (_chainSpec.Parameters.Eip1283Transition ?? long.MaxValue) <= releaseStartBlock && (_chainSpec.Parameters.Eip1283DisableTransition ?? long.MaxValue) > releaseStartBlock;
+                
                 if (_chainSpec.Ethash != null)
                 {
+                    foreach (KeyValuePair<long,UInt256> blockReward in _chainSpec.Ethash.BlockRewards ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())
+                    {
+                        if (blockReward.Key <= releaseStartBlock)
+                        {
+                            releaseSpec.BlockReward = blockReward.Value;
+                        }
+                    }
+                        
                     foreach (KeyValuePair<long,long> bombDelay in _chainSpec.Ethash.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
                     {
                         if (bombDelay.Key <= releaseStartBlock)
