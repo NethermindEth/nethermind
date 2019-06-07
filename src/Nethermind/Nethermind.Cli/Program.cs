@@ -54,8 +54,6 @@ namespace Nethermind.Cli
         static void Main(string[] args)
         {
             _terminal = CliConsole.Init(ColorScheme);
-//            Console.BackgroundColor = Color.FromArgb(248, 167, 95);
-//            Console.BackgroundColor = Color.Aqua;
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
 
