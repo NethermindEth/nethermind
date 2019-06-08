@@ -343,4 +343,4 @@ src/Nethermind/Nethermind.Runner/node.key.plain
 
 # Console history
 
-cli.cmd.history
+src/Nethermind/Nethermind.Cli/cli.cmd.history

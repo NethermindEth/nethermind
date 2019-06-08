@@ -128,6 +128,10 @@ namespace Nethermind.Cli
                         }
                     }
                 }
+                else
+                {
+                    File.Create(HistoryFilePath);
+                }
             }
             catch (Exception e)
             {
@@ -151,6 +155,10 @@ namespace Nethermind.Cli
                         if (!SecuredCommands.Any(sc => statement.Contains(sc)))
                         {
                             ReadLine.AddHistory(statement);
+                            using (var fileStream = File.AppendText(HistoryFilePath))
+                            {
+                                fileStream.WriteLine(statement);
+                            }
                         }
                         else
                         {
