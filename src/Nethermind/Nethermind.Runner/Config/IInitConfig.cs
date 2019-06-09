@@ -58,6 +58,7 @@ namespace Nethermind.Runner.Config
         string ChainSpecFormat { get; set; }
         string BaseDbPath { get; set; }
         string GenesisHash { get; set; }
+        string StaticNodesPath { get; set; }
         bool RemovingLogFilesEnabled { get; set; }
         string LogFileName { get; set; }
         string LogDirectory { get; set; }

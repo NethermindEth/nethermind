@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
- namespace Nethermind.Monitoring
+ namespace Nethermind.Monitoring.Config
 {
     public class MetricsConfig : IMetricsConfig
     {

@@ -18,7 +18,6 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core.Model;
 
 namespace Nethermind.Network
 {

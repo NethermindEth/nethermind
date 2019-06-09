@@ -19,7 +19,6 @@
 using System.Collections.Generic;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
-using Nethermind.Core;
 using Nethermind.Logging;
 using Snappy;
 

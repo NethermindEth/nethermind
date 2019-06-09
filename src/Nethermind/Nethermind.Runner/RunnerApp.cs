@@ -35,6 +35,7 @@ using NLog;
 using ILogger = Nethermind.Logging.ILogger;
 using LogLevel = Nethermind.Logging.LogLevel;
 using Nethermind.Monitoring;
+using Nethermind.Monitoring.Config;
 
 namespace Nethermind.Runner
 {

@@ -17,7 +17,6 @@
  */
 
 using System.IO;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto;

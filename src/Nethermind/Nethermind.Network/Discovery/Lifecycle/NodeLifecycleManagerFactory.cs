@@ -17,9 +17,7 @@
  */
 
 using System;
-using Nethermind.Config;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;

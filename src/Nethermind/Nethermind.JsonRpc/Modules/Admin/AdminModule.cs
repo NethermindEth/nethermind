@@ -16,25 +16,49 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
     public class AdminModule : ModuleBase, IAdminModule
     {
+        private readonly IPeerManager _peerManager;
+        private readonly IStaticNodesManager _staticNodesManager;
         public override ModuleType ModuleType => ModuleType.Admin;
 
-        public ResultWrapper<PeerInfo[]> admin_addPeer()
+        public AdminModule(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer,
+            IPeerManager peerManager, IStaticNodesManager staticNodesManager) :
+            base(configProvider, logManager, jsonSerializer)
         {
-            throw new System.NotImplementedException();
+            _peerManager = peerManager;
+            _staticNodesManager = staticNodesManager;
+        }
+        
+        public async Task<ResultWrapper<string>> admin_addPeer(string enode)
+        {
+            var added = await _staticNodesManager.AddAsync(enode);
+
+            return added
+                ? ResultWrapper<string>.Success(enode)
+                : ResultWrapper<string>.Fail("Static node already exists.");
+        }
+
+        public async Task<ResultWrapper<string>> admin_removePeer(string enode)
+        {
+            var removed = await _staticNodesManager.RemoveAsync(enode);
+
+            return removed
+                ? ResultWrapper<string>.Success(enode)
+                : ResultWrapper<string>.Fail("Static node was not found.");
         }
 
         public ResultWrapper<PeerInfo[]> admin_peers()
-        {
-            throw new System.NotImplementedException();
-        }
+            => ResultWrapper<PeerInfo[]>.Success(_peerManager.ActivePeers.Select(p => new PeerInfo(p)).ToArray());
 
         public ResultWrapper<PeerInfo[]> admin_nodeInfo()
         {
@@ -49,10 +73,6 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public ResultWrapper<PeerInfo[]> admin_setSolc()
         {
             throw new System.NotImplementedException();
-        }
-
-        public AdminModule(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configProvider, logManager, jsonSerializer)
-        {
         }
     }
 }

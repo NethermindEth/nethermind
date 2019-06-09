@@ -17,11 +17,9 @@
  */
 
 using System;
-using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Model;
 using Nethermind.Logging;
 using Nethermind.Network.Crypto;
 using Nethermind.Secp256k1;

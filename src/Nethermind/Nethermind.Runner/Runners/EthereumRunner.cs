@@ -72,6 +72,7 @@ using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.StaticNodes;
 using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
@@ -138,6 +139,7 @@ namespace Nethermind.Runner.Runners
         private ISessionMonitor _sessionMonitor;
         private ISyncConfig _syncConfig;
         public IEnode Enode => _enode;
+        private IStaticNodesManager _staticNodesManager;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
@@ -275,7 +277,7 @@ namespace Nethermind.Runner.Runners
                 _rpcModuleProvider.Register<IPersonalModule>(personalModule);
             }
 
-            AdminModule adminModule = new AdminModule(_configProvider, _logManager, _jsonSerializer);
+            AdminModule adminModule = new AdminModule(_configProvider, _logManager, _jsonSerializer, _peerManager, _staticNodesManager);
             _rpcModuleProvider.Register<IAdminModule>(adminModule);
 
             TxPoolModule txPoolModule = new TxPoolModule(_configProvider, _logManager, _jsonSerializer, blockchainBridge);
@@ -609,7 +611,8 @@ namespace Nethermind.Runner.Runners
 
         private async Task InitializeNetwork()
         {
-            _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, _logManager);
+            var maxPeersCount = _configProvider.GetConfig<INetworkConfig>().ActivePeersMaxCount;
+            _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, maxPeersCount, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
             _synchronizer = new Synchronizer(_specProvider, _blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _logManager);
@@ -633,7 +636,6 @@ namespace Nethermind.Runner.Runners
                     _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
                 }
             });
-            ;
 
             await StartSync().ContinueWith(initNetTask =>
             {
@@ -659,8 +661,6 @@ namespace Nethermind.Runner.Runners
             {
                 _logger.Error("Unable to start the peer manager.", e);
             }
-
-            ;
 
             if (_logger.IsInfo) _logger.Info($"Ethereum     : tcp://{_enode.IpAddress}:{_enode.P2PPort}");
             if (_logger.IsInfo) _logger.Info($"Version      : {ClientVersion.Description}");
@@ -756,12 +756,15 @@ namespace Nethermind.Runner.Runners
 
             await _rlpxPeer.Init();
 
+            _staticNodesManager = new StaticNodesManager(_initConfig.StaticNodesPath, _logManager);
+            await _staticNodesManager.InitAsync();
+            
             var peerStorage = new NetworkStorage(PeersDbPath, networkConfig, _logManager, _perfService);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
             _protocolsManager = new ProtocolsManager(_syncPeerPool, _syncServer, _txPool, _discoveryApp, _messageSerializationService, _rlpxPeer, _nodeStatsManager, protocolValidator, peerStorage, _perfService, _logManager);
             PeerLoader peerLoader = new PeerLoader(networkConfig, _nodeStatsManager, peerStorage, _logManager);
-            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, networkConfig, _logManager);
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, networkConfig, _logManager, _staticNodesManager);
             _peerManager.Init();
         }
 
