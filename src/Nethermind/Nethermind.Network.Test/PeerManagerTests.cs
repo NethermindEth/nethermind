@@ -10,7 +10,7 @@
  * The Nethermind library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
+ * GNU Lesser General Public License for more details. L
  *
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
@@ -20,9 +20,11 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
@@ -49,6 +51,7 @@ namespace Nethermind.Network.Test
         private PeerLoader _peerLoader;
         private PeerManager _peerManager;
         private INetworkConfig _networkConfig;
+        private IStaticNodesManager _staticNodesManager;
 
         private class RlpxMock : IRlpxPeer
         {
@@ -192,7 +195,9 @@ namespace Nethermind.Network.Test
             _peerLoader = new PeerLoader(new NetworkConfig(), _stats, _storage, LimboLogs.Instance);
             _networkConfig = new NetworkConfig();
             _networkConfig.PeersPersistenceInterval = 50;
-            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _stats, _storage, _peerLoader, _networkConfig, LimboLogs.Instance);
+            _staticNodesManager = Substitute.For<IStaticNodesManager>();
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _stats, _storage, _peerLoader, _networkConfig,
+                LimboLogs.Instance, _staticNodesManager);
         }
 
         [TearDown]
@@ -214,16 +219,7 @@ namespace Nethermind.Network.Test
 
         private void SetupPersistedPeers(int count)
         {
-            List<NetworkNode> nodes = new List<NetworkNode>();
-            for (int i = 0; i < count; i++)
-            {
-                var generator = new PrivateKeyGenerator();
-                string enode = $"enode://{generator.Generate().PublicKey.ToString(false)}@52.141.78.53:30303";
-                NetworkNode node = new NetworkNode(enode);
-                nodes.Add(node);
-            }
-
-            _storage.UpdateNodes(nodes);
+            _storage.UpdateNodes(CreateNodes(count));
         }
 
         [Test]
@@ -397,6 +393,20 @@ namespace Nethermind.Network.Test
                 DisconnectAllSessions();
             }
         }
+        
+        private List<NetworkNode> CreateNodes(int count)
+        {
+            var nodes = new List<NetworkNode>();
+            for (int i = 0; i < count; i++)
+            {
+                var generator = new PrivateKeyGenerator();
+                string enode = $"enode://{generator.Generate().PublicKey.ToString(false)}@52.141.78.53:30303";
+                NetworkNode node = new NetworkNode(enode);
+                nodes.Add(node);
+            }
+
+            return nodes;
+        }
 
         private void CreateIncomingSessions()
         {
@@ -453,6 +463,24 @@ namespace Nethermind.Network.Test
             {
                 session.Handshake(new PrivateKeyGenerator().Generate().PublicKey);
             }
+        }
+
+        [Test]
+        public void Will_load_static_nodes_and_connect_to_them()
+        {
+            const int nodesCount = 5;
+            var staticNodes = CreateNodes(nodesCount);
+            _staticNodesManager.Nodes.Returns(staticNodes);
+            _peerManager.Init();
+            _peerManager.Start();
+            foreach (var node in staticNodes)
+            {
+                _discoveryApp.NodeDiscovered += Raise.EventWith(new NodeEventArgs(new Node(node.Host, node.Port)));
+
+            }
+
+            Thread.Sleep(_travisDelay);
+            _peerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount);
         }
     }
 }

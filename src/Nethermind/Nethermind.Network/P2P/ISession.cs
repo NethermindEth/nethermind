@@ -17,12 +17,9 @@
  */
 
 using System;
-using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P

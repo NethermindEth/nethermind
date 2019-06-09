@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             _blockTree = Substitute.For<IBlockTree>();
             _stats = Substitute.For<INodeStatsManager>();
-            _pool = new EthSyncPeerPool(_blockTree, _stats, new SyncConfig(), LimboLogs.Instance);
+            _pool = new EthSyncPeerPool(_blockTree, _stats, new SyncConfig(), 25, LimboLogs.Instance);
         }
 
         [TearDown]

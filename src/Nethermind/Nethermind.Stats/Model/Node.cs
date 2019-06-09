@@ -22,7 +22,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Stats.Model
 {   
-    public class Node : IFormattable
+    public class Node : IFormattable, IEquatable<Node>
     {
         private PublicKey _id;
 
@@ -67,11 +67,12 @@ namespace Nethermind.Stats.Model
             InitializeAddress(host, port);
         }
 
-        public Node(string host, int port)
+        public Node(string host, int port, bool isStatic = false)
         {
             Keccak512 socketHash = Keccak512.Compute($"{host}:{port}");
             Id = new PublicKey(socketHash.Bytes);
             AddedToDiscovery = true;
+            IsStatic = isStatic;
             InitializeAddress(host, port);
         }
 
@@ -91,23 +92,15 @@ namespace Nethermind.Stats.Model
 
         public override bool Equals(object obj)
         {
-            if (ReferenceEquals(this, obj))
-            {
-                return true;
-            }
-
-            if (obj is Node item)
-            {
-                return IdHash.Equals(item.IdHash);
-            }
-
-            return false;
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((Node) obj);
         }
 
         public override int GetHashCode()
         {
-            // ReSharper disable once NonReadonlyMemberInGetHashCode
-            return IdHash.GetHashCode();
+            return (_id != null ? _id.GetHashCode() : 0);
         }
 
         public override string ToString()
@@ -154,6 +147,13 @@ namespace Nethermind.Stats.Model
         public static bool operator !=(Node a, Node b)
         {
             return !(a == b);
+        }
+
+        public bool Equals(Node other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Equals(Id, other.Id);
         }
     }
 }

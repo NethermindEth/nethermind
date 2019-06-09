@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
 using Nethermind.Network.Config;
 
 namespace Nethermind.Network.Discovery.RoutingTable

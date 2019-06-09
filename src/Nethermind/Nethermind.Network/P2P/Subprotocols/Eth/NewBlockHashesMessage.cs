@@ -17,7 +17,6 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {

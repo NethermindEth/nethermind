@@ -17,7 +17,6 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {

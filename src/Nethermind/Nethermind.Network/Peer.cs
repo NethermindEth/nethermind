@@ -16,12 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
-    public class Peer
+    public class Peer : IEquatable<Peer>
     {
         public Peer(Node node)
         {
@@ -31,5 +32,25 @@ namespace Nethermind.Network
         public Node Node { get; }
         public ISession InSession { get; set; }
         public ISession OutSession { get; set; }
+
+        public bool Equals(Peer other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Equals(Node, other.Node);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((Peer) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return (Node != null ? Node.GetHashCode() : 0);
+        }
     }
 }

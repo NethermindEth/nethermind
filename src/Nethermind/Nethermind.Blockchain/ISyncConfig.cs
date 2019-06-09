@@ -25,7 +25,6 @@ namespace Nethermind.Blockchain
         bool ValidateTree { get; set; }
         bool FastSync { get; set; }
         int SyncTimerInterval { get; }
-        int SyncPeersMaxCount { get; }
         long MinAvailableBlockDiffForSyncSwitch { get; }
         long MinDiffPercentageForLatencySwitch { get; }
         long MinDiffForLatencySwitch { get; }

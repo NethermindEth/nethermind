@@ -18,8 +18,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Linq;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;

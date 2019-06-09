@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth

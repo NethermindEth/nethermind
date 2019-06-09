@@ -45,6 +45,7 @@ namespace Nethermind.Runner.Config
         public string BaseDbPath { get; set; } = "db";
         public string LogFileName { get; set; } = "log.txt";
         public string GenesisHash { get; set; }
+        public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
 
         public string[] JsonRpcEnabledModules { get; set; } = {"Clique", "Eth", "Net", "Web3", "Db", "Debug", "TxPool"};
 

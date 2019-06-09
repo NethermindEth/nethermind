@@ -19,8 +19,6 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Rlpx
