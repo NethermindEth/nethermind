@@ -245,12 +245,6 @@ namespace Nethermind.Blockchain.Synchronization
             UInt256 ourDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
             foreach (PeerInfo peerInfo in AllPeers)
             {
-                if (peerInfo.SyncPeer.Node.IsStatic)
-                {
-                    _logger.Warn("NO DROP USELESS");
-                    continue;
-                }
-                
                 if (peerInfo.HeadNumber > ourNumber)
                 {
                     // as long as we are behind we can use the stuck peers

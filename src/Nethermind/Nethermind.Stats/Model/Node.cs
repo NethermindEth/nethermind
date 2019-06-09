@@ -22,7 +22,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Stats.Model
 {   
-    public class Node : IFormattable, IEquatable<Node>
+    public class Node : IFormattable
     {
         private PublicKey _id;
 
@@ -90,14 +90,6 @@ namespace Nethermind.Stats.Model
             Address = new IPEndPoint(IPAddress.Parse(host), port);
         }
 
-        public override bool Equals(object obj)
-        {
-            if (ReferenceEquals(null, obj)) return false;
-            if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != this.GetType()) return false;
-            return Equals((Node) obj);
-        }
-
         public override int GetHashCode()
         {
             return (_id != null ? _id.GetHashCode() : 0);
@@ -147,13 +139,6 @@ namespace Nethermind.Stats.Model
         public static bool operator !=(Node a, Node b)
         {
             return !(a == b);
-        }
-
-        public bool Equals(Node other)
-        {
-            if (ReferenceEquals(null, other)) return false;
-            if (ReferenceEquals(this, other)) return true;
-            return Equals(Id, other.Id);
         }
     }
 }

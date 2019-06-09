@@ -81,6 +81,7 @@ namespace Nethermind.Network
             _peerLoader = peerLoader ?? throw new ArgumentNullException(nameof(peerLoader));
             _peerStorage.StartBatch();
             _peerComparer = new PeerComparer(_stats);
+            _distinctPeerComparer = new DistinctPeerComparer();
         }
 
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -96,7 +97,7 @@ namespace Nethermind.Network
                 if (_candidatePeers.TryAdd(args.Node.NodeId,
                         new Peer(new Node(args.Node.Host, args.Node.Port, true))) && _logger.IsDebug)
                 {
-                    _logger.Debug($"Added the new static node to peers candidates: {args.Node}");
+                    if (_logger.IsDebug) _logger.Debug($"Added the new static node to peers candidates: {args.Node}");
                 }
             };
             _staticNodesManager.NodeRemoved += (sender, args) =>
@@ -104,7 +105,7 @@ namespace Nethermind.Network
                 _staticNodes.TryRemove(args.Node.NodeId, out _);
                 if (_candidatePeers.TryRemove(args.Node.NodeId, out var peer) && _logger.IsDebug)
                 {
-                    _logger.Debug($"Removed the static node from peers candidates: {args.Node}");
+                    if (_logger.IsDebug) _logger.Debug($"Removed the static node from peers candidates: {args.Node}");
                     _activePeers.TryRemove(peer.Node.Id, out _);
                 }
             };
@@ -289,7 +290,8 @@ namespace Nethermind.Network
                             break;
                         }
 
-                        IEnumerable<Peer> candidatesToTry = remainingCandidates.Take(nodesToTry).Distinct();
+                        IEnumerable<Peer> candidatesToTry = remainingCandidates.Take(nodesToTry)
+                            .Distinct(_distinctPeerComparer);
                         remainingCandidates = remainingCandidates.Skip(nodesToTry).ToList();
 
                         var workerBlock = new ActionBlock<Peer>(
@@ -459,14 +461,20 @@ namespace Nethermind.Network
                 _currentSelection.PreCandidates.Add(peer);
             }
 
-            if (!_currentSelection.PreCandidates.Any())
+            var hasOnlyStaticNodes = false;
+            if (!_currentSelection.PreCandidates.Any() && _staticNodes.Values.Any())
             {
                 _currentSelection.Candidates.AddRange(_staticNodes.Values);
-                
+                hasOnlyStaticNodes = true;
+            }
+
+            if (!_currentSelection.PreCandidates.Any() && !hasOnlyStaticNodes)
+            {
                 return;
             }
 
-            _currentSelection.Counters[ActivePeerSelectionCounter.AllNonActiveCandidates] = _currentSelection.PreCandidates.Count;
+            _currentSelection.Counters[ActivePeerSelectionCounter.AllNonActiveCandidates] =
+                _currentSelection.PreCandidates.Count;
 
             foreach (Peer preCandidate in _currentSelection.PreCandidates)
             {
@@ -505,12 +513,17 @@ namespace Nethermind.Network
 
                 _currentSelection.Candidates.Add(preCandidate);
             }
-            
-            _currentSelection.Candidates.AddRange(_staticNodes.Values);
+
+            if (!hasOnlyStaticNodes)
+            {
+                _currentSelection.Candidates.AddRange(_staticNodes.Values);
+            }
+
             _currentSelection.Candidates.Sort(_peerComparer);
         }
 
         private readonly PeerComparer _peerComparer;
+        private readonly DistinctPeerComparer _distinctPeerComparer;
 
         public class PeerComparer : IComparer<Peer>
         {
@@ -548,6 +561,21 @@ namespace Nethermind.Network
                 int reputation = -_stats.GetCurrentReputation(x.Node).CompareTo(_stats.GetCurrentReputation(y.Node));
                 return reputation;
             }
+        }
+
+        private class DistinctPeerComparer : IEqualityComparer<Peer>
+        {
+            public bool Equals(Peer x, Peer y)
+            {
+                if (x is null || y is null)
+                {
+                    return false;
+                }
+                
+                return x.Node.Id.Equals(y.Node.Id);
+            }
+
+            public int GetHashCode(Peer obj) => obj?.Node is null ? 0 : obj.Node.GetHashCode();
         }
 
 //        private void LogPeerEventHistory(Peer peer)
