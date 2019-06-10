@@ -664,7 +664,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             CompareTrees("AFTER FIRST SYNC", true);
 
             _localStateTree.RootHash = _remoteStateTree.RootHash;
-            for (byte i = 0; i < 128; i++)
+            for (byte i = 0; i < 8; i++)
             {
                 _remoteStateTree
                     .Set(TestItem.Addresses[i], AccountJustState0.WithChangedBalance(i)
@@ -684,7 +684,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             CompareTrees("AFTER SECOND SYNC", true);
 
             _localStateTree.RootHash = _remoteStateTree.RootHash;
-            for (byte i = 0; i < 255; i++)
+            for (byte i = 0; i < 16; i++)
             {
                 _remoteStateTree
                     .Set(TestItem.Addresses[i], AccountJustState0.WithChangedBalance(i)
