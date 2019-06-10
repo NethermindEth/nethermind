@@ -739,11 +739,14 @@ namespace Nethermind.Evm
             void UpdateMemoryCost(ref UInt256 position, in UInt256 length)
             {
                 long memoryCost = evmState.Memory.CalculateMemoryCost(ref position, length);
-                if (!UpdateGas(memoryCost, ref gasAvailable))
+                if (memoryCost != 0L)
                 {
-                    Metrics.EvmExceptions++;
-                    EndInstructionTraceError(OutOfGasErrorText);
-                    throw new OutOfGasException();
+                    if (!UpdateGas(memoryCost, ref gasAvailable))
+                    {
+                        Metrics.EvmExceptions++;
+                        EndInstructionTraceError(OutOfGasErrorText);
+                        throw new OutOfGasException();
+                    }
                 }
             }
 

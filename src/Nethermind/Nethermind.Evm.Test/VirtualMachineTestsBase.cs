@@ -203,7 +203,7 @@ namespace Nethermind.Evm.Test
 
         protected virtual Block BuildBlock(long blockNumber)
         {
-            return Build.A.Block.WithNumber(blockNumber).WithBeneficiary(Miner).TestObject;
+            return Build.A.Block.WithNumber(blockNumber).WithGasLimit(8000000).WithBeneficiary(Miner).TestObject;
         }
 
         protected void AssertGas(CallOutputTracer receipt, long gas)
