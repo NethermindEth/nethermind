@@ -14,7 +14,7 @@ notifications:
       - demerzelsolutions:hzD3lmq2hbUgHuLFxjCOvk6x#general
 after_success:
   - ./scripts/docker-publish.sh
-after script: 
+after_script: 
   - bash <(curl -s https://codecov.io/bash)
 jobs:
   include:
