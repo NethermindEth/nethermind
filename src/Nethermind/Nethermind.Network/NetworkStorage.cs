@@ -19,9 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;

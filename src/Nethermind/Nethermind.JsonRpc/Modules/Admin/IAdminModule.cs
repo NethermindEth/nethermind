@@ -16,11 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
+
 namespace Nethermind.JsonRpc.Modules.Admin
 {
     public interface IAdminModule : IModule
     {
-        ResultWrapper<PeerInfo[]> admin_addPeer();
+        Task<ResultWrapper<string>> admin_addPeer(string enode);
+        Task<ResultWrapper<string>> admin_removePeer(string enode);
         ResultWrapper<PeerInfo[]> admin_peers();
         ResultWrapper<PeerInfo[]> admin_nodeInfo();
         ResultWrapper<PeerInfo[]> admin_dataDir();

@@ -17,11 +17,12 @@
  */
 
 using System.Collections.Generic;
+using Nethermind.Core;
 
 namespace Nethermind.Network
 {
     public interface IPeerLoader
     {
-        List<Peer> LoadPeers();
+        List<Peer> LoadPeers(IEnumerable<NetworkNode> staticNodes = null);
     }
 }

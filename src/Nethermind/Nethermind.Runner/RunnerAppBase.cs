@@ -31,6 +31,7 @@ using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
 using Nethermind.WebSockets;

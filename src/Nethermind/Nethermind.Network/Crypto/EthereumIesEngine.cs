@@ -19,11 +19,8 @@
 using System;
 using System.Diagnostics;
 using Nethermind.Core.Extensions;
-using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
-using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Utilities;
 
 namespace Nethermind.Network.Crypto

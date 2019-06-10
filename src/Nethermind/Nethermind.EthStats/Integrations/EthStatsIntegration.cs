@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -50,7 +49,9 @@ namespace Nethermind.EthStats.Integrations
         private readonly IPeerManager _peerManager;
         private readonly ILogger _logger;
         private bool _connected;
-        private readonly DateTime _startedAt;
+        private long _lastBlockProcessedTimestamp;
+        private const int ThrottlingThreshold = 25;
+        private const int SendStatsInterval = 1000;
 
         public EthStatsIntegration(string name, string node, int port, string network, string protocol, string api,
             string client, string contact, bool canUpdateHistory, string secret, IEthStatsClient ethStatsClient,
@@ -71,7 +72,6 @@ namespace Nethermind.EthStats.Integrations
             _blockProcessor = blockProcessor;
             _peerManager = peerManager;
             _logger = logManager.GetClassLogger();
-            _startedAt = Process.GetCurrentProcess().StartTime.ToUniversalTime();
         }
 
         public async Task InitAsync()
@@ -79,19 +79,19 @@ namespace Nethermind.EthStats.Integrations
             var exitEvent = new ManualResetEvent(false);
             using (var client = await _ethStatsClient.InitAsync())
             {
-                if (_logger.IsDebug) _logger.Debug("Initial connection, sending 'hello' message...");
+                if (_logger.IsInfo) _logger.Info("Initial connection, sending 'hello' message...");
                 await SendHelloAsync(client);
                 _connected = true;
                 client.ReconnectionHappened.Subscribe(async reason =>
                 {
-                    if (_logger.IsDebug) _logger.Debug("ETH Stats reconnected, sending 'hello' message...");
+                    if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
                     await SendHelloAsync(client);
                     _connected = true;
                 });
                 client.DisconnectionHappened.Subscribe(reason =>
                 {
                     _connected = false;
-                    if (_logger.IsDebug) _logger.Debug($"ETH Stats disconnected, reason: {reason}");
+                    if (_logger.IsWarn) _logger.Warn($"ETH Stats disconnected, reason: {reason}");
                 });
 
                 _blockProcessor.BlockProcessed += async (s, e) =>
@@ -101,10 +101,30 @@ namespace Nethermind.EthStats.Integrations
                         return;
                     }
 
+                    var timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+                    if (timestamp - _lastBlockProcessedTimestamp < ThrottlingThreshold)
+                    {
+                        return;
+                    }
+
+                    if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'block', 'pending' messages...");
+                    _lastBlockProcessedTimestamp = timestamp;
                     await SendBlockAsync(client, e.Block);
                     await SendPendingAsync(client, e.Block.Transactions?.Length ?? 0);
+                };
+
+                var timer = new System.Timers.Timer {Interval = SendStatsInterval};
+                timer.Elapsed += async (sender, args) =>
+                {
+                    if (!_connected)
+                    {
+                        return;
+                    }
+
+                    if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
                     await SendStatsAsync(client);
                 };
+                timer.Start();
 
                 exitEvent.WaitOne();
             }

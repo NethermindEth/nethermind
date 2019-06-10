@@ -19,7 +19,6 @@
 using System;
 using System.Net.Sockets;
 using DotNetty.Transport.Channels;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Snappy;

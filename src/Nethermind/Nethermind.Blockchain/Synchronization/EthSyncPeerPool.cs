@@ -82,13 +82,14 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        public EthSyncPeerPool(IBlockTree blockTree, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ILogManager logManager)
+        public EthSyncPeerPool(IBlockTree blockTree, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig,
+            int peersMaxCount, ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            PeerMaxCount = peersMaxCount;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-
             _syncPeersReport = new SyncPeersReport(this, _stats, logManager);
         }
 
@@ -235,7 +236,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            if(_logger.IsTrace) _logger.Trace($"Reviewing {PeerCount} peer usefullness");
+            if(_logger.IsTrace) _logger.Trace($"Reviewing {PeerCount} peer usefulness");
 
             int peersDropped = 0;
             _lastUselessDrop = DateTime.UtcNow;
@@ -441,7 +442,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public int PeerCount => _peers.Count;
         public int UsefulPeerCount => UsefulPeers.Count();
-        public int PeerMaxCount => _syncConfig.SyncPeersMaxCount;
+        public int PeerMaxCount { get; }
 
         public void Refresh(PublicKey publicKey)
         {

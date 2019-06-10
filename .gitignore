@@ -340,3 +340,7 @@ out/
 db/
 src/Nethermind/Nethermind.Runner/git-hash
 src/Nethermind/Nethermind.Runner/node.key.plain
+
+# Console history
+
+src/Nethermind/Nethermind.Cli/cli.cmd.history

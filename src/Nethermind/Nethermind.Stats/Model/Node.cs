@@ -67,11 +67,12 @@ namespace Nethermind.Stats.Model
             InitializeAddress(host, port);
         }
 
-        public Node(string host, int port)
+        public Node(string host, int port, bool isStatic = false)
         {
             Keccak512 socketHash = Keccak512.Compute($"{host}:{port}");
             Id = new PublicKey(socketHash.Bytes);
             AddedToDiscovery = true;
+            IsStatic = isStatic;
             InitializeAddress(host, port);
         }
 
@@ -89,25 +90,9 @@ namespace Nethermind.Stats.Model
             Address = new IPEndPoint(IPAddress.Parse(host), port);
         }
 
-        public override bool Equals(object obj)
-        {
-            if (ReferenceEquals(this, obj))
-            {
-                return true;
-            }
-
-            if (obj is Node item)
-            {
-                return IdHash.Equals(item.IdHash);
-            }
-
-            return false;
-        }
-
         public override int GetHashCode()
         {
-            // ReSharper disable once NonReadonlyMemberInGetHashCode
-            return IdHash.GetHashCode();
+            return (_id != null ? _id.GetHashCode() : 0);
         }
 
         public override string ToString()

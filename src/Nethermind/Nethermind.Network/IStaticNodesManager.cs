@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,21 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Diagnostics;
-using Nethermind.Core.Crypto;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Network.StaticNodes;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth
-{ 
-    [DebuggerDisplay("{StartingBlockHash} {MaxHeaders} {Skip} {Reverse}")]
-    public class GetBlockHeadersMessage : P2PMessage
+namespace Nethermind.Network
+{
+    public interface IStaticNodesManager
     {
-        public override int PacketType { get; } = Eth62MessageCode.GetBlockHeaders;
-        public override string Protocol { get; } = "eth";
-
-        public long StartingBlockNumber { get; set; }
-        public Keccak StartingBlockHash { get; set; }
-        public long MaxHeaders { get; set; }
-        public long Skip { get; set; }
-        public byte Reverse { get; set; }
+        IEnumerable<NetworkNode> Nodes { get; }
+        event EventHandler<NetworkNodeEventArgs> NodeAdded;
+        event EventHandler<NetworkNodeEventArgs> NodeRemoved;
+        Task InitAsync();
+        Task<bool> AddAsync(string enode, bool updateFile = true);
+        Task<bool> RemoveAsync(string enode, bool updateFile = true);
     }
 }

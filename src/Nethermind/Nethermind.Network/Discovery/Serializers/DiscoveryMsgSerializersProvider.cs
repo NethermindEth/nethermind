@@ -19,7 +19,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Stats;
 
 namespace Nethermind.Network.Discovery.Serializers
 {

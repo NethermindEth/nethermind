@@ -21,14 +21,10 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security;
-using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable

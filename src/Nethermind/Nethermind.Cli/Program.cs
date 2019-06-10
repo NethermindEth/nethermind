@@ -54,8 +54,6 @@ namespace Nethermind.Cli
         static void Main(string[] args)
         {
             _terminal = CliConsole.Init(ColorScheme);
-//            Console.BackgroundColor = Color.FromArgb(248, 167, 95);
-//            Console.BackgroundColor = Color.Aqua;
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
 
@@ -130,6 +128,10 @@ namespace Nethermind.Cli
                         }
                     }
                 }
+                else
+                {
+                    File.Create(HistoryFilePath);
+                }
             }
             catch (Exception e)
             {
@@ -153,6 +155,10 @@ namespace Nethermind.Cli
                         if (!SecuredCommands.Any(sc => statement.Contains(sc)))
                         {
                             ReadLine.AddHistory(statement);
+                            using (var fileStream = File.AppendText(HistoryFilePath))
+                            {
+                                fileStream.WriteLine(statement);
+                            }
                         }
                         else
                         {

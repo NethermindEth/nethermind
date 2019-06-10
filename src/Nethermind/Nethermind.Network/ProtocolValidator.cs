@@ -20,10 +20,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -57,6 +55,7 @@ namespace Nethermind.Network
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, incorrect P2PVersion: {args.P2PVersion}");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.P2PVersion);
                         Disconnect(session, DisconnectReason.IncompatibleP2PVersion, $"p2p.{args.P2PVersion}");
+                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.IncompatibleP2PVersion}"); 
                         return false;
                     }
 
@@ -65,6 +64,7 @@ namespace Nethermind.Network
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, no Eth62 capability, supported capabilities: [{string.Join(",", args.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"))}]");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.Capabilities);
                         Disconnect(session, DisconnectReason.UselessPeer, "capabilities");
+                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (capabilities)"); 
                         return false;
                     }
 
@@ -74,18 +74,18 @@ namespace Nethermind.Network
                     if (!ValidateChainId(ethArgs.ChainId))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName((int) ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
-
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
                         Disconnect(session, DisconnectReason.UselessPeer, $"invalid chain id - {ethArgs.ChainId}");
+                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (invalid chain id - {ethArgs.ChainId})"); 
                         return false;
                     }
 
                     if (ethArgs.GenesisHash != _blockTree.Genesis.Hash)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {ethArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}");
-
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.DifferentGenesis);
                         Disconnect(session, DisconnectReason.BreachOfProtocol, "invalid genesis");
+                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.BreachOfProtocol} (invalid genesis)"); 
                         return false;
                     }
 
