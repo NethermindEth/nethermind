@@ -69,7 +69,7 @@ namespace Nethermind.Network.Test
             sessionMonitor.AddSession(session1);
             sessionMonitor.AddSession(session2);
             sessionMonitor.Start();
-            Thread.Sleep(100);
+            Thread.Sleep(200);
             sessionMonitor.Stop();
 
             _pingSender.Received().SendPing();
