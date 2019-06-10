@@ -103,7 +103,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [TestCase(true, 1032, 1000, 0, 1000, SyncMode.Full)]
         [TestCase(true, 0, 1032, 0, 1032, SyncMode.Full)]
         [TestCase(false, 0, 1032, 0, 1032, SyncMode.Full)]
-        [TestCase(true, 4506571, 4506571, 4506571, 4506452, SyncMode.StateNodes)]
+        [TestCase(true, 4506571, 4506571, 4506571, 4506452, SyncMode.Full)]
         public void Selects_correctly(bool useFastSync, long bestRemote, long bestHeader, long bestBlock, long bestLocalState, SyncMode expected)
         {
             bool changedInvoked = false;
