@@ -89,6 +89,21 @@ namespace Nethermind.Stats.Model
             Port = port;
             Address = new IPEndPoint(IPAddress.Parse(host), port);
         }
+        
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(this, obj))
+            {
+                return true;
+            }
+
+            if (obj is Node item)
+            {
+                return IdHash.Equals(item.IdHash);
+            }
+
+            return false;
+        }
 
         public override int GetHashCode()
         {
