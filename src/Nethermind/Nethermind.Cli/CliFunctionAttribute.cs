@@ -24,6 +24,7 @@ namespace Nethermind.Cli
     {
         public string ObjectName { get; }
         public string FunctionName { get; }
+        public string Description { get; set; }
 
         public CliFunctionAttribute(string objectName, string functionName)
         {

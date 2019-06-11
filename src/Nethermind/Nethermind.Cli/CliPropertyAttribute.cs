@@ -24,6 +24,7 @@ namespace Nethermind.Cli
     {
         public string ObjectName { get; }
         public string PropertyName { get; }
+        public string Description { get; }
 
         public CliPropertyAttribute(string objectName, string propertyName)
         {

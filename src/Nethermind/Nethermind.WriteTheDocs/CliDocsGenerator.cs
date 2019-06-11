@@ -16,13 +16,73 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using Nethermind.Cli;
+using Nethermind.Cli.Modules;
+
 namespace Nethermind.WriteTheDocs
 {
     public class CliDocsGenerator : IDocsGenerator
     {
+        private static List<string> _assemblyNames = new List<string>
+        {
+            "Nethermind.Cli"
+        };
+
         public void Generate()
         {
-            throw new System.NotImplementedException();
+            StringBuilder descriptionsBuilder = new StringBuilder(@"CLI
+***
+
+");
+
+            List<Type> cliModules = new List<Type>();
+
+            foreach (string assemblyName in _assemblyNames)
+            {
+                Assembly assembly = Assembly.Load(new AssemblyName(assemblyName));
+                foreach (Type type in assembly.GetTypes().Where(t => typeof(CliModuleBase).IsAssignableFrom(t)).Where(t => !t.IsInterface && !t.IsAbstract))
+                {
+                    cliModules.Add(type);
+                }
+            }
+
+            foreach (Type cliModule in cliModules.OrderBy(t => t.Name))
+            {
+                CliModuleAttribute moduleAttribute = cliModule.GetCustomAttribute<CliModuleAttribute>();
+                descriptionsBuilder.Append($@"{moduleAttribute.ModuleName}
+{string.Empty.PadLeft(moduleAttribute.ModuleName.Length, '^')}
+
+");
+
+                var properties = cliModule.GetMethods(BindingFlags.Public | BindingFlags.Instance);
+                foreach (MethodInfo methodInfo in properties.OrderBy(p => p.Name))
+                {
+                    CliPropertyAttribute propertyAttribute = methodInfo.GetCustomAttribute<CliPropertyAttribute>();
+                    CliFunctionAttribute functionAttribute = methodInfo.GetCustomAttribute<CliFunctionAttribute>();
+
+                    if (propertyAttribute != null)
+                    {
+                        descriptionsBuilder.AppendLine($" - {propertyAttribute.ObjectName}.{propertyAttribute.PropertyName} - {propertyAttribute.Description}").AppendLine();
+                    }
+
+                    if (functionAttribute != null)
+                    {
+                        descriptionsBuilder.AppendLine($" - {functionAttribute.ObjectName}.{functionAttribute.FunctionName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))}) - {functionAttribute.Description}").AppendLine();
+                    }
+                }
+            }
+
+            string result = descriptionsBuilder.ToString();
+
+            Console.WriteLine(result);
+            File.WriteAllText("cli.rst", result);
+            File.WriteAllText("../../../docs/source/cli.rst", result);
         }
     }
 }

@@ -152,11 +152,11 @@ InitConfig
 
  - ChainSpecPath - description missing
 
- - DiscoveryEnabled - description missing
+ - DiscoveryEnabled - If 'false' then the node does not try to find nodes beyond the bootnodes configured.
 
  - DiscoveryPort - description missing
 
- - EnableUnsecuredDevWallet - description missing
+ - EnableUnsecuredDevWallet - If 'true' then it enables thewallet / key store in the application.
 
  - GenesisHash - description missing
 
@@ -166,23 +166,17 @@ InitConfig
 
  - IsMining - description missing
 
- - JsonRpcEnabled - description missing
+ - JsonRpcEnabled - Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'
 
- - JsonRpcEnabledModules - description missing
+ - JsonRpcEnabledModules - Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'
 
- - KeepDevWalletInMemory - description missing
+ - KeepDevWalletInMemory - If 'true' then any accounts created will be only valid during the session and deleted when application closes.
 
- - LogDirectory - description missing
+ - LogDirectory - In case of null, the path is set to [applicationDirectiory]\logs
 
  - LogFileName - description missing
 
  - LogPerfStatsOnDebug - description missing
-
- - MetricsEnabled - description missing
-
- - MetricsIntervalSeconds - description missing
-
- - MetricsPushGatewayUrl - description missing
 
  - ObsoletePendingTransactionInterval - description missing
 
@@ -192,7 +186,7 @@ InitConfig
 
  - PeerNotificationThreshold - description missing
 
- - ProcessingEnabled - description missing
+ - ProcessingEnabled - If 'false' then the node does not download/process new blocks..
 
  - RemovePendingTransactionInterval - description missing
 
@@ -204,9 +198,9 @@ InitConfig
 
  - StoreTraces - description missing
 
- - SynchronizationEnabled - description missing
+ - SynchronizationEnabled - If 'false' then the node does not download/process new blocks..
 
- - WebSocketsEnabled - description missing
+ - WebSocketsEnabled - Defines whether the WebSockets service is enabled on node startup at the 'HttpPort'
 
 JsonRpcConfig
 ^^^^^^^^^^^^^
@@ -409,9 +403,6 @@ Sample configuration (mainnet)
           "LogDirectory" : example
           "LogFileName" : example
           "LogPerfStatsOnDebug" : example
-          "MetricsEnabled" : example
-          "MetricsIntervalSeconds" : example
-          "MetricsPushGatewayUrl" : example
           "ObsoletePendingTransactionInterval" : example
           "P2PPort" : example
           "PeerManagerEnabled" : example

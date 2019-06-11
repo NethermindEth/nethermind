@@ -18,12 +18,13 @@
 
 namespace Nethermind.WriteTheDocs
 {
-    class Program
+    static class Program
     {
         static void Main(string[] args)
         {
-            ConfigDocsGenerator generator = new ConfigDocsGenerator();
-            generator.Generate();
+            new ConfigDocsGenerator().Generate();
+            new CliDocsGenerator().Generate();
+            new RpcDocsGenerator().Generate();
         }
     }
 }

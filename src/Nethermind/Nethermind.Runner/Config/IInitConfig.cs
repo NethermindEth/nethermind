@@ -58,6 +58,8 @@ namespace Nethermind.Runner.Config
         string StaticNodesPath { get; set; }
         bool RemovingLogFilesEnabled { get; set; }
         string LogFileName { get; set; }
+        
+        [ConfigItem(Description = "In case of null, the path is set to [applicationDirectiory]\\logs")]
         string LogDirectory { get; set; }
         bool LogPerfStatsOnDebug { get; set; }
         bool StoreTraces { get; set; }

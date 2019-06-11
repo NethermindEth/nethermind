@@ -22,6 +22,8 @@ ToC
    networks
    private_networks
    configuration
+   cli
+   jsonrpc
    platforms
    firewall_configuration
    hardware_requirements

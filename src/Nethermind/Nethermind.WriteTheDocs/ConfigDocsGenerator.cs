@@ -56,18 +56,19 @@ namespace Nethermind.WriteTheDocs
     [
 ");
 
-            List<Type> configTypes = new List<Type>();
+            List<(Type ConfigType, Type ConfigInterface)> configTypes = new List<(Type, Type)>();
 
             foreach (string assemblyName in _assemblyNames)
             {
                 Assembly assembly = Assembly.Load(new AssemblyName(assemblyName));
                 foreach (Type type in assembly.GetTypes().Where(t => typeof(IConfig).IsAssignableFrom(t)).Where(t => !t.IsInterface))
                 {
-                    configTypes.Add(type);
+                    var configInterface = type.GetInterfaces().Single(i => i != typeof(IConfig));
+                    configTypes.Add((type, configInterface));
                 }
             }
 
-            foreach (Type configType in configTypes.OrderBy(t => t.Name))
+            foreach ((Type configType, Type configInterface) in configTypes.OrderBy(t => t.ConfigType.Name))
             {
                 descriptionsBuilder.Append($@"{configType.Name}
 {string.Empty.PadLeft(configType.Name.Length, '^')}
@@ -81,8 +82,9 @@ namespace Nethermind.WriteTheDocs
                 var properties = configType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
                 foreach (PropertyInfo propertyInfo in properties.OrderBy(p => p.Name))
                 {
+                    PropertyInfo interfaceProperty = configInterface.GetProperty(propertyInfo.Name);
                     exampleBuilder.AppendLine($"          \"{propertyInfo.Name}\" : example");
-                    ConfigItemAttribute attribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
+                    ConfigItemAttribute attribute = interfaceProperty.GetCustomAttribute<ConfigItemAttribute>();
                     if (attribute == null)
                     {
                         descriptionsBuilder.AppendLine($" - {propertyInfo.Name} - description missing").AppendLine();
@@ -102,6 +104,7 @@ namespace Nethermind.WriteTheDocs
 
             Console.WriteLine(result);
             File.WriteAllText("configuration.rst", result);
+            File.WriteAllText("../../../docs/source/configuration.rst", result);
         }
     }
 }
