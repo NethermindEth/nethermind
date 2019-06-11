@@ -16,19 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
+using Nethermind.Config;
 
 namespace Nethermind.Blockchain
 {
-    [Todo(Improve.Refactor, "Rename to SyncConfig")]
+    [ConfigCategory(Description = "Configuration of the synchronization modes.")]
     public class SyncConfig : ISyncConfig
     {
         public bool FastBlocks { get; set; } = false;
-        public bool FastSync { get; set; } = false;
-        public bool DownloadBodiesInFastSync { get; set; }
-        public bool DownloadReceiptsInFastSync { get; set; }
-        public string PivotTotalDifficulty { get; set; } = null;
-        public string PivotNumber { get; set;} = null;
-        public string PivotHash { get; set;} = null;
+        public bool FastSync { get; set; }
+        public bool DownloadBodiesInFastSync { get; set; } = true;
+        public bool DownloadReceiptsInFastSync { get; set; } = true;
+        public string PivotTotalDifficulty { get; set; }
+        public string PivotNumber { get; set;}
+        public string PivotHash { get; set;}
     }
 }

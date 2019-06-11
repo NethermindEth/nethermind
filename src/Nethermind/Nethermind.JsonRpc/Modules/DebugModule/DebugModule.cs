@@ -20,12 +20,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
-using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -38,8 +35,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
     {
         private readonly IDebugBridge _debugBridge;
 
-        public DebugModule(IConfigProvider configProvider, ILogManager logManager, IDebugBridge debugBridge, IJsonSerializer jsonSerializer)
-            : base(configProvider, logManager, jsonSerializer)
+        public DebugModule(ILogManager logManager, IDebugBridge debugBridge)
+            : base(logManager)
         {
             _debugBridge = debugBridge;
         }

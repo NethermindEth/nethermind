@@ -46,7 +46,8 @@ namespace Nethermind.WriteTheDocs
             StringBuilder descriptionsBuilder = new StringBuilder(@"Configuration
 *************
 
-Use '/' as the path separator so the configs can be shared between all platforms supported (Linux, Windows, MacOS). 
+Use '/' as the path separator so the configs can be shared between all platforms supported (Linux, Windows, MacOS).
+'--config', '--baseDbPath', and '--log' options are available from the command line to select config file, base DB directory prefix and log level respectively. 
 
 ");
 

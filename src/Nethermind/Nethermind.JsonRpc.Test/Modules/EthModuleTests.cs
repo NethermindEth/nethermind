@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.GetAccount(Arg.Any<Address>(), Arg.Any<Keccak>()).Returns(Build.A.Account.WithBalance(1.Ether()).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
 
@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.Head.Returns(Build.A.BlockHeader.WithNumber(310000).TestObject);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_blockNumber");
 
@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.Head.Returns((BlockHeader) null);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
 
@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.Head.Returns((BlockHeader) null);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true));
 
@@ -102,7 +102,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.Head.Returns((BlockHeader) null);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestItem.KeccakA.Bytes.ToHexString(true), "0x01");
 
@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.BestKnown.Returns( 1000L);
             bridge.IsSyncing.Returns(true);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_syncing");
 
@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.Head.Returns(Build.A.BlockHeader.WithNumber(900).TestObject);
             bridge.BestKnown.Returns(1000L);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_syncing");
 
@@ -147,7 +147,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.GetFilterLogs(Arg.Any<int>()).Returns(new[] {new FilterLog(1, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakC, TestItem.KeccakD})});
             bridge.FilterExists(1).Returns(true);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getFilterLogs", "0x01");
 
@@ -160,7 +160,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<bool>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBlockByHash", TestItem.KeccakA.ToString(), "true");
 
@@ -175,7 +175,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBlockByNumber", "latest", "true");
 
@@ -190,7 +190,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             for (int i = 0; i < 2; i++)
             {
@@ -207,7 +207,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBlockByNumber", "'0x1234567890123456789012345678901234567890123456789012345678901234567890'", "true");
             Assert.AreEqual("{\"id\":\"0x43\",\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters\",\"data\":null}}", serialized);
@@ -221,7 +221,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBlockByNumber", "", "true");
 
@@ -239,7 +239,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             };
             bridge.GetReceipt(Arg.Any<Keccak>()).Returns(Build.A.Receipt.WithBloom(new Bloom(entries)).WithAllFieldsFilled.WithLogs(entries).TestObject);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
@@ -253,7 +253,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             bridge.GetReceipt(Arg.Any<Keccak>()).Returns((TxReceipt) null);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
@@ -269,7 +269,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.BestKnown.Returns(6178000L);
             bridge.Head.Returns(Build.A.BlockHeader.WithNumber(6170000L).TestObject);
 
-            IEthModule module = new EthModule(new EthereumJsonSerializer(), Substitute.For<IConfigProvider>(), NullLogManager.Instance, bridge);
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_syncing");
 

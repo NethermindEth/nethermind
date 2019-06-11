@@ -39,6 +39,8 @@ namespace Nethermind.WriteTheDocs
             StringBuilder descriptionsBuilder = new StringBuilder(@"CLI
 ***
 
+CLI access is not currently included in the Nethermind launcher but will be added very soon.
+
 ");
 
             List<Type> cliModules = new List<Type>();

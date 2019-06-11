@@ -16,10 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network;
 
@@ -31,12 +30,11 @@ namespace Nethermind.JsonRpc.Modules.Admin
         private readonly IStaticNodesManager _staticNodesManager;
         public override ModuleType ModuleType => ModuleType.Admin;
 
-        public AdminModule(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer,
-            IPeerManager peerManager, IStaticNodesManager staticNodesManager) :
-            base(configProvider, logManager, jsonSerializer)
+        public AdminModule(ILogManager logManager, IPeerManager peerManager, IStaticNodesManager staticNodesManager) :
+            base(logManager)
         {
-            _peerManager = peerManager;
-            _staticNodesManager = staticNodesManager;
+            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
+            _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         }
         
         public async Task<ResultWrapper<string>> admin_addPeer(string enode)

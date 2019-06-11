@@ -20,11 +20,19 @@ using Nethermind.Config;
 
 namespace Nethermind.Monitoring.Config
 {
+    [ConfigCategory(Description = "Configuration of the Prometheus + Grafana metrics publication. Documentation of the required setup is not yet ready (but the metrics do work and are used by the dev team)")]
     public interface IMetricsConfig : IConfig
     {
+        [ConfigItem(Description = "If 'true' then the node publishes various metrics to Prometheus at the given interval.", DefaultValue = "false")]
         bool MetricsEnabled { get; }
+        
+        [ConfigItem(Description = "Prometheus URL.", DefaultValue = "\"http://localhost:9091/metrics\"")]
         string MetricsPushGatewayUrl {get; }
+        
+        [ConfigItem(DefaultValue = "5")]
         int MetricsIntervalSeconds {get; }
+        
+        [ConfigItem(Description = "Name displayed in the Grafana dashboard", DefaultValue = "\"Nethermind\"")]
         string NodeName { get; }
     }
 }

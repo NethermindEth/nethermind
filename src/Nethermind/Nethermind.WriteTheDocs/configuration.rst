@@ -1,7 +1,8 @@
 Configuration
 *************
 
-Use '/' as the path separator so the configs can be shared between all platforms supported (Linux, Windows, MacOS). 
+Use '/' as the path separator so the configs can be shared between all platforms supported (Linux, Windows, MacOS).
+'--config', '--baseDbPath', and '--log' options are available from the command line to select config file, base DB directory prefix and log level respectively. 
 
 DbConfig
 ^^^^^^^^
@@ -121,14 +122,24 @@ EthStatsConfig
 ^^^^^^^^^^^^^^
 
  Contact
+   Node owner contact details displayed on the ethstats page.
+   default value: null
 
  Enabled
+   If 'true' then EthStats publishing gets enabled.
+   default value: false
 
  Name
+   Node name displayed on the given ethstats server.
+   default value: null
 
  Secret
+   Password for publishing to a given ethstats server.
+   default value: null
 
  Server
+   EthStats server wss://hostname:port/api/
+   default value: null
 
 HiveConfig
 ^^^^^^^^^^
@@ -195,7 +206,7 @@ InitConfig
    default value: false
 
  JsonRpcEnabledModules
-   Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'
+   Defines which RPC modules should be enabled.
    default value: "Clique,Db,Debug,Eth,Net,Trace,TxPool,Web3"
 
  KeepDevWalletInMemory
@@ -246,6 +257,8 @@ JsonRpcConfig
 ^^^^^^^^^^^^^
 
  EnabledModules
+   To be reviewed / duplicate with InitConfig - InitConfig one is used.
+   default value: null
 
 KeyStoreConfig
 ^^^^^^^^^^^^^^
@@ -279,68 +292,120 @@ KeyStoreConfig
 MetricsConfig
 ^^^^^^^^^^^^^
 
+Configuration of the Prometheus + Grafana metrics publication. Documentation of the required setup is not yet ready (but the metrics do work and are used by the dev team)
+
  MetricsEnabled
+   If 'true' then the node publishes various metrics to Prometheus at the given interval.
+   default value: false
 
  MetricsIntervalSeconds
+   
+   default value: 5
 
  MetricsPushGatewayUrl
+   Prometheus URL.
+   default value: "http://localhost:9091/metrics"
 
  NodeName
+   Name displayed in the Grafana dashboard
+   default value: "Nethermind"
 
 NetworkConfig
 ^^^^^^^^^^^^^
 
  ActivePeersMaxCount
+   Max number of connected peers.
+   default value: 25
 
  CandidatePeerCountCleanupThreshold
-
- DbBasePath
+   
+   default value: 11000
 
  IsPeersPersistenceOn
+   If 'false' then discovered node list will be cleared on each restart.
+   default value: true
 
  MaxCandidatePeerCount
+   
+   default value: 10000
 
  MaxPersistedPeerCount
+   
+   default value: 2000
 
  P2PPingInterval
+   
+   default value: 10000
 
  P2PPingRetryCount
+   
+   default value: 3
 
  PeersPersistenceInterval
+   
+   default value: 5000
 
  PeersUpdateInterval
+   
+   default value: 100
 
  PersistedPeerCountCleanupThreshold
+   
+   default value: 2200
 
  StaticPeers
+   List of nodes for which we will keep the connection on. Static nodes are not counted to the max number of nodes limit.
+   default value: null
 
  TrustedPeers
+   Currently ignored.
+   default value: null
 
 SyncConfig
 ^^^^^^^^^^
 
  DownloadBodiesInFastSync
+   If set to 'true' then the block bodies will be downloaded in the Fast Sync mode.
+   default value: true
 
  DownloadReceiptsInFastSync
+   If set to 'true' then the receipts will be downloaded in the Fast Sync mode.
+   default value: true
 
  FastBlocks
+   If set to 'true' then in the Fast Sync mode blocks will be first downloaded from the provided PivotNumber downwards.
+   default value: false
 
  FastSync
+   If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.
+   default value: false
 
  PivotHash
+   Hash of the pivot block for the Fast Blocks sync.
+   default value: null
 
  PivotNumber
+   Number of the pivot block for the Fast Blocks sync.
+   default value: null
 
  PivotTotalDifficulty
+   Total Difficulty of the pivot block for the Fast Blocks sync.
+   default value: null
 
 TxPoolConfig
 ^^^^^^^^^^^^
 
  ObsoletePendingTransactionInterval
+   
+   default value: 15
 
  PeerNotificationThreshold
+   
+   default value: 5
 
  RemovePendingTransactionInterval
+   
+   default value: 600
 
 Sample configuration (mainnet)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -415,11 +480,11 @@ Sample configuration (mainnet)
       {
         "ConfigModule": "EthStatsConfig"
         "ConfigItems": {
-          "Contact" : [MISSING_DOCS],
-          "Enabled" : [MISSING_DOCS],
-          "Name" : [MISSING_DOCS],
-          "Secret" : [MISSING_DOCS],
-          "Server" : [MISSING_DOCS],
+          "Contact" : null,
+          "Enabled" : false,
+          "Name" : null,
+          "Secret" : null,
+          "Server" : null,
         }
       },
       {
@@ -461,7 +526,7 @@ Sample configuration (mainnet)
       {
         "ConfigModule": "JsonRpcConfig"
         "ConfigItems": {
-          "EnabledModules" : [MISSING_DOCS],
+          "EnabledModules" : null,
         }
       },
       {
@@ -485,48 +550,47 @@ Sample configuration (mainnet)
       {
         "ConfigModule": "MetricsConfig"
         "ConfigItems": {
-          "MetricsEnabled" : [MISSING_DOCS],
-          "MetricsIntervalSeconds" : [MISSING_DOCS],
-          "MetricsPushGatewayUrl" : [MISSING_DOCS],
-          "NodeName" : [MISSING_DOCS],
+          "MetricsEnabled" : false,
+          "MetricsIntervalSeconds" : 5,
+          "MetricsPushGatewayUrl" : "http://localhost:9091/metrics",
+          "NodeName" : "Nethermind",
         }
       },
       {
         "ConfigModule": "NetworkConfig"
         "ConfigItems": {
-          "ActivePeersMaxCount" : [MISSING_DOCS],
-          "CandidatePeerCountCleanupThreshold" : [MISSING_DOCS],
-          "DbBasePath" : [MISSING_DOCS],
-          "IsPeersPersistenceOn" : [MISSING_DOCS],
-          "MaxCandidatePeerCount" : [MISSING_DOCS],
-          "MaxPersistedPeerCount" : [MISSING_DOCS],
-          "P2PPingInterval" : [MISSING_DOCS],
-          "P2PPingRetryCount" : [MISSING_DOCS],
-          "PeersPersistenceInterval" : [MISSING_DOCS],
-          "PeersUpdateInterval" : [MISSING_DOCS],
-          "PersistedPeerCountCleanupThreshold" : [MISSING_DOCS],
-          "StaticPeers" : [MISSING_DOCS],
-          "TrustedPeers" : [MISSING_DOCS],
+          "ActivePeersMaxCount" : 25,
+          "CandidatePeerCountCleanupThreshold" : 11000,
+          "IsPeersPersistenceOn" : true,
+          "MaxCandidatePeerCount" : 10000,
+          "MaxPersistedPeerCount" : 2000,
+          "P2PPingInterval" : 10000,
+          "P2PPingRetryCount" : 3,
+          "PeersPersistenceInterval" : 5000,
+          "PeersUpdateInterval" : 100,
+          "PersistedPeerCountCleanupThreshold" : 2200,
+          "StaticPeers" : null,
+          "TrustedPeers" : null,
         }
       },
       {
         "ConfigModule": "SyncConfig"
         "ConfigItems": {
-          "DownloadBodiesInFastSync" : [MISSING_DOCS],
-          "DownloadReceiptsInFastSync" : [MISSING_DOCS],
-          "FastBlocks" : [MISSING_DOCS],
-          "FastSync" : [MISSING_DOCS],
-          "PivotHash" : [MISSING_DOCS],
-          "PivotNumber" : [MISSING_DOCS],
-          "PivotTotalDifficulty" : [MISSING_DOCS],
+          "DownloadBodiesInFastSync" : true,
+          "DownloadReceiptsInFastSync" : true,
+          "FastBlocks" : false,
+          "FastSync" : false,
+          "PivotHash" : null,
+          "PivotNumber" : null,
+          "PivotTotalDifficulty" : null,
         }
       },
       {
         "ConfigModule": "TxPoolConfig"
         "ConfigItems": {
-          "ObsoletePendingTransactionInterval" : [MISSING_DOCS],
-          "PeerNotificationThreshold" : [MISSING_DOCS],
-          "RemovePendingTransactionInterval" : [MISSING_DOCS],
+          "ObsoletePendingTransactionInterval" : 15,
+          "PeerNotificationThreshold" : 5,
+          "RemovePendingTransactionInterval" : 600,
         }
       },
     ]

@@ -21,10 +21,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Nethermind.Blockchain;
-using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -36,8 +33,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
     {
         private readonly ITracer _tracer;
 
-        public TraceModule(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer, ITracer tracer)
-            : base(configProvider, logManager, jsonSerializer)
+        public TraceModule(ILogManager logManager, ITracer tracer)
+            : base(logManager)
         {
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         }
@@ -104,10 +101,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 new ParityTraceActionConverter(),
                 new ParityTraceResultConverter(),
             };
-        }
-
-        public void Initialize()
-        {
         }
     }
 }

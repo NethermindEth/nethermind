@@ -28,14 +28,10 @@ namespace Nethermind.JsonRpc.Modules
     public abstract class ModuleBase : IModule
     {
         protected readonly ILogger Logger;
-        protected readonly IJsonRpcConfig JsonRpcConfig;
-        protected readonly IJsonSerializer JsonSerializer;
 
-        protected ModuleBase(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer)
+        protected ModuleBase(ILogManager logManager)
         {
-            JsonSerializer = jsonSerializer;
             Logger = logManager.GetClassLogger();
-            JsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
         }
         
         public abstract ModuleType ModuleType { get; }

@@ -25,6 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
 {
     public interface IPersonalModule : IModule
     {   
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<Address> personal_importRawKey(byte keyData, string passphrase);
         ResultWrapper<Address[]> personal_listAccounts();
         
@@ -34,10 +35,13 @@ namespace Nethermind.JsonRpc.Modules.Personal
         
         ResultWrapper<Address> personal_newAccount(string passphrase);
         
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<Keccak> personal_sendTransaction(TransactionForRpc transaction, string passphrase);
      
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature);
         
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<byte[]> personal_sign(byte[] message, Address address, string passphrase = null);
     }
 }

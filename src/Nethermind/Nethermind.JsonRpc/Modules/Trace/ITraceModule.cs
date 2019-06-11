@@ -24,8 +24,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public interface ITraceModule : IModule
     {
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<ParityLikeTxTrace> trace_call(TransactionForRpc message, string[] traceTypes, BlockParameter numberOrTag);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<ParityLikeTxTrace[]> trace_callMany((TransactionForRpc message, string[] traceTypes, BlockParameter numberOrTag)[] calls);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<ParityLikeTxTrace> trace_rawTransaction(byte[] data, string[] traceTypes);
         ResultWrapper<ParityLikeTxTrace> trace_replayTransaction(Keccak txHash, string[] traceTypes);
         ResultWrapper<ParityLikeTxTrace[]> trace_replayBlockTransactions(BlockParameter numberOrTag, string[] traceTypes);

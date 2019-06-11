@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
         private static JsonSerializer BuildSerializer<T>()
         {
-            TraceModule module = new TraceModule(Substitute.For<IConfigProvider>(), NullLogManager.Instance, Substitute.For<IJsonSerializer>(), Substitute.For<ITracer>());
+            TraceModule module = new TraceModule(NullLogManager.Instance, Substitute.For<ITracer>());
             JsonSerializer serializer = new JsonSerializer();
             IReadOnlyCollection<JsonConverter> converters = module.GetConverters();
             foreach (JsonConverter converter in converters)

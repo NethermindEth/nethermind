@@ -134,7 +134,7 @@ namespace Nethermind.Runner
             if (initParams.JsonRpcEnabled)
             {
                 var serializer = new EthereumJsonSerializer();
-                rpcModuleProvider.Register<IWeb3Module>(new Web3Module(configProvider, logManager, serializer));
+                rpcModuleProvider.Register<IWeb3Module>(new Web3Module(logManager));
                 var jsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
                 var jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, serializer, logManager);
                 webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, serializer));

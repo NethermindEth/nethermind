@@ -31,7 +31,7 @@ namespace Nethermind.Runner.Config
         [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'", DefaultValue = "false")]
         bool JsonRpcEnabled { get; set; }
         
-        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'", DefaultValue = "\"Clique,Db,Debug,Eth,Net,Trace,TxPool,Web3\"")]
+        [ConfigItem(Description = "Defines which RPC modules should be enabled.", DefaultValue = "\"Clique,Db,Debug,Eth,Net,Trace,TxPool,Web3\"")]
         string[] JsonRpcEnabledModules { get; set; }
         
         [ConfigItem(Description = "Defines whether the WebSockets service is enabled on node startup at the 'HttpPort'", DefaultValue = "false")]

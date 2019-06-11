@@ -64,8 +64,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<IEnumerable<object>> eth_getFilterChanges(BigInteger filterId);
         ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(BigInteger filterId);
         ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<IEnumerable<byte[]>> eth_getWork();
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<bool?> eth_submitWork(byte[] nonce, Keccak headerPowHash, byte[] mixDigest);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<bool?> eth_submitHashrate(string hashRate, string id);
     }
 }

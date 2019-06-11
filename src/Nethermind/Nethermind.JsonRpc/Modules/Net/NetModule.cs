@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Numerics;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -27,9 +28,9 @@ namespace Nethermind.JsonRpc.Modules.Net
     {
         private readonly INetBridge _netBridge;
 
-        public NetModule(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer, INetBridge netBridge) : base(configProvider, logManager, jsonSerializer)
+        public NetModule(ILogManager logManager, INetBridge netBridge) : base(logManager)
         {
-            _netBridge = netBridge;
+            _netBridge = netBridge ?? throw new ArgumentNullException(nameof(netBridge));
         }
 
         public ResultWrapper<string> net_localEnode()

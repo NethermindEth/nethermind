@@ -32,12 +32,26 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp);
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BigInteger number);
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<State> debug_dumpBlock(BlockParameter blockParameter);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<GcStats> debug_gcStats();
         ResultWrapper<byte[]> debug_getBlockRlp(BlockParameter blockParameter);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
+
         ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
+
         ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
         ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key);
         ResultWrapper<string> debug_getConfigValue(string category, string name);

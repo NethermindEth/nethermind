@@ -1,20 +1,23 @@
 JSON RPC
 ********
 
+JSON RPC is available via HTTP and WS (needs to be explicitly switched on in the InitConfig).
+Some of the methods listed below are not implemented by Nethermind (they are marked).
+
 admin
 ^^^^^
 
  - admin_addPeer(enode)
 
- - admin_dataDir()
+ - [NOT IMPLEMENTED]admin_dataDir()
 
- - admin_nodeInfo()
+ - [NOT IMPLEMENTED]admin_nodeInfo()
 
  - admin_peers()
 
  - admin_removePeer(enode)
 
- - admin_setSolc()
+ - [NOT IMPLEMENTED]admin_setSolc()
 
 clique
 ^^^^^^
@@ -40,9 +43,9 @@ clique
 debug
 ^^^^^
 
- - debug_dumpBlock(blockParameter)
+ - [NOT IMPLEMENTED]debug_dumpBlock(blockParameter)
 
- - debug_gcStats()
+ - [NOT IMPLEMENTED]debug_gcStats()
 
  - debug_getBlockRlp(blockParameter)
 
@@ -50,11 +53,11 @@ debug
 
  - debug_getFromDb(dbName, key)
 
- - debug_memStats(blockParameter)
+ - [NOT IMPLEMENTED]debug_memStats(blockParameter)
 
- - debug_seedHash(blockParameter)
+ - [NOT IMPLEMENTED]debug_seedHash(blockParameter)
 
- - debug_setHead(blockParameter)
+ - [NOT IMPLEMENTED]debug_setHead(blockParameter)
 
  - debug_traceBlock(blockRlp)
 
@@ -62,7 +65,7 @@ debug
 
  - debug_traceBlockByNumber(number)
 
- - debug_traceBlockFromFile(fileName)
+ - [NOT IMPLEMENTED]debug_traceBlockFromFile(fileName)
 
  - debug_traceTransaction(transactionHash)
 
@@ -123,7 +126,7 @@ eth
 
  - eth_getUncleCountByBlockNumber(blockParameter)
 
- - eth_getWork()
+ - [NOT IMPLEMENTED]eth_getWork()
 
  - eth_hashrate()
 
@@ -145,9 +148,9 @@ eth
 
  - eth_snapshot()
 
- - eth_submitHashrate(hashRate, id)
+ - [NOT IMPLEMENTED]eth_submitHashrate(hashRate, id)
 
- - eth_submitWork(nonce, headerPowHash, mixDigest)
+ - [NOT IMPLEMENTED]eth_submitWork(nonce, headerPowHash, mixDigest)
 
  - eth_syncing()
 
@@ -169,9 +172,9 @@ net
 personal
 ^^^^^^^^
 
- - personal_ecRecover(message, signature)
+ - [NOT IMPLEMENTED]personal_ecRecover(message, signature)
 
- - personal_importRawKey(keyData, passphrase)
+ - [NOT IMPLEMENTED]personal_importRawKey(keyData, passphrase)
 
  - personal_listAccounts()
 
@@ -179,20 +182,20 @@ personal
 
  - personal_newAccount(passphrase)
 
- - personal_sendTransaction(transaction, passphrase)
+ - [NOT IMPLEMENTED]personal_sendTransaction(transaction, passphrase)
 
- - personal_sign(message, address, passphrase)
+ - [NOT IMPLEMENTED]personal_sign(message, address, passphrase)
 
  - personal_unlockAccount(address, passphrase)
 
 trace
 ^^^^^
 
- - trace_call(message, traceTypes, numberOrTag)
+ - [NOT IMPLEMENTED]trace_call(message, traceTypes, numberOrTag)
 
- - trace_callMany(calls)
+ - [NOT IMPLEMENTED]trace_callMany(calls)
 
- - trace_rawTransaction(data, traceTypes)
+ - [NOT IMPLEMENTED]trace_rawTransaction(data, traceTypes)
 
  - trace_replayBlockTransactions(numberOrTag, traceTypes)
 

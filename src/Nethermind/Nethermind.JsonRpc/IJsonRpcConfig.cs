@@ -24,6 +24,7 @@ namespace Nethermind.JsonRpc
 {
     public interface IJsonRpcConfig : IConfig
     {
+        [ConfigItem(Description = "To be reviewed / duplicate with InitConfig - InitConfig one is used.", DefaultValue = "null")]
         IEnumerable<ModuleType> EnabledModules { get; set; }
     }
 }

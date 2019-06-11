@@ -16,8 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
-using Nethermind.Core;
+using System;
 using Nethermind.Facade;
 using Nethermind.Logging;
 
@@ -27,10 +26,9 @@ namespace Nethermind.JsonRpc.Modules.TxPool
     {
         private readonly IBlockchainBridge _blockchainBridge;        
 
-        public TxPoolModule(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer,
-            IBlockchainBridge blockchainBridge) : base(configProvider, logManager, jsonSerializer)
+        public TxPoolModule(ILogManager logManager, IBlockchainBridge blockchainBridge) : base(logManager)
         {
-            _blockchainBridge = blockchainBridge;
+            _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
         }
 
         public ResultWrapper<TxPoolStatus> txpool_status()

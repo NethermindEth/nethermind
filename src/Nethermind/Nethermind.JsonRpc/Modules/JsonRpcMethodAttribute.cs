@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,19 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
+using System;
 
-namespace Nethermind.Blockchain.TxPools
+namespace Nethermind.JsonRpc.Modules
 {
-    public interface ITxPoolConfig : IConfig
+    public class JsonRpcMethodAttribute : Attribute
     {
-        [ConfigItem(DefaultValue = "15")]
-        int ObsoletePendingTransactionInterval { get; set; }
-        
-        [ConfigItem(DefaultValue = "600")]
-        int RemovePendingTransactionInterval { get; set; }
-        
-        [ConfigItem(DefaultValue = "5")]
-        int PeerNotificationThreshold { get; set; }
+        public string Description { get; set; }
+
+        public bool IsImplemented { get; set; } = true;
     }
 }

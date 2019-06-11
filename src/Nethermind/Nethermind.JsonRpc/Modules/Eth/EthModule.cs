@@ -20,11 +20,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Security;
 using System.Text;
 using System.Threading;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -46,7 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private ReaderWriterLockSlim _readerWriterLockSlim = new ReaderWriterLockSlim();
 
-        public EthModule(IJsonSerializer jsonSerializer, IConfigProvider configProvider, ILogManager logManager, IBlockchainBridge blockchainBridge) : base(configProvider, logManager, jsonSerializer)
+        public EthModule(ILogManager logManager, IBlockchainBridge blockchainBridge) : base(logManager)
         {
             _blockchainBridge = blockchainBridge;
         }
@@ -763,7 +761,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<byte[]>> eth_getWork()
         {
-            return ResultWrapper<IEnumerable<byte[]>>.Fail("eth_getWork not supported");
+            return ResultWrapper<IEnumerable<byte[]>>.Fail("eth_getWork not supported", ErrorType.MethodNotFound);
         }
 
         public ResultWrapper<bool?> eth_submitWork(byte[] nonce, Keccak headerPowHash, byte[] mixDigest)

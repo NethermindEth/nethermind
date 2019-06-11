@@ -39,6 +39,9 @@ namespace Nethermind.WriteTheDocs
             StringBuilder descriptionsBuilder = new StringBuilder(@"JSON RPC
 ********
 
+JSON RPC is available via HTTP and WS (needs to be explicitly switched on in the InitConfig).
+Some of the methods listed below are not implemented by Nethermind (they are marked).
+
 ");
 
             List<Type> jsonRpcModules = new List<Type>();
@@ -63,7 +66,9 @@ namespace Nethermind.WriteTheDocs
                 var properties = jsonRpcModule.GetMethods(BindingFlags.Public | BindingFlags.Instance);
                 foreach (MethodInfo methodInfo in properties.OrderBy(p => p.Name))
                 {
-                    descriptionsBuilder.AppendLine($" - {methodInfo.Name}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})").AppendLine();
+                    JsonRpcMethodAttribute attribute = methodInfo.GetCustomAttribute<JsonRpcMethodAttribute>();
+                    string notImplementedString = attribute == null || attribute.IsImplemented ? string.Empty : "[NOT IMPLEMENTED]";
+                    descriptionsBuilder.AppendLine($" - {notImplementedString}{methodInfo.Name}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})").AppendLine();
                 }
             }
 

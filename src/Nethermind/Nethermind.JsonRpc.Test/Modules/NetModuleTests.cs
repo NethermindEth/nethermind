@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [SetUp]
         public void Initialize()
         {
-            _netModule = new NetModule(new ConfigProvider(), NullLogManager.Instance, new EthereumJsonSerializer(), Substitute.For<INetBridge>());
+            _netModule = new NetModule(NullLogManager.Instance, Substitute.For<INetBridge>());
         }
 
         [Test]

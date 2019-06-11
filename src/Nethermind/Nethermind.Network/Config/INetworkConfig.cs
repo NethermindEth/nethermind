@@ -22,69 +22,40 @@ namespace Nethermind.Network.Config
 {
     public interface INetworkConfig : IConfig
     {
-        /// <summary>
-        /// List of trusted nodes - we connect to them and set predefined high reputation
-        /// </summary>
+        [ConfigItem(Description = "Currently ignored.", DefaultValue = "null")]
         string TrustedPeers { get; set; }
         
-        /// <summary>
-        /// List of static nodes - we try to keep connection on all the time
-        /// </summary>
+        [ConfigItem(Description = "List of nodes for which we will keep the connection on. Static nodes are not counted to the max number of nodes limit.", DefaultValue = "null")]
         string StaticPeers { get; set; }
-
-        /// <summary>
-        /// Base path for discovery db
-        /// </summary>
-        string DbBasePath { get; set; } // TODO: move from Network config
-
-        /// <summary>
-        /// On/Off for peers
-        /// </summary>
+        
+        [ConfigItem(Description = "If 'false' then discovered node list will be cleared on each restart.", DefaultValue = "true")]
         bool IsPeersPersistenceOn { get; set; }
 
-        /// <summary>
-        /// Max amount of active peers on the tcp level 
-        /// </summary>
+        [ConfigItem(Description = "Max number of connected peers.", DefaultValue = "25")]
         int ActivePeersMaxCount { get; }
 
-        /// <summary>
-        /// Time between persisting peers in milliseconds
-        /// </summary>
+        [ConfigItem(DefaultValue = "5000")]
         int PeersPersistenceInterval { get; set; }
         
-        /// <summary>
-        /// Time between persisting peers in milliseconds
-        /// </summary>
+        [ConfigItem(DefaultValue = "100")]
         int PeersUpdateInterval { get; set; }
 
-        /// <summary>
-        /// Time between sending p2p ping
-        /// </summary>
+        [ConfigItem(DefaultValue = "10000")]
         int P2PPingInterval { get; }
 
-        /// <summary>
-        /// Number of ping missed for disconnection
-        /// </summary>
+        [ConfigItem(DefaultValue = "3")]
         int P2PPingRetryCount { get; }
 
-        /// <summary>
-        /// Max Persisted Peer count
-        /// </summary>
+        [ConfigItem(DefaultValue = "2000")]
         int MaxPersistedPeerCount { get; }
         
-        /// <summary>
-        /// Persisted Peer Count Cleanup Threshold
-        /// </summary>
+        [ConfigItem(DefaultValue = "2200")]
         int PersistedPeerCountCleanupThreshold { get; set; }
         
-        /// <summary>
-        /// Max Candidate Peer count
-        /// </summary>
+        [ConfigItem(DefaultValue = "10000")]
         int MaxCandidatePeerCount { get; set; }
         
-        /// <summary>
-        /// Candidate Peer Count Cleanup Threshold
-        /// </summary>
+        [ConfigItem(DefaultValue = "11000")]
         int CandidatePeerCountCleanupThreshold { get; set; }
     }
 }

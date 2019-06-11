@@ -25,8 +25,14 @@ namespace Nethermind.JsonRpc.Modules.Admin
         Task<ResultWrapper<string>> admin_addPeer(string enode);
         Task<ResultWrapper<string>> admin_removePeer(string enode);
         ResultWrapper<PeerInfo[]> admin_peers();
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<PeerInfo[]> admin_nodeInfo();
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<PeerInfo[]> admin_dataDir();
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<PeerInfo[]> admin_setSolc();
     }
 }

@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -25,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Web3
 {
     public class Web3Module : ModuleBase, IWeb3Module
     {
-        public Web3Module(IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configProvider, logManager, jsonSerializer)
+        public Web3Module(ILogManager logManager) : base(logManager)
         {
         }
 

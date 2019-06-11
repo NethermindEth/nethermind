@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITracer tracer = Substitute.For<ITracer>();
             tracer.ParityTrace(TestItem.KeccakC, Arg.Any<ParityTraceTypes>()).Returns(result);
             
-            ITraceModule module = new TraceModule(Substitute.For<IConfigProvider>(), NullLogManager.Instance, new UnforgivingJsonSerializer(), tracer);
+            ITraceModule module = new TraceModule(NullLogManager.Instance, tracer);
             
             string serialized = RpcTest.TestSerializedRequest(module, "trace_replayTransaction", TestItem.KeccakC.ToString(true), "[\"stateDiff\", \"trace\"]");
             

@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Personal_list_accounts()
         {
-            IPersonalModule module = new PersonalModule(_bridge, Substitute.For<IConfigProvider>(), NullLogManager.Instance, new EthereumJsonSerializer());
+            IPersonalModule module = new PersonalModule(_bridge, NullLogManager.Instance);
             string serialized = RpcTest.TestSerializedRequest(module, "personal_listAccounts");
             string expectedAccounts = string.Join(',', _bridge.ListAccounts().Select(a => $"\"{a.ToString()}\""));
             Assert.AreEqual($"{{\"id\":\"0x43\",\"jsonrpc\":\"2.0\",\"result\":[{expectedAccounts}]}}", serialized);
@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             int accountsBefore = _bridge.ListAccounts().Length;
             string passphrase = "testPass";
-            IPersonalModule module = new PersonalModule(_bridge, Substitute.For<IConfigProvider>(), NullLogManager.Instance, new EthereumJsonSerializer());
+            IPersonalModule module = new PersonalModule(_bridge, NullLogManager.Instance);
             string serialized = RpcTest.TestSerializedRequest(module, "personal_newAccount", passphrase);
             var accountsNow = _bridge.ListAccounts();
             Assert.AreEqual(accountsBefore + 1, accountsNow.Length, "length");

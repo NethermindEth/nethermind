@@ -256,35 +256,35 @@ namespace Nethermind.Runner.Runners
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             var debugBridge = new DebugBridge(_configProvider, debugDbProvider, tracer, debugChain.Processor);
 
-            EthModule module = new EthModule(_jsonSerializer, _configProvider, _logManager, blockchainBridge);
+            EthModule module = new EthModule(_logManager, blockchainBridge);
             _rpcModuleProvider.Register<IEthModule>(module);
 
-            DebugModule debugModule = new DebugModule(_configProvider, _logManager, debugBridge, _jsonSerializer);
+            DebugModule debugModule = new DebugModule(_logManager, debugBridge);
             _rpcModuleProvider.Register<IDebugModule>(debugModule);
 
             if (_sealValidator is CliqueSealValidator)
             {
-                CliqueModule cliqueModule = new CliqueModule(_configProvider, _logManager, _jsonSerializer, new CliqueBridge(_blockProducer as ICliqueBlockProducer, _snapshotManager, _blockTree));
+                CliqueModule cliqueModule = new CliqueModule(_logManager, new CliqueBridge(_blockProducer as ICliqueBlockProducer, _snapshotManager, _blockTree));
                 _rpcModuleProvider.Register<ICliqueModule>(cliqueModule);
             }
 
             if (_initConfig.EnableUnsecuredDevWallet)
             {
                 PersonalBridge personalBridge = new PersonalBridge(_wallet);
-                PersonalModule personalModule = new PersonalModule(personalBridge, _configProvider, _logManager, _jsonSerializer);
+                PersonalModule personalModule = new PersonalModule(personalBridge, _logManager);
                 _rpcModuleProvider.Register<IPersonalModule>(personalModule);
             }
 
-            AdminModule adminModule = new AdminModule(_configProvider, _logManager, _jsonSerializer, _peerManager, _staticNodesManager);
+            AdminModule adminModule = new AdminModule(_logManager, _peerManager, _staticNodesManager);
             _rpcModuleProvider.Register<IAdminModule>(adminModule);
 
-            TxPoolModule txPoolModule = new TxPoolModule(_configProvider, _logManager, _jsonSerializer, blockchainBridge);
+            TxPoolModule txPoolModule = new TxPoolModule(_logManager, blockchainBridge);
             _rpcModuleProvider.Register<ITxPoolModule>(txPoolModule);
 
-            NetModule netModule = new NetModule(_configProvider, _logManager, _jsonSerializer, new NetBridge(_enode, _syncServer, _peerManager));
+            NetModule netModule = new NetModule(_logManager, new NetBridge(_enode, _syncServer, _peerManager));
             _rpcModuleProvider.Register<INetModule>(netModule);
 
-            TraceModule traceModule = new TraceModule(_configProvider, _logManager, _jsonSerializer, tracer);
+            TraceModule traceModule = new TraceModule(_logManager, tracer);
             _rpcModuleProvider.Register<ITraceModule>(traceModule);
         }
 

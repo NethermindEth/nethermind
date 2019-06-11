@@ -18,7 +18,6 @@
 
 using System;
 using System.Security;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade;
@@ -31,7 +30,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
     {
         private readonly IPersonalBridge _bridge;
 
-        public PersonalModule(IPersonalBridge bridge, IConfigProvider configProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configProvider, logManager, jsonSerializer)
+        public PersonalModule(IPersonalBridge bridge, ILogManager logManager) : base(logManager)
         {
             _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         }
