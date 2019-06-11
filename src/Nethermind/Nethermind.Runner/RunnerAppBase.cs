@@ -72,10 +72,6 @@ namespace Nethermind.Runner
             {
                 var configProvider = buildConfigProvider();
                 var initConfig = configProvider.GetConfig<IInitConfig>();
-                if (initConfig.RemovingLogFilesEnabled)
-                {
-                    RemoveLogFiles(initConfig.LogDirectory);
-                }
 
                 Logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
                 LogMemoryConfiguration();
@@ -182,32 +178,6 @@ namespace Nethermind.Runner
             _jsonRpcRunner?.StopAsync(); // do not await
             var ethereumTask = _ethereumRunner?.StopAsync() ?? Task.CompletedTask;
             await ethereumTask;
-        }
-
-        private void RemoveLogFiles(string logDirectory)
-        {
-            Console.WriteLine("Removing log files.");
-
-            var logsDir = string.IsNullOrEmpty(logDirectory)
-                ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs")
-                : logDirectory;
-            if (!Directory.Exists(logsDir))
-            {
-                return;
-            }
-
-            var files = Directory.GetFiles(logsDir);
-            foreach (string file in files)
-            {
-                try
-                {
-                    File.Delete(file);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"Error removing log file: {file}, exp: {e}");
-                }
-            }
         }
     }
 }

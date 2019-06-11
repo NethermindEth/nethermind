@@ -46,6 +46,8 @@ namespace Nethermind.WriteTheDocs
             StringBuilder descriptionsBuilder = new StringBuilder(@"Configuration
 *************
 
+Use '/' as the path separator so the configs can be shared between all platforms supported (Linux, Windows, MacOS). 
+
 ");
 
             StringBuilder exampleBuilder = new StringBuilder(@"Sample configuration (mainnet)
@@ -97,7 +99,7 @@ namespace Nethermind.WriteTheDocs
                     ConfigItemAttribute attribute = interfaceProperty.GetCustomAttribute<ConfigItemAttribute>();
                     string defaultValue = attribute == null ? "[MISSING_DOCS]" : attribute.DefaultValue;
                     
-                    exampleBuilder.AppendLine($"          \"{propertyInfo.Name}\" : {defaultValue}");
+                    exampleBuilder.AppendLine($"          \"{propertyInfo.Name}\" : {defaultValue},");
                     
                     if (attribute == null)
                     {
@@ -112,6 +114,11 @@ namespace Nethermind.WriteTheDocs
                         .AppendLine();
                 }
 
+                if (exampleBuilder.Length > 0 && exampleBuilder[exampleBuilder.Length - 1] == ',')
+                {
+                    exampleBuilder.Remove(exampleBuilder.Length - 1, 1);
+                }
+                
                 exampleBuilder.AppendLine("        }");
                 exampleBuilder.AppendLine("      },");
             }

@@ -1,6 +1,8 @@
 Configuration
 *************
 
+Use '/' as the path separator so the configs can be shared between all platforms supported (Linux, Windows, MacOS). 
+
 DbConfig
 ^^^^^^^^
 
@@ -149,28 +151,44 @@ InitConfig
 ^^^^^^^^^^
 
  BaseDbPath
+   Base directoy path for all the nethermind databases.
+   default value: "db"
 
  ChainSpecFormat
+   Format of the chain definition file - genesis (Geth style - not tested recently / may fail) or chainspec (Parity style).
+   default value: "chainspec"
 
  ChainSpecPath
+   Path to the chain definition file (Parity chainspec or Geth genesis file).
+   default value: null
 
  DiscoveryEnabled
    If 'false' then the node does not try to find nodes beyond the bootnodes configured.
    default value: true
 
  DiscoveryPort
+   UDP port number for incoming discovery connections.
+   default value: 30303
 
  EnableUnsecuredDevWallet
    If 'true' then it enables thewallet / key store in the application.
    default value: false
 
  GenesisHash
+   Hash of the genesis block - if the default null value is left then the genesis block validity will not be checked which is useful for ad hoc test/private networks.
+   default value: null
 
  HttpHost
+   Host for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.
+   default value: "127.0.0.1"
 
  HttpPort
+   Port number for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.
+   default value: 8545
 
  IsMining
+   If 'true' then the node will try to seal/mine new blocks
+   default value: false
 
  JsonRpcEnabled
    Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'
@@ -189,24 +207,32 @@ InitConfig
    default value: null
 
  LogFileName
+   Name of the log file generated (useful when launching multiple networks with the same log folder).
+   default value: "log.txt"
 
  P2PPort
+   TPC/IP port number for incoming P2P connections.
+   default value: 30303
 
  PeerManagerEnabled
+   If 'false' then the node does not connect to newly discovered peers..
+   default value: true
 
  ProcessingEnabled
    If 'false' then the node does not download/process new blocks..
    default value: true
 
- RemovingLogFilesEnabled
-
  StaticNodesPath
-   
-   default value: Data/static-nodes.json
+   Path to the file with a list of static nodes.
+   default value: "Data/static-nodes.json"
 
  StoreReceipts
+   If set to 'false' then transaction receipts will not be stored in the database.
+   default value: true
 
  StoreTraces
+   If set to 'true' then the detailed VM trace data will be stored in teh DB (huge data sets).
+   default value: false
 
  SynchronizationEnabled
    If 'false' then the node does not download/process new blocks..
@@ -325,183 +351,182 @@ Sample configuration (mainnet)
       {
         "ConfigModule": "DbConfig"
         "ConfigItems": {
-          "BlockCacheSize" : [MISSING_DOCS]
-          "BlockInfosDbBlockCacheSize" : [MISSING_DOCS]
-          "BlockInfosDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
-          "BlockInfosDbWriteBufferNumber" : [MISSING_DOCS]
-          "BlockInfosDbWriteBufferSize" : [MISSING_DOCS]
-          "BlocksDbBlockCacheSize" : [MISSING_DOCS]
-          "BlocksDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
-          "BlocksDbWriteBufferNumber" : [MISSING_DOCS]
-          "BlocksDbWriteBufferSize" : [MISSING_DOCS]
-          "CacheIndexAndFilterBlocks" : [MISSING_DOCS]
-          "CodeDbBlockCacheSize" : [MISSING_DOCS]
-          "CodeDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
-          "CodeDbWriteBufferNumber" : [MISSING_DOCS]
-          "CodeDbWriteBufferSize" : [MISSING_DOCS]
-          "HeadersDbBlockCacheSize" : [MISSING_DOCS]
-          "HeadersDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
-          "HeadersDbWriteBufferNumber" : [MISSING_DOCS]
-          "HeadersDbWriteBufferSize" : [MISSING_DOCS]
-          "PendingTxsDbBlockCacheSize" : [MISSING_DOCS]
-          "PendingTxsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
-          "PendingTxsDbWriteBufferNumber" : [MISSING_DOCS]
-          "PendingTxsDbWriteBufferSize" : [MISSING_DOCS]
-          "ReceiptsDbBlockCacheSize" : [MISSING_DOCS]
-          "ReceiptsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
-          "ReceiptsDbWriteBufferNumber" : [MISSING_DOCS]
-          "ReceiptsDbWriteBufferSize" : [MISSING_DOCS]
-          "TraceDbBlockCacheSize" : [MISSING_DOCS]
-          "TraceDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
-          "TraceDbWriteBufferNumber" : [MISSING_DOCS]
-          "TraceDbWriteBufferSize" : [MISSING_DOCS]
-          "WriteBufferNumber" : [MISSING_DOCS]
-          "WriteBufferSize" : [MISSING_DOCS]
+          "BlockCacheSize" : [MISSING_DOCS],
+          "BlockInfosDbBlockCacheSize" : [MISSING_DOCS],
+          "BlockInfosDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "BlockInfosDbWriteBufferNumber" : [MISSING_DOCS],
+          "BlockInfosDbWriteBufferSize" : [MISSING_DOCS],
+          "BlocksDbBlockCacheSize" : [MISSING_DOCS],
+          "BlocksDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "BlocksDbWriteBufferNumber" : [MISSING_DOCS],
+          "BlocksDbWriteBufferSize" : [MISSING_DOCS],
+          "CacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "CodeDbBlockCacheSize" : [MISSING_DOCS],
+          "CodeDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "CodeDbWriteBufferNumber" : [MISSING_DOCS],
+          "CodeDbWriteBufferSize" : [MISSING_DOCS],
+          "HeadersDbBlockCacheSize" : [MISSING_DOCS],
+          "HeadersDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "HeadersDbWriteBufferNumber" : [MISSING_DOCS],
+          "HeadersDbWriteBufferSize" : [MISSING_DOCS],
+          "PendingTxsDbBlockCacheSize" : [MISSING_DOCS],
+          "PendingTxsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "PendingTxsDbWriteBufferNumber" : [MISSING_DOCS],
+          "PendingTxsDbWriteBufferSize" : [MISSING_DOCS],
+          "ReceiptsDbBlockCacheSize" : [MISSING_DOCS],
+          "ReceiptsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "ReceiptsDbWriteBufferNumber" : [MISSING_DOCS],
+          "ReceiptsDbWriteBufferSize" : [MISSING_DOCS],
+          "TraceDbBlockCacheSize" : [MISSING_DOCS],
+          "TraceDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "TraceDbWriteBufferNumber" : [MISSING_DOCS],
+          "TraceDbWriteBufferSize" : [MISSING_DOCS],
+          "WriteBufferNumber" : [MISSING_DOCS],
+          "WriteBufferSize" : [MISSING_DOCS],
         }
       },
       {
         "ConfigModule": "DiscoveryConfig"
         "ConfigItems": {
-          "BitsPerHop" : [MISSING_DOCS]
-          "BootnodePongTimeout" : [MISSING_DOCS]
-          "Bootnodes" : [MISSING_DOCS]
-          "BucketsCount" : [MISSING_DOCS]
-          "BucketSize" : [MISSING_DOCS]
-          "Concurrency" : [MISSING_DOCS]
-          "DiscoveryInterval" : [MISSING_DOCS]
-          "DiscoveryNewCycleWaitTime" : [MISSING_DOCS]
-          "DiscoveryPersistenceInterval" : [MISSING_DOCS]
-          "EvictionCheckInterval" : [MISSING_DOCS]
-          "IsDiscoveryNodesPersistenceOn" : [MISSING_DOCS]
-          "MasterExternalIp" : [MISSING_DOCS]
-          "MasterHost" : [MISSING_DOCS]
-          "MasterPort" : [MISSING_DOCS]
-          "MaxDiscoveryRounds" : [MISSING_DOCS]
-          "MaxNodeLifecycleManagersCount" : [MISSING_DOCS]
-          "NodeLifecycleManagersCleanupCount" : [MISSING_DOCS]
-          "PingMessageVersion" : [MISSING_DOCS]
-          "PingRetryCount" : [MISSING_DOCS]
-          "PongTimeout" : [MISSING_DOCS]
-          "SendNodeTimeout" : [MISSING_DOCS]
-          "UdpChannelCloseTimeout" : [MISSING_DOCS]
+          "BitsPerHop" : [MISSING_DOCS],
+          "BootnodePongTimeout" : [MISSING_DOCS],
+          "Bootnodes" : [MISSING_DOCS],
+          "BucketsCount" : [MISSING_DOCS],
+          "BucketSize" : [MISSING_DOCS],
+          "Concurrency" : [MISSING_DOCS],
+          "DiscoveryInterval" : [MISSING_DOCS],
+          "DiscoveryNewCycleWaitTime" : [MISSING_DOCS],
+          "DiscoveryPersistenceInterval" : [MISSING_DOCS],
+          "EvictionCheckInterval" : [MISSING_DOCS],
+          "IsDiscoveryNodesPersistenceOn" : [MISSING_DOCS],
+          "MasterExternalIp" : [MISSING_DOCS],
+          "MasterHost" : [MISSING_DOCS],
+          "MasterPort" : [MISSING_DOCS],
+          "MaxDiscoveryRounds" : [MISSING_DOCS],
+          "MaxNodeLifecycleManagersCount" : [MISSING_DOCS],
+          "NodeLifecycleManagersCleanupCount" : [MISSING_DOCS],
+          "PingMessageVersion" : [MISSING_DOCS],
+          "PingRetryCount" : [MISSING_DOCS],
+          "PongTimeout" : [MISSING_DOCS],
+          "SendNodeTimeout" : [MISSING_DOCS],
+          "UdpChannelCloseTimeout" : [MISSING_DOCS],
         }
       },
       {
         "ConfigModule": "EthStatsConfig"
         "ConfigItems": {
-          "Contact" : [MISSING_DOCS]
-          "Enabled" : [MISSING_DOCS]
-          "Name" : [MISSING_DOCS]
-          "Secret" : [MISSING_DOCS]
-          "Server" : [MISSING_DOCS]
+          "Contact" : [MISSING_DOCS],
+          "Enabled" : [MISSING_DOCS],
+          "Name" : [MISSING_DOCS],
+          "Secret" : [MISSING_DOCS],
+          "Server" : [MISSING_DOCS],
         }
       },
       {
         "ConfigModule": "HiveConfig"
         "ConfigItems": {
-          "BlocksDir" : null
-          "ChainFile" : null
-          "KeysDir" : null
+          "BlocksDir" : null,
+          "ChainFile" : null,
+          "KeysDir" : null,
         }
       },
       {
         "ConfigModule": "InitConfig"
         "ConfigItems": {
-          "BaseDbPath" : [MISSING_DOCS]
-          "ChainSpecFormat" : [MISSING_DOCS]
-          "ChainSpecPath" : [MISSING_DOCS]
-          "DiscoveryEnabled" : true
-          "DiscoveryPort" : [MISSING_DOCS]
-          "EnableUnsecuredDevWallet" : false
-          "GenesisHash" : [MISSING_DOCS]
-          "HttpHost" : [MISSING_DOCS]
-          "HttpPort" : [MISSING_DOCS]
-          "IsMining" : [MISSING_DOCS]
-          "JsonRpcEnabled" : false
-          "JsonRpcEnabledModules" : "Clique,Db,Debug,Eth,Net,Trace,TxPool,Web3"
-          "KeepDevWalletInMemory" : false
-          "LogDirectory" : null
-          "LogFileName" : [MISSING_DOCS]
-          "P2PPort" : [MISSING_DOCS]
-          "PeerManagerEnabled" : [MISSING_DOCS]
-          "ProcessingEnabled" : true
-          "RemovingLogFilesEnabled" : [MISSING_DOCS]
-          "StaticNodesPath" : Data/static-nodes.json
-          "StoreReceipts" : [MISSING_DOCS]
-          "StoreTraces" : [MISSING_DOCS]
-          "SynchronizationEnabled" : true
-          "WebSocketsEnabled" : false
+          "BaseDbPath" : "db",
+          "ChainSpecFormat" : "chainspec",
+          "ChainSpecPath" : null,
+          "DiscoveryEnabled" : true,
+          "DiscoveryPort" : 30303,
+          "EnableUnsecuredDevWallet" : false,
+          "GenesisHash" : null,
+          "HttpHost" : "127.0.0.1",
+          "HttpPort" : 8545,
+          "IsMining" : false,
+          "JsonRpcEnabled" : false,
+          "JsonRpcEnabledModules" : "Clique,Db,Debug,Eth,Net,Trace,TxPool,Web3",
+          "KeepDevWalletInMemory" : false,
+          "LogDirectory" : null,
+          "LogFileName" : "log.txt",
+          "P2PPort" : 30303,
+          "PeerManagerEnabled" : true,
+          "ProcessingEnabled" : true,
+          "StaticNodesPath" : "Data/static-nodes.json",
+          "StoreReceipts" : true,
+          "StoreTraces" : false,
+          "SynchronizationEnabled" : true,
+          "WebSocketsEnabled" : false,
         }
       },
       {
         "ConfigModule": "JsonRpcConfig"
         "ConfigItems": {
-          "EnabledModules" : [MISSING_DOCS]
+          "EnabledModules" : [MISSING_DOCS],
         }
       },
       {
         "ConfigModule": "KeyStoreConfig"
         "ConfigItems": {
-          "Cipher" : [MISSING_DOCS]
-          "IVSize" : [MISSING_DOCS]
-          "Kdf" : [MISSING_DOCS]
-          "KdfparamsDklen" : [MISSING_DOCS]
-          "KdfparamsN" : [MISSING_DOCS]
-          "KdfparamsP" : [MISSING_DOCS]
-          "KdfparamsR" : [MISSING_DOCS]
-          "KdfparamsSaltLen" : [MISSING_DOCS]
-          "KeyStoreDirectory" : [MISSING_DOCS]
-          "KeyStoreEncoding" : [MISSING_DOCS]
-          "SymmetricEncrypterBlockSize" : [MISSING_DOCS]
-          "SymmetricEncrypterKeySize" : [MISSING_DOCS]
-          "TestNodeKey" : [MISSING_DOCS]
+          "Cipher" : [MISSING_DOCS],
+          "IVSize" : [MISSING_DOCS],
+          "Kdf" : [MISSING_DOCS],
+          "KdfparamsDklen" : [MISSING_DOCS],
+          "KdfparamsN" : [MISSING_DOCS],
+          "KdfparamsP" : [MISSING_DOCS],
+          "KdfparamsR" : [MISSING_DOCS],
+          "KdfparamsSaltLen" : [MISSING_DOCS],
+          "KeyStoreDirectory" : [MISSING_DOCS],
+          "KeyStoreEncoding" : [MISSING_DOCS],
+          "SymmetricEncrypterBlockSize" : [MISSING_DOCS],
+          "SymmetricEncrypterKeySize" : [MISSING_DOCS],
+          "TestNodeKey" : [MISSING_DOCS],
         }
       },
       {
         "ConfigModule": "MetricsConfig"
         "ConfigItems": {
-          "MetricsEnabled" : [MISSING_DOCS]
-          "MetricsIntervalSeconds" : [MISSING_DOCS]
-          "MetricsPushGatewayUrl" : [MISSING_DOCS]
-          "NodeName" : [MISSING_DOCS]
+          "MetricsEnabled" : [MISSING_DOCS],
+          "MetricsIntervalSeconds" : [MISSING_DOCS],
+          "MetricsPushGatewayUrl" : [MISSING_DOCS],
+          "NodeName" : [MISSING_DOCS],
         }
       },
       {
         "ConfigModule": "NetworkConfig"
         "ConfigItems": {
-          "ActivePeersMaxCount" : [MISSING_DOCS]
-          "CandidatePeerCountCleanupThreshold" : [MISSING_DOCS]
-          "DbBasePath" : [MISSING_DOCS]
-          "IsPeersPersistenceOn" : [MISSING_DOCS]
-          "MaxCandidatePeerCount" : [MISSING_DOCS]
-          "MaxPersistedPeerCount" : [MISSING_DOCS]
-          "P2PPingInterval" : [MISSING_DOCS]
-          "P2PPingRetryCount" : [MISSING_DOCS]
-          "PeersPersistenceInterval" : [MISSING_DOCS]
-          "PeersUpdateInterval" : [MISSING_DOCS]
-          "PersistedPeerCountCleanupThreshold" : [MISSING_DOCS]
-          "StaticPeers" : [MISSING_DOCS]
-          "TrustedPeers" : [MISSING_DOCS]
+          "ActivePeersMaxCount" : [MISSING_DOCS],
+          "CandidatePeerCountCleanupThreshold" : [MISSING_DOCS],
+          "DbBasePath" : [MISSING_DOCS],
+          "IsPeersPersistenceOn" : [MISSING_DOCS],
+          "MaxCandidatePeerCount" : [MISSING_DOCS],
+          "MaxPersistedPeerCount" : [MISSING_DOCS],
+          "P2PPingInterval" : [MISSING_DOCS],
+          "P2PPingRetryCount" : [MISSING_DOCS],
+          "PeersPersistenceInterval" : [MISSING_DOCS],
+          "PeersUpdateInterval" : [MISSING_DOCS],
+          "PersistedPeerCountCleanupThreshold" : [MISSING_DOCS],
+          "StaticPeers" : [MISSING_DOCS],
+          "TrustedPeers" : [MISSING_DOCS],
         }
       },
       {
         "ConfigModule": "SyncConfig"
         "ConfigItems": {
-          "DownloadBodiesInFastSync" : [MISSING_DOCS]
-          "DownloadReceiptsInFastSync" : [MISSING_DOCS]
-          "FastBlocks" : [MISSING_DOCS]
-          "FastSync" : [MISSING_DOCS]
-          "PivotHash" : [MISSING_DOCS]
-          "PivotNumber" : [MISSING_DOCS]
-          "PivotTotalDifficulty" : [MISSING_DOCS]
+          "DownloadBodiesInFastSync" : [MISSING_DOCS],
+          "DownloadReceiptsInFastSync" : [MISSING_DOCS],
+          "FastBlocks" : [MISSING_DOCS],
+          "FastSync" : [MISSING_DOCS],
+          "PivotHash" : [MISSING_DOCS],
+          "PivotNumber" : [MISSING_DOCS],
+          "PivotTotalDifficulty" : [MISSING_DOCS],
         }
       },
       {
         "ConfigModule": "TxPoolConfig"
         "ConfigItems": {
-          "ObsoletePendingTransactionInterval" : [MISSING_DOCS]
-          "PeerNotificationThreshold" : [MISSING_DOCS]
-          "RemovePendingTransactionInterval" : [MISSING_DOCS]
+          "ObsoletePendingTransactionInterval" : [MISSING_DOCS],
+          "PeerNotificationThreshold" : [MISSING_DOCS],
+          "RemovePendingTransactionInterval" : [MISSING_DOCS],
         }
       },
     ]

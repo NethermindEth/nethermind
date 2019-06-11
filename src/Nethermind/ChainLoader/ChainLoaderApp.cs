@@ -171,32 +171,6 @@ namespace ChainLoader
             _enode = new Enode(_nodeKey.PublicKey, localIp, _initConfig.P2PPort);
         }
 
-        private void RemoveLogFiles(string logDirectory)
-        {
-            Console.WriteLine("Removing log files.");
-
-            var logsDir = string.IsNullOrEmpty(logDirectory)
-                ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs")
-                : logDirectory;
-            if (!Directory.Exists(logsDir))
-            {
-                return;
-            }
-
-            var files = Directory.GetFiles(logsDir);
-            foreach (string file in files)
-            {
-                try
-                {
-                    File.Delete(file);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"Error removing log file: {file}, exp: {e}");
-                }
-            }
-        }
-
         private TaskCompletionSource<object> _cancelKeySource;
         private void LogMemoryConfiguration()
         {
@@ -215,11 +189,7 @@ namespace ChainLoader
             {
                 var configProvider = buildConfigProvider();
                 var initConfig = configProvider.GetConfig<IInitConfig>();
-                if (initConfig.RemovingLogFilesEnabled)
-                {
-                    RemoveLogFiles(initConfig.LogDirectory);
-                }
-
+                
                 Logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
                 LogMemoryConfiguration();
 
@@ -241,9 +211,6 @@ namespace ChainLoader
                
 
                 await StartRunners(configProvider);
-              
-
-                
             
                 Console.WriteLine("All done, goodbye!");
                 appClosed.Set();
