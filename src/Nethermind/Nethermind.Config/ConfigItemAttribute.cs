@@ -24,6 +24,6 @@ namespace Nethermind.Config
     {
         public string Description { get; set; }
         
-        public object DefaultValue { get; set; }
+        public string DefaultValue { get; set; }
     }
 }

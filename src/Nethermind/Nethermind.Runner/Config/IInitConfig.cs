@@ -22,28 +22,28 @@ namespace Nethermind.Runner.Config
 {
     public interface IInitConfig : IConfig
     {
-        [ConfigItem(Description = "If 'true' then it enables thewallet / key store in the application.", DefaultValue = false)]
+        [ConfigItem(Description = "If 'true' then it enables thewallet / key store in the application.", DefaultValue = "false")]
         bool EnableUnsecuredDevWallet { get; set; }
         
-        [ConfigItem(Description = "If 'true' then any accounts created will be only valid during the session and deleted when application closes.", DefaultValue = false)]
+        [ConfigItem(Description = "If 'true' then any accounts created will be only valid during the session and deleted when application closes.", DefaultValue = "false")]
         bool KeepDevWalletInMemory{ get; set; }
         
-        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'", DefaultValue = false)]
+        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'", DefaultValue = "false")]
         bool JsonRpcEnabled { get; set; }
         
-        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'", DefaultValue = new[] {"Clique", "Eth", "Net", "Web3", "Db", "Debug", "TxPool"})]
+        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'", DefaultValue = "\"Clique,Db,Debug,Eth,Net,Trace,TxPool,Web3\"")]
         string[] JsonRpcEnabledModules { get; set; }
         
-        [ConfigItem(Description = "Defines whether the WebSockets service is enabled on node startup at the 'HttpPort'", DefaultValue = false)]
+        [ConfigItem(Description = "Defines whether the WebSockets service is enabled on node startup at the 'HttpPort'", DefaultValue = "false")]
         bool WebSocketsEnabled { get; set; }
         
-        [ConfigItem(Description = "If 'false' then the node does not try to find nodes beyond the bootnodes configured.", DefaultValue = true)]
+        [ConfigItem(Description = "If 'false' then the node does not try to find nodes beyond the bootnodes configured.", DefaultValue = "true")]
         bool DiscoveryEnabled { get; set; }
         
-        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = true)]
+        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = "true")]
         bool SynchronizationEnabled { get; set; }
         
-        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = true)]
+        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = "true")]
         bool ProcessingEnabled { get; set; }
         bool PeerManagerEnabled { get; set; }
         bool IsMining { get; set; }
@@ -55,13 +55,14 @@ namespace Nethermind.Runner.Config
         string ChainSpecFormat { get; set; }
         string BaseDbPath { get; set; }
         string GenesisHash { get; set; }
+        
+        [ConfigItem(DefaultValue = "Data/static-nodes.json")]
         string StaticNodesPath { get; set; }
         bool RemovingLogFilesEnabled { get; set; }
         string LogFileName { get; set; }
         
-        [ConfigItem(Description = "In case of null, the path is set to [applicationDirectiory]\\logs")]
+        [ConfigItem(Description = "In case of null, the path is set to [applicationDirectiory]\\logs", DefaultValue = "null")]
         string LogDirectory { get; set; }
-        bool LogPerfStatsOnDebug { get; set; }
         bool StoreTraces { get; set; }
         bool StoreReceipts { get; set; }
         int ObsoletePendingTransactionInterval { get; set; }

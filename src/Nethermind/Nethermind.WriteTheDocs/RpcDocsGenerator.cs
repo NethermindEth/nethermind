@@ -63,7 +63,7 @@ namespace Nethermind.WriteTheDocs
                 var properties = jsonRpcModule.GetMethods(BindingFlags.Public | BindingFlags.Instance);
                 foreach (MethodInfo methodInfo in properties.OrderBy(p => p.Name))
                 {
-                    descriptionsBuilder.AppendLine($" - {methodInfo.Name}.({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})").AppendLine();
+                    descriptionsBuilder.AppendLine($" - {methodInfo.Name}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})").AppendLine();
                 }
             }
 
