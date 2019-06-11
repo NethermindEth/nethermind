@@ -21,20 +21,13 @@ namespace Nethermind.Runner.Config
     public class InitConfig : IInitConfig
     {
         public bool EnableUnsecuredDevWallet { get; set; } = false;
-
         public bool KeepDevWalletInMemory { get; set; } = false;
-
-        
         public bool JsonRpcEnabled { get; set; } = false;
-
         public bool WebSocketsEnabled { get; set; } = false;
         public bool DiscoveryEnabled { get; set; } = true;
         public bool SynchronizationEnabled { get; set; } = true;
         public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;
-        public bool MetricsEnabled { get; set; } = false;
-        public int MetricsIntervalSeconds { get; set; } = 5;
-        public string MetricsPushGatewayUrl { get; set; } = "http://localhost:9091/metrics";
         public bool IsMining { get; set; } = false;
         public string HttpHost { get; set; } = "127.0.0.1";
         public int HttpPort { get; set; } = 8545;
@@ -46,12 +39,8 @@ namespace Nethermind.Runner.Config
         public string LogFileName { get; set; } = "log.txt";
         public string GenesisHash { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
-
         public string[] JsonRpcEnabledModules { get; set; } = {"Clique", "Eth", "Net", "Web3", "Db", "Debug", "TxPool"};
-
         public bool RemovingLogFilesEnabled { get; set; }
-
-        //in case of null, the path is set to ExecutingAssembly.Location\logs
         public string LogDirectory { get; set; } = null;
         public bool LogPerfStatsOnDebug { get; set; } = false;
         public bool StoreTraces { get; set; } = false;

@@ -21,6 +21,7 @@ using System.IO;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -35,7 +36,6 @@ namespace Nethermind.Network.Test
     [TestFixture]
     public class NetworkStorageTests
     {
-        private INetworkConfig _networkConfig;
         private IStatsConfig _statsConfig;
 
         [SetUp]
@@ -45,11 +45,10 @@ namespace Nethermind.Network.Test
             NullLogManager logManager = NullLogManager.Instance;
             ConfigProvider configSource = new ConfigProvider();
             _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-            _networkConfig = configSource.GetConfig<INetworkConfig>();
-            _networkConfig.DbBasePath = _tempDir;
             _statsConfig = configSource.GetConfig<IStatsConfig>();
 
-            _storage = new NetworkStorage("test", _networkConfig, logManager, new PerfService(logManager));
+            var db = new SimpleFilePublicKeyDb(_tempDir, logManager);
+            _storage = new NetworkStorage(db, logManager);
         }
         
         [TearDown]

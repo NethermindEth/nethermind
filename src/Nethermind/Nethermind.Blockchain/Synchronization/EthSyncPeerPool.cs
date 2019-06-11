@@ -34,6 +34,9 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class EthSyncPeerPool : IEthSyncPeerPool
     {
+        private const decimal _minDiffPercentageForLatencySwitch = 0.10m;
+        private const int _minDiffForLatencySwitch = 5;
+        
         private readonly IBlockTree _blockTree;
         private readonly INodeStatsManager _stats;
         private readonly ISyncConfig _syncConfig;
@@ -593,8 +596,8 @@ namespace Nethermind.Blockchain.Synchronization
             var currentLatency = _stats.GetOrAdd(allocation.Current?.SyncPeer.Node)?.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000;
             var newLatency = _stats.GetOrAdd(peerInfo.SyncPeer.Node)?.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100001;
 
-            if (newLatency / (decimal) Math.Max(1L, currentLatency) < 1m - _syncConfig.MinDiffPercentageForLatencySwitch / 100m
-                && newLatency < currentLatency - _syncConfig.MinDiffForLatencySwitch)
+            if (newLatency / (decimal) Math.Max(1L, currentLatency) < 1m - _minDiffPercentageForLatencySwitch
+                && newLatency < currentLatency - _minDiffForLatencySwitch)
             {
                 if (_logger.IsInfo) _logger.Info($"Sync peer substitution{Environment.NewLine}  OUT: {allocation.Current}[{currentLatency}]{Environment.NewLine}  IN : {peerInfo}[{newLatency}]");
                 allocation.ReplaceCurrent(peerInfo);

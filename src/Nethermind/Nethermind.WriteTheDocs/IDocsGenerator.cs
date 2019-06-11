@@ -16,20 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-
-namespace Nethermind.Cli
+namespace Nethermind.WriteTheDocs
 {
-    public class CliFunctionAttribute : Attribute
+    public interface IDocsGenerator
     {
-        public string ObjectName { get; }
-        public string FunctionName { get; }
-        public string Description { get; set; }
-
-        public CliFunctionAttribute(string objectName, string functionName)
-        {
-            ObjectName = objectName;
-            FunctionName = functionName;
-        }
+        void Generate();
     }
 }

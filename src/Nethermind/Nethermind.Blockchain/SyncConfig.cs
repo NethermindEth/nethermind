@@ -23,13 +23,8 @@ namespace Nethermind.Blockchain
     [Todo(Improve.Refactor, "Rename to SyncConfig")]
     public class SyncConfig : ISyncConfig
     {
-        public bool ValidateTree { get; set; } = false;
+        public bool FastBlocks { get; set; } = false;
         public bool FastSync { get; set; } = false;
-        public int SyncTimerInterval { get; set; } = 1000;
-        public long MinAvailableBlockDiffForSyncSwitch { get; } = 100;
-        public long MinDiffPercentageForLatencySwitch { get; } = 10;
-        public long MinDiffForLatencySwitch { get; } = 5;
-        public bool EnableExperimentalFastBlocks { get; set; } = false;
         public bool DownloadBodiesInFastSync { get; set; }
         public bool DownloadReceiptsInFastSync { get; set; }
         public string PivotTotalDifficulty { get; set; } = null;

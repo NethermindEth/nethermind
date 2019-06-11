@@ -38,6 +38,8 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class Synchronizer : ISynchronizer
     {
+        private const int _syncTimerInterval = 1000;
+        
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
@@ -85,7 +87,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
 
-            if (syncConfig.EnableExperimentalFastBlocks)
+            if (syncConfig.FastBlocks)
             {
                 FastBlocksFeed feed = new FastBlocksFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, syncConfig, logManager);
                 _fastBlockDownloader = new FastBlocksDownloader(_syncPeerPool, feed, blockValidator, sealValidator, logManager);
@@ -169,8 +171,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void StartSyncTimer()
         {
-            if (_logger.IsDebug) _logger.Debug($"Starting sync timer with interval of {_syncConfig.SyncTimerInterval}ms");
-            _syncTimer = new System.Timers.Timer(_syncConfig.SyncTimerInterval);
+            if (_logger.IsDebug) _logger.Debug($"Starting sync timer with interval of {_syncTimerInterval}ms");
+            _syncTimer = new System.Timers.Timer(_syncTimerInterval);
             _syncTimer.Elapsed += SyncTimerOnElapsed;
             _syncTimer.Start();
         }

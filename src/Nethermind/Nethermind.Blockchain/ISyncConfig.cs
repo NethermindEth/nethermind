@@ -22,13 +22,8 @@ namespace Nethermind.Blockchain
 {
     public interface ISyncConfig : IConfig
     {
-        bool ValidateTree { get; set; }
         bool FastSync { get; set; }
-        int SyncTimerInterval { get; }
-        long MinAvailableBlockDiffForSyncSwitch { get; }
-        long MinDiffPercentageForLatencySwitch { get; }
-        long MinDiffForLatencySwitch { get; }
-        bool EnableExperimentalFastBlocks { get; set; }
+        bool FastBlocks { get; set; }
         bool DownloadBodiesInFastSync { get; set; }
         bool DownloadReceiptsInFastSync { get; set; }
         string PivotTotalDifficulty { get; }

@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Json;
 using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -65,27 +66,27 @@ namespace Nethermind.Network.Test.Discovery
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
 
             _configurationProvider = new ConfigProvider();
-            INetworkConfig networkConfig = _configurationProvider.GetConfig<INetworkConfig>();
-            networkConfig.PongTimeout = 50;
-            networkConfig.BucketSize = 3;
-            networkConfig.BucketsCount = 1;
+            IDiscoveryConfig discoveryConfig = _configurationProvider.GetConfig<IDiscoveryConfig>();
+            discoveryConfig.PongTimeout = 50;
+            discoveryConfig.BucketSize = 3;
+            discoveryConfig.BucketsCount = 1;
 
-            IKeyStoreConfig keyStoreConfig = _configurationProvider.GetConfig<IKeyStoreConfig>();
             IStatsConfig statsConfig = _configurationProvider.GetConfig<IStatsConfig>();
 
-            var calculator = new NodeDistanceCalculator(networkConfig);
+            var calculator = new NodeDistanceCalculator(discoveryConfig);
 
-            _nodeTable = new NodeTable(new FileKeyStore(keyStoreConfig, new EthereumJsonSerializer(), new AesEncrypter(keyStoreConfig, logManager), new CryptoRandom(), logManager), calculator, networkConfig, logManager);
+            _nodeTable = new NodeTable(calculator, discoveryConfig, logManager);
             _nodeTable.Initialize(TestItem.PublicKeyA);
             
             _timestamp = new Timestamp();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamp), evictionManager, new NodeStatsManager(statsConfig, logManager), networkConfig, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamp), evictionManager, new NodeStatsManager(statsConfig, logManager), discoveryConfig, logManager);
 
             _udpClient = Substitute.For<IMessageSender>();
 
-            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage("test", networkConfig, logManager, new PerfService(logManager)), networkConfig, logManager);
+            var discoveryDb = new SimpleFilePublicKeyDb("test", logManager);
+            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, logManager);
             _discoveryManager.MessageSender = _udpClient;
         }
 

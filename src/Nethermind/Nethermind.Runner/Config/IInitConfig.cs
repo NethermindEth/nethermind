@@ -46,9 +46,6 @@ namespace Nethermind.Runner.Config
         [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = true)]
         bool ProcessingEnabled { get; set; }
         bool PeerManagerEnabled { get; set; }
-        bool MetricsEnabled { get; set; }
-        int MetricsIntervalSeconds { get; set; }
-        string MetricsPushGatewayUrl { get; set; }
         bool IsMining { get; set; }
         string HttpHost { get; set; }
         int HttpPort { get; set; }
@@ -61,6 +58,8 @@ namespace Nethermind.Runner.Config
         string StaticNodesPath { get; set; }
         bool RemovingLogFilesEnabled { get; set; }
         string LogFileName { get; set; }
+        
+        [ConfigItem(Description = "In case of null, the path is set to [applicationDirectiory]\\logs")]
         string LogDirectory { get; set; }
         bool LogPerfStatsOnDebug { get; set; }
         bool StoreTraces { get; set; }

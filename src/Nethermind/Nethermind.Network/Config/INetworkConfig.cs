@@ -23,116 +23,6 @@ namespace Nethermind.Network.Config
     public interface INetworkConfig : IConfig
     {
         /// <summary>
-        /// Kademlia - k
-        /// </summary>
-        int BucketSize { get; set; }
-
-        /// <summary>
-        /// Buckets count
-        /// </summary>
-        int BucketsCount { get; set; }
-
-        /// <summary>
-        /// Kademlia - alpha
-        /// </summary>
-        int Concurrency { get; }
-
-        /// <summary>
-        /// Kademlia - b
-        /// </summary>
-        int BitsPerHop { get; }
-
-        /// <summary>
-        /// Current Node host
-        /// </summary>
-        string MasterHost { get; set; }
-
-        /// <summary>
-        /// Current Node external ip
-        /// </summary>
-        string MasterExternalIp { get; set; }
-
-        /// <summary>
-        /// Current Node port
-        /// </summary>
-        int MasterPort { get; set; }
-
-        /// <summary>
-        /// Max Discovery Rounds
-        /// </summary>
-        int MaxDiscoveryRounds { get; }
-
-        /// <summary>
-        /// Eviction check interval in ms
-        /// </summary>
-        int EvictionCheckInterval { get; }
-
-        /// <summary>
-        /// Send Node Timeout in ms
-        /// </summary>
-        int SendNodeTimeout { get; }
-
-        /// <summary>
-        /// Pong Timeout in ms
-        /// </summary>
-        int PongTimeout { get; set; }
-
-        /// <summary>
-        /// Boot Node Pong Timeout in ms
-        /// </summary>
-        int BootnodePongTimeout { get; }
-
-        /// <summary>
-        /// Pong Timeout in ms
-        /// </summary>
-        int PingRetryCount { get; }
-
-        /// <summary>
-        /// Time between running discovery processes in milliseconds
-        /// </summary>
-        int DiscoveryInterval { get; }
-
-        /// <summary>
-        /// Time between persisting discovered nodes in milliseconds
-        /// </summary>
-        int DiscoveryPersistenceInterval { get; }
-
-        /// <summary>
-        /// Time between discovery cycles in milliseconds
-        /// </summary>
-        int DiscoveryNewCycleWaitTime { get; }
-
-        /// <summary>
-        /// Boot nodes connection details
-        /// </summary>
-        string Bootnodes { get; set; }
-
-        /// <summary>
-        /// Key Pass
-        /// </summary>
-        string KeyPass { get; }
-
-        /// <summary>
-        /// Timeout for closing UDP channel in milliseconds
-        /// </summary>
-        int UdpChannelCloseTimeout { get; }
-
-        /// <summary>
-        /// Version of the Ping message
-        /// </summary>
-        int PingMessageVersion { get; }
-
-        /// <summary>
-        /// Maximum count of NodeLifecycleManagers stored in memory
-        /// </summary>
-        int MaxNodeLifecycleManagersCount { get; }
-
-        /// <summary>
-        /// Count of NodeLifecycleManagers to remove in one cleanup cycle
-        /// </summary>
-        int NodeLifecycleManagersCleanupCount { get; }
-
-        /// <summary>
         /// List of trusted nodes - we connect to them and set predefined high reputation
         /// </summary>
         string TrustedPeers { get; set; }
@@ -146,11 +36,6 @@ namespace Nethermind.Network.Config
         /// Base path for discovery db
         /// </summary>
         string DbBasePath { get; set; } // TODO: move from Network config
-
-        /// <summary>
-        /// On/Off for discovery persistence
-        /// </summary>
-        bool IsDiscoveryNodesPersistenceOn { get; set; }
 
         /// <summary>
         /// On/Off for peers

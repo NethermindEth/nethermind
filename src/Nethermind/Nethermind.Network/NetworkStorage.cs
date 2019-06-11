@@ -32,23 +32,21 @@ namespace Nethermind.Network
 {
     public class NetworkStorage : INetworkStorage
     {
-        private readonly IFullDb _db;
+        private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
         private long _updateCounter;
         private long _removeCounter;
-        private readonly string _dbDirectory;
 
-        public NetworkStorage(string dbDirectory, INetworkConfig networkConfig, ILogManager logManager, IPerfService perfService)
+        public NetworkStorage(IFullDb fullDb, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger();
-            _dbDirectory = dbDirectory;
-            _db = new SimpleFilePublicKeyDb(Path.Combine(networkConfig.DbBasePath, _dbDirectory), logManager, perfService);
+            _fullDb = fullDb ?? throw new ArgumentNullException(nameof(fullDb));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public NetworkNode[] GetPersistedNodes()
         {
             List<NetworkNode> nodes = new List<NetworkNode>();
-            foreach (byte[] nodeRlp in _db.Values)
+            foreach (byte[] nodeRlp in _fullDb.Values)
             {
                 try
                 {
@@ -65,7 +63,7 @@ namespace Nethermind.Network
 
         public void UpdateNode(NetworkNode node)
         {
-            _db[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
+            _fullDb[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
             _updateCounter++;
         }
 
@@ -81,25 +79,25 @@ namespace Nethermind.Network
         {
             for (var i = 0; i < nodes.Length; i++)
             {
-                _db.Remove(nodes[i].NodeId.Bytes);
+                _fullDb.Remove(nodes[i].NodeId.Bytes);
                 _removeCounter++;
             }
         }
 
         public void StartBatch()
         {
-            _db.StartBatch();
+            _fullDb.StartBatch();
             _updateCounter = 0;
             _removeCounter = 0;
         }
 
         public void Commit()
         {
-            if (_logger.IsTrace) _logger.Trace($"[{_dbDirectory}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
-            _db.CommitBatch();
+            if (_logger.IsTrace) _logger.Trace($"[{_fullDb.Description}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
+            _fullDb.CommitBatch();
             if (_logger.IsTrace)
             {
-                LogDbContent(_db.Values);
+                LogDbContent(_fullDb.Values);
             }
         }
 
@@ -117,7 +115,7 @@ namespace Nethermind.Network
         private void LogDbContent(IEnumerable<byte[]> values)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"[{_dbDirectory}] Node Storage DB");
+            sb.AppendLine($"[{_fullDb.Description}] Node Storage DB");
             foreach (var value in values)
             {
                 var node = GetNode(value);

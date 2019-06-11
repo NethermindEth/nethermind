@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Synchronization
         
         public bool IsFastBlocksFinished()
         {
-            if (!_syncConfig.EnableExperimentalFastBlocks)
+            if (!_syncConfig.FastBlocks)
             {
                 return true;
             }

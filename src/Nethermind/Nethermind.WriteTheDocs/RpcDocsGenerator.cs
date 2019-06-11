@@ -1,0 +1,77 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using Nethermind.JsonRpc.Modules;
+
+namespace Nethermind.WriteTheDocs
+{
+    public class RpcDocsGenerator : IDocsGenerator
+    {
+        private static List<string> _assemblyNames = new List<string>
+        {
+            "Nethermind.Clique",
+            "Nethermind.JsonRpc"
+        };
+
+        public void Generate()
+        {
+            StringBuilder descriptionsBuilder = new StringBuilder(@"JSON RPC
+********
+
+");
+
+            List<Type> jsonRpcModules = new List<Type>();
+
+            foreach (string assemblyName in _assemblyNames)
+            {
+                Assembly assembly = Assembly.Load(new AssemblyName(assemblyName));
+                foreach (Type type in assembly.GetTypes().Where(t => typeof(IModule).IsAssignableFrom(t)).Where(t => t.IsInterface && t != typeof(IModule)))
+                {
+                    jsonRpcModules.Add(type);
+                }
+            }
+
+            foreach (Type jsonRpcModule in jsonRpcModules.OrderBy(t => t.Name))
+            {
+                string moduleName = jsonRpcModule.Name.Substring(1).Replace("Module", "").ToLowerInvariant();
+                descriptionsBuilder.Append($@"{moduleName}
+{string.Empty.PadLeft(moduleName.Length, '^')}
+
+");
+
+                var properties = jsonRpcModule.GetMethods(BindingFlags.Public | BindingFlags.Instance);
+                foreach (MethodInfo methodInfo in properties.OrderBy(p => p.Name))
+                {
+                    descriptionsBuilder.AppendLine($" - {methodInfo.Name}.({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})").AppendLine();
+                }
+            }
+
+            string result = descriptionsBuilder.ToString();
+
+            Console.WriteLine(result);
+            File.WriteAllText("jsonrpc.rst", result);
+            File.WriteAllText("../../../docs/source/jsonrpc.rst", result);
+        }
+    }
+}

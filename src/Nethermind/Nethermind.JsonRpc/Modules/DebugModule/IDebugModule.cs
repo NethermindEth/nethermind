@@ -40,7 +40,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
         ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
         ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key);
-        
         ResultWrapper<string> debug_getConfigValue(string category, string name);
     }
 }

@@ -31,16 +31,16 @@ namespace Nethermind.Network.Discovery.Lifecycle
     {
         private readonly INodeTable _nodeTable;
         private readonly ILogger _logger;
-        private readonly INetworkConfig _networkConfig;
+        private readonly IDiscoveryConfig _discoveryConfig;
         private readonly IDiscoveryMessageFactory _discoveryMessageFactory;
         private readonly IEvictionManager _evictionManager;
         private readonly INodeStatsManager _nodeStatsManager;
 
-        public NodeLifecycleManagerFactory(INodeTable nodeTable, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStatsManager nodeStatsManager, INetworkConfig networkConfig, ILogManager logManager)
+        public NodeLifecycleManagerFactory(INodeTable nodeTable, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStatsManager nodeStatsManager, IDiscoveryConfig discoveryConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
-            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
             _discoveryMessageFactory = discoveryMessageFactory ?? throw new ArgumentNullException(nameof(discoveryMessageFactory));
             _evictionManager = evictionManager ?? throw new ArgumentNullException(nameof(evictionManager));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -55,7 +55,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 throw new Exception($"{nameof(DiscoveryManager)} has to be set");
             }
             
-            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _networkConfig, _discoveryMessageFactory, _evictionManager, _nodeStatsManager.GetOrAdd(node));
+            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _discoveryMessageFactory, _evictionManager, _nodeStatsManager.GetOrAdd(node), _discoveryConfig, _logger);
         }
 
         public INodeLifecycleManager CreateNodeLifecycleManager(PublicKey id, string host, int port)
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             }
             
             var node = new Node(id, host, port);
-            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _networkConfig, _discoveryMessageFactory, _evictionManager, _nodeStatsManager.GetOrAdd(node));
+            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _discoveryMessageFactory, _evictionManager, _nodeStatsManager.GetOrAdd(node), _discoveryConfig, _logger);
         }
     }
 }

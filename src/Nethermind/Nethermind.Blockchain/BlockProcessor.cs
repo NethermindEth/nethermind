@@ -193,20 +193,6 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            if (_syncConfig.ValidateTree)
-            {
-                if(_logger.IsWarn) _logger.Warn("Collecting trie stats:");
-                TrieStats stats = _stateProvider.CollectStats();
-                if (stats.MissingNodes > 0)
-                {
-                    if(_logger.IsError) _logger.Error(stats.ToString());
-                }
-                else
-                {
-                    if(_logger.IsWarn) _logger.Warn(stats.ToString());
-                }
-            }
-
             if (suggestedBlock.IsGenesis) return suggestedBlock;
 
             if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
