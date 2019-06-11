@@ -39,10 +39,9 @@ namespace Nethermind.Runner.Config
         public string LogFileName { get; set; } = "log.txt";
         public string GenesisHash { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
-        public string[] JsonRpcEnabledModules { get; set; } = {"Clique", "Eth", "Net", "Web3", "Db", "Debug", "TxPool"};
+        public string[] JsonRpcEnabledModules { get; set; } = {"Clique", "Db", "Debug", "Eth", "Net", "Trace", "TxPool", "Web3"};
         public bool RemovingLogFilesEnabled { get; set; }
         public string LogDirectory { get; set; } = null;
-        public bool LogPerfStatsOnDebug { get; set; } = false;
         public bool StoreTraces { get; set; } = false;
         public bool StoreReceipts { get; set; } = false;
         public int ObsoletePendingTransactionInterval { get; set; } = 15;

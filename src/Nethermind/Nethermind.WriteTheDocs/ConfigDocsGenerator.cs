@@ -83,15 +83,22 @@ namespace Nethermind.WriteTheDocs
                 foreach (PropertyInfo propertyInfo in properties.OrderBy(p => p.Name))
                 {
                     PropertyInfo interfaceProperty = configInterface.GetProperty(propertyInfo.Name);
-                    exampleBuilder.AppendLine($"          \"{propertyInfo.Name}\" : example");
                     ConfigItemAttribute attribute = interfaceProperty.GetCustomAttribute<ConfigItemAttribute>();
+                    string defaultValue = attribute == null ? "[MISSING_DOCS]" : attribute.DefaultValue;
+                    
+                    exampleBuilder.AppendLine($"          \"{propertyInfo.Name}\" : {defaultValue}");
+                    
                     if (attribute == null)
                     {
-                        descriptionsBuilder.AppendLine($" - {propertyInfo.Name} - description missing").AppendLine();
+                        descriptionsBuilder.AppendLine($" {propertyInfo.Name}").AppendLine();
                         continue;
                     }
 
-                    descriptionsBuilder.AppendLine($" - {propertyInfo.Name} - {attribute.Description}").AppendLine();
+                    descriptionsBuilder
+                        .AppendLine($" {propertyInfo.Name}")
+                        .AppendLine($"   {attribute.Description}")
+                        .AppendLine($"   default value: {defaultValue}")
+                        .AppendLine();
                 }
 
                 exampleBuilder.AppendLine("        }");

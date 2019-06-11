@@ -4,294 +4,312 @@ Configuration
 DbConfig
 ^^^^^^^^
 
- - BlockCacheSize - description missing
+ BlockCacheSize
 
- - BlockInfosDbBlockCacheSize - description missing
+ BlockInfosDbBlockCacheSize
 
- - BlockInfosDbCacheIndexAndFilterBlocks - description missing
+ BlockInfosDbCacheIndexAndFilterBlocks
 
- - BlockInfosDbWriteBufferNumber - description missing
+ BlockInfosDbWriteBufferNumber
 
- - BlockInfosDbWriteBufferSize - description missing
+ BlockInfosDbWriteBufferSize
 
- - BlocksDbBlockCacheSize - description missing
+ BlocksDbBlockCacheSize
 
- - BlocksDbCacheIndexAndFilterBlocks - description missing
+ BlocksDbCacheIndexAndFilterBlocks
 
- - BlocksDbWriteBufferNumber - description missing
+ BlocksDbWriteBufferNumber
 
- - BlocksDbWriteBufferSize - description missing
+ BlocksDbWriteBufferSize
 
- - CacheIndexAndFilterBlocks - description missing
+ CacheIndexAndFilterBlocks
 
- - CodeDbBlockCacheSize - description missing
+ CodeDbBlockCacheSize
 
- - CodeDbCacheIndexAndFilterBlocks - description missing
+ CodeDbCacheIndexAndFilterBlocks
 
- - CodeDbWriteBufferNumber - description missing
+ CodeDbWriteBufferNumber
 
- - CodeDbWriteBufferSize - description missing
+ CodeDbWriteBufferSize
 
- - HeadersDbBlockCacheSize - description missing
+ HeadersDbBlockCacheSize
 
- - HeadersDbCacheIndexAndFilterBlocks - description missing
+ HeadersDbCacheIndexAndFilterBlocks
 
- - HeadersDbWriteBufferNumber - description missing
+ HeadersDbWriteBufferNumber
 
- - HeadersDbWriteBufferSize - description missing
+ HeadersDbWriteBufferSize
 
- - PendingTxsDbBlockCacheSize - description missing
+ PendingTxsDbBlockCacheSize
 
- - PendingTxsDbCacheIndexAndFilterBlocks - description missing
+ PendingTxsDbCacheIndexAndFilterBlocks
 
- - PendingTxsDbWriteBufferNumber - description missing
+ PendingTxsDbWriteBufferNumber
 
- - PendingTxsDbWriteBufferSize - description missing
+ PendingTxsDbWriteBufferSize
 
- - ReceiptsDbBlockCacheSize - description missing
+ ReceiptsDbBlockCacheSize
 
- - ReceiptsDbCacheIndexAndFilterBlocks - description missing
+ ReceiptsDbCacheIndexAndFilterBlocks
 
- - ReceiptsDbWriteBufferNumber - description missing
+ ReceiptsDbWriteBufferNumber
 
- - ReceiptsDbWriteBufferSize - description missing
+ ReceiptsDbWriteBufferSize
 
- - TraceDbBlockCacheSize - description missing
+ TraceDbBlockCacheSize
 
- - TraceDbCacheIndexAndFilterBlocks - description missing
+ TraceDbCacheIndexAndFilterBlocks
 
- - TraceDbWriteBufferNumber - description missing
+ TraceDbWriteBufferNumber
 
- - TraceDbWriteBufferSize - description missing
+ TraceDbWriteBufferSize
 
- - WriteBufferNumber - description missing
+ WriteBufferNumber
 
- - WriteBufferSize - description missing
+ WriteBufferSize
 
 DiscoveryConfig
 ^^^^^^^^^^^^^^^
 
- - BitsPerHop - description missing
+ BitsPerHop
 
- - BootnodePongTimeout - description missing
+ BootnodePongTimeout
 
- - Bootnodes - description missing
+ Bootnodes
 
- - BucketsCount - description missing
+ BucketsCount
 
- - BucketSize - description missing
+ BucketSize
 
- - Concurrency - description missing
+ Concurrency
 
- - DiscoveryInterval - description missing
+ DiscoveryInterval
 
- - DiscoveryNewCycleWaitTime - description missing
+ DiscoveryNewCycleWaitTime
 
- - DiscoveryPersistenceInterval - description missing
+ DiscoveryPersistenceInterval
 
- - EvictionCheckInterval - description missing
+ EvictionCheckInterval
 
- - IsDiscoveryNodesPersistenceOn - description missing
+ IsDiscoveryNodesPersistenceOn
 
- - MasterExternalIp - description missing
+ MasterExternalIp
 
- - MasterHost - description missing
+ MasterHost
 
- - MasterPort - description missing
+ MasterPort
 
- - MaxDiscoveryRounds - description missing
+ MaxDiscoveryRounds
 
- - MaxNodeLifecycleManagersCount - description missing
+ MaxNodeLifecycleManagersCount
 
- - NodeLifecycleManagersCleanupCount - description missing
+ NodeLifecycleManagersCleanupCount
 
- - PingMessageVersion - description missing
+ PingMessageVersion
 
- - PingRetryCount - description missing
+ PingRetryCount
 
- - PongTimeout - description missing
+ PongTimeout
 
- - SendNodeTimeout - description missing
+ SendNodeTimeout
 
- - UdpChannelCloseTimeout - description missing
+ UdpChannelCloseTimeout
 
 EthStatsConfig
 ^^^^^^^^^^^^^^
 
- - Contact - description missing
+ Contact
 
- - Enabled - description missing
+ Enabled
 
- - Name - description missing
+ Name
 
- - Secret - description missing
+ Secret
 
- - Server - description missing
+ Server
 
 HiveConfig
 ^^^^^^^^^^
 
- - BlocksDir - description missing
+ BlocksDir
 
- - Bootnode - description missing
+ Bootnode
 
- - ChainFile - description missing
+ ChainFile
 
- - GenesisFilePath - description missing
+ GenesisFilePath
 
- - HomesteadBlockNr - description missing
+ HomesteadBlockNr
 
- - KeysDir - description missing
+ KeysDir
 
 InitConfig
 ^^^^^^^^^^
 
- - BaseDbPath - description missing
+ BaseDbPath
 
- - ChainSpecFormat - description missing
+ ChainSpecFormat
 
- - ChainSpecPath - description missing
+ ChainSpecPath
 
- - DiscoveryEnabled - If 'false' then the node does not try to find nodes beyond the bootnodes configured.
+ DiscoveryEnabled
+   If 'false' then the node does not try to find nodes beyond the bootnodes configured.
+   default value: true
 
- - DiscoveryPort - description missing
+ DiscoveryPort
 
- - EnableUnsecuredDevWallet - If 'true' then it enables thewallet / key store in the application.
+ EnableUnsecuredDevWallet
+   If 'true' then it enables thewallet / key store in the application.
+   default value: false
 
- - GenesisHash - description missing
+ GenesisHash
 
- - HttpHost - description missing
+ HttpHost
 
- - HttpPort - description missing
+ HttpPort
 
- - IsMining - description missing
+ IsMining
 
- - JsonRpcEnabled - Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'
+ JsonRpcEnabled
+   Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'
+   default value: false
 
- - JsonRpcEnabledModules - Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'
+ JsonRpcEnabledModules
+   Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'
+   default value: "Clique,Db,Debug,Eth,Net,Trace,TxPool,Web3"
 
- - KeepDevWalletInMemory - If 'true' then any accounts created will be only valid during the session and deleted when application closes.
+ KeepDevWalletInMemory
+   If 'true' then any accounts created will be only valid during the session and deleted when application closes.
+   default value: false
 
- - LogDirectory - In case of null, the path is set to [applicationDirectiory]\logs
+ LogDirectory
+   In case of null, the path is set to [applicationDirectiory]\logs
+   default value: null
 
- - LogFileName - description missing
+ LogFileName
 
- - LogPerfStatsOnDebug - description missing
+ ObsoletePendingTransactionInterval
 
- - ObsoletePendingTransactionInterval - description missing
+ P2PPort
 
- - P2PPort - description missing
+ PeerManagerEnabled
 
- - PeerManagerEnabled - description missing
+ PeerNotificationThreshold
 
- - PeerNotificationThreshold - description missing
+ ProcessingEnabled
+   If 'false' then the node does not download/process new blocks..
+   default value: true
 
- - ProcessingEnabled - If 'false' then the node does not download/process new blocks..
+ RemovePendingTransactionInterval
 
- - RemovePendingTransactionInterval - description missing
+ RemovingLogFilesEnabled
 
- - RemovingLogFilesEnabled - description missing
+ StaticNodesPath
+   
+   default value: Data/static-nodes.json
 
- - StaticNodesPath - description missing
+ StoreReceipts
 
- - StoreReceipts - description missing
+ StoreTraces
 
- - StoreTraces - description missing
+ SynchronizationEnabled
+   If 'false' then the node does not download/process new blocks..
+   default value: true
 
- - SynchronizationEnabled - If 'false' then the node does not download/process new blocks..
-
- - WebSocketsEnabled - Defines whether the WebSockets service is enabled on node startup at the 'HttpPort'
+ WebSocketsEnabled
+   Defines whether the WebSockets service is enabled on node startup at the 'HttpPort'
+   default value: false
 
 JsonRpcConfig
 ^^^^^^^^^^^^^
 
- - EnabledModules - description missing
+ EnabledModules
 
 KeyStoreConfig
 ^^^^^^^^^^^^^^
 
- - Cipher - description missing
+ Cipher
 
- - IVSize - description missing
+ IVSize
 
- - Kdf - description missing
+ Kdf
 
- - KdfparamsDklen - description missing
+ KdfparamsDklen
 
- - KdfparamsN - description missing
+ KdfparamsN
 
- - KdfparamsP - description missing
+ KdfparamsP
 
- - KdfparamsR - description missing
+ KdfparamsR
 
- - KdfparamsSaltLen - description missing
+ KdfparamsSaltLen
 
- - KeyStoreDirectory - description missing
+ KeyStoreDirectory
 
- - KeyStoreEncoding - description missing
+ KeyStoreEncoding
 
- - SymmetricEncrypterBlockSize - description missing
+ SymmetricEncrypterBlockSize
 
- - SymmetricEncrypterKeySize - description missing
+ SymmetricEncrypterKeySize
 
- - TestNodeKey - description missing
+ TestNodeKey
 
 MetricsConfig
 ^^^^^^^^^^^^^
 
- - MetricsEnabled - description missing
+ MetricsEnabled
 
- - MetricsIntervalSeconds - description missing
+ MetricsIntervalSeconds
 
- - MetricsPushGatewayUrl - description missing
+ MetricsPushGatewayUrl
 
- - NodeName - description missing
+ NodeName
 
 NetworkConfig
 ^^^^^^^^^^^^^
 
- - ActivePeersMaxCount - description missing
+ ActivePeersMaxCount
 
- - CandidatePeerCountCleanupThreshold - description missing
+ CandidatePeerCountCleanupThreshold
 
- - DbBasePath - description missing
+ DbBasePath
 
- - IsPeersPersistenceOn - description missing
+ IsPeersPersistenceOn
 
- - MaxCandidatePeerCount - description missing
+ MaxCandidatePeerCount
 
- - MaxPersistedPeerCount - description missing
+ MaxPersistedPeerCount
 
- - P2PPingInterval - description missing
+ P2PPingInterval
 
- - P2PPingRetryCount - description missing
+ P2PPingRetryCount
 
- - PeersPersistenceInterval - description missing
+ PeersPersistenceInterval
 
- - PeersUpdateInterval - description missing
+ PeersUpdateInterval
 
- - PersistedPeerCountCleanupThreshold - description missing
+ PersistedPeerCountCleanupThreshold
 
- - StaticPeers - description missing
+ StaticPeers
 
- - TrustedPeers - description missing
+ TrustedPeers
 
 SyncConfig
 ^^^^^^^^^^
 
- - DownloadBodiesInFastSync - description missing
+ DownloadBodiesInFastSync
 
- - DownloadReceiptsInFastSync - description missing
+ DownloadReceiptsInFastSync
 
- - FastBlocks - description missing
+ FastBlocks
 
- - FastSync - description missing
+ FastSync
 
- - PivotHash - description missing
+ PivotHash
 
- - PivotNumber - description missing
+ PivotNumber
 
- - PivotTotalDifficulty - description missing
+ PivotTotalDifficulty
 
 Sample configuration (mainnet)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -302,182 +320,181 @@ Sample configuration (mainnet)
       {
         "ConfigModule": "DbConfig"
         "ConfigItems": {
-          "BlockCacheSize" : example
-          "BlockInfosDbBlockCacheSize" : example
-          "BlockInfosDbCacheIndexAndFilterBlocks" : example
-          "BlockInfosDbWriteBufferNumber" : example
-          "BlockInfosDbWriteBufferSize" : example
-          "BlocksDbBlockCacheSize" : example
-          "BlocksDbCacheIndexAndFilterBlocks" : example
-          "BlocksDbWriteBufferNumber" : example
-          "BlocksDbWriteBufferSize" : example
-          "CacheIndexAndFilterBlocks" : example
-          "CodeDbBlockCacheSize" : example
-          "CodeDbCacheIndexAndFilterBlocks" : example
-          "CodeDbWriteBufferNumber" : example
-          "CodeDbWriteBufferSize" : example
-          "HeadersDbBlockCacheSize" : example
-          "HeadersDbCacheIndexAndFilterBlocks" : example
-          "HeadersDbWriteBufferNumber" : example
-          "HeadersDbWriteBufferSize" : example
-          "PendingTxsDbBlockCacheSize" : example
-          "PendingTxsDbCacheIndexAndFilterBlocks" : example
-          "PendingTxsDbWriteBufferNumber" : example
-          "PendingTxsDbWriteBufferSize" : example
-          "ReceiptsDbBlockCacheSize" : example
-          "ReceiptsDbCacheIndexAndFilterBlocks" : example
-          "ReceiptsDbWriteBufferNumber" : example
-          "ReceiptsDbWriteBufferSize" : example
-          "TraceDbBlockCacheSize" : example
-          "TraceDbCacheIndexAndFilterBlocks" : example
-          "TraceDbWriteBufferNumber" : example
-          "TraceDbWriteBufferSize" : example
-          "WriteBufferNumber" : example
-          "WriteBufferSize" : example
+          "BlockCacheSize" : [MISSING_DOCS]
+          "BlockInfosDbBlockCacheSize" : [MISSING_DOCS]
+          "BlockInfosDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
+          "BlockInfosDbWriteBufferNumber" : [MISSING_DOCS]
+          "BlockInfosDbWriteBufferSize" : [MISSING_DOCS]
+          "BlocksDbBlockCacheSize" : [MISSING_DOCS]
+          "BlocksDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
+          "BlocksDbWriteBufferNumber" : [MISSING_DOCS]
+          "BlocksDbWriteBufferSize" : [MISSING_DOCS]
+          "CacheIndexAndFilterBlocks" : [MISSING_DOCS]
+          "CodeDbBlockCacheSize" : [MISSING_DOCS]
+          "CodeDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
+          "CodeDbWriteBufferNumber" : [MISSING_DOCS]
+          "CodeDbWriteBufferSize" : [MISSING_DOCS]
+          "HeadersDbBlockCacheSize" : [MISSING_DOCS]
+          "HeadersDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
+          "HeadersDbWriteBufferNumber" : [MISSING_DOCS]
+          "HeadersDbWriteBufferSize" : [MISSING_DOCS]
+          "PendingTxsDbBlockCacheSize" : [MISSING_DOCS]
+          "PendingTxsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
+          "PendingTxsDbWriteBufferNumber" : [MISSING_DOCS]
+          "PendingTxsDbWriteBufferSize" : [MISSING_DOCS]
+          "ReceiptsDbBlockCacheSize" : [MISSING_DOCS]
+          "ReceiptsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
+          "ReceiptsDbWriteBufferNumber" : [MISSING_DOCS]
+          "ReceiptsDbWriteBufferSize" : [MISSING_DOCS]
+          "TraceDbBlockCacheSize" : [MISSING_DOCS]
+          "TraceDbCacheIndexAndFilterBlocks" : [MISSING_DOCS]
+          "TraceDbWriteBufferNumber" : [MISSING_DOCS]
+          "TraceDbWriteBufferSize" : [MISSING_DOCS]
+          "WriteBufferNumber" : [MISSING_DOCS]
+          "WriteBufferSize" : [MISSING_DOCS]
         }
       },
       {
         "ConfigModule": "DiscoveryConfig"
         "ConfigItems": {
-          "BitsPerHop" : example
-          "BootnodePongTimeout" : example
-          "Bootnodes" : example
-          "BucketsCount" : example
-          "BucketSize" : example
-          "Concurrency" : example
-          "DiscoveryInterval" : example
-          "DiscoveryNewCycleWaitTime" : example
-          "DiscoveryPersistenceInterval" : example
-          "EvictionCheckInterval" : example
-          "IsDiscoveryNodesPersistenceOn" : example
-          "MasterExternalIp" : example
-          "MasterHost" : example
-          "MasterPort" : example
-          "MaxDiscoveryRounds" : example
-          "MaxNodeLifecycleManagersCount" : example
-          "NodeLifecycleManagersCleanupCount" : example
-          "PingMessageVersion" : example
-          "PingRetryCount" : example
-          "PongTimeout" : example
-          "SendNodeTimeout" : example
-          "UdpChannelCloseTimeout" : example
+          "BitsPerHop" : [MISSING_DOCS]
+          "BootnodePongTimeout" : [MISSING_DOCS]
+          "Bootnodes" : [MISSING_DOCS]
+          "BucketsCount" : [MISSING_DOCS]
+          "BucketSize" : [MISSING_DOCS]
+          "Concurrency" : [MISSING_DOCS]
+          "DiscoveryInterval" : [MISSING_DOCS]
+          "DiscoveryNewCycleWaitTime" : [MISSING_DOCS]
+          "DiscoveryPersistenceInterval" : [MISSING_DOCS]
+          "EvictionCheckInterval" : [MISSING_DOCS]
+          "IsDiscoveryNodesPersistenceOn" : [MISSING_DOCS]
+          "MasterExternalIp" : [MISSING_DOCS]
+          "MasterHost" : [MISSING_DOCS]
+          "MasterPort" : [MISSING_DOCS]
+          "MaxDiscoveryRounds" : [MISSING_DOCS]
+          "MaxNodeLifecycleManagersCount" : [MISSING_DOCS]
+          "NodeLifecycleManagersCleanupCount" : [MISSING_DOCS]
+          "PingMessageVersion" : [MISSING_DOCS]
+          "PingRetryCount" : [MISSING_DOCS]
+          "PongTimeout" : [MISSING_DOCS]
+          "SendNodeTimeout" : [MISSING_DOCS]
+          "UdpChannelCloseTimeout" : [MISSING_DOCS]
         }
       },
       {
         "ConfigModule": "EthStatsConfig"
         "ConfigItems": {
-          "Contact" : example
-          "Enabled" : example
-          "Name" : example
-          "Secret" : example
-          "Server" : example
+          "Contact" : [MISSING_DOCS]
+          "Enabled" : [MISSING_DOCS]
+          "Name" : [MISSING_DOCS]
+          "Secret" : [MISSING_DOCS]
+          "Server" : [MISSING_DOCS]
         }
       },
       {
         "ConfigModule": "HiveConfig"
         "ConfigItems": {
-          "BlocksDir" : example
-          "Bootnode" : example
-          "ChainFile" : example
-          "GenesisFilePath" : example
-          "HomesteadBlockNr" : example
-          "KeysDir" : example
+          "BlocksDir" : [MISSING_DOCS]
+          "Bootnode" : [MISSING_DOCS]
+          "ChainFile" : [MISSING_DOCS]
+          "GenesisFilePath" : [MISSING_DOCS]
+          "HomesteadBlockNr" : [MISSING_DOCS]
+          "KeysDir" : [MISSING_DOCS]
         }
       },
       {
         "ConfigModule": "InitConfig"
         "ConfigItems": {
-          "BaseDbPath" : example
-          "ChainSpecFormat" : example
-          "ChainSpecPath" : example
-          "DiscoveryEnabled" : example
-          "DiscoveryPort" : example
-          "EnableUnsecuredDevWallet" : example
-          "GenesisHash" : example
-          "HttpHost" : example
-          "HttpPort" : example
-          "IsMining" : example
-          "JsonRpcEnabled" : example
-          "JsonRpcEnabledModules" : example
-          "KeepDevWalletInMemory" : example
-          "LogDirectory" : example
-          "LogFileName" : example
-          "LogPerfStatsOnDebug" : example
-          "ObsoletePendingTransactionInterval" : example
-          "P2PPort" : example
-          "PeerManagerEnabled" : example
-          "PeerNotificationThreshold" : example
-          "ProcessingEnabled" : example
-          "RemovePendingTransactionInterval" : example
-          "RemovingLogFilesEnabled" : example
-          "StaticNodesPath" : example
-          "StoreReceipts" : example
-          "StoreTraces" : example
-          "SynchronizationEnabled" : example
-          "WebSocketsEnabled" : example
+          "BaseDbPath" : [MISSING_DOCS]
+          "ChainSpecFormat" : [MISSING_DOCS]
+          "ChainSpecPath" : [MISSING_DOCS]
+          "DiscoveryEnabled" : true
+          "DiscoveryPort" : [MISSING_DOCS]
+          "EnableUnsecuredDevWallet" : false
+          "GenesisHash" : [MISSING_DOCS]
+          "HttpHost" : [MISSING_DOCS]
+          "HttpPort" : [MISSING_DOCS]
+          "IsMining" : [MISSING_DOCS]
+          "JsonRpcEnabled" : false
+          "JsonRpcEnabledModules" : "Clique,Db,Debug,Eth,Net,Trace,TxPool,Web3"
+          "KeepDevWalletInMemory" : false
+          "LogDirectory" : null
+          "LogFileName" : [MISSING_DOCS]
+          "ObsoletePendingTransactionInterval" : [MISSING_DOCS]
+          "P2PPort" : [MISSING_DOCS]
+          "PeerManagerEnabled" : [MISSING_DOCS]
+          "PeerNotificationThreshold" : [MISSING_DOCS]
+          "ProcessingEnabled" : true
+          "RemovePendingTransactionInterval" : [MISSING_DOCS]
+          "RemovingLogFilesEnabled" : [MISSING_DOCS]
+          "StaticNodesPath" : Data/static-nodes.json
+          "StoreReceipts" : [MISSING_DOCS]
+          "StoreTraces" : [MISSING_DOCS]
+          "SynchronizationEnabled" : true
+          "WebSocketsEnabled" : false
         }
       },
       {
         "ConfigModule": "JsonRpcConfig"
         "ConfigItems": {
-          "EnabledModules" : example
+          "EnabledModules" : [MISSING_DOCS]
         }
       },
       {
         "ConfigModule": "KeyStoreConfig"
         "ConfigItems": {
-          "Cipher" : example
-          "IVSize" : example
-          "Kdf" : example
-          "KdfparamsDklen" : example
-          "KdfparamsN" : example
-          "KdfparamsP" : example
-          "KdfparamsR" : example
-          "KdfparamsSaltLen" : example
-          "KeyStoreDirectory" : example
-          "KeyStoreEncoding" : example
-          "SymmetricEncrypterBlockSize" : example
-          "SymmetricEncrypterKeySize" : example
-          "TestNodeKey" : example
+          "Cipher" : [MISSING_DOCS]
+          "IVSize" : [MISSING_DOCS]
+          "Kdf" : [MISSING_DOCS]
+          "KdfparamsDklen" : [MISSING_DOCS]
+          "KdfparamsN" : [MISSING_DOCS]
+          "KdfparamsP" : [MISSING_DOCS]
+          "KdfparamsR" : [MISSING_DOCS]
+          "KdfparamsSaltLen" : [MISSING_DOCS]
+          "KeyStoreDirectory" : [MISSING_DOCS]
+          "KeyStoreEncoding" : [MISSING_DOCS]
+          "SymmetricEncrypterBlockSize" : [MISSING_DOCS]
+          "SymmetricEncrypterKeySize" : [MISSING_DOCS]
+          "TestNodeKey" : [MISSING_DOCS]
         }
       },
       {
         "ConfigModule": "MetricsConfig"
         "ConfigItems": {
-          "MetricsEnabled" : example
-          "MetricsIntervalSeconds" : example
-          "MetricsPushGatewayUrl" : example
-          "NodeName" : example
+          "MetricsEnabled" : [MISSING_DOCS]
+          "MetricsIntervalSeconds" : [MISSING_DOCS]
+          "MetricsPushGatewayUrl" : [MISSING_DOCS]
+          "NodeName" : [MISSING_DOCS]
         }
       },
       {
         "ConfigModule": "NetworkConfig"
         "ConfigItems": {
-          "ActivePeersMaxCount" : example
-          "CandidatePeerCountCleanupThreshold" : example
-          "DbBasePath" : example
-          "IsPeersPersistenceOn" : example
-          "MaxCandidatePeerCount" : example
-          "MaxPersistedPeerCount" : example
-          "P2PPingInterval" : example
-          "P2PPingRetryCount" : example
-          "PeersPersistenceInterval" : example
-          "PeersUpdateInterval" : example
-          "PersistedPeerCountCleanupThreshold" : example
-          "StaticPeers" : example
-          "TrustedPeers" : example
+          "ActivePeersMaxCount" : [MISSING_DOCS]
+          "CandidatePeerCountCleanupThreshold" : [MISSING_DOCS]
+          "DbBasePath" : [MISSING_DOCS]
+          "IsPeersPersistenceOn" : [MISSING_DOCS]
+          "MaxCandidatePeerCount" : [MISSING_DOCS]
+          "MaxPersistedPeerCount" : [MISSING_DOCS]
+          "P2PPingInterval" : [MISSING_DOCS]
+          "P2PPingRetryCount" : [MISSING_DOCS]
+          "PeersPersistenceInterval" : [MISSING_DOCS]
+          "PeersUpdateInterval" : [MISSING_DOCS]
+          "PersistedPeerCountCleanupThreshold" : [MISSING_DOCS]
+          "StaticPeers" : [MISSING_DOCS]
+          "TrustedPeers" : [MISSING_DOCS]
         }
       },
       {
         "ConfigModule": "SyncConfig"
         "ConfigItems": {
-          "DownloadBodiesInFastSync" : example
-          "DownloadReceiptsInFastSync" : example
-          "FastBlocks" : example
-          "FastSync" : example
-          "PivotHash" : example
-          "PivotNumber" : example
-          "PivotTotalDifficulty" : example
+          "DownloadBodiesInFastSync" : [MISSING_DOCS]
+          "DownloadReceiptsInFastSync" : [MISSING_DOCS]
+          "FastBlocks" : [MISSING_DOCS]
+          "FastSync" : [MISSING_DOCS]
+          "PivotHash" : [MISSING_DOCS]
+          "PivotNumber" : [MISSING_DOCS]
+          "PivotTotalDifficulty" : [MISSING_DOCS]
         }
       },
     ]

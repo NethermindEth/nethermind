@@ -152,7 +152,7 @@ namespace Nethermind.Runner.Runners
             _configProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _rpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
-            _perfService = new PerfService(_logManager) {LogOnDebug = _initConfig.LogPerfStatsOnDebug};
+            _perfService = new PerfService(_logManager);
             _networkHelper = new NetworkHelper(_logger);
         }
 
