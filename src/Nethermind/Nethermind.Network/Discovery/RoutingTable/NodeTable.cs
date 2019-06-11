@@ -111,15 +111,6 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public void Initialize(PublicKey masterNodeKey)
         {
             Buckets = new NodeBucket[_discoveryConfig.BucketsCount];
-            var pass = new SecureString();
-            var rawPass = _discoveryConfig.KeyPass;
-            for (var i = 0; i < rawPass.Length; i++)
-            {
-                pass.AppendChar(rawPass[i]);
-            }
-            
-            pass.MakeReadOnly();
-
             MasterNode = new Node(masterNodeKey, _discoveryConfig.MasterHost, _discoveryConfig.MasterPort);
             if (_logger.IsTrace) _logger.Trace($"Created MasterNode: {MasterNode}");
 

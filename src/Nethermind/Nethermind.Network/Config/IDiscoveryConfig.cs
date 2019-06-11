@@ -108,11 +108,6 @@ namespace Nethermind.Network.Config
         string Bootnodes { get; set; }
 
         /// <summary>
-        /// Key Pass
-        /// </summary>
-        string KeyPass { get; }
-
-        /// <summary>
         /// Timeout for closing UDP channel in milliseconds
         /// </summary>
         int UdpChannelCloseTimeout { get; }

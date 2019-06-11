@@ -68,6 +68,146 @@ DbConfig
 
  - WriteBufferSize - description missing
 
+DiscoveryConfig
+^^^^^^^^^^^^^^^
+
+ - BitsPerHop - description missing
+
+ - BootnodePongTimeout - description missing
+
+ - Bootnodes - description missing
+
+ - BucketsCount - description missing
+
+ - BucketSize - description missing
+
+ - Concurrency - description missing
+
+ - DiscoveryInterval - description missing
+
+ - DiscoveryNewCycleWaitTime - description missing
+
+ - DiscoveryPersistenceInterval - description missing
+
+ - EvictionCheckInterval - description missing
+
+ - IsDiscoveryNodesPersistenceOn - description missing
+
+ - MasterExternalIp - description missing
+
+ - MasterHost - description missing
+
+ - MasterPort - description missing
+
+ - MaxDiscoveryRounds - description missing
+
+ - MaxNodeLifecycleManagersCount - description missing
+
+ - NodeLifecycleManagersCleanupCount - description missing
+
+ - PingMessageVersion - description missing
+
+ - PingRetryCount - description missing
+
+ - PongTimeout - description missing
+
+ - SendNodeTimeout - description missing
+
+ - UdpChannelCloseTimeout - description missing
+
+EthStatsConfig
+^^^^^^^^^^^^^^
+
+ - Contact - description missing
+
+ - Enabled - description missing
+
+ - Name - description missing
+
+ - Secret - description missing
+
+ - Server - description missing
+
+HiveConfig
+^^^^^^^^^^
+
+ - BlocksDir - description missing
+
+ - Bootnode - description missing
+
+ - ChainFile - description missing
+
+ - GenesisFilePath - description missing
+
+ - HomesteadBlockNr - description missing
+
+ - KeysDir - description missing
+
+InitConfig
+^^^^^^^^^^
+
+ - BaseDbPath - description missing
+
+ - ChainSpecFormat - description missing
+
+ - ChainSpecPath - description missing
+
+ - DiscoveryEnabled - description missing
+
+ - DiscoveryPort - description missing
+
+ - EnableUnsecuredDevWallet - description missing
+
+ - GenesisHash - description missing
+
+ - HttpHost - description missing
+
+ - HttpPort - description missing
+
+ - IsMining - description missing
+
+ - JsonRpcEnabled - description missing
+
+ - JsonRpcEnabledModules - description missing
+
+ - KeepDevWalletInMemory - description missing
+
+ - LogDirectory - description missing
+
+ - LogFileName - description missing
+
+ - LogPerfStatsOnDebug - description missing
+
+ - MetricsEnabled - description missing
+
+ - MetricsIntervalSeconds - description missing
+
+ - MetricsPushGatewayUrl - description missing
+
+ - ObsoletePendingTransactionInterval - description missing
+
+ - P2PPort - description missing
+
+ - PeerManagerEnabled - description missing
+
+ - PeerNotificationThreshold - description missing
+
+ - ProcessingEnabled - description missing
+
+ - RemovePendingTransactionInterval - description missing
+
+ - RemovingLogFilesEnabled - description missing
+
+ - StaticNodesPath - description missing
+
+ - StoreReceipts - description missing
+
+ - StoreTraces - description missing
+
+ - SynchronizationEnabled - description missing
+
+ - WebSocketsEnabled - description missing
+
 JsonRpcConfig
 ^^^^^^^^^^^^^
 
@@ -102,60 +242,31 @@ KeyStoreConfig
 
  - TestNodeKey - description missing
 
+MetricsConfig
+^^^^^^^^^^^^^
+
+ - MetricsEnabled - description missing
+
+ - MetricsIntervalSeconds - description missing
+
+ - MetricsPushGatewayUrl - description missing
+
+ - NodeName - description missing
+
 NetworkConfig
 ^^^^^^^^^^^^^
 
  - ActivePeersMaxCount - description missing
 
- - BitsPerHop - description missing
-
- - BootnodePongTimeout - description missing
-
- - Bootnodes - description missing
-
- - BucketsCount - description missing
-
- - BucketSize - description missing
-
  - CandidatePeerCountCleanupThreshold - description missing
-
- - Concurrency - description missing
 
  - DbBasePath - description missing
 
- - DisconnectDelay - description missing
-
- - DiscoveryInterval - description missing
-
- - DiscoveryNewCycleWaitTime - description missing
-
- - DiscoveryPersistenceInterval - description missing
-
- - EvictionCheckInterval - description missing
-
- - FailedConnectionDelay - description missing
-
- - IsDiscoveryNodesPersistenceOn - description missing
-
  - IsPeersPersistenceOn - description missing
-
- - KeyPass - description missing
-
- - MasterExternalIp - description missing
-
- - MasterHost - description missing
-
- - MasterPort - description missing
 
  - MaxCandidatePeerCount - description missing
 
- - MaxDiscoveryRounds - description missing
-
- - MaxNodeLifecycleManagersCount - description missing
-
  - MaxPersistedPeerCount - description missing
-
- - NodeLifecycleManagersCleanupCount - description missing
 
  - P2PPingInterval - description missing
 
@@ -167,19 +278,9 @@ NetworkConfig
 
  - PersistedPeerCountCleanupThreshold - description missing
 
- - PingMessageVersion - description missing
-
- - PingRetryCount - description missing
-
- - PongTimeout - description missing
-
- - SendNodeTimeout - description missing
-
  - StaticPeers - description missing
 
  - TrustedPeers - description missing
-
- - UdpChannelCloseTimeout - description missing
 
 SyncConfig
 ^^^^^^^^^^
@@ -242,6 +343,90 @@ Sample configuration (mainnet)
         }
       },
       {
+        "ConfigModule": "DiscoveryConfig"
+        "ConfigItems": {
+          "BitsPerHop" : example
+          "BootnodePongTimeout" : example
+          "Bootnodes" : example
+          "BucketsCount" : example
+          "BucketSize" : example
+          "Concurrency" : example
+          "DiscoveryInterval" : example
+          "DiscoveryNewCycleWaitTime" : example
+          "DiscoveryPersistenceInterval" : example
+          "EvictionCheckInterval" : example
+          "IsDiscoveryNodesPersistenceOn" : example
+          "MasterExternalIp" : example
+          "MasterHost" : example
+          "MasterPort" : example
+          "MaxDiscoveryRounds" : example
+          "MaxNodeLifecycleManagersCount" : example
+          "NodeLifecycleManagersCleanupCount" : example
+          "PingMessageVersion" : example
+          "PingRetryCount" : example
+          "PongTimeout" : example
+          "SendNodeTimeout" : example
+          "UdpChannelCloseTimeout" : example
+        }
+      },
+      {
+        "ConfigModule": "EthStatsConfig"
+        "ConfigItems": {
+          "Contact" : example
+          "Enabled" : example
+          "Name" : example
+          "Secret" : example
+          "Server" : example
+        }
+      },
+      {
+        "ConfigModule": "HiveConfig"
+        "ConfigItems": {
+          "BlocksDir" : example
+          "Bootnode" : example
+          "ChainFile" : example
+          "GenesisFilePath" : example
+          "HomesteadBlockNr" : example
+          "KeysDir" : example
+        }
+      },
+      {
+        "ConfigModule": "InitConfig"
+        "ConfigItems": {
+          "BaseDbPath" : example
+          "ChainSpecFormat" : example
+          "ChainSpecPath" : example
+          "DiscoveryEnabled" : example
+          "DiscoveryPort" : example
+          "EnableUnsecuredDevWallet" : example
+          "GenesisHash" : example
+          "HttpHost" : example
+          "HttpPort" : example
+          "IsMining" : example
+          "JsonRpcEnabled" : example
+          "JsonRpcEnabledModules" : example
+          "KeepDevWalletInMemory" : example
+          "LogDirectory" : example
+          "LogFileName" : example
+          "LogPerfStatsOnDebug" : example
+          "MetricsEnabled" : example
+          "MetricsIntervalSeconds" : example
+          "MetricsPushGatewayUrl" : example
+          "ObsoletePendingTransactionInterval" : example
+          "P2PPort" : example
+          "PeerManagerEnabled" : example
+          "PeerNotificationThreshold" : example
+          "ProcessingEnabled" : example
+          "RemovePendingTransactionInterval" : example
+          "RemovingLogFilesEnabled" : example
+          "StaticNodesPath" : example
+          "StoreReceipts" : example
+          "StoreTraces" : example
+          "SynchronizationEnabled" : example
+          "WebSocketsEnabled" : example
+        }
+      },
+      {
         "ConfigModule": "JsonRpcConfig"
         "ConfigItems": {
           "EnabledModules" : example
@@ -266,46 +451,30 @@ Sample configuration (mainnet)
         }
       },
       {
+        "ConfigModule": "MetricsConfig"
+        "ConfigItems": {
+          "MetricsEnabled" : example
+          "MetricsIntervalSeconds" : example
+          "MetricsPushGatewayUrl" : example
+          "NodeName" : example
+        }
+      },
+      {
         "ConfigModule": "NetworkConfig"
         "ConfigItems": {
           "ActivePeersMaxCount" : example
-          "BitsPerHop" : example
-          "BootnodePongTimeout" : example
-          "Bootnodes" : example
-          "BucketsCount" : example
-          "BucketSize" : example
           "CandidatePeerCountCleanupThreshold" : example
-          "Concurrency" : example
           "DbBasePath" : example
-          "DisconnectDelay" : example
-          "DiscoveryInterval" : example
-          "DiscoveryNewCycleWaitTime" : example
-          "DiscoveryPersistenceInterval" : example
-          "EvictionCheckInterval" : example
-          "FailedConnectionDelay" : example
-          "IsDiscoveryNodesPersistenceOn" : example
           "IsPeersPersistenceOn" : example
-          "KeyPass" : example
-          "MasterExternalIp" : example
-          "MasterHost" : example
-          "MasterPort" : example
           "MaxCandidatePeerCount" : example
-          "MaxDiscoveryRounds" : example
-          "MaxNodeLifecycleManagersCount" : example
           "MaxPersistedPeerCount" : example
-          "NodeLifecycleManagersCleanupCount" : example
           "P2PPingInterval" : example
           "P2PPingRetryCount" : example
           "PeersPersistenceInterval" : example
           "PeersUpdateInterval" : example
           "PersistedPeerCountCleanupThreshold" : example
-          "PingMessageVersion" : example
-          "PingRetryCount" : example
-          "PongTimeout" : example
-          "SendNodeTimeout" : example
           "StaticPeers" : example
           "TrustedPeers" : example
-          "UdpChannelCloseTimeout" : example
         }
       },
       {

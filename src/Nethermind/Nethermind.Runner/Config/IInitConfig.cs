@@ -46,9 +46,6 @@ namespace Nethermind.Runner.Config
         [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = true)]
         bool ProcessingEnabled { get; set; }
         bool PeerManagerEnabled { get; set; }
-        bool MetricsEnabled { get; set; }
-        int MetricsIntervalSeconds { get; set; }
-        string MetricsPushGatewayUrl { get; set; }
         bool IsMining { get; set; }
         string HttpHost { get; set; }
         int HttpPort { get; set; }
