@@ -50,13 +50,13 @@ jobs:
     #  name: "Ethereum.VM.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover src/Nethermind/Nethermind.Abi.Test
       name: "Nethermind.Abi.Test"
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover src/Nethermind/Nethermind.Blockchain.Test
+    - script: dotnet test src/Nethermind/Nethermind.Blockchain.Test
       name: "Nethermind.Blockchain.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover src/Nethermind/Nethermind.Clique.Test
       name: "Nethermind.Clique.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover src/Nethermind/Nethermind.Config.Test
       name: "Nethermind.Config.Test"
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover src/Nethermind/Nethermind.Core.Test
+    - script: dotnet test src/Nethermind/Nethermind.Core.Test
       name: "Nethermind.Core.Test"
     #- script: dotnet test src/Nethermind/Nethermind.Db.Test
     #  name: "Nethermind.Db.Test.Linux"
