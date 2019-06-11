@@ -56,7 +56,7 @@ namespace Nethermind.Config.Test
         public void Can_load_config_from_file()
         {
             var keystoreConfig = _configProvider.GetConfig<IKeyStoreConfig>();
-            var networkConfig = _configProvider.GetConfig<INetworkConfig>();
+            var networkConfig = _configProvider.GetConfig<IDiscoveryConfig>();
             var jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
             var statsConfig = _configProvider.GetConfig<IStatsConfig>();
 

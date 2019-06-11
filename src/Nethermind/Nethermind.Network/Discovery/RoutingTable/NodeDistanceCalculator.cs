@@ -25,24 +25,24 @@ namespace Nethermind.Network.Discovery.RoutingTable
         private readonly int _maxDistance;
         private readonly int _bitsPerHoop;
 
-        public NodeDistanceCalculator(INetworkConfig networkConfig)
+        public NodeDistanceCalculator(IDiscoveryConfig discoveryConfig)
         {
-            _maxDistance = networkConfig.BucketsCount;
-            _bitsPerHoop = networkConfig.BitsPerHop;
+            _maxDistance = discoveryConfig.BucketsCount;
+            _bitsPerHoop = discoveryConfig.BitsPerHop;
         }
 
         public int CalculateDistance(byte[] sourceId, byte[] destinationId)
         {
             var hash = new byte[destinationId.Length < sourceId.Length ? destinationId.Length : sourceId.Length];
 
-            for (var i = 0; i < hash.Length; i++)
+            for (int i = 0; i < hash.Length; i++)
             {
                 hash[i] = (byte)(destinationId[i] ^ sourceId[i]);
             }
 
-            var distance = _maxDistance;
+            int distance = _maxDistance;
 
-            for (var i = 0; i < hash.Length; i++)
+            for (int i = 0; i < hash.Length; i++)
             {
                 var b = hash[i];
                 if (b == 0)
@@ -51,8 +51,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 }
                 else
                 {
-                    var count = 0;
-                    for (var j = _bitsPerHoop - 1; j >= 0; j--)
+                    int count = 0;
+                    for (int j = _bitsPerHoop - 1; j >= 0; j--)
                     {
                         //why not b[j] == 0
                         if ((b & (1 << j)) == 0)
@@ -68,6 +68,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
                     break;
                 }
             }
+            
             return distance;
         }
     }

@@ -192,7 +192,7 @@ namespace Nethermind.Network.Test
             _discoveryApp = Substitute.For<IDiscoveryApp>();
             _stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
             _storage = new InMemoryStorage();
-            _peerLoader = new PeerLoader(new NetworkConfig(), _stats, _storage, LimboLogs.Instance);
+            _peerLoader = new PeerLoader(new NetworkConfig(), new DiscoveryConfig(), _stats, _storage, LimboLogs.Instance);
             _networkConfig = new NetworkConfig();
             _networkConfig.PeersPersistenceInterval = 50;
             _staticNodesManager = Substitute.For<IStaticNodesManager>();

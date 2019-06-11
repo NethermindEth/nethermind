@@ -31,19 +31,16 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
     public class NodeTable : INodeTable
     {
-        private readonly INetworkConfig _networkConfig;
-        private readonly IKeyStore _keyStore;
-        private readonly ILogger _logger;
-        private readonly INodeDistanceCalculator _nodeDistanceCalculator;
+        private ILogger _logger;
+        private IDiscoveryConfig _discoveryConfig;
+        private INodeDistanceCalculator _nodeDistanceCalculator;
+        private ConcurrentDictionary<Keccak, Node> _nodes = new ConcurrentDictionary<Keccak, Node>(); 
 
-        private readonly ConcurrentDictionary<Keccak, Node> _nodes = new ConcurrentDictionary<Keccak, Node>(); 
-
-        public NodeTable(IKeyStore keyStore, INodeDistanceCalculator nodeDistanceCalculator, INetworkConfig networkConfig, ILogManager logManager)
+        public NodeTable(INodeDistanceCalculator nodeDistanceCalculator, IDiscoveryConfig discoveryConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _networkConfig = networkConfig;
-            _keyStore = keyStore;
-            _nodeDistanceCalculator = nodeDistanceCalculator; 
+            _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
+            _nodeDistanceCalculator = nodeDistanceCalculator ?? throw new ArgumentNullException(nameof(nodeDistanceCalculator)); 
         }
 
         public Node MasterNode { get; private set; }    
@@ -77,7 +74,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public Node[] GetClosestNodes()
         {
             var nodes = new List<NodeBucketItem>();
-            var bucketSize = _networkConfig.BucketSize;
+            var bucketSize = _discoveryConfig.BucketSize;
             for (var i = 0; i < Buckets.Length; i++)
             {
                 var nodeBucket = Buckets[i];
@@ -106,16 +103,16 @@ namespace Nethermind.Network.Discovery.RoutingTable
             var allNodes = Buckets.SelectMany(x => x.Items).Where(x => x.Node.IdHash != idHash)
                 .Select(x => new {x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node.Id.Bytes, nodeId)})
                 .OrderBy(x => x.Distance)
-                .Take(_networkConfig.BucketSize)
+                .Take(_discoveryConfig.BucketSize)
                 .Select(x => x.Node).ToArray();
             return allNodes;
         }
 
         public void Initialize(PublicKey masterNodeKey)
         {
-            Buckets = new NodeBucket[_networkConfig.BucketsCount];
+            Buckets = new NodeBucket[_discoveryConfig.BucketsCount];
             var pass = new SecureString();
-            var rawPass = _networkConfig.KeyPass;
+            var rawPass = _discoveryConfig.KeyPass;
             for (var i = 0; i < rawPass.Length; i++)
             {
                 pass.AppendChar(rawPass[i]);
@@ -123,12 +120,12 @@ namespace Nethermind.Network.Discovery.RoutingTable
             
             pass.MakeReadOnly();
 
-            MasterNode = new Node(masterNodeKey, _networkConfig.MasterHost, _networkConfig.MasterPort);
+            MasterNode = new Node(masterNodeKey, _discoveryConfig.MasterHost, _discoveryConfig.MasterPort);
             if (_logger.IsTrace) _logger.Trace($"Created MasterNode: {MasterNode}");
 
             for (var i = 0; i < Buckets.Length; i++)
             {
-                Buckets[i] = new NodeBucket(i, _networkConfig.BucketSize);
+                Buckets[i] = new NodeBucket(i, _discoveryConfig.BucketSize);
             }
         }
     }

@@ -30,6 +30,7 @@ namespace Nethermind.Network.Test
     public class PeerLoaderTests
     {
         private NetworkConfig _networkConfig;
+        private DiscoveryConfig _discoveryConfig;
         private INodeStatsManager _statsManager;
         private INetworkStorage _peerStorage;
         private PeerLoader _loader;
@@ -38,9 +39,10 @@ namespace Nethermind.Network.Test
         public void SetUp()
         {
             _networkConfig = new NetworkConfig();
+            _discoveryConfig = new DiscoveryConfig();
             _statsManager = Substitute.For<INodeStatsManager>();
             _peerStorage = Substitute.For<INetworkStorage>();
-            _loader = new PeerLoader(_networkConfig, _statsManager, _peerStorage, LimboLogs.Instance);
+            _loader = new PeerLoader(_networkConfig, _discoveryConfig, _statsManager, _peerStorage, LimboLogs.Instance);
         }
 
         [Test]
@@ -81,7 +83,7 @@ namespace Nethermind.Network.Test
         [Test]
         public void Can_load_bootnodes()
         {
-            _networkConfig.Bootnodes = enodesString;
+            _discoveryConfig.Bootnodes = enodesString;
             List<Peer> peers = _loader.LoadPeers();
             Assert.AreEqual(2, peers.Count);
             foreach (Peer peer in peers)

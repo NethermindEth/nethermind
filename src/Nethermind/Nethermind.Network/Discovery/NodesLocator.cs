@@ -38,15 +38,15 @@ namespace Nethermind.Network.Discovery
         private readonly ILogger _logger;
         private readonly INodeTable _nodeTable;
         private readonly IDiscoveryManager _discoveryManager;
-        private readonly INetworkConfig _configurationProvider;
+        private readonly IDiscoveryConfig _discoveryConfig;
         private Node _masterNode;
 
-        public NodesLocator(INodeTable nodeTable, IDiscoveryManager discoveryManager, IConfigProvider configurationProvider, ILogManager logManager)
+        public NodesLocator(INodeTable nodeTable, IDiscoveryManager discoveryManager, IDiscoveryConfig discoveryConfig, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger();
-            _configurationProvider = configurationProvider.GetConfig<INetworkConfig>();
-            _nodeTable = nodeTable;
-            _discoveryManager = discoveryManager;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
+            _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
+            _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         }
 
         public void Initialize(Node masterNode)
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Discovery
             if(_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
             var nodesCountBeforeDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
 
-            for (var i = 0; i < _configurationProvider.MaxDiscoveryRounds; i++)
+            for (var i = 0; i < _discoveryConfig.MaxDiscoveryRounds; i++)
             {
                 Node[] tryCandidates;
                 var candTryIndex = 0;
@@ -85,11 +85,11 @@ namespace Nethermind.Network.Discovery
                     }
                     candTryIndex = candTryIndex + 1;
 
-                    _logger.Trace($"Waiting {_configurationProvider.DiscoveryNewCycleWaitTime} for new nodes");
+                    _logger.Trace($"Waiting {_discoveryConfig.DiscoveryNewCycleWaitTime} for new nodes");
                     //we need to wait some time for pong messages received from new nodes we reached out to
                     try
                     {
-                        await Task.Delay(_configurationProvider.DiscoveryNewCycleWaitTime, cancellationToken);
+                        await Task.Delay(_discoveryConfig.DiscoveryNewCycleWaitTime, cancellationToken);
                     }
                     catch (OperationCanceledException)
                     {
@@ -108,7 +108,7 @@ namespace Nethermind.Network.Discovery
                 var nodesTriedCount = 0;
                 while (true)
                 {
-                    var count = failRequestCount > 0 ? failRequestCount : _configurationProvider.Concurrency;
+                    var count = failRequestCount > 0 ? failRequestCount : _discoveryConfig.Concurrency;
                     var nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count).ToArray();
                     if (!nodesToSend.Any())
                     {
@@ -133,7 +133,7 @@ namespace Nethermind.Network.Discovery
                         }
                     }
 
-                    if (successRequestsCount >= _configurationProvider.Concurrency)
+                    if (successRequestsCount >= _discoveryConfig.Concurrency)
                     {
                         if(_logger.IsTrace) _logger.Trace($"Sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                         break;
@@ -188,7 +188,7 @@ namespace Nethermind.Network.Discovery
                 var nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
                 nodeManager?.SendFindNode(searchedNodeId ?? _masterNode.Id.Bytes);
 
-                if (await _discoveryManager.WasMessageReceived(destinationNode.IdHash, MessageType.Neighbors, _configurationProvider.SendNodeTimeout))
+                if (await _discoveryManager.WasMessageReceived(destinationNode.IdHash, MessageType.Neighbors, _discoveryConfig.SendNodeTimeout))
                 {
                     return Result.Success;
                 }
@@ -200,18 +200,5 @@ namespace Nethermind.Network.Discovery
                 return Result.Fail("Cancelled");
             } 
         }
-
-        //private Result SendFindNodeSync(Node destinationNode, byte[] searchedNodeId)
-        //{
-        //    var nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
-        //    nodeManager?.SendFindNode(searchedNodeId ?? _masterNode.Id.Bytes);
-
-        //    if (_discoveryManager.WasMessageReceived(destinationNode.IdHashText, MessageType.Neighbors, _configurationProvider.SendNodeTimeout))
-        //    {
-        //        return Result.Success();
-        //    }
-            
-        //    return Result.Fail($"Did not receive Neighbors reponse in time from: {destinationNode.Host}");
-        //}
     }
 }

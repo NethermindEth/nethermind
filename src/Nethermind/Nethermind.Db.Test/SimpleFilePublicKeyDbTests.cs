@@ -33,13 +33,13 @@ namespace Nethermind.Db.Test
         {
             File.Delete(Path.Combine(Path.GetTempPath(), SimpleFilePublicKeyDb.DbName));
             
-            SimpleFilePublicKeyDb filePublicKeyDb = new SimpleFilePublicKeyDb(Path.GetTempPath(), LimboLogs.Instance, Substitute.For<IPerfService>());
+            SimpleFilePublicKeyDb filePublicKeyDb = new SimpleFilePublicKeyDb(Path.GetTempPath(), LimboLogs.Instance);
             filePublicKeyDb[TestItem.PublicKeyA.Bytes] = new byte[] {1, 2, 3};
             filePublicKeyDb[TestItem.PublicKeyB.Bytes] = new byte[] {4, 5, 6};
             filePublicKeyDb[TestItem.PublicKeyC.Bytes] = new byte[] {1, 2, 3};
             filePublicKeyDb.CommitBatch();
             
-            SimpleFilePublicKeyDb copy = new SimpleFilePublicKeyDb(Path.GetTempPath(), LimboLogs.Instance, Substitute.For<IPerfService>());
+            SimpleFilePublicKeyDb copy = new SimpleFilePublicKeyDb(Path.GetTempPath(), LimboLogs.Instance);
             Assert.AreEqual(3, copy.Keys.Count);
         }
     }

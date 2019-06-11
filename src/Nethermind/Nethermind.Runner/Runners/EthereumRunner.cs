@@ -163,7 +163,7 @@ namespace Nethermind.Runner.Runners
 
             SetupKeyStore();
             LoadChainSpec();
-            UpdateNetworkConfig();
+            UpdateDiscoveryConfig();
             await InitBlockchain();
             RegisterJsonRpcModules();
             InitEthStats();
@@ -290,25 +290,23 @@ namespace Nethermind.Runner.Runners
             _rpcModuleProvider.Register<ITraceModule>(traceModule);
         }
 
-        private void UpdateNetworkConfig()
+        private void UpdateDiscoveryConfig()
         {
             var localHost = _networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
-            var networkConfig = _configProvider.GetConfig<INetworkConfig>();
-            networkConfig.MasterExternalIp = localHost;
-            networkConfig.MasterHost = localHost;
-            if (networkConfig.Bootnodes != string.Empty)
+            var discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
+            discoveryConfig.MasterExternalIp = localHost;
+            discoveryConfig.MasterHost = localHost;
+            if (discoveryConfig.Bootnodes != string.Empty)
             {
                 if (_chainSpec.Bootnodes.Length != 0)
                 {
-                    networkConfig.Bootnodes += "," + string.Join(",", _chainSpec.Bootnodes.Select(bn => bn.ToString()));
+                    discoveryConfig.Bootnodes += "," + string.Join(",", _chainSpec.Bootnodes.Select(bn => bn.ToString()));
                 }
             }
             else
             {
-                networkConfig.Bootnodes = string.Join(",", _chainSpec.Bootnodes.Select(bn => bn.ToString()));
+                discoveryConfig.Bootnodes = string.Join(",", _chainSpec.Bootnodes.Select(bn => bn.ToString()));
             }
-
-            networkConfig.DbBasePath = _initConfig.BaseDbPath;
         }
 
         public async Task StopAsync()
@@ -746,6 +744,8 @@ namespace Nethermind.Runner.Runners
                 _cryptoRandom, new Ecdsa(), _nodeKey, _logManager);
 
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
+            var discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
+            
             _sessionMonitor = new SessionMonitor(networkConfig, _logManager);
             _rlpxPeer = new RlpxPeer(
                 _nodeKey.PublicKey,
@@ -759,11 +759,12 @@ namespace Nethermind.Runner.Runners
             _staticNodesManager = new StaticNodesManager(_initConfig.StaticNodesPath, _logManager);
             await _staticNodesManager.InitAsync();
             
-            var peerStorage = new NetworkStorage(PeersDbPath, networkConfig, _logManager, _perfService);
+            var peersDb = new SimpleFilePublicKeyDb(PeersDbPath, _logManager);
+            var peerStorage = new NetworkStorage(peersDb, _logManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
             _protocolsManager = new ProtocolsManager(_syncPeerPool, _syncServer, _txPool, _discoveryApp, _messageSerializationService, _rlpxPeer, _nodeStatsManager, protocolValidator, peerStorage, _perfService, _logManager);
-            PeerLoader peerLoader = new PeerLoader(networkConfig, _nodeStatsManager, peerStorage, _logManager);
+            PeerLoader peerLoader = new PeerLoader(networkConfig, discoveryConfig, _nodeStatsManager, peerStorage, _logManager);
             _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, networkConfig, _logManager, _staticNodesManager);
             _peerManager.Init();
         }
@@ -789,8 +790,8 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            INetworkConfig networkConfig = _configProvider.GetConfig<INetworkConfig>();
-            networkConfig.MasterPort = _initConfig.DiscoveryPort;
+            IDiscoveryConfig discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
+            discoveryConfig.MasterPort = _initConfig.DiscoveryPort;
 
             var privateKeyProvider = new SameKeyGenerator(_nodeKey);
             var discoveryMessageFactory = new DiscoveryMessageFactory(_timestamp);
@@ -805,12 +806,10 @@ namespace Nethermind.Runner.Runners
 
             msgSerializersProvider.RegisterDiscoverySerializers();
 
-            var nodeDistanceCalculator = new NodeDistanceCalculator(networkConfig);
+            var nodeDistanceCalculator = new NodeDistanceCalculator(discoveryConfig);
 
-            var nodeTable = new NodeTable(
-                _keyStore,
-                nodeDistanceCalculator,
-                networkConfig,
+            var nodeTable = new NodeTable(nodeDistanceCalculator,
+                discoveryConfig,
                 _logManager);
 
             var evictionManager = new EvictionManager(
@@ -822,26 +821,25 @@ namespace Nethermind.Runner.Runners
                 discoveryMessageFactory,
                 evictionManager,
                 _nodeStatsManager,
-                networkConfig,
+                discoveryConfig,
                 _logManager);
 
+            var discoveryDb = new SimpleFilePublicKeyDb(DiscoveryNodesDbPath, _logManager);
             var discoveryStorage = new NetworkStorage(
-                DiscoveryNodesDbPath,
-                networkConfig,
-                _logManager,
-                _perfService);
+                discoveryDb,
+                _logManager);
 
             var discoveryManager = new DiscoveryManager(
                 nodeLifeCycleFactory,
                 nodeTable,
                 discoveryStorage,
-                networkConfig,
+                discoveryConfig,
                 _logManager);
 
             var nodesLocator = new NodesLocator(
                 nodeTable,
                 discoveryManager,
-                _configProvider,
+                discoveryConfig,
                 _logManager);
 
             _discoveryApp = new DiscoveryApp(
@@ -851,7 +849,7 @@ namespace Nethermind.Runner.Runners
                 _messageSerializationService,
                 _cryptoRandom,
                 discoveryStorage,
-                networkConfig,
+                discoveryConfig,
                 _timestamp,
                 _logManager, _perfService);
 
