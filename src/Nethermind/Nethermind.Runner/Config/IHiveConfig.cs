@@ -21,13 +21,16 @@ using Nethermind.Config;
 
 namespace Nethermind.Runner.Config
 {
+    [ConfigCategory(Description = "These items need only be set when testing with Hive (Ethereum Foundation tool)")]
     public interface IHiveConfig : IConfig
     {
+        [ConfigItem(Description = "Path to a file with a test chain definition.", DefaultValue = "null")]
         string ChainFile { get; set; }
+        
+        [ConfigItem(Description = "Path to a directory with additional blocks.", DefaultValue = "null")]
         string BlocksDir { get; set; }
+        
+        [ConfigItem(Description = "Path to a test key store directory.", DefaultValue = "null")]
         string KeysDir { get; set; }
-        BigInteger? HomesteadBlockNr { get; set; }
-        string Bootnode { get; set; }
-        string GenesisFilePath { get; set; }
     }
 }

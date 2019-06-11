@@ -75,6 +75,12 @@ namespace Nethermind.WriteTheDocs
 
 ");
 
+                ConfigCategoryAttribute categoryAttribute = configInterface.GetCustomAttribute<ConfigCategoryAttribute>();
+                if (categoryAttribute != null)
+                {
+                    descriptionsBuilder.AppendLine($"{categoryAttribute.Description}").AppendLine();
+                }
+
                 exampleBuilder.AppendLine("      {");
                 exampleBuilder.AppendLine($"        \"ConfigModule\": \"{configType.Name}\"");
                 exampleBuilder.AppendLine("        \"ConfigItems\": {");
@@ -83,6 +89,11 @@ namespace Nethermind.WriteTheDocs
                 foreach (PropertyInfo propertyInfo in properties.OrderBy(p => p.Name))
                 {
                     PropertyInfo interfaceProperty = configInterface.GetProperty(propertyInfo.Name);
+                    if (interfaceProperty == null)
+                    {
+                        Console.WriteLine($"Property {propertyInfo.Name} is missing from interface {configInterface.Name}.");
+                    }
+                    
                     ConfigItemAttribute attribute = interfaceProperty.GetCustomAttribute<ConfigItemAttribute>();
                     string defaultValue = attribute == null ? "[MISSING_DOCS]" : attribute.DefaultValue;
                     

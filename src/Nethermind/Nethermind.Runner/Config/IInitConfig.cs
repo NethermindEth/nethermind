@@ -65,8 +65,5 @@ namespace Nethermind.Runner.Config
         string LogDirectory { get; set; }
         bool StoreTraces { get; set; }
         bool StoreReceipts { get; set; }
-        int ObsoletePendingTransactionInterval { get; set; }
-        int RemovePendingTransactionInterval { get; set; }
-        int PeerNotificationThreshold { get; set; }
     }
 }

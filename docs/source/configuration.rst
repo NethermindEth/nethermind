@@ -131,17 +131,19 @@ EthStatsConfig
 HiveConfig
 ^^^^^^^^^^
 
- BlocksDir
+These items need only be set when testing with Hive (Ethereum Foundation tool)
 
- Bootnode
+ BlocksDir
+   Path to a directory with additional blocks.
+   default value: null
 
  ChainFile
-
- GenesisFilePath
-
- HomesteadBlockNr
+   Path to a file with a test chain definition.
+   default value: null
 
  KeysDir
+   Path to a test key store directory.
+   default value: null
 
 InitConfig
 ^^^^^^^^^^
@@ -188,19 +190,13 @@ InitConfig
 
  LogFileName
 
- ObsoletePendingTransactionInterval
-
  P2PPort
 
  PeerManagerEnabled
 
- PeerNotificationThreshold
-
  ProcessingEnabled
    If 'false' then the node does not download/process new blocks..
    default value: true
-
- RemovePendingTransactionInterval
 
  RemovingLogFilesEnabled
 
@@ -311,6 +307,15 @@ SyncConfig
 
  PivotTotalDifficulty
 
+TxPoolConfig
+^^^^^^^^^^^^
+
+ ObsoletePendingTransactionInterval
+
+ PeerNotificationThreshold
+
+ RemovePendingTransactionInterval
+
 Sample configuration (mainnet)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -394,12 +399,9 @@ Sample configuration (mainnet)
       {
         "ConfigModule": "HiveConfig"
         "ConfigItems": {
-          "BlocksDir" : [MISSING_DOCS]
-          "Bootnode" : [MISSING_DOCS]
-          "ChainFile" : [MISSING_DOCS]
-          "GenesisFilePath" : [MISSING_DOCS]
-          "HomesteadBlockNr" : [MISSING_DOCS]
-          "KeysDir" : [MISSING_DOCS]
+          "BlocksDir" : null
+          "ChainFile" : null
+          "KeysDir" : null
         }
       },
       {
@@ -420,12 +422,9 @@ Sample configuration (mainnet)
           "KeepDevWalletInMemory" : false
           "LogDirectory" : null
           "LogFileName" : [MISSING_DOCS]
-          "ObsoletePendingTransactionInterval" : [MISSING_DOCS]
           "P2PPort" : [MISSING_DOCS]
           "PeerManagerEnabled" : [MISSING_DOCS]
-          "PeerNotificationThreshold" : [MISSING_DOCS]
           "ProcessingEnabled" : true
-          "RemovePendingTransactionInterval" : [MISSING_DOCS]
           "RemovingLogFilesEnabled" : [MISSING_DOCS]
           "StaticNodesPath" : Data/static-nodes.json
           "StoreReceipts" : [MISSING_DOCS]
@@ -495,6 +494,14 @@ Sample configuration (mainnet)
           "PivotHash" : [MISSING_DOCS]
           "PivotNumber" : [MISSING_DOCS]
           "PivotTotalDifficulty" : [MISSING_DOCS]
+        }
+      },
+      {
+        "ConfigModule": "TxPoolConfig"
+        "ConfigItems": {
+          "ObsoletePendingTransactionInterval" : [MISSING_DOCS]
+          "PeerNotificationThreshold" : [MISSING_DOCS]
+          "RemovePendingTransactionInterval" : [MISSING_DOCS]
         }
       },
     ]

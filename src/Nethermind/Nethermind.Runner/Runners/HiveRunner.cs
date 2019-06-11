@@ -71,7 +71,6 @@ namespace Nethermind.Runner.Runners
             var initConfig = _configurationProvider.GetConfig<IHiveConfig>();
             _blockchainProcessor.Start();
             InitializeKeys(initConfig.KeysDir);
-            InitializeGenesis(initConfig.GenesisFilePath);
             InitializeChain(initConfig.ChainFile);
             InitializeBlocks(initConfig.BlocksDir);
             _logger.Info("Ethereum initialization completed");
@@ -151,7 +150,6 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            var keyStoreDir = GetStoreDirectory();
             var files = Directory.GetFiles(keysDir);
             foreach (var file in files)
             {
@@ -160,73 +158,6 @@ namespace Nethermind.Runner.Runners
                 var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(fileContent);
                 _wallet.Add(new Address(keyStoreItem.Address));
             }
-        }
-
-        private void InitializeGenesis(string genesisFile)
-        {
-            var genesisBlockRaw = File.ReadAllText(genesisFile);
-            var blockJson = _jsonSerializer.Deserialize<TestGenesisJson>(genesisBlockRaw);
-            var stateRoot = InitializeAccounts(blockJson.Alloc);
-            var block = Convert(blockJson, stateRoot);
-            _blockTree.SuggestBlock(block);
-        }
-
-        private static Block Convert(TestGenesisJson headerJson, Keccak stateRoot)
-        {
-            if (headerJson == null)
-            {
-                return null;
-            }
-
-            var header = new BlockHeader(
-                new Keccak(headerJson.ParentHash),
-                Keccak.OfAnEmptySequenceRlp,
-                new Address(headerJson.Coinbase),
-                Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
-                0,
-                (long) Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
-                Bytes.FromHexString(headerJson.Timestamp).ToUInt256(),
-                Bytes.FromHexString(headerJson.ExtraData)
-            )
-            {
-                Bloom = Bloom.Empty,
-                MixHash = new Keccak(headerJson.MixHash),
-                Nonce = (ulong) Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger(),               
-                ReceiptsRoot = Keccak.EmptyTreeHash,
-                StateRoot = Keccak.EmptyTreeHash,
-                TxRoot = Keccak.EmptyTreeHash
-            };
-
-            header.StateRoot = stateRoot;
-            header.Hash = BlockHeader.CalculateHash(header);
-
-            return new Block(header);
-        }
-
-        private Keccak InitializeAccounts(IDictionary<string, TestAccount> alloc)
-        {   
-            foreach (var account in alloc)
-            {
-                UInt256.CreateFromBigEndian(out UInt256 allocation, Bytes.FromHexString(account.Value.Balance));
-                _stateProvider.CreateAccount(new Address(account.Key), account.Value.Balance.StartsWith("0x") 
-                    ? allocation : UInt256.Parse(account.Value.Balance));
-            }
-            
-            _stateProvider.Commit(_specProvider.GenesisSpec);
-            _stateDb.Commit();
-            
-            return _stateProvider.StateRoot;
-        }
-
-        private string GetStoreDirectory()
-        {
-            var directory = _configurationProvider.GetConfig<IKeyStoreConfig>().KeyStoreDirectory;
-            if (!Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            return directory;
         }
     }
 }

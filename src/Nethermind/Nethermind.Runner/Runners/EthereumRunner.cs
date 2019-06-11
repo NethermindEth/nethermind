@@ -92,6 +92,7 @@ namespace Nethermind.Runner.Runners
 
         private IRpcModuleProvider _rpcModuleProvider;
         private IConfigProvider _configProvider;
+        private ITxPoolConfig _txPoolConfig;
         private IInitConfig _initConfig;
         private INetworkHelper _networkHelper;
 
@@ -152,6 +153,7 @@ namespace Nethermind.Runner.Runners
             _configProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _rpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
+            _txPoolConfig = configurationProvider.GetConfig<ITxPoolConfig>();
             _perfService = new PerfService(_logManager);
             _networkHelper = new NetworkHelper(_logger);
         }
@@ -167,10 +169,6 @@ namespace Nethermind.Runner.Runners
             await InitBlockchain();
             RegisterJsonRpcModules();
             InitEthStats();
-            if (HiveEnabled)
-            {
-                await InitHive();
-            }
 
             if (_logger.IsDebug) _logger.Debug("Ethereum initialization completed");
         }
@@ -253,7 +251,7 @@ namespace Nethermind.Runner.Runners
                 filterManager,
                 _wallet,
                 rpcState.TransactionProcessor);
-            
+
             AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, NullTxPool.Instance, NullReceiptStorage.Instance);
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             var debugBridge = new DebugBridge(_configProvider, debugDbProvider, tracer, debugChain.Processor);
@@ -362,13 +360,13 @@ namespace Nethermind.Runner.Runners
         private async Task InitBlockchain()
         {
             _specProvider = new ChainSpecBasedSpecProvider(_chainSpec);
-            
-            Account.AccountStartNonce = _chainSpec.Parameters.AccountStartNonce; 
+
+            Account.AccountStartNonce = _chainSpec.Parameters.AccountStartNonce;
 
             /* sync */
             IDbConfig dbConfig = _configProvider.GetConfig<IDbConfig>();
             _syncConfig = _configProvider.GetConfig<ISyncConfig>();
-            
+
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
                 if (_logger.IsDebug) _logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
@@ -381,10 +379,10 @@ namespace Nethermind.Runner.Runners
             _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
             _txPool = new TxPool(
                 new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
-                new PendingTxThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
-                    _initConfig.RemovePendingTransactionInterval), new Timestamp(),
-                _ethereumEcdsa, _specProvider, _logManager, _initConfig.RemovePendingTransactionInterval,
-                _initConfig.PeerNotificationThreshold);
+                new PendingTxThresholdValidator(_txPoolConfig.ObsoletePendingTransactionInterval,
+                    _txPoolConfig.RemovePendingTransactionInterval), new Timestamp(),
+                _ethereumEcdsa, _specProvider, _logManager, _txPoolConfig.RemovePendingTransactionInterval,
+                _txPoolConfig.PeerNotificationThreshold);
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
 
 //            IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig);
@@ -564,21 +562,23 @@ namespace Nethermind.Runner.Runners
                 _blockProducer.Start();
             }
 
-            if (!HiveEnabled)
+            _blockchainProcessor.Start();
+            LoadGenesisBlock(_chainSpec, string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash), _blockTree, stateProvider, _specProvider);
+            if (_initConfig.ProcessingEnabled)
             {
-                _blockchainProcessor.Start();
-                LoadGenesisBlock(_chainSpec, string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash), _blockTree, stateProvider, _specProvider);
-                if (_initConfig.ProcessingEnabled)
-                {
 #pragma warning disable 4014
-                    LoadBlocksFromDb();
+                LoadBlocksFromDb();
 #pragma warning restore 4014
-                }
-                else
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                    await _blockchainProcessor.StopAsync();
-                }
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
+                await _blockchainProcessor.StopAsync();
+            }
+
+            if (HiveEnabled)
+            {
+                await InitHive();
             }
 
             await InitializeNetwork();
@@ -745,7 +745,7 @@ namespace Nethermind.Runner.Runners
 
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             var discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
-            
+
             _sessionMonitor = new SessionMonitor(networkConfig, _logManager);
             _rlpxPeer = new RlpxPeer(
                 _nodeKey.PublicKey,
@@ -758,7 +758,7 @@ namespace Nethermind.Runner.Runners
 
             _staticNodesManager = new StaticNodesManager(_initConfig.StaticNodesPath, _logManager);
             await _staticNodesManager.InitAsync();
-            
+
             var peersDb = new SimpleFilePublicKeyDb(PeersDbPath, _logManager);
             var peerStorage = new NetworkStorage(peersDb, _logManager);
 

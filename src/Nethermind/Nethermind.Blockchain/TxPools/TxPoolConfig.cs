@@ -16,12 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Runner.Config
+namespace Nethermind.Blockchain.TxPools
 {
-    public class HiveConfig : IHiveConfig
+    public class TxPoolConfig : ITxPoolConfig
     {
-        public string ChainFile { get; set; }
-        public string BlocksDir { get; set; }
-        public string KeysDir { get; set; }
+        public int ObsoletePendingTransactionInterval { get; set; } = 15;
+        public int RemovePendingTransactionInterval { get; set; } = 600;
+        public int PeerNotificationThreshold { get; set; } = 5;
     }
 }

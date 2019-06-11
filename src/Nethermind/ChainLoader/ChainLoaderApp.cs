@@ -69,6 +69,7 @@ namespace ChainLoader
         private static ILogger _logger;
         private IConfigProvider _configProvider;
         private IInitConfig _initConfig;
+        private ITxPoolConfig _txPoolConfig;
         private IHeaderValidator _headerValidator;
         private ISpecProvider _specProvider;
         private IReceiptStorage _receiptStorage;
@@ -261,6 +262,7 @@ namespace ChainLoader
             InitRlp();
             _configProvider = configProvider;
              _initConfig = _configProvider.GetConfig<IInitConfig>();
+             _initConfig = _configProvider.GetConfig<IInitConfig>();
             _logManager = new NLogManager(_initConfig.LogFileName, _initConfig.LogDirectory);
             _logger = _logManager.GetClassLogger();
             _networkHelper = new NetworkHelper(_logger);
@@ -287,10 +289,10 @@ namespace ChainLoader
             _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
             _txPool = new TxPool(
                 new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
-                new PendingTxThresholdValidator(_initConfig.ObsoletePendingTransactionInterval,
-                    _initConfig.RemovePendingTransactionInterval), new Timestamp(),
-                _ethereumEcdsa, _specProvider, _logManager, _initConfig.RemovePendingTransactionInterval,
-                _initConfig.PeerNotificationThreshold);
+                new PendingTxThresholdValidator(_txPoolConfig.ObsoletePendingTransactionInterval,
+                    _txPoolConfig.RemovePendingTransactionInterval), new Timestamp(),
+                _ethereumEcdsa, _specProvider, _logManager, _txPoolConfig.RemovePendingTransactionInterval,
+                _txPoolConfig.PeerNotificationThreshold);
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
 
             _blockTree = new BlockTree(
