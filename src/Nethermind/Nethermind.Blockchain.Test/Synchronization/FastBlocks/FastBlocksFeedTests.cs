@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private FastBlocksFeed _feed;
         private long _time;
         private int _timeoutTime = 5000;
-        
+
         private IEthSyncPeerPool _syncPeerPool;
         private SyncConfig _syncConfig;
 
@@ -136,12 +136,12 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 });
 
             _syncPeerPool.AllPeers.Returns((ci) => _syncPeers.Select(sp => new PeerInfo(sp) {HeadNumber = sp.Tree.Head.Number}));
-            
+
             _syncConfig = new SyncConfig();
             _syncConfig.PivotHash = _validTree2048.Head.Hash.ToString();
             _syncConfig.PivotNumber = _validTree2048.Head.Number.ToString();
             _syncConfig.PivotTotalDifficulty = _validTree2048.Head.TotalDifficulty.ToString();
-            
+
             SetupLocalTree();
             SetupFeed();
         }
@@ -157,19 +157,12 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
         private void SetupFeed(bool syncBodies = false, bool syncReceipts = false)
         {
-            if (syncBodies)
-            {
-                _syncConfig.DownloadBodiesInFastSync = true;
-            }
+            _syncConfig.DownloadBodiesInFastSync = syncBodies;
+            _syncConfig.DownloadReceiptsInFastSync = syncReceipts;
 
-            if (syncReceipts)
-            {
-                _syncConfig.DownloadReceiptsInFastSync = true;
-            }
-
-            _feed = new FastBlocksFeed(_specProvider, _localBlockTree, _localReceiptStorage,  _syncPeerPool, _syncConfig, LimboLogs.Instance);
+            _feed = new FastBlocksFeed(_specProvider, _localBlockTree, _localReceiptStorage, _syncPeerPool, _syncConfig, LimboLogs.Instance);
         }
-        
+
         [Test]
         public void One_peer_with_valid_chain_bodies_restarting()
         {
@@ -291,7 +284,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             AssertTreeSynced(_validTree2048, true);
         }
-        
+
         [Test]
         public void Two_peers_one_malicious_by_invalid_ommers()
         {
@@ -534,7 +527,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             AssertTreeSynced(_validTree2048, true);
         }
-        
+
         [Test(Description = "Test if bodies dependencies are handled correctly")]
         public void Two_valid_one_slower_with_bodies_and_one_restart()
         {
@@ -544,13 +537,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             _scheduledActions[312] = ResetAndStartNewRound;
-            
+
             RunFeed();
             Assert.AreEqual(613, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
-        
+
         [Test(Description = "Test if receipt dependencies are handled correctly")]
         public void Two_valid_one_slower_with_receipts_and_one_restart()
         {
@@ -560,13 +553,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             _scheduledActions[906] = ResetAndStartNewRound;
-            
+
             RunFeed(5000);
 //            Assert.AreEqual(2116, _time);
 
             AssertTreeSynced(_validTree2048, true, true);
         }
-        
+
         [Test]
         public void Two_peers_with_valid_chain_one_shorter()
         {
@@ -598,11 +591,11 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
             LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree1024);
             SetupSyncPeers(syncPeer1, syncPeer2);
-            
+
             _syncConfig.PivotHash = _validTree8.Head.Hash.Bytes.ToHexString();
             _syncConfig.PivotNumber = _validTree8.Head.Number.ToString();
             _syncConfig.PivotTotalDifficulty = _validTree8.Head.Difficulty.ToString();
-            
+
             RunFeed();
             Assert.AreEqual(6, _time);
 
@@ -689,7 +682,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
                 nextHash = header.ParentHash;
             }
-            
+
             Assert.True(_feed.IsFinished);
         }
 
@@ -702,12 +695,12 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 {
                     _scheduledActions[_time].Invoke();
                 }
-                
+
                 if (_time % restartEvery == 0)
                 {
                     ResetAndStartNewRound();
                 }
-                
+
                 if (_time > timeLimit)
                 {
                     TestContext.WriteLine($"TIMEOUT AT {_time}");
@@ -810,7 +803,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             }
 
             TestContext.WriteLine($"{_time,6} |SYNC PEER {syncPeer.Node:s} RESPONDING TO {responseBatch}");
-            
+
             switch (responseBatch.BatchType)
             {
                 case FastBlocksBatchType.None:
@@ -847,7 +840,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 }
             }
         }
-        
+
         private void PrepareBodiesResponse(BodiesSyncBatch bodiesSyncBatch, LatencySyncPeerMock syncPeer, IBlockTree tree)
         {
             int requestSize = bodiesSyncBatch.Request.Length;
@@ -882,17 +875,17 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             {
                 for (int i = 0; i < bodiesSyncBatch.Response.Length; i++)
                 {
-                    BlockBody valid = bodiesSyncBatch.Response[i]; 
-                    bodiesSyncBatch.Response[i] = new BlockBody(new [] {Build.A.Transaction.WithData(Bytes.FromHexString("bad")).TestObject}, valid.Ommers);
+                    BlockBody valid = bodiesSyncBatch.Response[i];
+                    bodiesSyncBatch.Response[i] = new BlockBody(new[] {Build.A.Transaction.WithData(Bytes.FromHexString("bad")).TestObject}, valid.Ommers);
                 }
             }
-            
+
             if (_maliciousByInvalidOmmers.Contains(syncPeer))
             {
                 for (int i = 0; i < bodiesSyncBatch.Response.Length; i++)
                 {
-                    BlockBody valid = bodiesSyncBatch.Response[i]; 
-                    bodiesSyncBatch.Response[i] = new BlockBody(valid.Transactions, new [] {Build.A.BlockHeader.WithAuthor(new Address(Keccak.Compute("bad_ommer").Bytes.Take(20).ToArray())).TestObject});
+                    BlockBody valid = bodiesSyncBatch.Response[i];
+                    bodiesSyncBatch.Response[i] = new BlockBody(valid.Transactions, new[] {Build.A.BlockHeader.WithAuthor(new Address(Keccak.Compute("bad_ommer").Bytes.Take(20).ToArray())).TestObject});
                 }
             }
         }
