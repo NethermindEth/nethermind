@@ -643,6 +643,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         }
 
         [Test, TestCaseSource("Scenarios")]
+        [Explicit("travis threads")]
         public async Task Big_test((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             _remoteCodeDb[Keccak.Compute(Code0).Bytes] = Code0;
