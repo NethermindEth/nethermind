@@ -36,6 +36,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 {
+    [TestFixture, Explicit("Travis just cannot run it")]
     public class NodeDataDownloaderTests
     {
         private static readonly byte[] Code0 = {0, 0};
@@ -643,7 +644,6 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         }
 
         [Test, TestCaseSource("Scenarios")]
-        [Explicit("travis threads")]
         public async Task Big_test((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             _remoteCodeDb[Keccak.Compute(Code0).Bytes] = Code0;
@@ -791,7 +791,6 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         }
         
         [Test, TestCaseSource("Scenarios")]
-        [Explicit("for Travis")]
         public async Task Scenario_plus_one_storage((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
@@ -825,7 +824,6 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         }
 
         [Test, TestCaseSource("Scenarios")]
-        [Explicit("for Travis")]
         public async Task Scenario_plus_one_code((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
@@ -858,7 +856,6 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         }
 
         [Test, TestCaseSource("Scenarios")]
-        [Explicit("consistently failing on Travis and nowhere else")]
         public async Task Scenario_plus_one_code_one_storage((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
