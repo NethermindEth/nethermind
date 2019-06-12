@@ -900,7 +900,7 @@ namespace Nethermind.Runner.Runners
             var protocol = _syncConfig.FastSync ? "eth/63" : "eth/62";
             var ethStatsClient = new EthStatsClient(config.Server, reconnectionInterval, sender, _logManager);
             var ethStatsIntegration = new EthStatsIntegration(config.Name, node, port, network, protocol, api, client,
-                config.Contact, canUpdateHistory, config.Secret, ethStatsClient, sender, _blockProcessor, _peerManager,
+                config.Contact, canUpdateHistory, config.Secret, ethStatsClient, sender, _blockTree, _peerManager,
                 _logManager);
             Task.Run(() => ethStatsIntegration.InitAsync());
         }

@@ -45,7 +45,7 @@ namespace Nethermind.EthStats.Integrations
         private readonly string _secret;
         private readonly IEthStatsClient _ethStatsClient;
         private readonly IMessageSender _sender;
-        private readonly IBlockProcessor _blockProcessor;
+        private readonly IBlockTree _blockTree;
         private readonly IPeerManager _peerManager;
         private readonly ILogger _logger;
         private bool _connected;
@@ -55,7 +55,7 @@ namespace Nethermind.EthStats.Integrations
 
         public EthStatsIntegration(string name, string node, int port, string network, string protocol, string api,
             string client, string contact, bool canUpdateHistory, string secret, IEthStatsClient ethStatsClient,
-            IMessageSender sender, IBlockProcessor blockProcessor, IPeerManager peerManager, ILogManager logManager)
+            IMessageSender sender, IBlockTree blockTree, IPeerManager peerManager, ILogManager logManager)
         {
             _name = name;
             _node = node;
@@ -69,7 +69,7 @@ namespace Nethermind.EthStats.Integrations
             _secret = secret;
             _ethStatsClient = ethStatsClient;
             _sender = sender;
-            _blockProcessor = blockProcessor;
+            _blockTree = blockTree;
             _peerManager = peerManager;
             _logger = logManager.GetClassLogger();
         }
@@ -93,8 +93,8 @@ namespace Nethermind.EthStats.Integrations
                     _connected = false;
                     if (_logger.IsWarn) _logger.Warn($"ETH Stats disconnected, reason: {reason}");
                 });
-
-                _blockProcessor.BlockProcessed += async (s, e) =>
+                
+                _blockTree.NewHeadBlock += async (s, e) =>
                 {
                     if (!_connected)
                     {
