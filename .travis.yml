@@ -28,7 +28,7 @@ jobs:
       name: "Ethereum.Basic.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Block.Test
       name: "Ethereum.Blockchain.Block.Test"
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Test
+    - script: dotnet test src/Nethermind/Ethereum.Blockchain.Test
       name: "Ethereum.Blockchain.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Difficulty.Test
       name: "Ethereum.Difficulty.Test"
