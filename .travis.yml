@@ -54,7 +54,7 @@ jobs:
       name: "Nethermind.Blockchain.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Clique.Test
       name: "Nethermind.Clique.Test"
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover src/Nethermind/Nethermind.Config.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]* src/Nethermind/Nethermind.Config.Test
       name: "Nethermind.Config.Test"
     - script: dotnet test src/Nethermind/Nethermind.Core.Test
       name: "Nethermind.Core.Test"
