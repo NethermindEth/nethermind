@@ -79,9 +79,12 @@ namespace Nethermind.Runner.Runners
 // #  - HIVE_FORK_HOMESTEAD block number of the DAO hard-fork transition
 // #  - HIVE_FORK_DAO_BLOCK block number of the DAO hard-fork transition
 // #  - HIVE_FORK_DAO_VOTE  whether the node support (or opposes) the DAO fork
+// #  - HIVE_FORK_TANGERINE the block number of the Ethereum TangerineWhistle transition
+// #  - HIVE_FORK_SPURIOUS the block number of the Ethereum Homestead transition
+// #  - HIVE_FORK_METROPOLIS the block number of the Metropolis hardfork
 // #  - HIVE_MINER          address to credit with mining rewards (single thread)
 // #  - HIVE_MINER_EXTRA    extra-data field to set for newly minted blocks
-            string[] variableNames = new[] {"HIVE_BOOTNODE", "HIVE_TESTNET", "HIVE_NODETYPE", "HIVE_FORK_HOMESTEAD", "HIVE_FORK_DAO_BLOCK", "HIVE_FORK_DAO_VOTE", "HIVE_MINER", "HIVE_MINER_EXTRA"};
+            string[] variableNames = new[] {"HIVE_BOOTNODE", "HIVE_TESTNET", "HIVE_NODETYPE", "HIVE_FORK_HOMESTEAD", "HIVE_FORK_DAO_BLOCK", "HIVE_FORK_DAO_VOTE", "HIVE_FORK_TANGERINE", "HIVE_FORK_SPURIOUS", "HIVE_FORK_METROPOLIS", "HIVE_MINER", "HIVE_MINER_EXTRA"};
             foreach (string variableName in variableNames)
             {
                 if(_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName)}");
