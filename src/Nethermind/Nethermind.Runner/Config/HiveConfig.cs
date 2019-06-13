@@ -20,8 +20,8 @@ namespace Nethermind.Runner.Config
 {
     public class HiveConfig : IHiveConfig
     {
-        public string ChainFile { get; set; }
-        public string BlocksDir { get; set; }
-        public string KeysDir { get; set; }
+        public string ChainFile { get; set; } = "/chain.rlp";
+        public string BlocksDir { get; set; } = "/blocks";
+        public string KeysDir { get; set; } = "/keys";
     }
 }

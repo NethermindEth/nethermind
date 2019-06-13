@@ -60,12 +60,12 @@ namespace Nethermind.Runner.Runners
         public Task Start()
         {
             _logger.Info("Ethereum");
-            var initConfig = _configurationProvider.GetConfig<IHiveConfig>();
+            var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
             _blockchainProcessor.Start();
             ListEnvironmentVariables();
-            InitializeKeys(initConfig.KeysDir);
-            InitializeChain(initConfig.ChainFile);
-            InitializeBlocks(initConfig.BlocksDir);
+            InitializeKeys(hiveConfig.KeysDir);
+            InitializeChain(hiveConfig.ChainFile);
+            InitializeBlocks(hiveConfig.BlocksDir);
             _logger.Info("Ethereum initialization completed");
             return Task.CompletedTask;
         }
