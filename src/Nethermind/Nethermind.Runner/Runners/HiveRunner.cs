@@ -104,6 +104,8 @@ namespace Nethermind.Runner.Runners
             var chainFileContent = File.ReadAllBytes(chainFile);
             var context = new Rlp.DecoderContext(chainFileContent);
             var blocks = new List<Block>();
+            
+            if (_logger.IsInfo) _logger.Info($"Loading blocks from {chainFile}");
             while (context.ReadNumberOfItemsRemaining() > 0)
             {
                 context.PeekNextItem();
@@ -128,6 +130,7 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
+            if (_logger.IsInfo) _logger.Info($"Loading blocks from {blocksDir}");
             var files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
             var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
             foreach (var block in blocks)
@@ -165,6 +168,7 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
+            if (_logger.IsInfo) _logger.Info($"Loading keys from {keysDir}");
             var files = Directory.GetFiles(keysDir);
             foreach (var file in files)
             {
