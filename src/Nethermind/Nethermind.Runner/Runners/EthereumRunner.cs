@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -347,12 +348,17 @@ namespace Nethermind.Runner.Runners
 
         private void LoadChainSpec()
         {
-            _logger.Info($"Loading chain spec from {_initConfig.ChainSpecPath}");
+            if(_logger.IsInfo) _logger.Info($"Loading chain spec from {_initConfig.ChainSpecPath}");
 
             IChainSpecLoader loader = string.Equals(_initConfig.ChainSpecFormat, "ChainSpec", StringComparison.InvariantCultureIgnoreCase)
                 ? (IChainSpecLoader) new ChainSpecLoader(_ethereumJsonSerializer)
                 : new GenesisFileLoader(_ethereumJsonSerializer);
 
+            if (HiveEnabled)
+            {
+                if(_logger.IsInfo) _logger.Info($"HIVE chainspec:{Environment.NewLine}{File.ReadAllText(_initConfig.ChainSpecPath)}");
+            }
+            
             _chainSpec = loader.LoadFromFile(_initConfig.ChainSpecPath);
             _chainSpec.Bootnodes = _chainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_nodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
         }
