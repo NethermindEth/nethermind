@@ -196,6 +196,7 @@ namespace Nethermind.Runner.Runners
             switch (_initConfig)
             {
                 case var _ when HiveEnabled:
+                    // todo: use the keystore wallet here
                     _wallet = new HiveWallet();
                     break;
                 case var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory:
@@ -873,8 +874,7 @@ namespace Nethermind.Runner.Runners
         private async Task InitHive()
         {
             if (_logger.IsInfo) _logger.Info("Initializing Hive");
-            _hiveRunner = new HiveRunner(_jsonSerializer, _blockchainProcessor, _blockTree as BlockTree,
-                _stateProvider, _dbProvider.StateDb, _logger, _configProvider, _specProvider, _wallet as HiveWallet);
+            _hiveRunner = new HiveRunner(_blockTree as BlockTree, _blockchainProcessor, _wallet as HiveWallet, _jsonSerializer, _configProvider, _logger);
             await _hiveRunner.Start();
         }
 
