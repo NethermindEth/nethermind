@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Specs
             Assert.NotNull(chainSpec.Allocations, $"{nameof(Core.Specs.ChainSpecStyle.ChainSpec.Allocations)}");
             Assert.AreEqual(16, chainSpec.Allocations.Count, $"allocations count");
             Assert.AreEqual(
-                UInt256.Parse("200000000000000000000000000000000000000000000000000000000000000", NumberStyles.HexNumber),
+                (UInt256.Parse("200000000000000000000000000000000000000000000000000000000000000", NumberStyles.HexNumber), (byte[])null),
                 chainSpec.Allocations[new Address("20b2e4bb8688a44729780d15dc64adb42f9f5a0a")],
                 "account 20b2e4bb8688a44729780d15dc64adb42f9f5a0a");
             
