@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -56,6 +57,11 @@ namespace Nethermind.Runner.Runners
         public Task Start()
         {
             _logger.Info("HIVE initialization starting");
+            _blockTree.NewHeadBlock += (sender, args) =>
+            {
+                _currentEvent?.Set();
+            };
+            
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
             ListEnvironmentVariables();
             InitializeKeys(hiveConfig.KeysDir);
@@ -146,11 +152,16 @@ namespace Nethermind.Runner.Runners
             return Rlp.Decode<Block>(blockRlp);
         }
 
+
+        private ManualResetEvent _currentEvent;
         private void ProcessBlock(Block block)
         {
             try
             {
+                _currentEvent = new ManualResetEvent(false);
                 _blockTree.SuggestBlock(block);
+                _currentEvent.WaitOne();
+                _currentEvent.Dispose();
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
             }
             catch (InvalidBlockException e)
