@@ -414,7 +414,7 @@ namespace Nethermind.Store
                         }
                         else
                         {
-                            if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce} C = {change.Account.CodeHash}");
                             SetState(change.Address, change.Account);
                             if (isTracing)
                             {
