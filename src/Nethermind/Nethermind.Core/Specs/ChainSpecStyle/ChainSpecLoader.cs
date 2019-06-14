@@ -204,23 +204,33 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 return;
             }
 
-            chainSpec.Allocations = new Dictionary<Address, UInt256>();
+            chainSpec.Allocations = new Dictionary<Address, (UInt256 Balance, byte[] Code)>();
             foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
             {
+                byte[] codeValue = null;
+                UInt256 allocationValue = UInt256.Zero;
                 if (account.Value.Balance != null)
                 {
-                    bool result = UInt256.TryParse(account.Value.Balance, out UInt256 allocationValue);
-                    if (!result)
+                    bool balanceParsingResult = UInt256.TryParse(account.Value.Balance, out allocationValue);
+                    if (!balanceParsingResult)
                     {
-                        result = UInt256.TryParse(account.Value.Balance.Replace("0x", string.Empty), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out allocationValue);
+                        balanceParsingResult = UInt256.TryParse(account.Value.Balance.Replace("0x", string.Empty), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out allocationValue);
                     }
 
-                    if (!result)
+                    if (!balanceParsingResult)
                     {
                         throw new InvalidDataException($"Cannot recognize allocation value format in {account.Value.Balance}");
                     }
+                }
 
-                    chainSpec.Allocations[new Address(account.Key)] = allocationValue;
+                if (account.Value.Code != null)
+                {
+                    codeValue = Bytes.FromHexString(account.Value.Code);
+                }
+
+                if (account.Value.Balance != null || account.Value.Code != null)
+                {
+                    chainSpec.Allocations[new Address(account.Key)] = (allocationValue, codeValue);
                 }
             }
         }

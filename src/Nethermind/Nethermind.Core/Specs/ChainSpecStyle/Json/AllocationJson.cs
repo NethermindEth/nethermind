@@ -21,6 +21,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle.Json
     internal class AllocationJson
     {
         public string Balance { get; set; }
-        // TODO: other data
+        
+        public string Code { get; set; }
     }
 }

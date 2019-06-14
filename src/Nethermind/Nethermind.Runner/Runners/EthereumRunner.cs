@@ -686,9 +686,11 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            foreach ((Address address, UInt256 balance) in chainSpec.Allocations)
+            foreach ((Address address, (UInt256 balance, byte[] code)) in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(address, balance);
+                Keccak codeHash = stateProvider.UpdateCode(code);
+                stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

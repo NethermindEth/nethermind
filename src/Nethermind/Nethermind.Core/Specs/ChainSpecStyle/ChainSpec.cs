@@ -50,7 +50,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         
         public ChainParameters Parameters { get; set; }
 
-        public Dictionary<Address, UInt256> Allocations { get; set; }
+        public Dictionary<Address, (UInt256 Balance, byte[] Code)> Allocations { get; set; }
 
         public long? DaoForkBlockNumber { get; set; }
 

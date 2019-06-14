@@ -124,7 +124,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 return;
             }
 
-            chainSpec.Allocations = new Dictionary<Address, UInt256>();
+            chainSpec.Allocations = new Dictionary<Address, (UInt256 Balance, byte[] Code)>();
             foreach (KeyValuePair<string, AllocationJson> account in genesisJson.Alloc)
             {
                 if (account.Value.Balance != null)
@@ -140,7 +140,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                         throw new InvalidDataException($"Cannot recognize allocation value format in {account.Value.Balance}");
                     }
                     
-                    chainSpec.Allocations[new Address(account.Key)] = allocationValue;
+                    // todo: handle code like in chainspec
+                    chainSpec.Allocations[new Address(account.Key)] = (allocationValue, null);
                 }
             }
         }
