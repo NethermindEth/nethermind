@@ -53,8 +53,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
-                NullReceiptStorage.Instance,
-                new SyncConfig(), 
+                NullReceiptStorage.Instance, 
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;

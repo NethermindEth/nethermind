@@ -49,10 +49,8 @@ namespace Nethermind.Blockchain
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ITxPool _txPool;
         private readonly IReceiptStorage _receiptStorage;
-        private readonly ISyncConfig _syncConfig;
 
-        public BlockProcessor(
-            ISpecProvider specProvider,
+        public BlockProcessor(ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             ITransactionProcessor transactionProcessor,
@@ -63,7 +61,6 @@ namespace Nethermind.Blockchain
             IStorageProvider storageProvider,
             ITxPool txPool,
             IReceiptStorage receiptStorage,
-            ISyncConfig syncConfig,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -73,7 +70,6 @@ namespace Nethermind.Blockchain
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));

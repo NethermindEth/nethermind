@@ -523,7 +523,6 @@ namespace Nethermind.Runner.Runners
                 storageProvider,
                 _txPool,
                 _receiptStorage,
-                _configProvider.GetConfig<ISyncConfig>(),
                 _logManager);
 
             _blockchainProcessor = new BlockchainProcessor(

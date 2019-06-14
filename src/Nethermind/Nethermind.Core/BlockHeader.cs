@@ -93,18 +93,22 @@ namespace Nethermind.Core
         public string ToString(string indent)
         {
             StringBuilder builder = new StringBuilder();
-            builder.AppendLine($"{indent}Parent: {ParentHash}");
-            builder.AppendLine($"{indent}Ommers Hash: {OmmersHash}");
-            builder.AppendLine($"{indent}Beneficiary: {Beneficiary}");
-            builder.AppendLine($"{indent}Difficulty: {Difficulty}");
+            builder.AppendLine($"{indent}Hash: {Hash}");
             builder.AppendLine($"{indent}Number: {Number}");
+            builder.AppendLine($"{indent}Parent: {ParentHash}");
+            builder.AppendLine($"{indent}Beneficiary: {Beneficiary}");
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Gas Used: {GasUsed}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
             builder.AppendLine($"{indent}Extra Data: {(ExtraData ?? new byte[0]).ToHexString()}");
+            builder.AppendLine($"{indent}Difficulty: {Difficulty}");
             builder.AppendLine($"{indent}Mix Hash: {MixHash}");
             builder.AppendLine($"{indent}Nonce: {Nonce}");
-            builder.AppendLine($"{indent}Hash: {Hash}");
+            builder.AppendLine($"{indent}Ommers Hash: {OmmersHash}");
+            builder.AppendLine($"{indent}Tx Root: {TxRoot}");
+            builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
+            builder.AppendLine($"{indent}State Root: {StateRoot}");
+            
             return builder.ToString();
         }
 

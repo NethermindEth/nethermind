@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Test
             TransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator,
-                processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, new SyncConfig(), logManager);
+                processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumEcdsa, NullTxPool.Instance, LimboLogs.Instance), logManager, false, false);
 
             /* load ChainSpec and init */
