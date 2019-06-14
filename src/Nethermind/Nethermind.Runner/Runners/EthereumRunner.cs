@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -196,6 +197,7 @@ namespace Nethermind.Runner.Runners
             switch (_initConfig)
             {
                 case var _ when HiveEnabled:
+                    // todo: use the keystore wallet here
                     _wallet = new HiveWallet();
                     break;
                 case var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory:
@@ -346,12 +348,17 @@ namespace Nethermind.Runner.Runners
 
         private void LoadChainSpec()
         {
-            _logger.Info($"Loading chain spec from {_initConfig.ChainSpecPath}");
+            if(_logger.IsInfo) _logger.Info($"Loading chain spec from {_initConfig.ChainSpecPath}");
 
             IChainSpecLoader loader = string.Equals(_initConfig.ChainSpecFormat, "ChainSpec", StringComparison.InvariantCultureIgnoreCase)
                 ? (IChainSpecLoader) new ChainSpecLoader(_ethereumJsonSerializer)
                 : new GenesisFileLoader(_ethereumJsonSerializer);
 
+            if (HiveEnabled)
+            {
+                if(_logger.IsInfo) _logger.Info($"HIVE chainspec:{Environment.NewLine}{File.ReadAllText(_initConfig.ChainSpecPath)}");
+            }
+            
             _chainSpec = loader.LoadFromFile(_initConfig.ChainSpecPath);
             _chainSpec.Bootnodes = _chainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_nodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
         }
@@ -679,9 +686,14 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            foreach ((Address address, UInt256 balance) in chainSpec.Allocations)
+            foreach ((Address address, (UInt256 balance, byte[] code)) in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(address, balance);
+                if (code != null)
+                {
+                    Keccak codeHash = stateProvider.UpdateCode(code);
+                    stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
+                }
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);
@@ -873,8 +885,7 @@ namespace Nethermind.Runner.Runners
         private async Task InitHive()
         {
             if (_logger.IsInfo) _logger.Info("Initializing Hive");
-            _hiveRunner = new HiveRunner(_jsonSerializer, _blockchainProcessor, _blockTree as BlockTree,
-                _stateProvider, _dbProvider.StateDb, _logger, _configProvider, _specProvider, _wallet as HiveWallet);
+            _hiveRunner = new HiveRunner(_blockTree as BlockTree, _wallet as HiveWallet, _jsonSerializer, _configProvider, _logger);
             await _hiveRunner.Start();
         }
 

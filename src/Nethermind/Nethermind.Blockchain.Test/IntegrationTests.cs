@@ -99,7 +99,15 @@ namespace Nethermind.Blockchain.Test
             string path = "chainspec.json";
             logManager.GetClassLogger().Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
-            foreach (var allocation in chainSpec.Allocations) stateProvider.CreateAccount(allocation.Key, allocation.Value);
+            foreach (var allocation in chainSpec.Allocations)
+            {
+                stateProvider.CreateAccount(allocation.Key, allocation.Value.Balance);
+                if (allocation.Value.Code != null)
+                {
+                    Keccak codeHash = stateProvider.UpdateCode(allocation.Value.Code);
+                    stateProvider.UpdateCodeHash(allocation.Key, codeHash, specProvider.GenesisSpec);
+                }
+            }
 
             stateProvider.Commit(specProvider.GenesisSpec);
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot; // TODO: shall it be HeaderSpec and not BlockHeader?

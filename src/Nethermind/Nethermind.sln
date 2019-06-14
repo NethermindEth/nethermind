@@ -127,8 +127,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.WebSocke
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.EthStats", "Nethermind.EthStats\Nethermind.EthStats.csproj", "{0BA6F4AA-F445-40FF-B2A3-376A8260E729}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ChainLoader", "ChainLoader\ChainLoader.csproj", "{DD248374-B958-4225-973F-4D99FBBBB246}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -335,10 +333,6 @@ Global
 		{0BA6F4AA-F445-40FF-B2A3-376A8260E729}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0BA6F4AA-F445-40FF-B2A3-376A8260E729}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0BA6F4AA-F445-40FF-B2A3-376A8260E729}.Release|Any CPU.Build.0 = Release|Any CPU
-		{DD248374-B958-4225-973F-4D99FBBBB246}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{DD248374-B958-4225-973F-4D99FBBBB246}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{DD248374-B958-4225-973F-4D99FBBBB246}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{DD248374-B958-4225-973F-4D99FBBBB246}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

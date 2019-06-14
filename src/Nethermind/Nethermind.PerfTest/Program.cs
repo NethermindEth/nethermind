@@ -383,9 +383,14 @@ namespace Nethermind.PerfTest
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "ropsten.json"));
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
-            foreach (KeyValuePair<Address, UInt256> allocation in chainSpec.Allocations)
+            foreach (KeyValuePair<Address, (UInt256 Balance, byte[] Code)> allocation in chainSpec.Allocations)
             {
-                stateProvider.CreateAccount(allocation.Key, allocation.Value);
+                stateProvider.CreateAccount(allocation.Key, allocation.Value.Balance);
+                if (allocation.Value.Code != null)
+                {
+                    Keccak codeHash = stateProvider.UpdateCode(allocation.Value.Code);
+                    stateProvider.UpdateCodeHash(allocation.Key, codeHash, specProvider.GenesisSpec);
+                }
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

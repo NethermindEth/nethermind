@@ -76,8 +76,13 @@ namespace Nethermind.Core.Test.Specs
             Assert.AreEqual(1, chainSpec.Allocations.Count, $"allocations count");
             Assert.AreEqual(
                 new UInt256(0xf4240),
-                chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")],
-                "account 0x71562b71999873db5b286df957af199ec94617f7");
+                chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")].Balance,
+                "account 0x71562b71999873db5b286df957af199ec94617f7 - balance");
+            
+            Assert.AreEqual(
+                Bytes.FromHexString("0xabcd"),
+                chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")].Code,
+                "account 0x71562b71999873db5b286df957af199ec94617f7 - code");
 
             Assert.AreEqual(SealEngineType.Ethash, chainSpec.SealEngineType, "engine");
             
@@ -149,16 +154,16 @@ namespace Nethermind.Core.Test.Specs
             Assert.AreEqual(257, chainSpec.Allocations.Count, $"allocations count");
             Assert.AreEqual(
                 UInt256.Zero,
-                chainSpec.Allocations[new Address("0000000000000000000000000000000000000018")],
+                chainSpec.Allocations[new Address("0000000000000000000000000000000000000018")].Balance,
                 "account 0000000000000000000000000000000000000018");
             Assert.AreEqual(
                 UInt256.One,
-                chainSpec.Allocations[new Address("0000000000000000000000000000000000000001")],
+                chainSpec.Allocations[new Address("0000000000000000000000000000000000000001")].Balance,
                 "account 0000000000000000000000000000000000000001");
             
             Assert.AreEqual(
                 UInt256.Parse("1000000000000000000000000000000"),
-                chainSpec.Allocations[new Address("874b54a8bd152966d63f706bae1ffeb0411921e5")],
+                chainSpec.Allocations[new Address("874b54a8bd152966d63f706bae1ffeb0411921e5")].Balance,
                 "account 874b54a8bd152966d63f706bae1ffeb0411921e5");
             
             Assert.AreEqual(SealEngineType.Ethash, chainSpec.SealEngineType, "engine");

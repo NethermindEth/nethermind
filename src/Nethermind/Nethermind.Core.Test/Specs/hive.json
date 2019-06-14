@@ -157,7 +157,8 @@
       }
     },
     "0x71562b71999873db5b286df957af199ec94617f7": {
-      "balance": "0xf4240"
+      "balance": "0xf4240",
+      "code": "0xabcd"
     }
   },
   "version": "1"

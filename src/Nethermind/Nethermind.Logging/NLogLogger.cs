@@ -50,6 +50,7 @@ namespace Nethermind.Logging
             }
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
+            // TODO: review the behaviour on log levels switching which we have just added recently...
             IsInfo = Logger.IsInfoEnabled;
             IsWarn = Logger.IsWarnEnabled;
             IsDebug = Logger.IsDebugEnabled;
