@@ -36,14 +36,11 @@ namespace Nethermind.Runner.Runners
     {
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockTree _blockTree;
-        private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly HiveWallet _wallet;
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
 
-        public HiveRunner(
-            IBlockTree blockTree,
-            IBlockchainProcessor blockchainProcessor,
+        public HiveRunner(IBlockTree blockTree,
             HiveWallet wallet,
             IJsonSerializer jsonSerializer,
             IConfigProvider configurationProvider,
@@ -53,20 +50,18 @@ namespace Nethermind.Runner.Runners
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
-            _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
         }
 
         public Task Start()
         {
-            _logger.Info("Ethereum");
+            _logger.Info("HIVE initialization starting");
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
-            _blockchainProcessor.Start();
             ListEnvironmentVariables();
             InitializeKeys(hiveConfig.KeysDir);
             InitializeChain(hiveConfig.ChainFile);
             InitializeBlocks(hiveConfig.BlocksDir);
-            _logger.Info("Ethereum initialization completed");
+            _logger.Info("HIVE initialization completed");
             return Task.CompletedTask;
         }
 
@@ -100,7 +95,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!File.Exists(chainFile))
             {
-                if (_logger.IsInfo) _logger.Info($"Chain file does not exist: {chainFile}, skipping");
+                if (_logger.IsInfo) _logger.Info($"HIVE Chain file does not exist: {chainFile}, skipping");
                 return;
             }
 
@@ -108,19 +103,19 @@ namespace Nethermind.Runner.Runners
             var context = new Rlp.DecoderContext(chainFileContent);
             var blocks = new List<Block>();
             
-            if (_logger.IsInfo) _logger.Info($"Loading blocks from {chainFile}");
+            if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
             while (context.ReadNumberOfItemsRemaining() > 0)
             {
                 context.PeekNextItem();
                 Block block = Rlp.Decode<Block>(context);
-                if (_logger.IsInfo) _logger.Info($"Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
+                if (_logger.IsInfo) _logger.Info($"HIVE Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
                 blocks.Add(block);
             }
 
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
-                if (_logger.IsInfo) _logger.Info($"Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
+                if (_logger.IsInfo) _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
                 ProcessBlock(block);
             }
         }
@@ -129,16 +124,16 @@ namespace Nethermind.Runner.Runners
         {
             if (!Directory.Exists(blocksDir))
             {
-                if (_logger.IsInfo) _logger.Info($"Blocks dir does not exist: {blocksDir}, skipping");
+                if (_logger.IsInfo) _logger.Info($"HIVE Blocks dir does not exist: {blocksDir}, skipping");
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Loading blocks from {blocksDir}");
+            if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
             var files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
             var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
             foreach (var block in blocks)
             {
-                if (_logger.IsInfo) _logger.Info($"Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
+                if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
                 ProcessBlock(block.Block);
             }
         }
@@ -156,10 +151,11 @@ namespace Nethermind.Runner.Runners
             try
             {
                 _blockTree.SuggestBlock(block);
+                if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
             }
             catch (InvalidBlockException e)
             {
-                _logger.Error($"Invalid block: {block.Hash}, ignoring", e);
+                _logger.Error($"HIVE Invalid block: {block.Hash}, ignoring", e);
             }
         }
 
@@ -167,15 +163,15 @@ namespace Nethermind.Runner.Runners
         {
             if (!Directory.Exists(keysDir))
             {
-                if (_logger.IsInfo) _logger.Info($"Keys dir does not exist: {keysDir}, skipping");
+                if (_logger.IsInfo) _logger.Info($"HIVE Keys dir does not exist: {keysDir}, skipping");
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Loading keys from {keysDir}");
+            if (_logger.IsInfo) _logger.Info($"HIVE Loading keys from {keysDir}");
             var files = Directory.GetFiles(keysDir);
             foreach (var file in files)
             {
-                if (_logger.IsInfo) _logger.Info($"Processing key file: {file}");
+                if (_logger.IsInfo) _logger.Info($"HIVE Processing key file: {file}");
                 var fileContent = File.ReadAllText(file);
                 var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(fileContent);
                 _wallet.Add(new Address(keyStoreItem.Address));

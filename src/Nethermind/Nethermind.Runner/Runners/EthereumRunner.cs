@@ -880,7 +880,7 @@ namespace Nethermind.Runner.Runners
         private async Task InitHive()
         {
             if (_logger.IsInfo) _logger.Info("Initializing Hive");
-            _hiveRunner = new HiveRunner(_blockTree as BlockTree, _blockchainProcessor, _wallet as HiveWallet, _jsonSerializer, _configProvider, _logger);
+            _hiveRunner = new HiveRunner(_blockTree as BlockTree, _wallet as HiveWallet, _jsonSerializer, _configProvider, _logger);
             await _hiveRunner.Start();
         }
 
