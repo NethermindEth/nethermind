@@ -689,8 +689,11 @@ namespace Nethermind.Runner.Runners
             foreach ((Address address, (UInt256 balance, byte[] code)) in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(address, balance);
-                Keccak codeHash = stateProvider.UpdateCode(code);
-                stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
+                if (code != null)
+                {
+                    Keccak codeHash = stateProvider.UpdateCode(code);
+                    stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
+                }
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);
