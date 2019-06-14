@@ -57,18 +57,20 @@ namespace Nethermind.Runner.Runners
         public Task Start()
         {
             _logger.Info("HIVE initialization starting");
-            _blockTree.NewHeadBlock += (sender, args) =>
-            {
-                _currentEvent?.Set();
-            };
-            
+            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
             ListEnvironmentVariables();
             InitializeKeys(hiveConfig.KeysDir);
             InitializeChain(hiveConfig.ChainFile);
             InitializeBlocks(hiveConfig.BlocksDir);
+            _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
             _logger.Info("HIVE initialization completed");
             return Task.CompletedTask;
+        }
+
+        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        {
+            _logger.Info($"HIVE new head block {e.Block.ToString(Block.Format.Short)}");
         }
 
         private void ListEnvironmentVariables()
@@ -152,16 +154,11 @@ namespace Nethermind.Runner.Runners
             return Rlp.Decode<Block>(blockRlp);
         }
 
-
-        private ManualResetEvent _currentEvent;
         private void ProcessBlock(Block block)
         {
             try
             {
-                _currentEvent = new ManualResetEvent(false);
                 _blockTree.SuggestBlock(block);
-                _currentEvent.WaitOne();
-                _currentEvent.Dispose();
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
             }
             catch (InvalidBlockException e)
