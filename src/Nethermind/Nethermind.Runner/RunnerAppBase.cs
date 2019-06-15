@@ -24,6 +24,8 @@ using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Json;
+using Nethermind.Grpc;
+using Nethermind.Grpc.Clients;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Web3;
@@ -43,6 +45,8 @@ namespace Nethermind.Runner
         protected ILogger Logger;
         private IRunner _jsonRpcRunner = NullRunner.Instance;
         private IRunner _ethereumRunner = NullRunner.Instance;
+        private IRunner _grpcRunner = NullRunner.Instance;
+        private IRunner _grpcClientRunner = NullRunner.Instance;
         private TaskCompletionSource<object> _cancelKeySource;
         private IMonitoringService _monitoringService;
         
@@ -125,7 +129,32 @@ namespace Nethermind.Runner
                 : (IRpcModuleProvider) NullModuleProvider.Instance;
             var webSocketsManager = new WebSocketsManager();
 
-            _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager);
+            var grpcConfig = configProvider.GetConfig<IGrpcConfig>();
+            GrpcService grpcService = null;
+            if (grpcConfig.Enabled)
+            {
+                grpcService = new GrpcService(logManager);
+                _grpcRunner = new GrpcRunner(grpcService, grpcConfig, logManager);
+                await _grpcRunner.Start().ContinueWith(x =>
+                {
+                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during GRPC runner start", x.Exception);
+                });
+            }
+
+            GrpcClient grpcClient = null;
+            var grpcClientConfig = configProvider.GetConfig<IGrpcClientConfig>();
+            if (grpcClientConfig.Enabled)
+            {
+                grpcClient = new GrpcClient(grpcClientConfig, new EthereumJsonSerializer(), logManager);
+                _grpcClientRunner = new GrpcClientRunner(grpcClient, grpcClientConfig, logManager);
+                await Task.Factory.StartNew(() => _grpcClientRunner.Start().ContinueWith(x =>
+                {
+                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during GRPC client runner start", x.Exception);
+                }));
+            }
+
+            _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager, grpcService,
+                grpcClient);
             await _ethereumRunner.Start().ContinueWith(x =>
             {
                 if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);

@@ -25,7 +25,10 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db.Config;
+using Nethermind.EthStats;
 using Nethermind.EthStats.Configs;
+using Nethermind.Grpc;
+using Nethermind.Grpc.Clients;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
@@ -36,6 +39,7 @@ using ILogger = Nethermind.Logging.ILogger;
 using LogLevel = Nethermind.Logging.LogLevel;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
+using Nethermind.PubSub.Kafka;
 
 namespace Nethermind.Runner
 {
@@ -49,15 +53,18 @@ namespace Nethermind.Runner
 
         private static List<Type> _configs = new List<Type>
         {
-            typeof(KeyStoreConfig),
-            typeof(NetworkConfig),
-            typeof(JsonRpcConfig),
-            typeof(InitConfig),
-            typeof(DbConfig),
-            typeof(StatsConfig),
-            typeof(SyncConfig),
-            typeof(EthStatsConfig),
-            typeof(MetricsConfig)
+            typeof(IKeyStoreConfig),
+            typeof(INetworkConfig),
+            typeof(IJsonRpcConfig),
+            typeof(IInitConfig),
+            typeof(IDbConfig),
+            typeof(IStatsConfig),
+            typeof(ISyncConfig),
+            typeof(IKafkaConfig),
+            typeof(IGrpcConfig),
+            typeof(IGrpcClientConfig),
+            typeof(IEthStatsConfig),
+            typeof(IMetricsConfig)
         };
 
         [Todo("find better way to enforce assemblies with config impl are loaded")]

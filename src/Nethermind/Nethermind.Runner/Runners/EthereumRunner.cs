@@ -50,6 +50,8 @@ using Nethermind.EthStats.Senders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
+using Nethermind.Grpc;
+using Nethermind.Grpc.Clients;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Data;
@@ -94,6 +96,8 @@ namespace Nethermind.Runner.Runners
         private static readonly bool HiveEnabled =
             Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
 
+        private readonly IGrpcService _grpcService;
+        private readonly IGrpcClient _grpcClient;
         private static ILogManager _logManager;
         private static ILogger _logger;
 
@@ -152,9 +156,12 @@ namespace Nethermind.Runner.Runners
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
-        public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider, ILogManager logManager)
+        public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider, ILogManager logManager,
+            IGrpcService grpcService, IGrpcClient grpcClient)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _grpcService = grpcService;
+            _grpcClient = grpcClient;
             _logger = _logManager.GetClassLogger();
 
             InitRlp();
@@ -610,6 +617,13 @@ namespace Nethermind.Runner.Runners
             {
                 var kafkaProducer = await PrepareKafkaProducer(_blockTree, _configProvider.GetConfig<IKafkaConfig>());
                 producers.Add(kafkaProducer);
+            }
+            
+            var grpcClientConfig = _configProvider.GetConfig<IGrpcClientConfig>();
+            if (grpcClientConfig.Enabled)
+            {
+                var grpcProducer = new GrpcProducer(_grpcClient, _logManager);
+                producers.Add(grpcProducer);
             }
             
             ISubscription subscription;

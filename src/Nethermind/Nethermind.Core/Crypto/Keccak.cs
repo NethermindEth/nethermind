@@ -181,5 +181,17 @@ namespace Nethermind.Core.Crypto
         {
             return !(a == b);
         }
+        
+        public static Keccak TryParse(string hexString)
+        {
+            try
+            {
+                return new Keccak(hexString);
+            }
+            catch
+            {
+                return null;
+            }
+        }
     }
 }
