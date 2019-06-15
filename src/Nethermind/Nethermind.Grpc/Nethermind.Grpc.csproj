@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netcoreapp2.2</TargetFramework>
+        <LangVersion>latest</LangVersion>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Google.Protobuf" Version="3.7.0" />
+      <PackageReference Include="Google.Protobuf.Tools" Version="3.7.0" />
+      <PackageReference Include="Grpc" Version="1.19.0" />
+      <PackageReference Include="Grpc.Tools" Version="1.19.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+      <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
+      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    </ItemGroup>
+
+</Project>

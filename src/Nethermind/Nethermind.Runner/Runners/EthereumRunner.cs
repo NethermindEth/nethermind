@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -49,8 +50,11 @@ using Nethermind.EthStats.Senders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
+using Nethermind.Grpc;
+using Nethermind.Grpc.Clients;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
+using Nethermind.JsonRpc.Modules.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
@@ -74,6 +78,9 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
+using Nethermind.PubSub;
+using Nethermind.PubSub.Kafka;
+using Nethermind.PubSub.Kafka.Avro;
 using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
@@ -85,9 +92,12 @@ namespace Nethermind.Runner.Runners
 {
     public class EthereumRunner : IRunner
     {
+        private readonly Stack<IDisposable> _disposeStack = new Stack<IDisposable>();
         private static readonly bool HiveEnabled =
             Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
 
+        private readonly IGrpcService _grpcService;
+        private readonly IGrpcClient _grpcClient;
         private static ILogManager _logManager;
         private static ILogger _logger;
 
@@ -138,6 +148,7 @@ namespace Nethermind.Runner.Runners
         private IWallet _wallet;
         private IEnode _enode;
         private HiveRunner _hiveRunner;
+        private IDataBridge _dataBridge;
         private ISessionMonitor _sessionMonitor;
         private ISyncConfig _syncConfig;
         public IEnode Enode => _enode;
@@ -145,9 +156,12 @@ namespace Nethermind.Runner.Runners
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
-        public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider, ILogManager logManager)
+        public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider, ILogManager logManager,
+            IGrpcService grpcService, IGrpcClient grpcClient)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _grpcService = grpcService;
+            _grpcClient = grpcClient;
             _logger = _logManager.GetClassLogger();
 
             InitRlp();
@@ -343,6 +357,12 @@ namespace Nethermind.Runner.Runners
 
             if (_logger.IsInfo) _logger.Info("Closing DBs...");
             _dbProvider.Dispose();
+            while (_disposeStack.Count != 0)
+            {
+                var disposable = _disposeStack.Pop();
+                if(_logger.IsDebug) _logger.Debug($"Disposing {disposable.GetType().Name}");
+            }
+            
             if (_logger.IsInfo) _logger.Info("Ethereum shutdown complete... please wait for all components to close");
         }
 
@@ -586,6 +606,39 @@ namespace Nethermind.Runner.Runners
             {
                 await InitHive();
             }
+            
+            if (HiveEnabled)
+            {
+                await InitHive();
+            }
+
+            var producers = new List<IProducer>();
+            if (_initConfig.PubSubEnabled)
+            {
+                var kafkaProducer = await PrepareKafkaProducer(_blockTree, _configProvider.GetConfig<IKafkaConfig>());
+                producers.Add(kafkaProducer);
+            }
+            
+            var grpcClientConfig = _configProvider.GetConfig<IGrpcClientConfig>();
+            if (grpcClientConfig.Enabled)
+            {
+                var grpcProducer = new GrpcProducer(_grpcClient, _logManager);
+                producers.Add(grpcProducer);
+            }
+            
+            ISubscription subscription;
+            if (producers.Any())
+            {
+                subscription = new Subscription(producers, _blockProcessor, _logManager);
+            }
+            else
+            {
+                subscription = new EmptySubscription();
+            }
+
+            _disposeStack.Push(subscription);
+            _dataBridge = new DataBridge(subscription, _receiptStorage, _blockTree, _logManager);
+            _dataBridge.Start();
 
             await InitializeNetwork();
         }
@@ -879,6 +932,19 @@ namespace Nethermind.Runner.Runners
             _discoveryApp.Start();
             if (_logger.IsDebug) _logger.Debug("Discovery process started.");
             return Task.CompletedTask;
+        }
+        
+        private async Task<IProducer> PrepareKafkaProducer(IBlockTree blockTree, IKafkaConfig kafkaConfig)
+        {
+            var pubSubModelMapper = new PubSubModelMapper();
+            var avroMapper = new AvroMapper(blockTree);
+            var kafkaProducer = new KafkaProducer(kafkaConfig, pubSubModelMapper, avroMapper, _logManager);
+            await kafkaProducer.InitAsync().ContinueWith(x =>
+            {
+                if (x.IsFaulted && _logger.IsError) _logger.Error("Error during Kafka initialization", x.Exception);
+            });
+            
+            return kafkaProducer;
         }
 
         private async Task InitHive()

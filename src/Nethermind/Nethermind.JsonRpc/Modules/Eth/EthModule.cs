@@ -723,12 +723,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 case FilterType.BlockFilter:
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id)
-                            .Select(b => new Data.Data(b.Bytes)).ToArray())
+                            .Select(b => new JsonRpc.Data.Data(b.Bytes)).ToArray())
                         : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
                 case FilterType.PendingTransactionFilter:
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
-                            .GetPendingTransactionFilterChanges(id).Select(b => new Data.Data(b.Bytes)).ToArray())
+                            .GetPendingTransactionFilterChanges(id).Select(b => new JsonRpc.Data.Data(b.Bytes))
+                            .ToArray())
                         : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
                 case FilterType.LogFilter:
                     return _blockchainBridge.FilterExists(id)

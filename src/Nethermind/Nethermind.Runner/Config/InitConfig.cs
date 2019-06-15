@@ -20,6 +20,7 @@ namespace Nethermind.Runner.Config
 {
     public class InitConfig : IInitConfig
     {
+        public bool PubSubEnabled { get; set; } = false;
         public bool EnableUnsecuredDevWallet { get; set; } = false;
         public bool KeepDevWalletInMemory { get; set; } = false;
         public bool JsonRpcEnabled { get; set; } = false;
@@ -39,7 +40,7 @@ namespace Nethermind.Runner.Config
         public string LogFileName { get; set; } = "log.txt";
         public string GenesisHash { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
-        public string[] JsonRpcEnabledModules { get; set; } = {"Clique", "Db", "Debug", "Eth", "Net", "Trace", "TxPool", "Web3"};
+        public string[] JsonRpcEnabledModules { get; set; } = {"Clique", "Data", "Db", "Debug", "Eth", "Net", "Trace", "TxPool", "Web3"};
         public string LogDirectory { get; set; } = null;
         public bool StoreTraces { get; set; } = false;
         public bool StoreReceipts { get; set; } = false;
