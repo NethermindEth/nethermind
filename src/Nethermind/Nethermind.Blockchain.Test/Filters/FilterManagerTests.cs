@@ -328,10 +328,12 @@ namespace Nethermind.Blockchain.Test.Filters
 
             _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block));
 
+            var index = 1;
             foreach (var receipt in receipts)
             {
-                _blockProcessor.TransactionProcessed +=
-                    Raise.EventWith(_blockProcessor, new TxProcessedEventArgs(receipt));
+                _blockProcessor.TransactionProcessed += Raise.EventWith(_blockProcessor,
+                    new TxProcessedEventArgs(index, Build.A.Transaction.TestObject, receipt));
+                index++;
             }
 
             NUnit.Framework.Assert.Multiple(() =>

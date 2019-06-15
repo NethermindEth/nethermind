@@ -26,6 +26,7 @@ namespace Nethermind.JsonRpc.Modules
         Admin,
         Clique,
         Db,
+        Data,
         Debug,
         Eth,
         Net,
