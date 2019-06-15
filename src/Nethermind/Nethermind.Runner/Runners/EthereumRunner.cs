@@ -809,7 +809,7 @@ namespace Nethermind.Runner.Runners
             _staticNodesManager = new StaticNodesManager(_initConfig.StaticNodesPath, _logManager);
             await _staticNodesManager.InitAsync();
 
-            var peersDb = new SimpleFilePublicKeyDb(PeersDbPath, _logManager);
+            var peersDb = new SimpleFilePublicKeyDb(Path.Combine(_initConfig.BaseDbPath, PeersDbPath), _logManager);
             var peerStorage = new NetworkStorage(peersDb, _logManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
@@ -874,7 +874,7 @@ namespace Nethermind.Runner.Runners
                 discoveryConfig,
                 _logManager);
 
-            var discoveryDb = new SimpleFilePublicKeyDb(DiscoveryNodesDbPath, _logManager);
+            var discoveryDb = new SimpleFilePublicKeyDb(Path.Combine(_initConfig.BaseDbPath, DiscoveryNodesDbPath), _logManager);
             var discoveryStorage = new NetworkStorage(
                 discoveryDb,
                 _logManager);
