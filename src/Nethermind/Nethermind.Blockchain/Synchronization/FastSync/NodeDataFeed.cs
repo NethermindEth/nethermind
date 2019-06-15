@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private static AccountDecoder _accountDecoder = new AccountDecoder();
         private StateSyncBatch _emptyBatch = new StateSyncBatch {RequestedNodes = new StateSyncItem[0]};
 
-        private Keccak _fastSyncProgressKey = Keccak.Compute("fast_sync_progress");
+        private Keccak _fastSyncProgressKey = Keccak.Zero;
         private (DateTime small, DateTime full) _lastReportTime = (DateTime.MinValue, DateTime.MinValue);
         private long _lastSavedNodesCount;
         private long _consumedNodesCount;
