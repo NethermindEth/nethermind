@@ -25,6 +25,9 @@ namespace Nethermind.Wallet
 {
     public class NullWallet : IWallet
     {
+        public event EventHandler<AccountLockedEventArgs> AccountLocked;
+        public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
+        
         public void Import(byte[] keyData, SecureString passphrase)
         {
         }
@@ -41,11 +44,14 @@ namespace Nethermind.Wallet
 
         public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
         {
+            AccountUnlocked?.Invoke(this, new AccountUnlockedEventArgs(address));
             return true;
         }
 
-        public void LockAccount(Address address)
+        public bool LockAccount(Address address)
         {
+            AccountLocked?.Invoke(this, new AccountLockedEventArgs(address));
+            return true;
         }
 
         public Signature Sign(Keccak message, Address address, SecureString passphrase)
@@ -61,6 +67,11 @@ namespace Nethermind.Wallet
         public void Sign(Transaction tx, int chainId)
         {
             throw new NotImplementedException();
+        }
+
+        public bool IsUnlocked(Address address)
+        {
+            return true;
         }
 
         public Signature Sign(Keccak message, Address address)

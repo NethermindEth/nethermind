@@ -99,6 +99,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public Node Node => Session.Node;
         public string ClientId { get; set; }
         public UInt256 TotalDifficultyOnSessionStart { get; private set; }
+        
+        public bool HasAvailableCapability(Capability capability) => false;
+        public bool HasAgreedCapability(Capability capability) => false;
+        public void AddSupportedCapability(Capability capability)
+        {
+        }
 
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
 

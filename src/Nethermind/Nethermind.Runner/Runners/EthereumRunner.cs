@@ -40,6 +40,10 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.DataMarketplace.Channels;
+using Nethermind.DataMarketplace.Core;
+using Nethermind.DataMarketplace.Initializers;
+using Nethermind.DataMarketplace.Subprotocols.Serializers;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
@@ -99,6 +103,9 @@ namespace Nethermind.Runner.Runners
         private readonly IGrpcService _grpcService;
         private readonly IGrpcClient _grpcClient;
         private static ILogManager _logManager;
+        private readonly INdmConsumerChannelManager _ndmConsumerChannelManager;
+        private readonly INdmDataPublisher _ndmDataPublisher;
+        private readonly INdmInitializer _ndmInitializer;
         private static ILogger _logger;
 
         private IRpcModuleProvider _rpcModuleProvider;
@@ -153,15 +160,20 @@ namespace Nethermind.Runner.Runners
         private ISyncConfig _syncConfig;
         public IEnode Enode => _enode;
         private IStaticNodesManager _staticNodesManager;
+        private TxPoolInfoProvider _txPoolInfoProvider;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
         public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider, ILogManager logManager,
-            IGrpcService grpcService, IGrpcClient grpcClient)
+            IGrpcService grpcService, IGrpcClient grpcClient, INdmConsumerChannelManager ndmConsumerChannelManager,
+            INdmDataPublisher ndmDataPublisher, INdmInitializer ndmInitializer)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _grpcService = grpcService;
             _grpcClient = grpcClient;
+            _ndmConsumerChannelManager = ndmConsumerChannelManager;
+            _ndmDataPublisher = ndmDataPublisher;
+            _ndmInitializer = ndmInitializer;
             _logger = _logManager.GetClassLogger();
 
             InitRlp();
@@ -215,7 +227,7 @@ namespace Nethermind.Runner.Runners
                     _wallet = new HiveWallet();
                     break;
                 case var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory:
-                    _wallet = new DevWallet(_logManager);
+                    _wallet = new DevWallet(_configProvider.GetConfig<IWalletConfig>(), _logManager);
                     break;
                 case var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory:
                     _wallet = new DevKeyStoreWallet(_keyStore, _logManager);
@@ -512,6 +524,8 @@ namespace Nethermind.Runner.Runners
                 stateProvider,
                 _logManager);
 
+            _txPoolInfoProvider = new TxPoolInfoProvider(stateProvider);
+            
             _transactionPoolInfoProvider = new TxPoolInfoProvider(stateProvider);
 
             /* blockchain processing */
@@ -806,6 +820,8 @@ namespace Nethermind.Runner.Runners
 
             var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher,
                 _cryptoRandom, new Ecdsa(), _nodeKey, _logManager);
+            
+            _messageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
 
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             var discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
@@ -828,6 +844,17 @@ namespace Nethermind.Runner.Runners
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
             _protocolsManager = new ProtocolsManager(_syncPeerPool, _syncServer, _txPool, _discoveryApp, _messageSerializationService, _rlpxPeer, _nodeStatsManager, protocolValidator, peerStorage, _perfService, _logManager);
+
+            if (!(_ndmInitializer is null))
+            {
+                var capabilityConnector = await _ndmInitializer.InitAsync(_configProvider, _dbProvider, _blockProcessor,
+                    _blockTree, _txPool, _txPoolInfoProvider, _specProvider, _receiptStorage, _wallet, _timestamp,
+                    _ecdsa, _rpcModuleProvider, _keyStore, _jsonSerializer, _cryptoRandom, _enode,
+                    _ndmConsumerChannelManager, _ndmDataPublisher, _grpcService, _nodeStatsManager, _protocolsManager,
+                    protocolValidator, _messageSerializationService, _logManager);
+                capabilityConnector.Init();
+            }
+            
             PeerLoader peerLoader = new PeerLoader(networkConfig, discoveryConfig, _nodeStatsManager, peerStorage, _logManager);
             _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, networkConfig, _logManager, _staticNodesManager);
             _peerManager.Init();

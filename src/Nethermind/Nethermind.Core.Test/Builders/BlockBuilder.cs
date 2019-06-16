@@ -55,6 +55,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
+        public BlockBuilder WithTimestamp(UInt256 timestamp)
+        {
+            TestObjectInternal.Header.Timestamp = timestamp;
+            return this;
+        }
+        
         public BlockBuilder WithTransactions(params Transaction[] transactions)
         {
             TestObjectInternal.Transactions = transactions;

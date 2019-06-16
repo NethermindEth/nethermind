@@ -1,0 +1,5 @@
+{
+  "app": {
+    "nethermindRunnerPath": "../Nethermind.Runner/bin/Debug/netcoreapp2.1/"
+  }
+}

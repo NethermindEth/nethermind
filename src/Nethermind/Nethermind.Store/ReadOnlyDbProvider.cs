@@ -36,8 +36,14 @@ namespace Nethermind.Store
             NestedHeadersDb = new ReadOnlyDb(wrappedProvider.HeadersDb, createInMemoryWriteStore);
             NestedPendingTxsDb = new ReadOnlyDb(wrappedProvider.PendingTxsDb, createInMemoryWriteStore);
             NestedTraceDb = new ReadOnlyDb(wrappedProvider.TraceDb, createInMemoryWriteStore);
+            NestedConsumersDb = new ReadOnlyDb(wrappedProvider.ConsumersDb, createInMemoryWriteStore);
+            NestedDepositsDb  = new ReadOnlyDb(wrappedProvider.DepositsDb, createInMemoryWriteStore);
+            NestedConsumerSessionsDb = new ReadOnlyDb(wrappedProvider.ConsumerSessionsDb, createInMemoryWriteStore);
+            NestedConsumerReceiptsDb = new ReadOnlyDb(wrappedProvider.ConsumerReceiptsDb, createInMemoryWriteStore);
+            NestedConsumerDepositApprovalsDb = new ReadOnlyDb(wrappedProvider.ConsumerDepositApprovalsDb, createInMemoryWriteStore);
+            NestedConfigsDb = new ReadOnlyDb(wrappedProvider.ConfigsDb, createInMemoryWriteStore);
+            NestedEthRequestsDb = new ReadOnlyDb(wrappedProvider.EthRequestsDb, createInMemoryWriteStore);
         }
-
 
         public void Dispose()
         {
@@ -53,12 +59,26 @@ namespace Nethermind.Store
         public IDb BlockInfosDb => NestedBlockInfosDb;
         public IDb PendingTxsDb => NestedPendingTxsDb;
         public IDb TraceDb => NestedTraceDb;
+        public IDb ConsumersDb => NestedConsumersDb;
+        public IDb DepositsDb => NestedDepositsDb;
+        public IDb ConsumerSessionsDb => NestedConsumerSessionsDb;
+        public IDb ConsumerReceiptsDb => NestedConsumerReceiptsDb;
+        public IDb ConsumerDepositApprovalsDb => NestedConsumerDepositApprovalsDb;
+        public IDb ConfigsDb => NestedConfigsDb;
+        public IDb EthRequestsDb => NestedEthRequestsDb;
         public ReadOnlyDb NestedReceiptsDb { get; }
         public ReadOnlyDb NestedBlocksDb { get; }
         public ReadOnlyDb NestedHeadersDb { get; }
         public ReadOnlyDb NestedBlockInfosDb { get; }
         public ReadOnlyDb NestedPendingTxsDb { get; }
         public ReadOnlyDb NestedTraceDb { get; }
+        public ReadOnlyDb NestedConsumersDb { get; }
+        public ReadOnlyDb NestedDepositsDb { get; }
+        public ReadOnlyDb NestedConsumerSessionsDb { get; }
+        public ReadOnlyDb NestedConsumerReceiptsDb { get; }
+        public ReadOnlyDb NestedConsumerDepositApprovalsDb { get; }
+        public ReadOnlyDb NestedConfigsDb { get; }
+        public ReadOnlyDb NestedEthRequestsDb { get; }
         
         public void ClearTempChanges()
         {
@@ -71,6 +91,13 @@ namespace Nethermind.Store
             NestedHeadersDb.ClearTempChanges();
             NestedBlockInfosDb.ClearTempChanges();
             NestedTraceDb.ClearTempChanges();
+            NestedConsumersDb.ClearTempChanges();
+            NestedDepositsDb.ClearTempChanges();
+            NestedConsumerSessionsDb.ClearTempChanges();
+            NestedConsumerReceiptsDb.ClearTempChanges();
+            NestedConsumerDepositApprovalsDb.ClearTempChanges();
+            NestedConfigsDb.ClearTempChanges();
+            NestedEthRequestsDb.ClearTempChanges();
         }
     }
 }

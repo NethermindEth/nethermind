@@ -36,11 +36,12 @@ namespace Nethermind.Network
         public Enode(string enodeString)
         {
             string[] enodeParts = enodeString.Split(':');
-            _nodeKey = new PublicKey(enodeParts[1].Split('@')[0]);
+            _nodeKey = new PublicKey(enodeParts[1].Split('@')[0].TrimStart('/'));
             P2PPort = int.Parse(enodeParts[2]);
             IpAddress = IPAddress.Parse(enodeParts[1].Split('@')[1]);
         }
-
+        
+        public PublicKey PublicKey => _nodeKey;
         public Address Address => _nodeKey.Address;
         public IPAddress IpAddress { get; }
         public int P2PPort { get; }

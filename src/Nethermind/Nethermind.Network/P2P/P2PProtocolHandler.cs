@@ -51,9 +51,11 @@ namespace Nethermind.Network.P2P
             LocalNodeId = localNodeId;
             ListenPort = session.LocalPort;
             AgreedCapabilities = new List<Capability>();
+            AvailableCapabilities = new List<Capability>();
         }
 
         public List<Capability> AgreedCapabilities { get; }
+        public List<Capability> AvailableCapabilities { get; private set; }
 
         public int ListenPort { get; }
 
@@ -61,10 +63,23 @@ namespace Nethermind.Network.P2P
 
         public string RemoteClientId { get; private set; }
 
+        public bool HasAvailableCapability(Capability capability) => AvailableCapabilities.Contains(capability);
+        public bool HasAgreedCapability(Capability capability) => AgreedCapabilities.Contains(capability);
+
+        public void AddSupportedCapability(Capability capability)
+        {
+            if (SupportedCapabilities.Contains(capability))
+            {
+                return;
+            }
+
+            SupportedCapabilities.Add(capability);
+        }
+
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
 
         public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
-
+        
         public void Init()
         {
             SendHello();
@@ -114,6 +129,15 @@ namespace Nethermind.Network.P2P
                 if(Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} Received PONG on {Session.RemotePort}");
                 HandlePong(msg);
             }
+            else if (msg.PacketType == P2PMessageCode.AddCapability)
+            {
+                var message = Deserialize<AddCapabilityMessage>(msg.Data);
+                var capability = message.Capability;
+                AgreedCapabilities.Add(message.Capability);
+                SupportedCapabilities.Add(message.Capability);
+                if(Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort}");
+                SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
+            }
             else
             {
                 Logger.Error($"{Session.RemoteNodeId} Unhandled packet type: {msg.PacketType}");
@@ -149,6 +173,7 @@ namespace Nethermind.Network.P2P
             ProtocolVersion = hello.P2PVersion;
 
             var capabilities = hello.Capabilities;
+            AvailableCapabilities = new List<Capability>(capabilities);
             foreach (Capability remotePeerCapability in capabilities)
             {
                 if (SupportedCapabilities.Contains(remotePeerCapability))
@@ -164,7 +189,8 @@ namespace Nethermind.Network.P2P
 
             _isInitialized = true;
 
-            if (!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63)))
+            if (!capabilities.Any(x => (x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63))
+                                       || x.ProtocolCode == Protocol.Ndm))
             {
                 InitiateDisconnect(DisconnectReason.UselessPeer, $"capabilities: {string.Join(", ", capabilities.Select(c => string.Concat(c.ProtocolCode, c.Version)))}");
             }
@@ -230,7 +256,7 @@ namespace Nethermind.Network.P2P
         private static readonly List<Capability> SupportedCapabilities = new List<Capability>
         {
             new Capability(Protocol.Eth, 62),
-            new Capability(Protocol.Eth, 63),
+            new Capability(Protocol.Eth, 63)
         };
 
         private void SendHello()

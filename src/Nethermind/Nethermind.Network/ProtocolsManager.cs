@@ -18,6 +18,8 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
@@ -34,6 +36,9 @@ namespace Nethermind.Network
 {
     public class ProtocolsManager : IProtocolsManager
     {
+        private readonly ConcurrentDictionary<Guid, Eth62ProtocolHandler> _syncPeers =
+            new ConcurrentDictionary<Guid, Eth62ProtocolHandler>();
+        private readonly ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
         private readonly IEthSyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
         private readonly ITxPool _txPool;
@@ -46,6 +51,9 @@ namespace Nethermind.Network
         private readonly INetworkStorage _peerStorage;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
+        private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
+        private readonly IList<Capability> _capabilities = new List<Capability>();
+        public event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
 
         public ProtocolsManager(
             IEthSyncPeerPool ethSyncPeerPool,
@@ -72,11 +80,10 @@ namespace Nethermind.Network
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager.GetClassLogger();
-            
+
+            _protocolFactories = GetProtocolFactories();
             localPeer.SessionCreated += SessionCreated;
         }
-
-        private ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
 
         private void SessionCreated(object sender, SessionEventArgs e)
         {
@@ -105,15 +112,13 @@ namespace Nethermind.Network
             _sessions.TryRemove(session.SessionId, out session);
         }
 
-        private ConcurrentDictionary<Guid, Eth62ProtocolHandler> _syncPeers = new ConcurrentDictionary<Guid, Eth62ProtocolHandler>();
-
         private void SessionInitialized(object sender, EventArgs e)
         {
             ISession session = (ISession) sender;
-            InitProtocol(session, Protocol.P2P, session.P2PVersion);
+            InitProtocol(session, Protocol.P2P, session.P2PVersion, true);
         }
 
-        private void InitProtocol(ISession session, string protocolCode, int version)
+        private void InitProtocol(ISession session, string protocolCode, int version, bool addCapabilities = false)
         {
             if (session.State < SessionState.Initialized)
             {
@@ -125,36 +130,65 @@ namespace Nethermind.Network
                 return;
             }
 
-            protocolCode = protocolCode.ToLowerInvariant();
-            IProtocolHandler protocolHandler;
-            switch (protocolCode)
+            var code = protocolCode.ToLowerInvariant();
+            if (!_protocolFactories.TryGetValue(code, out var protocolFactory))
             {
-                case Protocol.P2P:
-                    P2PProtocolHandler handler = new P2PProtocolHandler(session, _localPeer.LocalNodeId, _stats, _serializer, _perfService, _logManager);
+                throw new NotSupportedException($"Protocol {code} {version} is not supported");
+            }
+
+            var protocolHandler = protocolFactory(session, version);
+            protocolHandler.SubprotocolRequested += (s, e) => InitProtocol(session, e.ProtocolCode, e.Version);
+            session.AddProtocolHandler(protocolHandler);
+            if (addCapabilities)
+            {
+                foreach (var capability in _capabilities)
+                {
+                    session.AddSupportedCapability(capability);
+                }
+            }
+
+            protocolHandler.Init();
+        }
+
+        public void AddProtocol(string code, Func<ISession, IProtocolHandler> factory)
+        {
+            if (_protocolFactories.ContainsKey(code))
+            {
+                throw new InvalidOperationException($"Protocol {code} was already added.");
+            }
+
+            _protocolFactories[code] = (session, _) => factory(session);
+        }
+
+        private IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
+            => new Dictionary<string, Func<ISession, int, IProtocolHandler>>
+            {
+                [Protocol.P2P] = (session, _) =>
+                {
+                    var handler = new P2PProtocolHandler(session, _localPeer.LocalNodeId, _stats, _serializer,
+                        _perfService, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
-                    protocolHandler = handler;
-                    break;
-                case Protocol.Eth:
+
+                    return handler;
+                },
+                [Protocol.Eth] = (session, version) =>
+                {
                     if (version < 62 || version > 63)
                     {
                         throw new NotSupportedException($"Eth protocol version {version} is not supported.");
                     }
 
-                    Eth62ProtocolHandler ethHandler = version == 62
-                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _perfService, _txPool)
-                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _perfService, _txPool);
-                    InitEthProtocol(session, ethHandler);
-                    protocolHandler = ethHandler;
-                    break;
-                default:
-                    throw new NotSupportedException($"Protocol {protocolCode} {version} is not supported");
-            }
+                    var handler = version == 62
+                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _perfService,
+                            _txPool)
+                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _perfService,
+                            _txPool);
+                    InitEthProtocol(session, handler);
 
-            protocolHandler.SubprotocolRequested += (sender, args) => InitProtocol(session, args.ProtocolCode, args.Version);
-            session.AddProtocolHandler(protocolHandler);
-            protocolHandler.Init();
-        }
+                    return handler;
+                }
+            };
         
         private void InitP2PProtocol(ISession session, P2PProtocolHandler handler)
         {
@@ -186,6 +220,7 @@ namespace Nethermind.Network
                 _protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, args);
 
                 if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
+                P2PProtocolInitialized?.Invoke(this, typedArgs);
             };
         }
 
@@ -276,6 +311,35 @@ namespace Nethermind.Network
             //In case peer was initiated outside of discovery and discovery is enabled, we are adding it to discovery for future use (e.g. trusted peer)
             _discoveryApp.AddNodeToDiscovery(session.Node);
             session.Node.AddedToDiscovery = true;
+        }
+
+        public void AddSupportedCapability(Capability capability)
+        {
+            if (_capabilities.Contains(capability))
+            {
+                return;
+            }
+
+            _capabilities.Add(capability);
+        }
+
+        public void SendNewCapability(Capability capability)
+        {
+            var message = new AddCapabilityMessage(capability);
+            var packet = new Packet(Protocol.P2P, P2PMessageCode.AddCapability, _serializer.Serialize(message));
+            foreach (var (_, session) in _sessions)
+            {
+                if (session.HasAgreedCapability(capability))
+                {
+                    continue;
+                }
+                if (!session.HasAvailableCapability(capability))
+                {
+                    continue;
+                }
+
+                session.DeliverMessage(packet);
+            }
         }
     }
 }

@@ -332,6 +332,8 @@ ASALocalRun/
 .localhistory/
 
 .vscode/
+ndm/
+ndm_db/
 nethermind_db/
 keystore/
 spaceneth_db/

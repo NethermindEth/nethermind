@@ -21,7 +21,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-using System.Runtime.InteropServices.WindowsRuntime;
 using Nethermind.Db.Config;
 using Nethermind.Logging;
 using Nethermind.Store;
@@ -39,6 +38,13 @@ namespace Nethermind.Db
         public const string BlockInfosDbPath = "blockInfos";
         public const string PendingTxsDbPath = "pendingtxs";
         public const string TraceDbPath = "trace";
+        public const string ConsumersDbPath = "consumers";
+        public const string DepositsDbPath = "deposits";
+        public const string ConsumerSessionsDbPath = "consumerSessions";
+        public const string ConsumerReceiptsDbPath = "consumerReceipts";
+        public const string ConsumerDepositApprovalsDbPath = "consumerDepositApprovals";
+        public const string ConfigsDbPath = "configs";
+        public const string EthRequestsDbPath = "ethRequests";
 
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
 
@@ -88,6 +94,34 @@ namespace Nethermind.Db
             else if (dbPath.EndsWith(PendingTxsDbPath))
             {
                 _dbInstance = DbInstance.PendingTxs;
+            }
+            else if (dbPath.EndsWith(ConsumersDbPath))
+            {
+                _dbInstance = DbInstance.Consumers;
+            }
+            else if (dbPath.EndsWith(DepositsDbPath))
+            {
+                _dbInstance = DbInstance.Deposits;
+            }
+            else if (dbPath.EndsWith(ConsumerSessionsDbPath))
+            {
+                _dbInstance = DbInstance.ConsumerSessions;
+            }
+            else if (dbPath.EndsWith(ConsumerReceiptsDbPath))
+            {
+                _dbInstance = DbInstance.ConsumerReceipts;
+            }
+            else if (dbPath.EndsWith(ConsumerDepositApprovalsDbPath))
+            {
+                _dbInstance = DbInstance.ConsumerDepositApprovals;
+            }
+            else if (dbPath.EndsWith(ConfigsDbPath))
+            {
+                _dbInstance = DbInstance.Configs;
+            }
+            else if (dbPath.EndsWith(EthRequestsDbPath))
+            {
+                _dbInstance = DbInstance.EthRequests;
             }
             else if (dbPath.EndsWith(TraceDbPath))
             {
@@ -185,6 +219,27 @@ namespace Nethermind.Db
                     case DbInstance.PendingTxs:
                         Metrics.PendingTxsDbReads++;
                         break;
+                    case DbInstance.Consumers:
+                        Metrics.ConsumersDbReads++;
+                        break;
+                    case DbInstance.Deposits:
+                        Metrics.DepositsDbReads++;
+                        break;
+                    case DbInstance.ConsumerSessions:
+                        Metrics.ConsumerSessionsDbReads++;
+                        break;
+                    case DbInstance.ConsumerReceipts:
+                        Metrics.ConsumerReceiptsDbReads++;
+                        break;
+                    case DbInstance.ConsumerDepositApprovals:
+                        Metrics.ConsumerDepositApprovalsDbReads++;
+                        break;
+                    case DbInstance.Configs:
+                        Metrics.ConfigsDbReads++;
+                        break;
+                    case DbInstance.EthRequests:
+                        Metrics.EthRequestsDbReads++;
+                        break;
                     case DbInstance.Trace:
                         Metrics.TraceDbReads++;
                         break;
@@ -221,6 +276,27 @@ namespace Nethermind.Db
                         break;
                     case DbInstance.PendingTxs:
                         Metrics.PendingTxsDbWrites++;
+                        break;
+                    case DbInstance.Consumers:
+                        Metrics.ConsumersDbWrites++;
+                        break;
+                    case DbInstance.Deposits:
+                        Metrics.DepositsDbWrites++;
+                        break;
+                    case DbInstance.ConsumerSessions:
+                        Metrics.ConsumerSessionsDbWrites++;
+                        break;
+                    case DbInstance.ConsumerReceipts:
+                        Metrics.ConsumerReceiptsDbWrites++;
+                        break;
+                    case DbInstance.ConsumerDepositApprovals:
+                        Metrics.ConsumerDepositApprovalsDbWrites++;
+                        break;
+                    case DbInstance.Configs:
+                        Metrics.ConfigsDbWrites++;
+                        break;
+                    case DbInstance.EthRequests:
+                        Metrics.EthRequestsDbWrites++;
                         break;
                     case DbInstance.Trace:
                         Metrics.TraceDbWrites++;
@@ -309,6 +385,18 @@ namespace Nethermind.Db
             Receipts,
             Trace,
             PendingTxs,
+            DataHeaders,
+            Consumers,
+            Deposits,
+            PaymentClaims,
+            ProviderSessions,
+            ConsumerSessions,
+            ProviderReceipts,
+            ConsumerReceipts,
+            ProviderDepositApprovals,
+            ConsumerDepositApprovals,
+            Configs,
+            EthRequests,
             Other
         }
 

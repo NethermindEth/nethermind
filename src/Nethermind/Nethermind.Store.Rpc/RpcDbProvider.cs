@@ -37,6 +37,13 @@ namespace Nethermind.Store.Rpc
             BlockInfosDb = new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb), true);
             PendingTxsDb = new ReadOnlyDb(new RpcDb(DbNames.PendingTxs, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
             TraceDb = new ReadOnlyDb(new RpcDb(DbNames.Trace, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
+            ConsumersDb = new ReadOnlyDb(new RpcDb(DbNames.Consumers, serializer, client, logManager, recordDbProvider?.ConsumersDb), true);
+            DepositsDb = new ReadOnlyDb(new RpcDb(DbNames.Deposits, serializer, client, logManager, recordDbProvider?.DepositsDb), true);
+            ConsumerSessionsDb = new ReadOnlyDb(new RpcDb(DbNames.ConsumerSessions, serializer, client, logManager, recordDbProvider?.ConsumerSessionsDb), true);
+            ConsumerReceiptsDb = new ReadOnlyDb(new RpcDb(DbNames.ConsumerReceipts, serializer, client, logManager, recordDbProvider?.ConsumerReceiptsDb), true);
+            ConsumerDepositApprovalsDb = new ReadOnlyDb(new RpcDb(DbNames.ConsumerDepositApprovals, serializer, client, logManager, recordDbProvider?.ConsumerDepositApprovalsDb), true);
+            ConfigsDb = new ReadOnlyDb(new RpcDb(DbNames.Configs, serializer, client, logManager, recordDbProvider?.ConfigsDb), true);
+            EthRequestsDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.EthRequestsDb), true); 
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -47,6 +54,13 @@ namespace Nethermind.Store.Rpc
         public IDb BlockInfosDb { get; }
         public IDb PendingTxsDb { get; }
         public IDb TraceDb { get; }
+        public IDb ConsumersDb { get; }
+        public IDb DepositsDb { get; }
+        public IDb ConsumerSessionsDb { get; }
+        public IDb ConsumerReceiptsDb { get; }
+        public IDb ConsumerDepositApprovalsDb { get; }
+        public IDb ConfigsDb { get; }
+        public IDb EthRequestsDb { get; }
 
         public void Dispose()
         {
@@ -57,6 +71,13 @@ namespace Nethermind.Store.Rpc
             HeadersDb?.Dispose();
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
+            ConsumersDb?.Dispose();
+            DepositsDb?.Dispose();
+            ConsumerSessionsDb?.Dispose();
+            ConsumerReceiptsDb?.Dispose();
+            ConsumerDepositApprovalsDb?.Dispose();
+            ConfigsDb?.Dispose();
+            EthRequestsDb?.Dispose();
             _recordDbProvider?.Dispose();
         }
     }

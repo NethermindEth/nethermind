@@ -1,0 +1,362 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using Nethermind.Abi;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.TxPools;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Logging;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.Forks;
+using Nethermind.Core.Test.Builders;
+using Nethermind.DataMarketplace.Core.Configs;
+using Nethermind.DataMarketplace.Core.Services.Models;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.Facade;
+using Nethermind.Store;
+using Nethermind.Wallet;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.DataMarketplace.Test
+{
+    public abstract class ContractInteractionTest
+    {
+        public class TestLogger : ILogger
+        {
+            public void Info(string text)
+            {
+                TestContext.WriteLine(text);
+            }
+
+            public void Warn(string text)
+            {
+                TestContext.WriteLine(text);
+            }
+
+            public void Debug(string text)
+            {
+                TestContext.WriteLine(text);
+            }
+
+            public void Trace(string text)
+            {
+                TestContext.WriteLine(text);
+            }
+
+            public void Error(string text, Exception ex = null)
+            {
+                TestContext.WriteLine(text);
+            }
+
+            public bool IsInfo { get; } = true;
+            public bool IsWarn { get; } = true;
+            public bool IsDebug { get; } = true;
+            public bool IsTrace { get; } = true;
+            public bool IsError { get; } = true;
+        }
+        
+        protected IReleaseSpec _releaseSpec = Constantinople.Instance;
+        protected Address _feeAccount;
+        protected Address _consumerAccount;
+        protected Address _providerAccount;
+        protected DevWallet _wallet;
+        protected BlockchainBridge _bridge;
+        protected IStateProvider _state;
+        protected INdmConfig _ndmConfig;
+        protected AbiEncoder _abiEncoder = new AbiEncoder();
+        protected ILogManager _logManager = new OneLoggerLogManager(new TestLogger());
+
+        protected void Prepare()
+        {
+            _wallet = new DevWallet(new WalletConfig(), _logManager);
+            _feeAccount = _wallet.GetAccounts()[0];
+            _consumerAccount = _wallet.GetAccounts()[1];
+            _providerAccount = _wallet.GetAccounts()[2];
+            _ndmConfig = new NdmConfig();
+
+            IReleaseSpec spec = _releaseSpec;
+            ISpecProvider specProvider = new SingleReleaseSpecProvider(spec, 99);
+            StateDb stateDb = new StateDb();
+            _state = new StateProvider(stateDb, new StateDb(), _logManager);
+            StorageProvider storageProvider = new StorageProvider(stateDb, _state, _logManager);
+            _state.CreateAccount(_consumerAccount, 1000.Ether());
+            _state.CreateAccount(_providerAccount, 1.Ether());
+            _state.Commit(spec);
+            _state.CommitTree();
+
+            VirtualMachine machine = new VirtualMachine(_state, storageProvider, Substitute.For<IBlockhashProvider>(), _logManager);
+            TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
+            _bridge = new BlockchainBridge(processor, _releaseSpec);
+
+            TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
+            _ndmConfig.ContractAddress = receipt.ContractAddress.ToString();
+        }
+
+        protected TxReceipt DeployContract(byte[] initCode)
+        {
+            Transaction deployContract = new Transaction();
+            deployContract.SenderAddress = _providerAccount;
+            deployContract.GasLimit = 4000000;
+            deployContract.Init = initCode;
+            deployContract.Nonce = (UInt256) _bridge.GetNonce(_providerAccount);
+            Keccak txHash = _bridge.SendTransaction(deployContract);
+            TxReceipt receipt = _bridge.GetReceipt(txHash);
+            Assert.AreEqual(StatusCode.Success, receipt.StatusCode, $"contract deployed {receipt.Error}");
+            return receipt;
+        }
+
+        public class BlockchainBridge : IBlockchainBridge
+        {
+            private readonly TransactionProcessor _processor;
+            private readonly IReleaseSpec _spec;
+
+            public void NextBlockPlease(UInt256 timestamp)
+            {
+                _txIndex = 0;
+                _headBlock = Build.A.Block.WithParent(Head).WithTimestamp(timestamp).TestObject;
+                _headBlock.Transactions = new Transaction[100];
+                _receiptsTracer.StartNewBlockTrace(_headBlock);
+            }
+
+            public IReadOnlyCollection<Address> GetWalletAccounts()
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public Signature Sign(Address address, Keccak message)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public Signature Sign(Address address, byte[] message)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public void Sign(Transaction transaction)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public int GetNetworkId()
+            {
+                return 99;
+            }
+
+            public GethLikeBlockTracer GethTracer { get; set; } = new GethLikeBlockTracer();
+
+            public BlockchainBridge(TransactionProcessor processor, IReleaseSpec spec)
+            {
+                _spec = spec;
+                _receiptsTracer = new BlockReceiptsTracer(new SingleReleaseSpecProvider(_spec, 99), Substitute.For<IStateProvider>());
+                _processor = processor;
+                _receiptsTracer.SetOtherTracer(GethTracer);
+                _receiptsTracer.StartNewBlockTrace(_headBlock);
+            }
+
+            private Block _headBlock = Build.A.Block.WithNumber(1).WithTransactions(new Transaction[100]).TestObject;
+
+            public BlockHeader Head => _headBlock.Header;
+            public BlockHeader BestSuggested { get; }
+            public long BestKnown { get; }
+            public bool IsSyncing { get; }
+
+            public Block FindBlock(Keccak blockHash, bool mainChainOnly)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public Block FindBlock(long blockNumber)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public Block RetrieveHeadBlock()
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public Block RetrieveGenesisBlock()
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public Keccak GetBlockHash(Keccak transactionHash)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public Keccak SendTransaction(Transaction transaction)
+            {
+                throw new NotImplementedException();
+            }
+
+            private BlockReceiptsTracer _receiptsTracer;
+
+            private int _txIndex = 0;
+
+            public Keccak SendTransaction(Transaction transaction, bool doNotEvict = false)
+            {
+                transaction.Hash = Transaction.CalculateHash(transaction);
+                _headBlock.Transactions[_txIndex++] = transaction;
+                _receiptsTracer.StartNewTxTrace(transaction.Hash);
+                _processor.Execute(transaction, Head, _receiptsTracer);
+                _receiptsTracer.EndTxTrace();
+                return Transaction.CalculateHash(transaction);
+            }
+
+            public TxReceipt GetReceipt(Keccak txHash)
+            {
+                return _receiptsTracer.TxReceipts.Single(r => r?.TransactionHash == txHash);
+            }
+
+            public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction)
+            {
+                CallOutputTracer tracer = new CallOutputTracer();
+                _processor.Execute(transaction, Head, tracer);
+                return new Facade.BlockchainBridge.CallOutput(tracer.ReturnValue, tracer.GasSpent, tracer.Error);
+            }
+
+            public long EstimateGas(Block block, Transaction transaction)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public byte[] GetCode(Address address)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public byte[] GetCode(Keccak codeHash)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            Dictionary<Address, BigInteger> _nonces = new Dictionary<Address, BigInteger>();
+
+            public BigInteger GetNonce(Address address)
+            {
+                if (!_nonces.ContainsKey(address))
+                {
+                    _nonces[address] = 0;
+                }
+
+                return _nonces[address]++;
+            }
+
+            public BigInteger GetBalance(Address address)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public byte[] GetStorage(Address address, BigInteger index)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public byte[] GetStorage(Address address, BigInteger index, Keccak storageRoot)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public Account GetAccount(Address address)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public Account GetAccount(Address address, Keccak stateRoot)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public int NewBlockFilter()
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public int NewPendingTransactionFilter()
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public void UninstallFilter(int filterId)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public bool FilterExists(int filterId)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public FilterLog[] GetLogFilterChanges(int filterId)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public Keccak[] GetBlockFilterChanges(int filterId)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public Keccak[] GetPendingTransactionFilterChanges(int filterId)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public FilterType GetFilterType(int filterId)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public FilterLog[] GetFilterLogs(int filterId)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public TxPoolInfo GetTxPoolInfo()
+            {
+                throw new System.NotImplementedException();
+            }
+        }
+    }
+}

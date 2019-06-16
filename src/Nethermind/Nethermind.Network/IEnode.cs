@@ -18,11 +18,13 @@
 
 using System.Net;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network
 {
     public interface IEnode
     {
+        PublicKey PublicKey { get; }
         Address Address { get; }
         IPAddress IpAddress { get; }
         int P2PPort { get; }

@@ -24,6 +24,8 @@ using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.DataMarketplace.Core.Configs;
+using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 using Nethermind.Db.Config;
 using Nethermind.EthStats;
 using Nethermind.EthStats.Configs;
@@ -40,6 +42,7 @@ using LogLevel = Nethermind.Logging.LogLevel;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.PubSub.Kafka;
+using Nethermind.Wallet;
 
 namespace Nethermind.Runner
 {
@@ -61,8 +64,11 @@ namespace Nethermind.Runner
             typeof(IStatsConfig),
             typeof(ISyncConfig),
             typeof(IKafkaConfig),
+            typeof(INdmConfig),
             typeof(IGrpcConfig),
             typeof(IGrpcClientConfig),
+            typeof(IWalletConfig),
+            typeof(IMongoConfig),
             typeof(IEthStatsConfig),
             typeof(IMetricsConfig)
         };

@@ -35,5 +35,8 @@ namespace Nethermind.Stats.Model
         Other = 0x10,
         Breach1 = 0x11,
         Breach2 = 0x12,
+        NdmInvalidHiSignature = 0x13,
+        NdmHostAddressesNotConfigured = 0x14,
+        NdmPeerAddressesNotConfigured = 0x15
     }
 }

@@ -27,11 +27,12 @@ namespace Nethermind.Network.P2P
         byte ProtocolVersion { get; }
         string ProtocolCode { get; }
         int MessageIdSpaceSize { get; }
-        
         void Init();
         void HandleMessage(Packet message);
         void InitiateDisconnect(DisconnectReason disconnectReason, string details);
-
+        bool HasAvailableCapability(Capability capability);
+        bool HasAgreedCapability(Capability capability);
+        void AddSupportedCapability(Capability capability);
         event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }

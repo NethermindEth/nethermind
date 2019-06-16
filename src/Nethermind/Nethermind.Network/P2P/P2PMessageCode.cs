@@ -24,5 +24,6 @@ namespace Nethermind.Network.P2P
         public const int Disconnect = 0x01;
         public const int Ping = 0x02;
         public const int Pong = 0x03;
+        public const int AddCapability = 0x04;
     }
 }

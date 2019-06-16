@@ -20,7 +20,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security;
-using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -39,6 +38,8 @@ namespace Nethermind.Wallet
         private readonly ILogger _logger;
 
         private Dictionary<Address, PrivateKey> _unlockedAccounts = new Dictionary<Address, PrivateKey>();
+        public event EventHandler<AccountLockedEventArgs> AccountLocked;
+        public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
         public DevKeyStoreWallet(IKeyStore keyStore, ILogManager logManager)
         {
@@ -59,7 +60,7 @@ namespace Nethermind.Wallet
                 _unlockedAccounts.Add(key.Address, key);
                 _keySeed[31]++;
             }
-        }
+        }      
 
         public void Import(byte[] keyData, SecureString passphrase)
         {
@@ -89,16 +90,20 @@ namespace Nethermind.Wallet
             (PrivateKey key, Result result) = _keyStore.GetKey(address, passphrase);
             if (result.ResultType == ResultType.Success)
             {
+                _logger.Info($"Unlocking account: {address}");
                 _unlockedAccounts.Add(key.Address, key);
+                AccountUnlocked?.Invoke(this, new AccountUnlockedEventArgs(address));
                 return true;
             }
 
+            _logger.Error($"Failed to unlock the account: {address}");
             return false;
         }
 
-        public void LockAccount(Address address)
+        public bool LockAccount(Address address)
         {
-            _unlockedAccounts.Remove(address);
+            AccountLocked?.Invoke(this, new AccountLockedEventArgs(address));
+            return _unlockedAccounts.Remove(address);
         }
 
         public void Sign(Transaction tx, int chainId)
@@ -109,6 +114,8 @@ namespace Nethermind.Wallet
             tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
         }
 
+        public bool IsUnlocked(Address address) => _unlockedAccounts.ContainsKey(address);
+        
         public Signature Sign(Keccak message, Address address, SecureString passphrase)
         {
             PrivateKey key;

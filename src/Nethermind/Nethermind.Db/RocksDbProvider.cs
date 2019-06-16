@@ -59,7 +59,39 @@ namespace Nethermind.Db
             PendingTxsDb = new DbOnTheRocks(
                 Path.Combine(basePath, DbOnTheRocks.PendingTxsDbPath),
                 dbConfig, logManager);
+            
+            TraceDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.TraceDbPath),
+                dbConfig, logManager);
 
+            ConsumersDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.ConsumersDbPath),
+                dbConfig, logManager);
+            
+            DepositsDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.DepositsDbPath),
+                dbConfig, logManager);
+            
+            ConsumerSessionsDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.ConsumerSessionsDbPath),
+                dbConfig, logManager);
+
+            ConsumerReceiptsDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.ConsumerReceiptsDbPath),
+                dbConfig, logManager);
+            
+            ConsumerDepositApprovalsDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.ConsumerDepositApprovalsDbPath),
+                dbConfig, logManager);
+            
+            ConfigsDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.ConfigsDbPath),
+                dbConfig, logManager);
+
+            EthRequestsDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.EthRequestsDbPath),
+                dbConfig, logManager);
+            
             if (useTraceDb)
             {
                 TraceDb = new DbOnTheRocks(
@@ -80,6 +112,13 @@ namespace Nethermind.Db
         public IDb HeadersDb { get; }
         public IDb BlockInfosDb { get; }
         public IDb PendingTxsDb { get; }
+        public IDb ConsumersDb { get; }
+        public IDb DepositsDb { get; }
+        public IDb ConsumerSessionsDb { get; }
+        public IDb ConsumerReceiptsDb { get; }
+        public IDb ConsumerDepositApprovalsDb { get; }
+        public IDb ConfigsDb { get; }
+        public IDb EthRequestsDb { get; }
 
         public void Dispose()
         {
@@ -91,6 +130,12 @@ namespace Nethermind.Db
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
             TraceDb?.Dispose();
+            ConsumersDb?.Dispose();
+            DepositsDb?.Dispose();
+            ConsumerSessionsDb?.Dispose();
+            ConsumerReceiptsDb?.Dispose();
+            ConfigsDb?.Dispose();
+            EthRequestsDb?.Dispose();
         }
     }
 }

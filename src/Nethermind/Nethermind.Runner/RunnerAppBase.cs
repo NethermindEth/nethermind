@@ -18,12 +18,19 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Json;
+using Nethermind.DataMarketplace.Channels;
+using Nethermind.DataMarketplace.Channels.Grpc;
+using Nethermind.DataMarketplace.Core;
+using Nethermind.DataMarketplace.Core.Configs;
+using Nethermind.DataMarketplace.Initializers;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Clients;
 using Nethermind.JsonRpc;
@@ -129,11 +136,43 @@ namespace Nethermind.Runner
                 : (IRpcModuleProvider) NullModuleProvider.Instance;
             var webSocketsManager = new WebSocketsManager();
 
+            INdmDataPublisher ndmDataPublisher = null;
+            INdmConsumerChannelManager ndmConsumerChannelManager = null;
+            INdmInitializer ndmInitializer = null;
+            var ndmConfig = configProvider.GetConfig<INdmConfig>();
+            var ndmEnabled = ndmConfig.Enabled;
+            if (ndmEnabled)
+            {
+                ndmDataPublisher = new NdmDataPublisher();
+                ndmConsumerChannelManager = new NdmConsumerChannelManager();
+                var ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a => a.GetTypes())
+                    .FirstOrDefault(t =>
+                        t.GetCustomAttribute<NdmInitializerAttribute>()?.Name == ndmConfig.Initializer);
+                if (ndmInitializerType is null)
+                {
+                    throw new ArgumentException($"NDM initializer type: {ndmConfig.Initializer} was not found.",
+                        nameof(ndmInitializerType));
+                }
+
+                ndmInitializer = Activator.CreateInstance(ndmInitializerType) as INdmInitializer;
+                if (ndmInitializer is null)
+                {
+                    throw new ArgumentException($"NDM initializer type: {ndmConfig.Initializer} is not valid.",
+                        nameof(ndmInitializer));
+                }
+            }
+
             var grpcConfig = configProvider.GetConfig<IGrpcConfig>();
             GrpcService grpcService = null;
             if (grpcConfig.Enabled)
             {
                 grpcService = new GrpcService(logManager);
+                if (ndmEnabled)
+                {
+                    ndmConsumerChannelManager.Add(new GrpcNdmConsumerChannel(grpcService));
+                }
+                
                 _grpcRunner = new GrpcRunner(grpcService, grpcConfig, logManager);
                 await _grpcRunner.Start().ContinueWith(x =>
                 {
@@ -152,9 +191,9 @@ namespace Nethermind.Runner
                     if (x.IsFaulted && Logger.IsError) Logger.Error("Error during GRPC client runner start", x.Exception);
                 }));
             }
-
-            _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager, grpcService,
-                grpcClient);
+            
+            _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager, grpcService, grpcClient,
+                ndmConsumerChannelManager, ndmDataPublisher, ndmInitializer);
             await _ethereumRunner.Start().ContinueWith(x =>
             {
                 if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);

@@ -41,6 +41,9 @@ namespace Nethermind.Network.P2P
         void ReceiveMessage(Packet packet);
         void DeliverMessage(Packet packet);
         void EnableSnappy();
+        void AddSupportedCapability(Capability capability);
+        bool HasAvailableCapability(Capability capability);
+        bool HasAgreedCapability(Capability capability);
       
         IPingSender PingSender { get; set; }
         

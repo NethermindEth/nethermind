@@ -21,6 +21,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
 
 namespace Nethermind.Config
@@ -86,6 +87,11 @@ namespace Nethermind.Config
 
         private static object GetValue(Type valueType, string itemValue)
         {
+            if (valueType == typeof(UInt256))
+            {
+                return UInt256.Parse(itemValue);
+            }
+            
             if (valueType.IsEnum)
             {
                 if (Enum.TryParse(valueType, itemValue, true, out var enumValue))
@@ -95,7 +101,7 @@ namespace Nethermind.Config
 
                 throw new IOException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
             }
-
+            
             return Convert.ChangeType(itemValue, valueType);
         }
     }

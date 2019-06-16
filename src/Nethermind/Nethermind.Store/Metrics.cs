@@ -36,6 +36,20 @@ namespace Nethermind.Store
         public static long StorageTreeWrites { get; set; }
         public static long PendingTxsDbReads { get; set; }
         public static long PendingTxsDbWrites { get; set; }
+        public static long ConsumersDbReads { get; set; }
+        public static long ConsumersDbWrites { get; set; }
+        public static long DepositsDbReads { get; set; }
+        public static long DepositsDbWrites { get; set; }
+        public static long ConsumerSessionsDbReads { get; set; }
+        public static long ConsumerSessionsDbWrites { get; set; }
+        public static long ConsumerReceiptsDbReads { get; set; }
+        public static long ConsumerReceiptsDbWrites { get; set; }
+        public static long ConsumerDepositApprovalsDbReads { get; set; }
+        public static long ConsumerDepositApprovalsDbWrites { get; set; }
+        public static long ConfigsDbReads { get; set; }
+        public static long ConfigsDbWrites { get; set; }
+        public static long EthRequestsDbReads { get; set; }
+        public static long EthRequestsDbWrites { get; set; }
         public static long TraceDbReads { get; set; }
         public static long TraceDbWrites { get; set; }
         public static long OtherDbReads { get; set; }

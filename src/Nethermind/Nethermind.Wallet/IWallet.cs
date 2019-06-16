@@ -29,9 +29,12 @@ namespace Nethermind.Wallet
         Address NewAccount(SecureString passphrase);
         bool UnlockAccount(Address address, SecureString passphrase);
         bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan);
-        void LockAccount(Address address);
+        bool LockAccount(Address address);
         Signature Sign(Keccak message, Address address, SecureString passphrase = null);
         Address[] GetAccounts();
         void Sign(Transaction tx, int chainId);
+        bool IsUnlocked(Address address);
+        event EventHandler<AccountLockedEventArgs> AccountLocked;
+        event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
     }
 }

@@ -131,6 +131,22 @@ namespace Nethermind.Network.P2P
             _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new SnappyEncoder(_logger));
         }
 
+        public void AddSupportedCapability(Capability capability)
+        {
+            if (!_protocols.TryGetValue(Protocol.P2P, out var protocol))
+            {
+                return;
+            }
+
+            protocol.AddSupportedCapability(capability);
+        }
+
+        public bool HasAvailableCapability(Capability capability)
+            => _protocols.TryGetValue(Protocol.P2P, out var protocol) && protocol.HasAvailableCapability(capability);
+
+        public bool HasAgreedCapability(Capability capability)
+            => _protocols.TryGetValue(Protocol.P2P, out var protocol) && protocol.HasAgreedCapability(capability);
+
         public IPingSender PingSender { get; set; }
 
         public void DeliverMessage(Packet packet)

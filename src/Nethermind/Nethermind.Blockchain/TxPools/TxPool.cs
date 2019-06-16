@@ -25,8 +25,6 @@ using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
@@ -37,28 +35,28 @@ namespace Nethermind.Blockchain.TxPools
     public class TxPool : ITxPool
     {
         private static int _seed = Environment.TickCount;
-
         private static readonly ThreadLocal<Random> Random =
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
-
         private readonly ConcurrentDictionary<Keccak, Transaction> _pendingTransactions =
             new ConcurrentDictionary<Keccak, Transaction>();
 
+        private readonly ConcurrentDictionary<Keccak, bool> _nonEvictableTransactions =
+            new ConcurrentDictionary<Keccak, bool>();
         private readonly ConcurrentDictionary<Type, ITxFilter> _filters =
             new ConcurrentDictionary<Type, ITxFilter>();
+        private readonly ITxStorage _transactionStorage;
+        private readonly IPendingTxThresholdValidator _pendingTransactionThresholdValidator;
 
         private readonly ITxStorage _txStorage;
         private readonly IPendingTxThresholdValidator _pendingTxThresholdValidator;
         private readonly ITimestamp _timestamp;
 
-        private readonly ConcurrentDictionary<PublicKey, ISyncPeer> _peers =
-            new ConcurrentDictionary<PublicKey, ISyncPeer>();
-
+        private readonly ConcurrentDictionary<PublicKey, ISyncPeer> _peers = new ConcurrentDictionary<PublicKey, ISyncPeer>();
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
-
         private readonly int _peerNotificationThreshold;
+        private readonly Timer _ownTimer;
 
         public TxPool(ITxStorage txStorage,
             IPendingTxThresholdValidator pendingTxThresholdValidator,
@@ -81,14 +79,12 @@ namespace Nethermind.Blockchain.TxPools
             var timer = new Timer(removePendingTransactionInterval * 1000);
             timer.Elapsed += OnTimerElapsed;
             timer.Start();
-
             _ownTimer = new Timer(500);
             _ownTimer.Elapsed += OwnTimerOnElapsed;
             _ownTimer.AutoReset = false;
             _ownTimer.Start();
         }
 
-        private System.Timers.Timer _ownTimer;
 
         private void OwnTimerOnElapsed(object sender, ElapsedEventArgs e)
         {
@@ -128,9 +124,14 @@ namespace Nethermind.Blockchain.TxPools
             if (_logger.IsTrace) _logger.Trace($"Removed a peer: {nodeId}");
         }
 
-        public AddTxResult AddTransaction(Transaction transaction, long blockNumber)
+        public AddTxResult AddTransaction(Transaction transaction, long blockNumber, bool doNotEvict = false)
         {
             Metrics.PendingTransactionsReceived++;
+            if (doNotEvict)
+            {
+                _nonEvictableTransactions.TryAdd(transaction.Hash, true);
+                if (_logger.IsDebug) _logger.Debug($"Added a transaction: {transaction.Hash} that will not be evicted.");
+            }
 
             // beware we are discarding here the old signature scheme without ChainId
             if (transaction.Signature.GetChainId == null)
@@ -158,7 +159,6 @@ namespace Nethermind.Blockchain.TxPools
             }
 
             transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, blockNumber);
-
             // check nonce
 
             if (transaction.DeliveredBy == null)
@@ -199,6 +199,12 @@ namespace Nethermind.Blockchain.TxPools
             var timestamp = new UInt256(_timestamp.EpochSeconds);
             foreach (var transaction in _pendingTransactions.Values)
             {
+                if (_nonEvictableTransactions.ContainsKey(transaction.Hash))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Pending transaction: {transaction.Hash} will not be evicted.");
+                    continue;
+                }
+                
                 if (_pendingTxThresholdValidator.IsRemovable(timestamp, transaction.Timestamp))
                 {
                     hashes.Add(transaction.Hash);
@@ -219,6 +225,7 @@ namespace Nethermind.Blockchain.TxPools
             if (_pendingTransactions.TryRemove(hash, out var transaction))
             {
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+                _nonEvictableTransactions.TryRemove(hash, out _);
             }
 
             if (_ownTransactions.Count != 0)

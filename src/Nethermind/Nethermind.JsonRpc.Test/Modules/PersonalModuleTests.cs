@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [SetUp]
         public void Initialize()
         {
-            _wallet = new DevWallet(LimboLogs.Instance);
+            _wallet = new DevWallet(new WalletConfig(),  LimboLogs.Instance);
             _bridge = new PersonalBridge(_wallet);
         }
 

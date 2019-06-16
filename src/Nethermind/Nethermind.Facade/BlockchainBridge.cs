@@ -113,14 +113,14 @@ namespace Nethermind.Facade
 
         private Timestamp _timestamp = new Timestamp();
 
-        public Keccak SendTransaction(Transaction transaction)
+        public Keccak SendTransaction(Transaction transaction, bool doNotEvict = false)
         {
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
 
             transaction.Hash = Transaction.CalculateHash(transaction);
             transaction.Timestamp = _timestamp.EpochSeconds;
 
-            _txPool.AddTransaction(transaction, _blockTree.Head.Number);
+            _txPool.AddTransaction(transaction, _blockTree.Head.Number, doNotEvict);
 
             _stateProvider.Reset();
             return transaction.Hash;

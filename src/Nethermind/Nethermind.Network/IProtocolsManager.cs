@@ -16,9 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using Nethermind.Network.P2P;
+using Nethermind.Stats.Model;
+
 namespace Nethermind.Network
 {
     public interface IProtocolsManager
     {
+        void AddSupportedCapability(Capability capability);
+        void SendNewCapability(Capability capability);
+        void AddProtocol(string code, Func<ISession, IProtocolHandler> factory);
+        event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
     }
 }

@@ -28,9 +28,10 @@ namespace Nethermind.Wallet
     public class HiveWallet : IWallet
     {
         private readonly ISet<Address> _addresses = new HashSet<Address>();
-
-        public void Add(Address address)
-            => _addresses.Add(address);
+        public event EventHandler<AccountLockedEventArgs> AccountLocked;
+        public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
+        
+        public void Add(Address address) => _addresses.Add(address);
 
         public void Import(byte[] keyData, SecureString passphrase)
         {
@@ -49,11 +50,13 @@ namespace Nethermind.Wallet
 
         public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
         {
+            AccountUnlocked?.Invoke(this, new AccountUnlockedEventArgs(address));
             throw new NotSupportedException();
         }
 
-        public void LockAccount(Address address)
+        public bool LockAccount(Address address)
         {
+            AccountLocked?.Invoke(this, new AccountLockedEventArgs(address));
             throw new NotSupportedException();
         }
 
@@ -67,17 +70,21 @@ namespace Nethermind.Wallet
             throw new NotSupportedException();
         }
 
-        public Address[] GetAccounts()
-            => _addresses.ToArray();
+        public Address[] GetAccounts() => _addresses.ToArray();
 
         public void Sign(Transaction tx, int chainId)
         {
             throw new NotSupportedException();
         }
 
-        public Signature Sign(Keccak message, Address address)
+        public bool IsUnlocked(Address address)
         {
             throw new NotImplementedException();
         }
+
+        public Signature Sign(Keccak message, Address address)
+        {
+            throw new NotImplementedException();
+        }     
     }
 }

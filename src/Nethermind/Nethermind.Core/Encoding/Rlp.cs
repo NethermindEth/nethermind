@@ -1306,6 +1306,12 @@ namespace Nethermind.Core.Encoding
 
                 return result;
             }
+            
+            public ulong DecodeUlong()
+            {
+                byte[] bytes = DecodeByteArray();
+                return bytes.Length == 0 ? 0L : bytes.ToUInt64();
+            }
 
             public byte[] DecodeByteArray()
             {

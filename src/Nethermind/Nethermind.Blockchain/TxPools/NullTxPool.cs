@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.TxPools
         {
         }
 
-        public AddTxResult AddTransaction(Transaction transaction, long blockNumber)
+        public AddTxResult AddTransaction(Transaction transaction, long blockNumber, bool doNotEvict = false)
         {
             return AddTxResult.Added;
         }
