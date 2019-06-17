@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -45,7 +63,7 @@ namespace Nethermind.DataMarketplace.Initializers
             IMessageSerializationService messageSerializationService, ILogManager logManager)
         {
 
-            var (enabled, verifyP2PSignature, ethRequestService, faucet, consumerService, consumerAddress,
+            var (enabled, verifyP2PSignature, _, ethRequestService, faucet, consumerService, consumerAddress,
                 providerAddress) = await PreInitAsync(configProvider, dbProvider, baseDbPath, blockProcessor, blockTree,
                 txPool, txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamp, ecdsa, rpcModuleProvider,
                 keyStore, jsonSerializer, cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcService,
@@ -64,8 +82,9 @@ namespace Nethermind.DataMarketplace.Initializers
             return capabilityConnector;
         }
 
-        protected async Task<(bool enabled, bool verifyP2PSignature, IEthRequestService ethRequestService, INdmFaucet
-            faucet, IConsumerService consumerService, Address consumerAddress, Address providerAddress)> PreInitAsync(
+        protected async Task<(bool enabled, bool verifyP2PSignature, NdmModule.IServices services,
+            IEthRequestService ethRequestService, INdmFaucet faucet, IConsumerService consumerService,
+            Address consumerAddress, Address providerAddress)> PreInitAsync(
             IConfigProvider configProvider, IDbProvider dbProvider, string baseDbPath, IBlockProcessor blockProcessor,
             IBlockTree blockTree, ITxPool txPool, ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider,
             IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEcdsa ecdsa,
@@ -117,7 +136,6 @@ namespace Nethermind.DataMarketplace.Initializers
                 }
             }
 
-
             var verifyP2PSignature = ndmConfig.VerifyP2PSignature;
             var ethRequestService = new EthRequestService(ndmConfig.FaucetHost, logManager);
             var services = NdmModule.Init(new NdmModule.RequiredServices(configProvider, configManager, ndmConfig,
@@ -140,8 +158,8 @@ namespace Nethermind.DataMarketplace.Initializers
                 : new Address(ndmConfig.ProviderAddress);
             var consumers = services.AddConsumersModule();
 
-            return (true, verifyP2PSignature, ethRequestService, faucet, consumers.ConsumerService, consumerAddress,
-                providerAddress);
+            return (true, verifyP2PSignature, services, ethRequestService, faucet, consumers.ConsumerService,
+                consumerAddress, providerAddress);
         }
     }
 }

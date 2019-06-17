@@ -32,18 +32,18 @@ namespace Nethermind.DataMarketplace.Subprotocols.Factories
 {
     public class NdmSubprotocolFactory : INdmSubprotocolFactory
     {
-        private readonly IMessageSerializationService _messageSerializationService;
-        private readonly INodeStatsManager _nodeStatsManager;
-        private readonly ILogManager _logManager;
-        private readonly IConsumerService _consumerService;
-        private readonly INdmConsumerChannelManager _ndmConsumerChannelManager;
-        private readonly IEcdsa _ecdsa;
-        private readonly IWallet _wallet;
-        private Address _consumerAddress;
-        private readonly INdmFaucet _faucet;
-        private readonly bool _verifySignature;
-        private readonly PublicKey _nodeId;
-        private readonly Address _providerAddress;
+        protected readonly IMessageSerializationService MessageSerializationService;
+        protected readonly INodeStatsManager NodeStatsManager;
+        protected readonly ILogManager LogManager;
+        protected readonly IConsumerService ConsumerService;
+        protected readonly INdmConsumerChannelManager NdmConsumerChannelManager;
+        protected readonly IEcdsa Ecdsa;
+        protected readonly IWallet Wallet;
+        protected readonly INdmFaucet Faucet;
+        protected readonly bool VerifySignature;
+        protected readonly PublicKey NodeId;
+        protected Address ProviderAddress;
+        protected Address ConsumerAddress;
 
         public NdmSubprotocolFactory(IMessageSerializationService messageSerializationService,
             INodeStatsManager nodeStatsManager, ILogManager logManager, IConsumerService consumerService,
@@ -51,24 +51,24 @@ namespace Nethermind.DataMarketplace.Subprotocols.Factories
             PublicKey nodeId, Address providerAddress, Address consumerAddress,
             bool verifySignature = true)
         {
-            _messageSerializationService = messageSerializationService;
-            _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-            _logManager = logManager;
-            _consumerService = consumerService;
-            _ndmConsumerChannelManager = ndmConsumerChannelManager;
-            _ecdsa = ecdsa;
-            _wallet = wallet;
-            _faucet = faucet;
-            _nodeId = nodeId;
-            _providerAddress = providerAddress;
-            _consumerAddress = consumerAddress;
-            _verifySignature = verifySignature;
-            _consumerService.AddressChanged += (_, e) => _consumerAddress = e.NewAddress;
+            MessageSerializationService = messageSerializationService;
+            NodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
+            LogManager = logManager;
+            ConsumerService = consumerService;
+            NdmConsumerChannelManager = ndmConsumerChannelManager;
+            Ecdsa = ecdsa;
+            Wallet = wallet;
+            Faucet = faucet;
+            NodeId = nodeId;
+            ProviderAddress = providerAddress;
+            ConsumerAddress = consumerAddress;
+            VerifySignature = verifySignature;
+            ConsumerService.AddressChanged += (_, e) => ConsumerAddress = e.NewAddress;
         }
 
         public virtual INdmSubprotocol Create(ISession p2PSession)
-            => new NdmSubprotocol(p2PSession, _nodeStatsManager, _messageSerializationService, _logManager,
-                _consumerService, _ndmConsumerChannelManager, _ecdsa, _wallet, _faucet, _nodeId, _providerAddress,
-                _consumerAddress, _verifySignature);
+            => new NdmSubprotocol(p2PSession, NodeStatsManager, MessageSerializationService, LogManager,
+                ConsumerService, NdmConsumerChannelManager, Ecdsa, Wallet, Faucet, NodeId, ProviderAddress,
+                ConsumerAddress, VerifySignature);
     }
 }
