@@ -128,10 +128,6 @@ namespace Nethermind.Cli
                         }
                     }
                 }
-                else
-                {
-                    File.Create(HistoryFilePath);
-                }
             }
             catch (Exception e)
             {
