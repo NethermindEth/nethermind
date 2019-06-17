@@ -23,7 +23,7 @@ namespace Nethermind.DataMarketplace.Core.Configs
     public class NdmConfig : INdmConfig
     {
         public bool Enabled { get; set; } = true;
-        public string Initializer { get; set; } = "ndm";
+        public string InitializerName { get; set; } = "ndm";
         public bool StoreConfigInDatabase { get; set; } = true;
         public string Id { get; set; } = "ndm";
         public string FilesPath { get; set; } = "ndm/files";
@@ -42,6 +42,7 @@ namespace Nethermind.DataMarketplace.Core.Configs
         public bool FaucetEnabled { get; set; } = false;
         public string FaucetAddress { get; set; }
         public string FaucetHost { get; set; }
-        public UInt256 FaucetEthRequestMaxValue { get; set; } = 1000000000000000000;
+        public UInt256 FaucetWeiRequestMaxValue { get; set; } = 1000000000000000000;
+        public string PluginsPath { get; set; } = "ndm/plugins";
     }
 }

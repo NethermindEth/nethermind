@@ -27,7 +27,7 @@ namespace Nethermind.DataMarketplace.Core.Configs
         [ConfigItem(Description = "If 'false' then it disables the NDM (Nethermind Data Marketplace) capability", DefaultValue = "true")]
         bool Enabled { get; }
         [ConfigItem(Description = "Type of the initializer that will be used to bootstrap NDM", DefaultValue = "ndm")]
-        string Initializer { get; }
+        string InitializerName { get; }
         [ConfigItem(Description = "If 'false' then it reads the configuration from file, instead of the database", DefaultValue = "true")]
         bool StoreConfigInDatabase { get; }
         [ConfigItem(Description = "An arbitrary ID of the configuration that will be stored in a database", DefaultValue = "ndm")]
@@ -68,6 +68,9 @@ namespace Nethermind.DataMarketplace.Core.Configs
         [ConfigItem(Description = "IP address of the faucet to connect to in order to request ETH", DefaultValue = "")]
         string FaucetHost { get; }
         [ConfigItem(Description = "Maximal value (Wei) of a single ETH request to the faucet", DefaultValue = "1000000000000000000")]
-        UInt256 FaucetEthRequestMaxValue { get; }
+        UInt256 FaucetWeiRequestMaxValue { get; }
+
+        [ConfigItem(Description = "An arbitrary path to the plugins directory that should be loaded as external assemblies", DefaultValue = "ndm/plugins")]
+        string PluginsPath { get; }
     }
 }

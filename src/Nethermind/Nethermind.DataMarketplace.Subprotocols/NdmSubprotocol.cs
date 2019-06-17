@@ -42,31 +42,26 @@ namespace Nethermind.DataMarketplace.Subprotocols
 {
     public class NdmSubprotocol : ProtocolHandlerBase, INdmPeer, INdmSubprotocol
     {
-        protected readonly IDictionary<int, Action<Packet>> MessageHandlers = new Dictionary<int, Action<Packet>>();
-        private int _disposedValue;
-        private int _disconnectedValue;
-
-        private readonly BlockingCollection<Request<RequestDataDeliveryReceiptMessage, DataDeliveryReceipt>>
-            _receiptsRequests =
-                new BlockingCollection<Request<RequestDataDeliveryReceiptMessage, DataDeliveryReceipt>>();
-
+        protected readonly IDictionary<int, Action<Packet>> MessageHandlers;
+        protected int DisposedValue;
+        protected int DisconnectedValue;
         private readonly BlockingCollection<Request<GetDepositApprovalsMessage, DepositApproval[]>>
             _depositApprovalsRequests =
                 new BlockingCollection<Request<GetDepositApprovalsMessage, DepositApproval[]>>();
 
-        private readonly BlockingCollection<Request<RequestEthMessage, bool>> _requestEthRequests =
+        protected readonly BlockingCollection<Request<RequestEthMessage, bool>> RequestEthRequests =
             new BlockingCollection<Request<RequestEthMessage, bool>>();
         
-        private readonly IEcdsa _ecdsa;
-        private readonly IWallet _wallet;
-        private readonly INdmFaucet _faucet;
-        private readonly PublicKey _nodeId;
-        private readonly IConsumerService _consumerService;
-        private readonly INdmConsumerChannelManager _ndmConsumerChannelManager;
-        private Address _configuredProviderAddress;
-        private Address _configuredConsumerAddress;
-        private readonly bool _verifySignature;
-        private bool _hiReceived;
+        protected readonly IEcdsa Ecdsa;
+        protected readonly IWallet Wallet;
+        protected readonly INdmFaucet Faucet;
+        protected readonly PublicKey ConfiguredNodeId;
+        protected readonly IConsumerService ConsumerService;
+        protected readonly INdmConsumerChannelManager NdmConsumerChannelManager;
+        protected Address ConfiguredProviderAddress;
+        protected Address ConfiguredConsumerAddress;
+        protected readonly bool VerifySignature;
+        protected bool HiReceived;
         protected override TimeSpan InitTimeout => Timeouts.NdmHi;
         public byte ProtocolVersion { get; } = 1;
         public string ProtocolCode { get; } = Protocol.Ndm;
@@ -86,26 +81,26 @@ namespace Nethermind.DataMarketplace.Subprotocols
         }
 
         public PublicKey NodeId => Session.RemoteNodeId;
-        public Address ConsumerAddress { get; private set; }
-        public Address ProviderAddress { get; private set; }
+        public Address ConsumerAddress { get; protected set; }
+        public Address ProviderAddress { get; protected set; }
         public bool IsConsumer => !(ConsumerAddress is null) && ConsumerAddress != Address.Zero;
         public bool IsProvider => !(ProviderAddress is null) && ProviderAddress != Address.Zero;
 
         public NdmSubprotocol(ISession p2PSession, INodeStatsManager nodeStatsManager,
             IMessageSerializationService serializer, ILogManager logManager, IConsumerService consumerService,
             INdmConsumerChannelManager ndmConsumerChannelManager, IEcdsa ecdsa, IWallet wallet, INdmFaucet faucet,
-            PublicKey nodeId, Address configuredProviderAddress, Address configuredConsumerAddress,
+            PublicKey configuredNodeId, Address configuredProviderAddress, Address configuredConsumerAddress,
             bool verifySignature = true) : base(p2PSession, nodeStatsManager, serializer, logManager)
         {
-            _ecdsa = ecdsa;
-            _wallet = wallet;
-            _faucet = faucet;
-            _nodeId = nodeId;
-            _consumerService = consumerService;
-            _ndmConsumerChannelManager = ndmConsumerChannelManager;
-            _configuredProviderAddress = configuredProviderAddress;
-            _configuredConsumerAddress = configuredConsumerAddress;
-            _verifySignature = verifySignature;
+            Ecdsa = ecdsa;
+            Wallet = wallet;
+            Faucet = faucet;
+            ConfiguredNodeId = configuredNodeId;
+            ConsumerService = consumerService;
+            NdmConsumerChannelManager = ndmConsumerChannelManager;
+            ConfiguredProviderAddress = configuredProviderAddress;
+            ConfiguredConsumerAddress = configuredConsumerAddress;
+            VerifySignature = verifySignature;
             MessageHandlers = InitMessageHandlers();
         }
 
@@ -130,19 +125,16 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     message => Handle(Deserialize<DataAvailabilityMessage>(message.Data)),
                 [NdmMessageCode.RequestDataDeliveryReceipt] = message =>
                     Handle(Deserialize<RequestDataDeliveryReceiptMessage>(message.Data)),
-                [NdmMessageCode.DataDeliveryReceipt] =
-                    message => Handle(Deserialize<DataDeliveryReceiptMessage>(message.Data)),
                 [NdmMessageCode.EarlyRefundTicket] =
                     message => Handle(Deserialize<EarlyRefundTicketMessage>(message.Data)),
-                [NdmMessageCode.ConfirmDepositApproval] = message =>
+                [NdmMessageCode.DepositApprovalConfirmed] = message =>
                     Handle(Deserialize<DepositApprovalConfirmedMessage>(message.Data)),
-                [NdmMessageCode.RejectDepositApproval] = message =>
+                [NdmMessageCode.DepositApprovalRejected] = message =>
                     Handle(Deserialize<DepositApprovalRejectedMessage>(message.Data)),
                 [NdmMessageCode.DepositApprovals] =
                     message => Handle(Deserialize<DepositApprovalsMessage>(message.Data)),
                 [NdmMessageCode.ProviderAddressChanged] = message =>
                     Handle(Deserialize<ProviderAddressChangedMessage>(message.Data)),
-                [NdmMessageCode.RequestEth] = message => Handle(Deserialize<RequestEthMessage>(message.Data)),
                 [NdmMessageCode.EthRequested] = message => Handle(Deserialize<EthRequestedMessage>(message.Data))
             };
 
@@ -151,11 +143,11 @@ namespace Nethermind.DataMarketplace.Subprotocols
             try
             {
                 Signature signature;
-                if (_verifySignature)
+                if (VerifySignature)
                 {
                     if (Logger.IsInfo) Logger.Info("Signing Hi message for NDM P2P session...");
-                    var hash = Keccak.Compute(_nodeId.Address.Bytes);
-                    signature = _wallet.Sign(hash, _nodeId.Address);
+                    var hash = Keccak.Compute(ConfiguredNodeId.Address.Bytes);
+                    signature = Wallet.Sign(hash, ConfiguredNodeId.Address);
                     if (Logger.IsInfo) Logger.Info("Signed Hi message for NDM P2P session.");
                 }
                 else
@@ -165,7 +157,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 }
 
                 if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: hi");
-                Send(new HiMessage(ProtocolVersion, _configuredProviderAddress, _configuredConsumerAddress, _nodeId, signature));
+                Send(new HiMessage(ProtocolVersion, ConfiguredProviderAddress, ConfiguredConsumerAddress, ConfiguredNodeId, signature));
                 CheckProtocolInitTimeout().ContinueWith(x =>
                 {
                     if (x.IsFaulted && Logger.IsError)
@@ -192,10 +184,10 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 if (Logger.IsInfo) Logger.Info("NDM Received Hi");
             }
 
-            if (message.PacketType != NdmMessageCode.Hi && !_hiReceived)
+            if (message.PacketType != NdmMessageCode.Hi && !HiReceived)
             {
                 throw new SubprotocolException($"{Session.RemoteNodeId}" +
-                                               $"No {nameof(_hiReceived)} received prior to communication.");
+                                               $"No {nameof(HiReceived)} received prior to communication.");
             }
 
             Logger.Warn($"GETTING MESSAGE: ndm.{message.PacketType}");
@@ -204,12 +196,12 @@ namespace Nethermind.DataMarketplace.Subprotocols
         
         private void Handle(HiMessage message)
         {
-            if (_hiReceived)
+            if (HiReceived)
             {
                 throw new SubprotocolException($"{nameof(HiMessage)} has already been received in the past");
             }
 
-            _hiReceived = true;
+            HiReceived = true;
             if (Logger.IsTrace)
             {
                 if (Logger.IsInfo)
@@ -232,11 +224,11 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 return;
             }
 
-            if (_verifySignature)
+            if (VerifySignature)
             {
                 if (Logger.IsInfo) Logger.Info("Verifying signature for NDM P2P session...");
                 var hash = Keccak.Compute(message.NodeId.Bytes);
-                var address = _ecdsa.RecoverPublicKey(message.Signature, hash).Address;
+                var address = Ecdsa.RecoverPublicKey(message.Signature, hash).Address;
                 if (!message.NodeId.Address.Equals(address))
                 {
                     if (Logger.IsError) Logger.Error($"Invalid signature: '{message.NodeId.Address}' <> '{address}'.");
@@ -263,7 +255,13 @@ namespace Nethermind.DataMarketplace.Subprotocols
             };
 
             ProtocolInitialized?.Invoke(this, eventArgs);
-            _consumerService.AddProviderPeer(this);
+            
+            if (!IsProvider)
+            {
+                return;
+            }
+            
+            ConsumerService.AddProviderPeer(this);
             SendGetDataHeaders();
             SendGetDepositApprovals().ContinueWith(async t =>
             {
@@ -274,18 +272,18 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     return;
                 }
 
-                await _consumerService.UpdateDepositApprovalsAsync(t.Result, message.ProviderAddress);
+                await ConsumerService.UpdateDepositApprovalsAsync(t.Result, message.ProviderAddress);
             });
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason, string details)
+        public virtual void InitiateDisconnect(DisconnectReason disconnectReason, string details)
         {
-            if (Interlocked.Exchange(ref _disconnectedValue, 1) == 1)
+            if (Interlocked.Exchange(ref DisconnectedValue, 1) == 1)
             {
                 return;
             }
-            
-            _consumerService.FinishSessionsAsync(this).ContinueWith(t =>
+
+            ConsumerService.FinishSessionsAsync(this).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -300,44 +298,26 @@ namespace Nethermind.DataMarketplace.Subprotocols
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: getdataheaders");
             Send(new GetDataHeadersMessage());
         }
-
-        public void SendDataHeader(DataHeader dataHeader)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: dataheader");
-            Send(new DataHeaderMessage(dataHeader));
-        }
-
-        public void SendDataHeaderStateChanged(Keccak headerId, DataHeaderState state)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: dataheaderstatechanged");
-            Send(new DataHeaderStateChangedMessage(headerId, state));
-        }
         
         private void Handle(DataHeaderStateChangedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataheaderstatechanged");
-            _consumerService.ChangeDataHeaderState(message.DataHeaderId, message.State);
+            ConsumerService.ChangeDataHeaderState(message.DataHeaderId, message.State);
         }
 
         private void Handle(DataHeaderMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataheader");
-            _consumerService.AddDiscoveredDataHeader(message.DataHeader, this);
-        }
-
-        public void SendDataHeaderRemoved(Keccak headerId)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: dataheaderremoved");
-            Send(new DataHeaderRemovedMessage(headerId));
+            ConsumerService.AddDiscoveredDataHeader(message.DataHeader, this);
         }
 
         private void Handle(DataHeaderRemovedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataheaderremoved");
-            _consumerService.RemoveDiscoveredDataHeader(message.DataHeaderId);
+            ConsumerService.RemoveDiscoveredDataHeader(message.DataHeaderId);
         }
 
-        public void ChangeConsumerAddress(Address address)
+        public virtual void ChangeConsumerAddress(Address address)
         {
             if (Logger.IsInfo) Logger.Info($"Changed address for consumer: '{ConsumerAddress}' -> '{address}'.");
             var wasConsumer = IsConsumer;
@@ -348,7 +328,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             }
         }
 
-        public void ChangeProviderAddress(Address address)
+        public virtual void ChangeProviderAddress(Address address)
         {
             if (Logger.IsInfo) Logger.Info($"Changed address for provider: '{ProviderAddress}' -> '{address}'.");
             var wasProvider = IsProvider;
@@ -358,7 +338,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 return;
             }
 
-            _consumerService.AddProviderPeer(this);
+            ConsumerService.AddProviderPeer(this);
             SendGetDataHeaders();
             SendGetDepositApprovals().ContinueWith(async t =>
             {
@@ -369,18 +349,18 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     return;
                 }
 
-                await _consumerService.UpdateDepositApprovalsAsync(t.Result, ProviderAddress);
+                await ConsumerService.UpdateDepositApprovalsAsync(t.Result, ProviderAddress);
             });
         }
 
         public void ChangeHostConsumerAddress(Address address)
         {
-            _configuredConsumerAddress = address;
+            ConfiguredConsumerAddress = address;
         }
 
         public void ChangeHostProviderAddress(Address address)
         {
-            _configuredProviderAddress = address;
+            ConfiguredProviderAddress = address;
         }
 
         public void SendConsumerAddressChanged(Address consumer)
@@ -388,17 +368,11 @@ namespace Nethermind.DataMarketplace.Subprotocols
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: consumeraddresschanged");
             Send(new ConsumerAddressChangedMessage(consumer));
         }
-
-        public void SendProviderAddressChanged(Address consumer)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: provideraddresschanged");
-            Send(new ProviderAddressChangedMessage(consumer));
-        }
-
+        
         private void Handle(ProviderAddressChangedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: provideraddresschanged");
-            _consumerService.ChangeProviderAddressAsync(this, message.Address)
+            ConsumerService.ChangeProviderAddressAsync(this, message.Address)
                 .ContinueWith(t =>
                 {
                     if (t.IsFaulted && Logger.IsError)
@@ -408,28 +382,16 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 });
         }
 
-        public void SendDataHeaderData(Keccak depositId, string data, uint consumedUnits)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: dataheaderdata");
-            Send(new DataHeaderDataMessage(depositId, data, consumedUnits));
-        }
-
         public void SendSendDataRequest(DataRequest dataRequest, uint consumedUnits)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: senddatarequest");
             Send(new SendDataRequestMessage(dataRequest, consumedUnits));
         }
-
-        public void SendEarlyRefundTicket(EarlyRefundTicket ticket, RefundReason reason)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: earlyrefundticket");
-            Send(new EarlyRefundTicketMessage(ticket, reason));
-        }
         
         private void Handle(EarlyRefundTicketMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: earlyrefundticket");
-            _consumerService.SetEarlyRefundTicketAsync(message.Ticket, message.Reason).ContinueWith(t =>
+            ConsumerService.SetEarlyRefundTicketAsync(message.Ticket, message.Reason).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -438,16 +400,10 @@ namespace Nethermind.DataMarketplace.Subprotocols
             });
         }
 
-        public void SendSessionStarted(Core.Domain.Session session)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: sessionstarted");
-            Send(new SessionStartedMessage(session));
-        }
-
         private void Handle(SessionStartedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: sessionstarted");
-            _consumerService.StartSessionAsync(message.Session, this);
+            ConsumerService.StartSessionAsync(message.Session, this);
         }
         
         public void SendFinishSession(Keccak depositId)
@@ -477,7 +433,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(SessionFinishedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: sessionfinished");
-            _consumerService.FinishSessionAsync(message.Session, this).ContinueWith(t =>
+            ConsumerService.FinishSessionAsync(message.Session, this).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -489,7 +445,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DepositApprovalConfirmedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: depositapprovalconfirmed");
-            _consumerService.ConfirmDepositApprovalAsync(message.DataHeaderId).ContinueWith(t =>
+            ConsumerService.ConfirmDepositApprovalAsync(message.DataHeaderId).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -498,16 +454,10 @@ namespace Nethermind.DataMarketplace.Subprotocols
             });
         }
 
-        public void SendDepositApprovalRejected(Keccak headerId)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: depositapprovalrejected");
-            Send(new DepositApprovalRejectedMessage(headerId));
-        }
-
         private void Handle(DepositApprovalRejectedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: depositapprovalrejected");
-            _consumerService.RejectDepositApprovalAsync(message.DataHeaderId).ContinueWith(t =>
+            ConsumerService.RejectDepositApprovalAsync(message.DataHeaderId).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -551,7 +501,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DataStreamEnabledMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: datastreamenabled");
-            _consumerService.SetEnabledDataStreamAsync(message.DepositId, message.Subscriptions).ContinueWith(t =>
+            ConsumerService.SetEnabledDataStreamAsync(message.DepositId, message.Subscriptions).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -563,7 +513,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DataStreamDisabledMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: datastreamdisabled");
-            _consumerService.SetDisabledDataStreamAsync(message.DepositId).ContinueWith(t =>
+            ConsumerService.SetDisabledDataStreamAsync(message.DepositId).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -571,18 +521,25 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 }
             });
         }
+        
+        private void Handle(EthRequestedMessage message)
+        {
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: ethrequested");
+            var request = RequestEthRequests.Take();
+            request.CompletionSource.SetResult(message.IsSuccessful);
+        }
 
         private void Handle(DataHeaderDataMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataheaderdata");
-            _consumerService.SetUnitsAsync(message.DepositId, message.ConsumedUnits).ContinueWith(t =>
+            ConsumerService.SetUnitsAsync(message.DepositId, message.ConsumedUnits).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
                     Logger.Error("There was an error within NDM subprotocol.", t.Exception);
                 }
             });
-            _ndmConsumerChannelManager.PublishAsync(message.DepositId, message.Data).ContinueWith(t =>
+            NdmConsumerChannelManager.PublishAsync(message.DepositId, message.Data).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -594,19 +551,13 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DataHeadersMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataheaders");
-            _consumerService.AddDiscoveredDataHeaders(message.DataHeaders, this);
-        }
-
-        public void SendDataAvailability(Keccak depositId, DataAvailability dataAvailability)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: dataavailability");
-            Send(new DataAvailabilityMessage(depositId, dataAvailability));
+            ConsumerService.AddDiscoveredDataHeaders(message.DataHeaders, this);
         }
 
         private void Handle(DataAvailabilityMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataavailability");
-            _consumerService.SetDataAvailabilityAsync(message.DepositId, message.DataAvailability).ContinueWith(t =>
+            ConsumerService.SetDataAvailabilityAsync(message.DepositId, message.DataAvailability).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -621,7 +572,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             var cancellationToken = token ?? CancellationToken.None;
             var message = new RequestEthMessage(address, value);
             var request = new Request<RequestEthMessage, bool>(message);
-            _requestEthRequests.Add(request, cancellationToken);
+            RequestEthRequests.Add(request, cancellationToken);
             Send(request.Message);
             var task = request.CompletionSource.Task;
             var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.NdmEthRequests, cancellationToken));
@@ -638,59 +589,11 @@ namespace Nethermind.DataMarketplace.Subprotocols
 
             return task.Result;
         }
-        
-        private void Handle(RequestEthMessage message)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: requesteth");
-            _faucet.TryRequestEthAsync(Session.RemoteHost, message.Address, message.Value).ContinueWith(t =>
-            {
-                if (t.IsFaulted && Logger.IsError)
-                {
-                    Logger.Error("There was an error within NDM subprotocol.", t.Exception);
-                    return;
-                }
-                
-                if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: ethrequested");
-                Send(new EthRequestedMessage(message.Address, message.Value, t.Result));
-            });
-        }
-        
-        private void Handle(EthRequestedMessage message)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: ethrequested");
-            var request = _requestEthRequests.Take();
-            request.CompletionSource.SetResult(message.IsSuccessful);
-        }
-
-        public async Task<DataDeliveryReceipt> SendRequestDataDeliveryReceipt(
-            DataDeliveryReceiptRequest receiptRequest, CancellationToken? token = null)
-        {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: requestdatadeliveryreceipt");
-            var cancellationToken = token ?? CancellationToken.None;
-            var message = new RequestDataDeliveryReceiptMessage(receiptRequest);
-            var request = new Request<RequestDataDeliveryReceiptMessage, DataDeliveryReceipt>(message);
-            _receiptsRequests.Add(request, cancellationToken);
-            Send(request.Message);
-            var task = request.CompletionSource.Task;
-            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.NdmDeliveryReceipt, cancellationToken));
-            if (firstTask.IsCanceled)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-
-            if (firstTask != task)
-            {
-                throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in " +
-                                           $"{nameof(RequestDataDeliveryReceiptMessage)}");
-            }
-
-            return task.Result;
-        }
 
         private void Handle(RequestDataDeliveryReceiptMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: requestdatadeliveryreceipt");
-            _consumerService.SendDataDeliveryReceiptAsync(message.Request).ContinueWith(t =>
+            ConsumerService.SendDataDeliveryReceiptAsync(message.Request).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -705,40 +608,18 @@ namespace Nethermind.DataMarketplace.Subprotocols
             Send(new DataDeliveryReceiptMessage(depositId, receipt));
         }
 
-        private void Handle(DataDeliveryReceiptMessage message)
+        public virtual void Dispose()
         {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: datadeliveryreceipt");
-            var request = _receiptsRequests.Take();
-            request.CompletionSource.SetResult(message.Receipt);
-        }
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposedValue, 1) == 1)
+            if (Interlocked.Exchange(ref DisposedValue, 1) == 1)
             {
                 return;
-            }
-
-            if (IsConsumer)
-            {
-                _consumerService.FinishSessionsAsync(this).ContinueWith(t =>
-                {
-                    if (t.IsFaulted && Logger.IsError)
-                    {
-                        Logger.Error("There was an error within NDM subprotocol.", t.Exception);
-                    }
-                });
-
-                _receiptsRequests?.CompleteAdding();
-                _receiptsRequests?.Dispose();
-
             }
 
             _depositApprovalsRequests?.CompleteAdding();
             _depositApprovalsRequests?.Dispose();
         }
 
-        private class Request<TMsg, TResult>
+        protected class Request<TMsg, TResult>
         {
             public Request(TMsg message)
             {

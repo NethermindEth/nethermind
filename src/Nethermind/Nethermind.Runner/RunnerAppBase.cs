@@ -145,22 +145,8 @@ namespace Nethermind.Runner
             {
                 ndmDataPublisher = new NdmDataPublisher();
                 ndmConsumerChannelManager = new NdmConsumerChannelManager();
-                var ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
-                    .SelectMany(a => a.GetTypes())
-                    .FirstOrDefault(t =>
-                        t.GetCustomAttribute<NdmInitializerAttribute>()?.Name == ndmConfig.Initializer);
-                if (ndmInitializerType is null)
-                {
-                    throw new ArgumentException($"NDM initializer type: {ndmConfig.Initializer} was not found.",
-                        nameof(ndmInitializerType));
-                }
-
-                ndmInitializer = Activator.CreateInstance(ndmInitializerType) as INdmInitializer;
-                if (ndmInitializer is null)
-                {
-                    throw new ArgumentException($"NDM initializer type: {ndmConfig.Initializer} is not valid.",
-                        nameof(ndmInitializer));
-                }
+                ndmInitializer = new NdmInitializerFactory().CreateOrFail(ndmConfig.InitializerName,
+                    ndmConfig.PluginsPath);
             }
 
             var grpcConfig = configProvider.GetConfig<IGrpcConfig>();

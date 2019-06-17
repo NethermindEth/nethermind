@@ -23,7 +23,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
 {
     public class DepositApprovalConfirmedMessage : P2PMessage
     {
-        public override int PacketType { get; } = NdmMessageCode.ConfirmDepositApproval;
+        public override int PacketType { get; } = NdmMessageCode.DepositApprovalConfirmed;
         public override string Protocol => "ndm";
         public Keccak DataHeaderId { get; set; }
 

@@ -40,8 +40,8 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
         public const int FinishSession = 0x11;
         public const int SessionFinished = 0x12;
         public const int RequestDepositApproval = 0x13;
-        public const int ConfirmDepositApproval = 0x14;
-        public const int RejectDepositApproval = 0x15;
+        public const int DepositApprovalConfirmed = 0x14;
+        public const int DepositApprovalRejected = 0x15;
         public const int GetDepositApprovals = 0x16;
         public const int DepositApprovals = 0x17;
         public const int ConsumerAddressChanged = 0x18;
