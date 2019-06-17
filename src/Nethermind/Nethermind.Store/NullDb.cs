@@ -28,8 +28,9 @@ namespace Nethermind.Store
         }
 
         private static NullDb _instance;
-        
         public static NullDb Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new NullDb());
+
+        public string Name { get; } = "NullDb";
 
         public byte[] this[byte[] key]
         {

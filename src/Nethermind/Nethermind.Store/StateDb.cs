@@ -37,6 +37,8 @@ namespace Nethermind.Store
 
         private int _currentPosition = -1;
         private Dictionary<byte[], int> _pendingChanges = new Dictionary<byte[], int>(InitialCapacity, Bytes.EqualityComparer);
+        
+        public string Name { get; } = "State";
 
         public StateDb()
             :this(new MemDb())

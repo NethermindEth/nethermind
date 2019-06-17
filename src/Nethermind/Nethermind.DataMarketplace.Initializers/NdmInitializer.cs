@@ -35,20 +35,21 @@ namespace Nethermind.DataMarketplace.Initializers
     public class NdmInitializer : INdmInitializer
     {
         public virtual async Task<INdmCapabilityConnector> InitAsync(IConfigProvider configProvider,
-            IDbProvider dbProvider, IBlockProcessor blockProcessor, IBlockTree blockTree, ITxPool txPool,
-            ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider, IReceiptStorage receiptStorage,
-            IWallet wallet, ITimestamp timestamp, IEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider,
-            IKeyStore keyStore, IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
-            INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
-            IGrpcService grpcService, INodeStatsManager nodeStatsManager, IProtocolsManager protocolsManager,
-            IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
-            ILogManager logManager)
+            IDbProvider dbProvider, string baseDbPath, IBlockProcessor blockProcessor, IBlockTree blockTree,
+            ITxPool txPool, ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider,
+            IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEcdsa ecdsa,
+            IRpcModuleProvider rpcModuleProvider, IKeyStore keyStore, IJsonSerializer jsonSerializer,
+            ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager consumerChannelManager,
+            INdmDataPublisher dataPublisher, IGrpcService grpcService, INodeStatsManager nodeStatsManager,
+            IProtocolsManager protocolsManager, IProtocolValidator protocolValidator,
+            IMessageSerializationService messageSerializationService, ILogManager logManager)
         {
 
             var (enabled, verifyP2PSignature, ethRequestService, faucet, consumerService, consumerAddress,
-                providerAddress) = await PreInitAsync(configProvider, dbProvider, blockProcessor, blockTree, txPool,
-                txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamp, ecdsa, rpcModuleProvider, keyStore,
-                jsonSerializer, cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcService, logManager);
+                providerAddress) = await PreInitAsync(configProvider, dbProvider, baseDbPath, blockProcessor, blockTree,
+                txPool, txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamp, ecdsa, rpcModuleProvider,
+                keyStore, jsonSerializer, cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcService,
+                logManager);
             if (!enabled)
             {
                 return null;
@@ -65,7 +66,7 @@ namespace Nethermind.DataMarketplace.Initializers
 
         protected async Task<(bool enabled, bool verifyP2PSignature, IEthRequestService ethRequestService, INdmFaucet
             faucet, IConsumerService consumerService, Address consumerAddress, Address providerAddress)> PreInitAsync(
-            IConfigProvider configProvider, IDbProvider dbProvider, IBlockProcessor blockProcessor,
+            IConfigProvider configProvider, IDbProvider dbProvider, string baseDbPath, IBlockProcessor blockProcessor,
             IBlockTree blockTree, ITxPool txPool, ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider,
             IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEcdsa ecdsa,
             IRpcModuleProvider rpcModuleProvider, IKeyStore keyStore, IJsonSerializer jsonSerializer,
@@ -106,37 +107,37 @@ namespace Nethermind.DataMarketplace.Initializers
             }
 
             var configManager = new ConfigManager(defaultConfig, configRepository);
-            var config = await configManager.GetAsync(defaultConfig.Id);
-            if (config is null)
+            var ndmConfig = await configManager.GetAsync(defaultConfig.Id);
+            if (ndmConfig is null)
             {
-                config = defaultConfig;
+                ndmConfig = defaultConfig;
                 if (defaultConfig.StoreConfigInDatabase)
                 {
-                    await configManager.UpdateAsync(config);
+                    await configManager.UpdateAsync(ndmConfig);
                 }
             }
 
 
-            var verifyP2PSignature = config.VerifyP2PSignature;
-            var ethRequestService = new EthRequestService(config.FaucetHost, logManager);
-            var services = NdmModule.Init(new NdmModule.RequiredServices(configProvider, configManager, config,
-                dbProvider, mongoProvider, logManager, blockProcessor, blockTree, txPool,
+            var verifyP2PSignature = ndmConfig.VerifyP2PSignature;
+            var ethRequestService = new EthRequestService(ndmConfig.FaucetHost, logManager);
+            var services = NdmModule.Init(new NdmModule.RequiredServices(configProvider, configManager, ndmConfig,
+                baseDbPath, dbProvider, mongoProvider, logManager, blockProcessor, blockTree, txPool,
                 txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamp, ecdsa, keyStore,
                 rpcModuleProvider, jsonSerializer, cryptoRandom, enode, consumerChannelManager,
                 dataPublisher, grpcService, ethRequestService));
 
-            var faucetAddress = string.IsNullOrWhiteSpace(config.FaucetAddress)
+            var faucetAddress = string.IsNullOrWhiteSpace(ndmConfig.FaucetAddress)
                 ? null
-                : new Address(config.FaucetAddress);
+                : new Address(ndmConfig.FaucetAddress);
             var faucet = new NdmFaucet(services.CreatedServices.BlockchainBridge, ethRequestRepository, faucetAddress,
-                config.FaucetEthRequestMaxValue, config.FaucetEnabled, timestamp, logManager);
+                ndmConfig.FaucetEthRequestMaxValue, ndmConfig.FaucetEnabled, timestamp, logManager);
 
-            var consumerAddress = string.IsNullOrWhiteSpace(config.ConsumerAddress)
+            var consumerAddress = string.IsNullOrWhiteSpace(ndmConfig.ConsumerAddress)
                 ? Address.Zero
-                : new Address(config.ConsumerAddress);
-            var providerAddress = string.IsNullOrWhiteSpace(config.ProviderAddress)
+                : new Address(ndmConfig.ConsumerAddress);
+            var providerAddress = string.IsNullOrWhiteSpace(ndmConfig.ProviderAddress)
                 ? Address.Zero
-                : new Address(config.ProviderAddress);
+                : new Address(ndmConfig.ProviderAddress);
             var consumers = services.AddConsumersModule();
 
             return (true, verifyP2PSignature, ethRequestService, faucet, consumers.ConsumerService, consumerAddress,

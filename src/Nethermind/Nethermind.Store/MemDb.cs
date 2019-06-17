@@ -30,7 +30,9 @@ namespace Nethermind.Store
         public long WritesCount { get; private set; }
         
         internal readonly ConcurrentDictionary<byte[], byte[]> _db;
-        
+
+        public string Name { get; } = "MemDb";
+
         public byte[] this[byte[] key]
         {
             get

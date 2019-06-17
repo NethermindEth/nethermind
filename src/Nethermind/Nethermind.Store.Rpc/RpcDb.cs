@@ -50,6 +50,8 @@ namespace Nethermind.Store.Rpc
             }
         }
 
+        public string Name { get; } = "RpcDb";
+
         public byte[] this[byte[] key]
         {
             get => GetThroughRpc(key);

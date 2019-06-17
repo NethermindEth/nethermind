@@ -311,13 +311,12 @@ namespace Nethermind.PerfTest
             if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
         }
 
-        private static readonly string FullStateDbPath = Path.Combine(DbBasePath, DbOnTheRocks.StateDbPath);
-        private static readonly string FullCodeDbPath = Path.Combine(DbBasePath, DbOnTheRocks.CodeDbPath);
-        private static readonly string FullReceiptsDbPath = Path.Combine(DbBasePath, DbOnTheRocks.ReceiptsDbPath);
-        private static readonly string FullPendingTxsDbPath = Path.Combine(DbBasePath, DbOnTheRocks.PendingTxsDbPath);
-
-        private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlocksDbPath);
-        private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlockInfosDbPath);
+        private static readonly string FullStateDbPath = Path.Combine(DbBasePath, "state");
+        private static readonly string FullCodeDbPath = Path.Combine(DbBasePath, "code");
+        private static readonly string FullReceiptsDbPath = Path.Combine(DbBasePath, "receipts");
+        private static readonly string FullPendingTxsDbPath = Path.Combine(DbBasePath, "pendingtxs");
+        private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, "blocks");
+        private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, "blockInfos");
 
         private const int BlocksToLoad = 100_000;
 

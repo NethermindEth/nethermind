@@ -22,6 +22,7 @@ namespace Nethermind.Store
 {
     public interface IDb : IDisposable
     {
+        string Name { get; }
         byte[] this[byte[] key] { get; set; }
         byte[][] GetAll();
         void StartBatch();

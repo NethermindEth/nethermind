@@ -35,6 +35,7 @@ using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
+using Nethermind.Db.Config;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Grpc;
@@ -51,7 +52,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public static IServices Init(RequiredServices services)
         {
             AddDecoders();
-            var config = services.Config;
+            var config = services.ConfigProvider.GetConfig<INdmConfig>();
             var providerAddress = string.IsNullOrWhiteSpace(config.ProviderAddress)
                 ? Address.Zero
                 : new Address(config.ProviderAddress);
@@ -156,7 +157,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             public IConfigProvider ConfigProvider { get; }
             public IConfigManager ConfigManager { get; }
-            public INdmConfig Config { get; }
+            public INdmConfig NdmConfig { get; }
+            public string BaseDbPath { get; }
             public IDbProvider RocksProvider { get; }
             public IMongoProvider MongoProvider { get; }
             public ILogManager LogManager { get; }
@@ -179,10 +181,10 @@ namespace Nethermind.DataMarketplace.Infrastructure
             public IGrpcService GrpcService { get; }
             public EthRequestService EthRequestService { get; }
 
-            public RequiredServices(IConfigProvider configProvider, IConfigManager configManager, INdmConfig config,
-                IDbProvider rocksProvider, IMongoProvider mongoProvider, ILogManager logManager,
+            public RequiredServices(IConfigProvider configProvider, IConfigManager configManager, INdmConfig ndmConfig,
+                string baseDbPath, IDbProvider rocksProvider, IMongoProvider mongoProvider, ILogManager logManager,
                 IBlockProcessor blockProcessor, IBlockTree blockTree, ITxPool transactionPool,
-                ITxPoolInfoProvider transactionPoolInfoProvider, ISpecProvider specProvider,
+                ITxPoolInfoProvider transactionPoolInfoProvider, ISpecProvider specProvider, 
                 IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEcdsa ecdsa,
                 IKeyStore keyStore, IRpcModuleProvider rpcModuleProvider, IJsonSerializer jsonSerializer,
                 ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager ndmConsumerChannelManager,
@@ -190,7 +192,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
             {
                 ConfigProvider = configProvider;
                 ConfigManager = configManager;
-                Config = config;
+                NdmConfig = ndmConfig;
+                BaseDbPath = baseDbPath;
                 RocksProvider = rocksProvider;
                 MongoProvider = mongoProvider;
                 LogManager = logManager;

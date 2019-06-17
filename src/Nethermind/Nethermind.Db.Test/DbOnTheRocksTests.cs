@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Db.Config;
+using Nethermind.Db.Databases;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test
@@ -28,7 +29,7 @@ namespace Nethermind.Db.Test
         public void Smoke_test()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new DbOnTheRocks("blocks", config);
+            DbOnTheRocks db = new BlocksRocksDb("blocks", config);
             db[new byte[] {1, 2, 3}] = new byte[] {4, 5, 6};
             Assert.AreEqual(new byte[] {4, 5, 6}, db[new byte[] {1, 2, 3}]);
         }

@@ -847,14 +847,14 @@ namespace Nethermind.Runner.Runners
 
             if (!(_ndmInitializer is null))
             {
-                var capabilityConnector = await _ndmInitializer.InitAsync(_configProvider, _dbProvider, _blockProcessor,
-                    _blockTree, _txPool, _txPoolInfoProvider, _specProvider, _receiptStorage, _wallet, _timestamp,
-                    _ecdsa, _rpcModuleProvider, _keyStore, _jsonSerializer, _cryptoRandom, _enode,
-                    _ndmConsumerChannelManager, _ndmDataPublisher, _grpcService, _nodeStatsManager, _protocolsManager,
-                    protocolValidator, _messageSerializationService, _logManager);
+                var capabilityConnector = await _ndmInitializer.InitAsync(_configProvider, _dbProvider,
+                    _initConfig.BaseDbPath, _blockProcessor, _blockTree, _txPool, _txPoolInfoProvider, _specProvider,
+                    _receiptStorage, _wallet, _timestamp, _ecdsa, _rpcModuleProvider, _keyStore, _jsonSerializer,
+                    _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcService,
+                    _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService, _logManager);
                 capabilityConnector.Init();
             }
-            
+
             PeerLoader peerLoader = new PeerLoader(networkConfig, discoveryConfig, _nodeStatsManager, peerStorage, _logManager);
             _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, networkConfig, _logManager, _staticNodesManager);
             _peerManager.Init();

@@ -16,8 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.IO;
 using Nethermind.Db.Config;
+using Nethermind.Db.Databases;
 using Nethermind.Logging;
 using Nethermind.Store;
 
@@ -27,76 +27,28 @@ namespace Nethermind.Db
     {
         public RocksDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager, bool useTraceDb, bool useReceiptsDb)
         {
-            BlocksDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.BlocksDbPath),
-                dbConfig, logManager);
+            BlocksDb = new BlocksRocksDb(basePath, dbConfig, logManager);
+            HeadersDb = new HeadersRocksDb(basePath, dbConfig, logManager);
+            BlockInfosDb = new BlockInfosRocksDb(basePath, dbConfig, logManager);
+            StateDb = new StateDb(new StateRocksDb(basePath, dbConfig, logManager));
+            CodeDb = new StateDb(new CodeRocksDb(basePath, dbConfig, logManager));
+            PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, logManager);
+            TraceDb = new TraceRocksDb(basePath, dbConfig, logManager);
+            ConfigsDb = new ConfigsRocksDb(basePath, dbConfig, logManager);
+            EthRequestsDb = new EthRequestsRocksDb(basePath, dbConfig, logManager);
             
-            HeadersDb = new DbOnTheRocks(
-                            Path.Combine(basePath, DbOnTheRocks.HeadersPath),
-                            dbConfig, logManager);
-            
-            BlockInfosDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.BlockInfosDbPath),
-                dbConfig, logManager);
-
             if (useReceiptsDb)
             {
-                ReceiptsDb = new DbOnTheRocks(
-                    Path.Combine(basePath, DbOnTheRocks.ReceiptsDbPath),
-                    dbConfig, logManager);
+                ReceiptsDb = new HeadersRocksDb(basePath, dbConfig, logManager);
             }
             else
             {
                 ReceiptsDb = new ReadOnlyDb(new MemDb(), false);
             }
-
-            StateDb = new StateDb(
-                new DbOnTheRocks(Path.Combine(basePath, DbOnTheRocks.StateDbPath), dbConfig, logManager));
-            
-            CodeDb = new StateDb(
-                new DbOnTheRocks(Path.Combine(basePath, DbOnTheRocks.CodeDbPath), dbConfig, logManager));
-            
-            PendingTxsDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.PendingTxsDbPath),
-                dbConfig, logManager);
-            
-            TraceDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.TraceDbPath),
-                dbConfig, logManager);
-
-            ConsumersDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.ConsumersDbPath),
-                dbConfig, logManager);
-            
-            DepositsDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.DepositsDbPath),
-                dbConfig, logManager);
-            
-            ConsumerSessionsDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.ConsumerSessionsDbPath),
-                dbConfig, logManager);
-
-            ConsumerReceiptsDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.ConsumerReceiptsDbPath),
-                dbConfig, logManager);
-            
-            ConsumerDepositApprovalsDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.ConsumerDepositApprovalsDbPath),
-                dbConfig, logManager);
-            
-            ConfigsDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.ConfigsDbPath),
-                dbConfig, logManager);
-
-            EthRequestsDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.EthRequestsDbPath),
-                dbConfig, logManager);
             
             if (useTraceDb)
             {
-                TraceDb = new DbOnTheRocks(
-                    Path.Combine(basePath, DbOnTheRocks.TraceDbPath),
-                    dbConfig, logManager);
+                TraceDb = new HeadersRocksDb(basePath, dbConfig, logManager);
             }
             else
             {
@@ -112,15 +64,10 @@ namespace Nethermind.Db
         public IDb HeadersDb { get; }
         public IDb BlockInfosDb { get; }
         public IDb PendingTxsDb { get; }
-        public IDb ConsumersDb { get; }
-        public IDb DepositsDb { get; }
-        public IDb ConsumerSessionsDb { get; }
-        public IDb ConsumerReceiptsDb { get; }
-        public IDb ConsumerDepositApprovalsDb { get; }
         public IDb ConfigsDb { get; }
         public IDb EthRequestsDb { get; }
 
-        public void Dispose()
+        public virtual void Dispose()
         {
             StateDb?.Dispose();
             CodeDb?.Dispose();
@@ -130,10 +77,6 @@ namespace Nethermind.Db
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
             TraceDb?.Dispose();
-            ConsumersDb?.Dispose();
-            DepositsDb?.Dispose();
-            ConsumerSessionsDb?.Dispose();
-            ConsumerReceiptsDb?.Dispose();
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
         }

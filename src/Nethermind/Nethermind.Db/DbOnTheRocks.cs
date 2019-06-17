@@ -28,120 +28,43 @@ using RocksDbSharp;
 
 namespace Nethermind.Db
 {
-    public class DbOnTheRocks : IDb
+    public abstract class DbOnTheRocks : IDb
     {
-        public const string StateDbPath = "state";
-        public const string CodeDbPath = "code";
-        public const string BlocksDbPath = "blocks";
-        public const string HeadersPath = "headers";
-        public const string ReceiptsDbPath = "receipts";
-        public const string BlockInfosDbPath = "blockInfos";
-        public const string PendingTxsDbPath = "pendingtxs";
-        public const string TraceDbPath = "trace";
-        public const string ConsumersDbPath = "consumers";
-        public const string DepositsDbPath = "deposits";
-        public const string ConsumerSessionsDbPath = "consumerSessions";
-        public const string ConsumerReceiptsDbPath = "consumerReceipts";
-        public const string ConsumerDepositApprovalsDbPath = "consumerDepositApprovals";
-        public const string ConfigsDbPath = "configs";
-        public const string EthRequestsDbPath = "ethRequests";
-
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
-
         private readonly RocksDb _db;
-
-        private readonly DbInstance _dbInstance;
-
         private WriteBatch _currentBatch;
 
-        public DbOnTheRocks(string dbPath, IDbConfig dbConfig, ILogManager logManager = null) // TODO: check column families
+        public abstract string Name { get; }
+
+        public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager = null) // TODO: check column families
         {
-            ILogger logger = logManager?.GetClassLogger();
-            if (!Directory.Exists(dbPath))
+            var fullPath = Path.Combine(basePath, dbPath);
+            var logger = logManager?.GetClassLogger();
+            if (!Directory.Exists(fullPath))
             {
-                Directory.CreateDirectory(dbPath);
+                Directory.CreateDirectory(fullPath);
             }
 
             if (logger != null)
             {
-                if (logger.IsInfo) logger.Info($"Using database directory {dbPath}");
+                if (logger.IsInfo) logger.Info($"Using database directory {fullPath}");
             }
 
-            if (dbPath.EndsWith(StateDbPath))
-            {
-                _dbInstance = DbInstance.State;
-            }
-            else if (dbPath.EndsWith(BlockInfosDbPath))
-            {
-                _dbInstance = DbInstance.BlockInfos;
-            }
-            else if (dbPath.EndsWith(HeadersPath))
-            {
-                _dbInstance = DbInstance.Headers;
-            }
-            else if (dbPath.EndsWith(BlocksDbPath))
-            {
-                _dbInstance = DbInstance.Blocks;
-            }
-            else if (dbPath.EndsWith(CodeDbPath))
-            {
-                _dbInstance = DbInstance.Code;
-            }
-            else if (dbPath.EndsWith(ReceiptsDbPath))
-            {
-                _dbInstance = DbInstance.Receipts;
-            }
-            else if (dbPath.EndsWith(PendingTxsDbPath))
-            {
-                _dbInstance = DbInstance.PendingTxs;
-            }
-            else if (dbPath.EndsWith(ConsumersDbPath))
-            {
-                _dbInstance = DbInstance.Consumers;
-            }
-            else if (dbPath.EndsWith(DepositsDbPath))
-            {
-                _dbInstance = DbInstance.Deposits;
-            }
-            else if (dbPath.EndsWith(ConsumerSessionsDbPath))
-            {
-                _dbInstance = DbInstance.ConsumerSessions;
-            }
-            else if (dbPath.EndsWith(ConsumerReceiptsDbPath))
-            {
-                _dbInstance = DbInstance.ConsumerReceipts;
-            }
-            else if (dbPath.EndsWith(ConsumerDepositApprovalsDbPath))
-            {
-                _dbInstance = DbInstance.ConsumerDepositApprovals;
-            }
-            else if (dbPath.EndsWith(ConfigsDbPath))
-            {
-                _dbInstance = DbInstance.Configs;
-            }
-            else if (dbPath.EndsWith(EthRequestsDbPath))
-            {
-                _dbInstance = DbInstance.EthRequests;
-            }
-            else if (dbPath.EndsWith(TraceDbPath))
-            {
-                _dbInstance = DbInstance.Trace;
-            }
-            else
-            {
-                _dbInstance = DbInstance.Other;
-            }
-
-            DbOptions options = BuildOptions(dbConfig, _dbInstance);
-            _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(options, path));
+            var options = BuildOptions(dbConfig);
+            _db = DbsByPath.GetOrAdd(fullPath, path => RocksDb.Open(options, path));
         }
+        
+        protected abstract void UpdateReadMetrics();
+        protected abstract void UpdateWriteMetrics();
 
-        private static T ReadConfig<T>(IDbConfig dbConfig, DbInstance dbInstance, string propertyName)
+        private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
         {
-            string prefixed = string.Concat(dbInstance == DbInstance.State ? string.Empty : string.Concat(dbInstance.ToString(), "Db"), propertyName);
+            var prefixed = string.Concat(Name == "State" ? string.Empty : string.Concat(Name, "Db"),
+                propertyName);
             try
             {
-                return (T) typeof(IDbConfig).GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance).GetValue(dbConfig);
+                return (T) typeof(IDbConfig).GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance)
+                    .GetValue(dbConfig);
             }
             catch (Exception e)
             {
@@ -149,21 +72,21 @@ namespace Nethermind.Db
             }
         }
 
-        private DbOptions BuildOptions(IDbConfig dbConfig, DbInstance dbInstance)
+        private DbOptions BuildOptions(IDbConfig dbConfig)
         {
-            BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
+            var tableOptions = new BlockBasedTableOptions();
             tableOptions.SetBlockSize(16 * 1024);
             tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
-            tableOptions.SetCacheIndexAndFilterBlocks(ReadConfig<bool>(dbConfig, dbInstance, nameof(dbConfig.CacheIndexAndFilterBlocks)));
+            tableOptions.SetCacheIndexAndFilterBlocks(ReadConfig<bool>(dbConfig, nameof(dbConfig.CacheIndexAndFilterBlocks)));
 
             tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
             tableOptions.SetFormatVersion(2);
 
-            ulong blockCacheSize = ReadConfig<ulong>(dbConfig, dbInstance, nameof(dbConfig.BlockCacheSize));
-            IntPtr cache = Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
+            var blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
+            var cache = Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
             tableOptions.SetBlockCache(cache);
 
-            DbOptions options = new DbOptions();
+            var options = new DbOptions();
             options.SetCreateIfMissing(true);
             options.SetAdviseRandomOnOpen(true);
             options.OptimizeForPointLookup(blockCacheSize); // I guess this should be the one option controlled by the DB size property - bind it to LRU cache size
@@ -181,8 +104,8 @@ namespace Nethermind.Db
             options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
 
             //options.SetMaxOpenFiles(32);
-            options.SetWriteBufferSize(ReadConfig<ulong>(dbConfig, dbInstance, nameof(dbConfig.WriteBufferSize)));
-            options.SetMaxWriteBufferNumber((int)ReadConfig<uint>(dbConfig, dbInstance, nameof(dbConfig.WriteBufferNumber)));
+            options.SetWriteBufferSize(ReadConfig<ulong>(dbConfig, nameof(dbConfig.WriteBufferSize)));
+            options.SetMaxWriteBufferNumber((int)ReadConfig<uint>(dbConfig, nameof(dbConfig.WriteBufferNumber)));
             options.SetMinWriteBufferNumberToMerge(2);
             options.SetBlockBasedTableFactory(tableOptions);
             
@@ -191,123 +114,17 @@ namespace Nethermind.Db
 //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
             return options;
         }
-
+        
         public byte[] this[byte[] key]
         {
             get
             {
-                switch (_dbInstance)
-                {
-                    case DbInstance.State:
-                        Metrics.StateDbReads++;
-                        break;
-                    case DbInstance.BlockInfos:
-                        Metrics.BlockInfosDbReads++;
-                        break;
-                    case DbInstance.Blocks:
-                        Metrics.BlocksDbReads++;
-                        break;
-                    case DbInstance.Code:
-                        Metrics.CodeDbReads++;
-                        break;
-                    case DbInstance.Headers:
-                        Metrics.HeaderDbReads++;
-                        break;
-                    case DbInstance.Receipts:
-                        Metrics.ReceiptsDbReads++;
-                        break;
-                    case DbInstance.PendingTxs:
-                        Metrics.PendingTxsDbReads++;
-                        break;
-                    case DbInstance.Consumers:
-                        Metrics.ConsumersDbReads++;
-                        break;
-                    case DbInstance.Deposits:
-                        Metrics.DepositsDbReads++;
-                        break;
-                    case DbInstance.ConsumerSessions:
-                        Metrics.ConsumerSessionsDbReads++;
-                        break;
-                    case DbInstance.ConsumerReceipts:
-                        Metrics.ConsumerReceiptsDbReads++;
-                        break;
-                    case DbInstance.ConsumerDepositApprovals:
-                        Metrics.ConsumerDepositApprovalsDbReads++;
-                        break;
-                    case DbInstance.Configs:
-                        Metrics.ConfigsDbReads++;
-                        break;
-                    case DbInstance.EthRequests:
-                        Metrics.EthRequestsDbReads++;
-                        break;
-                    case DbInstance.Trace:
-                        Metrics.TraceDbReads++;
-                        break;
-                    case DbInstance.Other:
-                        Metrics.OtherDbReads++;
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-
+                UpdateReadMetrics();
                 return _db.Get(key);
             }
             set
             {
-                switch (_dbInstance)
-                {
-                    case DbInstance.State:
-                        Metrics.StateDbWrites++;
-                        break;
-                    case DbInstance.BlockInfos:
-                        Metrics.BlockInfosDbWrites++;
-                        break;
-                    case DbInstance.Blocks:
-                        Metrics.BlocksDbWrites++;
-                        break;
-                    case DbInstance.Code:
-                        Metrics.CodeDbWrites++;
-                        break;
-                    case DbInstance.Headers:
-                        Metrics.HeaderDbWrites++;
-                        break;
-                    case DbInstance.Receipts:
-                        Metrics.ReceiptsDbWrites++;
-                        break;
-                    case DbInstance.PendingTxs:
-                        Metrics.PendingTxsDbWrites++;
-                        break;
-                    case DbInstance.Consumers:
-                        Metrics.ConsumersDbWrites++;
-                        break;
-                    case DbInstance.Deposits:
-                        Metrics.DepositsDbWrites++;
-                        break;
-                    case DbInstance.ConsumerSessions:
-                        Metrics.ConsumerSessionsDbWrites++;
-                        break;
-                    case DbInstance.ConsumerReceipts:
-                        Metrics.ConsumerReceiptsDbWrites++;
-                        break;
-                    case DbInstance.ConsumerDepositApprovals:
-                        Metrics.ConsumerDepositApprovalsDbWrites++;
-                        break;
-                    case DbInstance.Configs:
-                        Metrics.ConfigsDbWrites++;
-                        break;
-                    case DbInstance.EthRequests:
-                        Metrics.EthRequestsDbWrites++;
-                        break;
-                    case DbInstance.Trace:
-                        Metrics.TraceDbWrites++;
-                        break;
-                    case DbInstance.Other:
-                        Metrics.OtherDbWrites++;
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-
+                UpdateWriteMetrics();
                 if (_currentBatch != null)
                 {
                     if (value == null)
@@ -373,31 +190,6 @@ namespace Nethermind.Db
             _db.Write(_currentBatch);
             _currentBatch.Dispose();
             _currentBatch = null;
-        }
-
-        private enum DbInstance
-        {
-            State,
-            BlockInfos,
-            Blocks,
-            Code,
-            Headers,
-            Receipts,
-            Trace,
-            PendingTxs,
-            DataHeaders,
-            Consumers,
-            Deposits,
-            PaymentClaims,
-            ProviderSessions,
-            ConsumerSessions,
-            ProviderReceipts,
-            ConsumerReceipts,
-            ProviderDepositApprovals,
-            ConsumerDepositApprovals,
-            Configs,
-            EthRequests,
-            Other
         }
 
         public void Dispose()

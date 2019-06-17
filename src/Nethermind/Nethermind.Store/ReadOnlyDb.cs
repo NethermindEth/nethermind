@@ -37,6 +37,8 @@ namespace Nethermind.Store
         {
         }
 
+        public string Name { get; } = "ReadOnlyDb";
+
         public byte[] this[byte[] key]
         {
             get => _memDb[key] ?? _wrappedDb[key];

@@ -22,7 +22,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Store;
@@ -38,6 +37,7 @@ namespace Nethermind.Db
         private readonly string _dbPath;
         private readonly string _dbLastDirName;
         private bool _anyPendingChanges;
+        public string Name { get; } = "SimpleFilePublicKeyDb";
 
         public SimpleFilePublicKeyDb(string dbDirectoryPath, ILogManager logManager)
         {
