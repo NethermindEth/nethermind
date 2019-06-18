@@ -63,7 +63,7 @@ namespace Nethermind.Db
                 propertyName);
             try
             {
-                return (T) typeof(IDbConfig).GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance)
+                return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance)
                     .GetValue(dbConfig);
             }
             catch (Exception e)
