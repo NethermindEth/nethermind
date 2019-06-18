@@ -56,7 +56,6 @@ namespace Nethermind.Runner
         {
         }
  
-        [Todo("find better way to enforce assemblies with config impl are loaded")]
         protected override (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp()
         {
             const string pluginsPath = "plugins";

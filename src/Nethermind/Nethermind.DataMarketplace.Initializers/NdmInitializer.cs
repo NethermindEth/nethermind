@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Initializers
             switch (defaultConfig.Persistence?.ToLowerInvariant())
             {
                 case "mongo":
-                    mongoProvider = new MongoProvider(configProvider.GetConfig<IMongoConfig>(), logManager);
+                    mongoProvider = new MongoProvider(configProvider.GetConfig<INdmMongoConfig>(), logManager);
                     var database = mongoProvider.GetDatabase();
                     configRepository = new ConfigMongoRepository(database);
                     ethRequestRepository = new EthRequestMongoRepository(database);

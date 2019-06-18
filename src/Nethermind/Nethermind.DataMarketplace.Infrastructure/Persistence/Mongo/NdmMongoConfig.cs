@@ -16,17 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
-
 namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
 {
-    public interface IMongoConfig : IConfig
+    public class NdmMongoConfig : INdmMongoConfig
     {
-        [ConfigItem(Description = "Connection string to the Mongo database (if NdmConfig.Persistence = mongo)", DefaultValue = "mongodb://localhost:27017")]
-        string ConnectionString { get; }
-        [ConfigItem(Description = "An arbitrary name of the Mongo database", DefaultValue = "ndm")]
-        string Database { get; }
-        [ConfigItem(Description = "If 'true' then it logs the queries sent to the Mongo database", DefaultValue = "false")]
-        bool LogQueries { get; }
+        public string ConnectionString { get; set; }
+        public string Database { get; set; }
+        public bool LogQueries { get; set; }
     }
 }

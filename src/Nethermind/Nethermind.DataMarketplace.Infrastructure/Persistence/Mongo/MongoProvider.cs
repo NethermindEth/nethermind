@@ -35,10 +35,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
     {
         private static bool _initialized;
         private static IMongoClient _client;
-        private readonly IMongoConfig _config;
+        private readonly INdmMongoConfig _config;
         private readonly ILogger _logger;
 
-        public MongoProvider(IMongoConfig config, ILogManager logManager)
+        public MongoProvider(INdmMongoConfig config, ILogManager logManager)
         {
             _config = config;
             _logger = logManager.GetClassLogger();
