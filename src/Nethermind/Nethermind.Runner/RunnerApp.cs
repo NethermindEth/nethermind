@@ -19,7 +19,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -53,36 +55,43 @@ namespace Nethermind.Runner
         public RunnerApp(ILogger logger) : base(logger)
         {
         }
-
-        private static List<Type> _configs = new List<Type>
-        {
-            typeof(IKeyStoreConfig),
-            typeof(INetworkConfig),
-            typeof(IJsonRpcConfig),
-            typeof(IInitConfig),
-            typeof(IDbConfig),
-            typeof(IStatsConfig),
-            typeof(ISyncConfig),
-            typeof(IKafkaConfig),
-            typeof(INdmConfig),
-            typeof(IGrpcConfig),
-            typeof(IGrpcClientConfig),
-            typeof(IWalletConfig),
-            typeof(IMongoConfig),
-            typeof(IEthStatsConfig),
-            typeof(IMetricsConfig)
-        };
-
+ 
         [Todo("find better way to enforce assemblies with config impl are loaded")]
         protected override (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp()
         {
+            const string pluginsPath = "plugins";
+            if (!string.IsNullOrWhiteSpace(pluginsPath) && Directory.Exists(pluginsPath))
+            {
+                var plugins = Directory.GetFiles(pluginsPath, "*.dll");
+                foreach (var plugin in plugins)
+                {
+                    if (Logger.IsInfo) Logger.Info($"Loading an external assembly: {plugin}");
+                    var fullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, plugin);
+                    AssemblyLoadContext.Default.LoadFromAssemblyPath(fullPath);
+                }
+            }
+
+            var loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies().ToList();
+            loadedAssemblies
+                .SelectMany(x => x.GetReferencedAssemblies())
+                .Distinct()
+                .Where(y => loadedAssemblies.Any((a) => a.FullName == y.FullName) == false)
+                .ToList()
+                .ForEach(x => loadedAssemblies.Add(AppDomain.CurrentDomain.Load(x)));
+            
+            var configurationType = typeof(IConfig);
+            var configs = AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(a => a.GetTypes())
+                .Where(t => configurationType.IsAssignableFrom(t) && t.IsInterface && t != configurationType)
+                .ToList();
+            
             var app = new CommandLineApplication {Name = "Nethermind.Runner"};
             app.HelpOption("-?|-h|--help");
             var configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             var dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             var logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
 
-            foreach (Type configType in _configs)
+            foreach (Type configType in configs)
             {
                 foreach (PropertyInfo propertyInfo in configType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {

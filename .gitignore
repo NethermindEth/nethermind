@@ -340,6 +340,7 @@ spaceneth_db/
 docs/build/
 out/
 db/
+plugins/
 src/Nethermind/Nethermind.Runner/git-hash
 src/Nethermind/Nethermind.Runner/node.key.plain
 

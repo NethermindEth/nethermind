@@ -25,7 +25,7 @@ namespace Nethermind.Runner.Config
         [ConfigItem(Description = "If 'true' then it enables the Kafka producer which can be configured to stream the transactions data.", DefaultValue = "false")]
         bool PubSubEnabled { get; set; }
         
-        [ConfigItem(Description = "If 'true' then it enables thewallet / key store in the application.", DefaultValue = "false")]
+        [ConfigItem(Description = "If 'true' then it enables the wallet / key store in the application.", DefaultValue = "false")]
         bool EnableUnsecuredDevWallet { get; set; }
         
         [ConfigItem(Description = "If 'true' then any accounts created will be only valid during the session and deleted when application closes.", DefaultValue = "false")]

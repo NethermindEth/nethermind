@@ -847,12 +847,14 @@ namespace Nethermind.Runner.Runners
 
             if (!(_ndmInitializer is null))
             {
+                if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
                 var capabilityConnector = await _ndmInitializer.InitAsync(_configProvider, _dbProvider,
                     _initConfig.BaseDbPath, _blockProcessor, _blockTree, _txPool, _txPoolInfoProvider, _specProvider,
                     _receiptStorage, _wallet, _timestamp, _ecdsa, _rpcModuleProvider, _keyStore, _jsonSerializer,
                     _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcService,
                     _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService, _logManager);
                 capabilityConnector.Init();
+                if (_logger.IsInfo) _logger.Info($"NDM initialized.");
             }
 
             PeerLoader peerLoader = new PeerLoader(networkConfig, discoveryConfig, _nodeStatsManager, peerStorage, _logManager);

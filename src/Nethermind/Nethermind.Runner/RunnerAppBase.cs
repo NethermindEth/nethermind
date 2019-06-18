@@ -145,8 +145,8 @@ namespace Nethermind.Runner
             {
                 ndmDataPublisher = new NdmDataPublisher();
                 ndmConsumerChannelManager = new NdmConsumerChannelManager();
-                ndmInitializer = new NdmInitializerFactory().CreateOrFail(ndmConfig.InitializerName,
-                    ndmConfig.PluginsPath);
+                ndmInitializer = new NdmInitializerFactory(logManager)
+                    .CreateOrFail(ndmConfig.InitializerName, ndmConfig.PluginsPath);
             }
 
             var grpcConfig = configProvider.GetConfig<IGrpcConfig>();
