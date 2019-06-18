@@ -24,9 +24,9 @@ namespace Nethermind.Facade
     public interface IPersonalBridge
     {
         Address[] ListAccounts();
-        
         Address NewAccount(SecureString passphrase);
-        void UnlockAccount(Address address, SecureString notSecuredHere);
-        void LockAccount(Address address);
+        bool UnlockAccount(Address address, SecureString notSecuredHere);
+        bool LockAccount(Address address);
+        bool IsUnlocked(Address address);
     }
 }

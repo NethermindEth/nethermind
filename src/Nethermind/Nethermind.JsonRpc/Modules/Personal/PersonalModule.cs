@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Linq;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -42,16 +43,22 @@ namespace Nethermind.JsonRpc.Modules.Personal
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<Address[]> personal_listAccounts()
+        public ResultWrapper<AccountForRpc[]> personal_listAccounts()
         {
-            return ResultWrapper<Address[]>.Success(_bridge.ListAccounts());
+            var accounts = _bridge.ListAccounts().Select(a => new AccountForRpc
+            {
+                Address = a,
+                Unlocked = _bridge.IsUnlocked(a)
+            }).ToArray();
+            
+            return ResultWrapper<AccountForRpc[]>.Success(accounts);
         }
 
         public ResultWrapper<bool> personal_lockAccount(Address address)
         {
-            _bridge.LockAccount(address);
+            var locked = _bridge.LockAccount(address);
 
-            return ResultWrapper<bool>.Success(true);
+            return ResultWrapper<bool>.Success(locked);
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
@@ -65,9 +72,9 @@ namespace Nethermind.JsonRpc.Modules.Personal
             
             notSecuredHere.MakeReadOnly();
 
-            _bridge.UnlockAccount(address, notSecuredHere);
+            var unlocked = _bridge.UnlockAccount(address, notSecuredHere);
 
-            return ResultWrapper<bool>.Success(true);
+            return ResultWrapper<bool>.Success(unlocked);
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
