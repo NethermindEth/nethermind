@@ -194,7 +194,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             MessageHandlers[message.PacketType](message);
         }
         
-        private void Handle(HiMessage message)
+        protected virtual void Handle(HiMessage message)
         {
             if (HiReceived)
             {
