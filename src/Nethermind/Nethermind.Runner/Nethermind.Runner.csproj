@@ -28,6 +28,7 @@
     <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
     <ProjectReference Include="..\Nethermind.DataMarketplace.Infrastructure\Nethermind.DataMarketplace.Infrastructure.csproj" />
     <ProjectReference Include="..\Nethermind.DataMarketplace.Initializers\Nethermind.DataMarketplace.Initializers.csproj" />
+    <ProjectReference Include="..\Nethermind.DataMarketplace.WebSockets\Nethermind.DataMarketplace.WebSockets.csproj" />
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj">
       <Project>{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}</Project>
       <Name>Nethermind.Db</Name>

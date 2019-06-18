@@ -31,6 +31,7 @@ using Nethermind.DataMarketplace.Channels.Grpc;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Initializers;
+using Nethermind.DataMarketplace.WebSockets;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Clients;
 using Nethermind.JsonRpc;
@@ -192,6 +193,11 @@ namespace Nethermind.Runner
                 var jsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
                 var jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, serializer, logManager);
                 webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, serializer));
+                if (ndmEnabled)
+                {
+                    webSocketsManager.AddModule(new NdmWebSocketsModule(ndmConsumerChannelManager, ndmDataPublisher));
+                }
+                
                 Bootstrap.Instance.JsonRpcService = jsonRpcService;
                 Bootstrap.Instance.LogManager = logManager;
                 Bootstrap.Instance.JsonSerializer = serializer;
