@@ -45,9 +45,9 @@ namespace Nethermind.DataMarketplace.Subprotocols
         protected readonly IDictionary<int, Action<Packet>> MessageHandlers;
         protected int DisposedValue;
         protected int DisconnectedValue;
-        private readonly BlockingCollection<Request<GetDepositApprovalsMessage, DepositApproval[]>>
-            _depositApprovalsRequests =
-                new BlockingCollection<Request<GetDepositApprovalsMessage, DepositApproval[]>>();
+
+        protected readonly BlockingCollection<Request<GetDepositApprovalsMessage, DepositApproval[]>>
+            DepositApprovalsRequests = new BlockingCollection<Request<GetDepositApprovalsMessage, DepositApproval[]>>();
 
         protected readonly BlockingCollection<Request<RequestEthMessage, bool>> RequestEthRequests =
             new BlockingCollection<Request<RequestEthMessage, bool>>();
@@ -473,7 +473,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             var cancellationToken = token ?? CancellationToken.None;
             var message = new GetDepositApprovalsMessage(dataHeaderId, onlyPending);
             var request = new Request<GetDepositApprovalsMessage, DepositApproval[]>(message);
-            _depositApprovalsRequests.Add(request, cancellationToken);
+            DepositApprovalsRequests.Add(request, cancellationToken);
             Send(request.Message);
             var task = request.CompletionSource.Task;
             var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.NdmDepositApprovals, cancellationToken));
@@ -494,7 +494,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DepositApprovalsMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: depositapprovals");
-            var request = _depositApprovalsRequests.Take();
+            var request = DepositApprovalsRequests.Take();
             request.CompletionSource.SetResult(message.DepositApprovals);
         }
 
@@ -615,8 +615,8 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 return;
             }
 
-            _depositApprovalsRequests?.CompleteAdding();
-            _depositApprovalsRequests?.Dispose();
+            DepositApprovalsRequests?.CompleteAdding();
+            DepositApprovalsRequests?.Dispose();
         }
 
         protected class Request<TMsg, TResult>
