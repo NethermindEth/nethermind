@@ -205,6 +205,17 @@ namespace Nethermind.Core.Encoding
 
             return Encode(rlpSequence);
         }
+        
+        public static Rlp Encode(string[] strings)
+        {
+            Rlp[] rlpSequence = new Rlp[strings.Length];
+            for (int i = 0; i < strings.Length; i++)
+            {
+                rlpSequence[i] = Encode(strings[i]);
+            }
+
+            return Encode(rlpSequence);
+        }
 
         public static Rlp Encode(Transaction transaction)
         {
@@ -1306,13 +1317,13 @@ namespace Nethermind.Core.Encoding
 
                 return result;
             }
-            
+
             public ulong DecodeUlong()
             {
                 byte[] bytes = DecodeByteArray();
                 return bytes.Length == 0 ? 0L : bytes.ToUInt64();
             }
-
+            
             public byte[] DecodeByteArray()
             {
                 return DecodeByteArraySpan().ToArray();
