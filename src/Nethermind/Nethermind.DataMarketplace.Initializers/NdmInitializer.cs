@@ -63,26 +63,26 @@ namespace Nethermind.DataMarketplace.Initializers
             IMessageSerializationService messageSerializationService, ILogManager logManager)
         {
 
-            var (enabled, verifyP2PSignature, _, ethRequestService, faucet, consumerService, consumerAddress,
+            var (config, _, ethRequestService, faucet, consumerService, consumerAddress,
                 providerAddress) = await PreInitAsync(configProvider, dbProvider, baseDbPath, blockProcessor, blockTree,
                 txPool, txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamp, ecdsa, rpcModuleProvider,
                 keyStore, jsonSerializer, cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcService,
                 logManager);
-            if (!enabled)
+            if (!config.Enabled)
             {
-                return null;
+                return default;
             }
 
             var subprotocolFactory = new NdmSubprotocolFactory(messageSerializationService, nodeStatsManager,
                 logManager, consumerService, consumerChannelManager, ecdsa, wallet, faucet, enode.PublicKey,
-                providerAddress, consumerAddress, verifyP2PSignature);
+                providerAddress, consumerAddress, config.VerifyP2PSignature);
             var capabilityConnector = new NdmCapabilityConnector(protocolsManager, subprotocolFactory,
                 consumerService, protocolValidator, ethRequestService, logManager);
 
             return capabilityConnector;
         }
 
-        protected async Task<(bool enabled, bool verifyP2PSignature, NdmModule.IServices services,
+        protected async Task<(NdmConfig config, NdmModule.IServices services,
             IEthRequestService ethRequestService, INdmFaucet faucet, IConsumerService consumerService,
             Address consumerAddress, Address providerAddress)> PreInitAsync(
             IConfigProvider configProvider, IDbProvider dbProvider, string baseDbPath, IBlockProcessor blockProcessor,
@@ -158,8 +158,8 @@ namespace Nethermind.DataMarketplace.Initializers
                 : new Address(ndmConfig.ProviderAddress);
             var consumers = services.AddConsumersModule();
 
-            return (true, verifyP2PSignature, services, ethRequestService, faucet, consumers.ConsumerService,
-                consumerAddress, providerAddress);
+            return (ndmConfig, services, ethRequestService, faucet, consumers.ConsumerService, consumerAddress,
+                providerAddress);
         }
     }
 }

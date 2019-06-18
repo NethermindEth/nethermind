@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Consumers.Services;
@@ -38,11 +37,12 @@ namespace Nethermind.DataMarketplace.Initializers
         private readonly IProtocolValidator _protocolValidator;
         private readonly IEthRequestService _ethRequestService;
         private readonly ILogManager _logManager;
+        private readonly Address _providerAddress;
         private bool _capabilityAdded;
 
         public NdmCapabilityConnector(IProtocolsManager protocolsManager, INdmSubprotocolFactory subprotocolFactory,
             IConsumerService consumerService, IProtocolValidator protocolValidator,
-            IEthRequestService ethRequestService, ILogManager logManager)
+            IEthRequestService ethRequestService, ILogManager logManager, Address providerAddress = null)
         {
             _protocolsManager = protocolsManager;
             _subprotocolFactory = subprotocolFactory;
@@ -50,9 +50,10 @@ namespace Nethermind.DataMarketplace.Initializers
             _protocolValidator = protocolValidator;
             _ethRequestService = ethRequestService;
             _logManager = logManager;
+            _providerAddress = providerAddress;
         }
 
-        public void Init(Func<Address> addressToValidate = null)
+        public void Init()
         {
             _consumerService.AddressChanged += (_, e) =>
             {
@@ -86,13 +87,10 @@ namespace Nethermind.DataMarketplace.Initializers
             });
 
             var consumerAddress = _consumerService.GetAddress();
-            if (consumerAddress is null || consumerAddress == Address.Zero)
+            if ((consumerAddress is null || consumerAddress == Address.Zero) &&
+                (_providerAddress is null || _providerAddress == Address.Zero))
             {
-                var address = addressToValidate?.Invoke();
-                if (address is null || address == Address.Zero)
-                {
-                    return;
-                }
+                return;
             }
 
             _protocolsManager.AddSupportedCapability(Capability);
