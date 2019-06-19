@@ -25,11 +25,13 @@ using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Personal;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 {
     public interface INdmRpcConsumerModule : IModule
     {
+        ResultWrapper<AccountForRpc[]> ndm_listAccounts();
         ResultWrapper<Address> ndm_getConsumerAddress();
         Task<ResultWrapper<Address>> ndm_changeConsumerAddress(Address address);
         ResultWrapper<DataHeaderForRpc[]> ndm_getDiscoveredDataHeaders();

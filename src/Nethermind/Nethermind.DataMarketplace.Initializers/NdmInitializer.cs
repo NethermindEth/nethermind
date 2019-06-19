@@ -60,14 +60,15 @@ namespace Nethermind.DataMarketplace.Initializers
             ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager consumerChannelManager,
             INdmDataPublisher dataPublisher, IGrpcService grpcService, INodeStatsManager nodeStatsManager,
             IProtocolsManager protocolsManager, IProtocolValidator protocolValidator,
-            IMessageSerializationService messageSerializationService, ILogManager logManager)
+            IMessageSerializationService messageSerializationService, bool enableUnsecuredDevWallet,
+            ILogManager logManager)
         {
 
             var (config, _, ethRequestService, faucet, consumerService, consumerAddress,
                 providerAddress) = await PreInitAsync(configProvider, dbProvider, baseDbPath, blockProcessor, blockTree,
                 txPool, txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamp, ecdsa, rpcModuleProvider,
                 keyStore, jsonSerializer, cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcService,
-                logManager);
+                enableUnsecuredDevWallet, logManager);
             if (!config.Enabled)
             {
                 return default;
@@ -90,7 +91,8 @@ namespace Nethermind.DataMarketplace.Initializers
             IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEcdsa ecdsa,
             IRpcModuleProvider rpcModuleProvider, IKeyStore keyStore, IJsonSerializer jsonSerializer,
             ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager consumerChannelManager,
-            INdmDataPublisher dataPublisher, IGrpcService grpcService, ILogManager logManager)
+            INdmDataPublisher dataPublisher, IGrpcService grpcService, bool enableUnsecuredDevWallet,
+            ILogManager logManager)
         {
             if (!(configProvider.GetConfig<INdmConfig>() is NdmConfig defaultConfig))
             {
@@ -141,7 +143,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 baseDbPath, dbProvider, mongoProvider, logManager, blockProcessor, blockTree, txPool,
                 txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamp, ecdsa, keyStore,
                 rpcModuleProvider, jsonSerializer, cryptoRandom, enode, consumerChannelManager,
-                dataPublisher, grpcService, ethRequestService));
+                dataPublisher, grpcService, ethRequestService, enableUnsecuredDevWallet));
 
             var faucetAddress = string.IsNullOrWhiteSpace(ndmConfig.FaucetAddress)
                 ? null

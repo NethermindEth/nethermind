@@ -852,7 +852,8 @@ namespace Nethermind.Runner.Runners
                     _initConfig.BaseDbPath, _blockProcessor, _blockTree, _txPool, _txPoolInfoProvider, _specProvider,
                     _receiptStorage, _wallet, _timestamp, _ecdsa, _rpcModuleProvider, _keyStore, _jsonSerializer,
                     _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcService,
-                    _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService, _logManager);
+                    _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
+                    _initConfig.EnableUnsecuredDevWallet, _logManager);
                 capabilityConnector.Init();
                 if (_logger.IsInfo) _logger.Info($"NDM initialized.");
             }

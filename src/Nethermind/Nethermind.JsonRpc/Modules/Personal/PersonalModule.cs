@@ -43,15 +43,9 @@ namespace Nethermind.JsonRpc.Modules.Personal
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<AccountForRpc[]> personal_listAccounts()
+        public ResultWrapper<Address[]> personal_listAccounts()
         {
-            var accounts = _bridge.ListAccounts().Select(a => new AccountForRpc
-            {
-                Address = a,
-                Unlocked = _bridge.IsUnlocked(a)
-            }).ToArray();
-            
-            return ResultWrapper<AccountForRpc[]>.Success(accounts);
+            return ResultWrapper<Address[]>.Success(_bridge.ListAccounts());
         }
 
         public ResultWrapper<bool> personal_lockAccount(Address address)

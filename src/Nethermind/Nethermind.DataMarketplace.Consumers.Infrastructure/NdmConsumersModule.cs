@@ -30,6 +30,7 @@ using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Db.Config;
+using Nethermind.Facade;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
@@ -92,10 +93,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var reportService = new ReportService(depositRepository, receiptRepository, sessionRepository,
                 services.RequiredServices.Timestamp);
 
+            IPersonalBridge personalBridge = services.RequiredServices.EnableUnsecuredDevWallet
+                ? new PersonalBridge(services.RequiredServices.Wallet)
+                : null;
             services.RequiredServices.RpcModuleProvider.Register<INdmRpcConsumerModule>(
                 new NdmRpcConsumerModule(consumerService, reportService,
                     services.CreatedServices.JsonRpcNdmConsumerChannel, services.RequiredServices.EthRequestService,
-                    logManager));
+                    personalBridge, logManager));
 
             return new Services(consumerService);
         }

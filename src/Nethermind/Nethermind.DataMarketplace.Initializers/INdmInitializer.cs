@@ -47,6 +47,6 @@ namespace Nethermind.DataMarketplace.Initializers
             INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
             IGrpcService grpcService, INodeStatsManager nodeStatsManager, IProtocolsManager protocolsManager,
             IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
-            ILogManager logManager);
+            bool enableUnsecuredDevWallet, ILogManager logManager);
     }
 }

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -30,8 +31,10 @@ using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Personal;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 {
@@ -42,18 +45,36 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         private readonly IReportService _reportService;
         private readonly IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private readonly IEthRequestService _ethRequestService;
+        private readonly IPersonalBridge _personalBridge;
 
         public override ModuleType ModuleType => ModuleType.NdmConsumer;
 
         public NdmRpcConsumerModule(IConsumerService consumerService, IReportService reportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel, IEthRequestService ethRequestService,
-            ILogManager logManager)
+            IPersonalBridge personalBridge, ILogManager logManager)
             : base(logManager)
         {
             _consumerService = consumerService;
             _reportService = reportService;
             _jsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel;
             _ethRequestService = ethRequestService;
+            _personalBridge = personalBridge;
+        }
+
+        public ResultWrapper<AccountForRpc[]> ndm_listAccounts()
+        {
+            if (_personalBridge is null)
+            {
+                return ResultWrapper<AccountForRpc[]>.Success(Array.Empty<AccountForRpc>());
+            }
+
+            var accounts = _personalBridge.ListAccounts().Select(a => new AccountForRpc
+            {
+                Address = a,
+                Unlocked = _personalBridge.IsUnlocked(a)
+            }).ToArray();
+
+            return ResultWrapper<AccountForRpc[]>.Success(accounts);
         }
 
         public ResultWrapper<Address> ndm_getConsumerAddress()

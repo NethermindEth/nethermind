@@ -177,6 +177,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             public INdmDataPublisher NdmDataPublisher { get; }
             public IGrpcService GrpcService { get; }
             public EthRequestService EthRequestService { get; }
+            public bool EnableUnsecuredDevWallet { get; }
 
             public RequiredServices(IConfigProvider configProvider, IConfigManager configManager, INdmConfig ndmConfig,
                 string baseDbPath, IDbProvider rocksProvider, IMongoProvider mongoProvider, ILogManager logManager,
@@ -185,7 +186,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
                 IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEcdsa ecdsa,
                 IKeyStore keyStore, IRpcModuleProvider rpcModuleProvider, IJsonSerializer jsonSerializer,
                 ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager ndmConsumerChannelManager,
-                INdmDataPublisher ndmDataPublisher, IGrpcService grpcService, EthRequestService ethRequestService)
+                INdmDataPublisher ndmDataPublisher, IGrpcService grpcService, EthRequestService ethRequestService,
+                bool enableUnsecuredDevWallet)
             {
                 ConfigProvider = configProvider;
                 ConfigManager = configManager;
@@ -212,6 +214,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
                 NdmDataPublisher = ndmDataPublisher;
                 GrpcService = grpcService;
                 EthRequestService = ethRequestService;
+                EnableUnsecuredDevWallet = enableUnsecuredDevWallet;
             }
         }
 
