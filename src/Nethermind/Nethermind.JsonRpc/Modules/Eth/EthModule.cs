@@ -468,7 +468,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 _readerWriterLockSlim.EnterReadLock();
                 var block = _blockchainBridge.FindBlock(blockHash, false);
-                if (block != null)
+                if (block != null && returnFullTransactionObjects)
                 {
                     _blockchainBridge.RecoverTxSenders(block);
                 }
@@ -492,7 +492,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 var result = GetBlock(blockParameter, true, true);
-                if (result.Data != null)
+                if (result.Data != null && returnFullTransactionObjects)
                 {
                     _blockchainBridge.RecoverTxSenders(result.Data);
                 }
@@ -676,6 +676,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     return ResultWrapper<BlockForRpc>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
                 }
+                
+                _blockchainBridge.RecoverTxSenders(ommer);
 
                 if (Logger.IsDebug) Logger.Debug($"eth_getUncleByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {result}");
                 return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(result.Data, false));
