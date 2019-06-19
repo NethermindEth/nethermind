@@ -58,15 +58,15 @@ namespace Nethermind.Runner
  
         protected override (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp()
         {
-            const string pluginsPath = "plugins";
-            if (!string.IsNullOrWhiteSpace(pluginsPath) && Directory.Exists(pluginsPath))
+            var pluginsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "plugins");
+            if (Directory.Exists(pluginsDirectory))
             {
-                var plugins = Directory.GetFiles(pluginsPath, "*.dll");
+                var plugins = Directory.GetFiles(pluginsDirectory, "*.dll");
                 foreach (var plugin in plugins)
                 {
-                    if (Logger.IsInfo) Logger.Info($"Loading an external assembly: {plugin}");
-                    var fullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, plugin);
-                    AssemblyLoadContext.Default.LoadFromAssemblyPath(fullPath);
+                    var pluginName = plugin.Contains("/") ? plugin.Split("/").Last() : plugin.Split("\\").Last();
+                    if (Logger.IsInfo) Logger.Info($"Loading an external assembly: {pluginName}");
+                    AssemblyLoadContext.Default.LoadFromAssemblyPath(plugin);
                 }
             }
 
