@@ -52,13 +52,10 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public static IServices Init(RequiredServices services)
         {
             AddDecoders();
-            var config = services.ConfigProvider.GetConfig<INdmConfig>();
+            var config = services.NdmConfig;
             var providerAddress = string.IsNullOrWhiteSpace(config.ProviderAddress)
                 ? Address.Zero
                 : new Address(config.ProviderAddress);
-            var providerColdWalletAddress = string.IsNullOrWhiteSpace(config.ProviderColdWalletAddress)
-                ? Address.Zero
-                : new Address(config.ProviderColdWalletAddress);
             var consumerAddress = string.IsNullOrWhiteSpace(config.ConsumerAddress)
                 ? Address.Zero
                 : new Address(config.ConsumerAddress);

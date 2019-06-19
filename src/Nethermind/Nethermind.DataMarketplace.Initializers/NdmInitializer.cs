@@ -136,7 +136,6 @@ namespace Nethermind.DataMarketplace.Initializers
                 }
             }
 
-            var verifyP2PSignature = ndmConfig.VerifyP2PSignature;
             var ethRequestService = new EthRequestService(ndmConfig.FaucetHost, logManager);
             var services = NdmModule.Init(new NdmModule.RequiredServices(configProvider, configManager, ndmConfig,
                 baseDbPath, dbProvider, mongoProvider, logManager, blockProcessor, blockTree, txPool,
