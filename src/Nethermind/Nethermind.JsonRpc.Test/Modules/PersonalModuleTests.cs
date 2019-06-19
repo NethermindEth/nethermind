@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPersonalModule module = new PersonalModule(_bridge, NullLogManager.Instance);
             string serialized = RpcTest.TestSerializedRequest(module, "personal_listAccounts");
             string expectedAccounts = string.Join(',', _bridge.ListAccounts().Select(a => $"\"{a.ToString()}\""));
-            Assert.AreEqual($"{{\"id\":\"0x43\",\"jsonrpc\":\"2.0\",\"result\":[{expectedAccounts}]}}", serialized);
+            Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":[{expectedAccounts}]}}", serialized);
         }
         
         [Test]
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(module, "personal_newAccount", passphrase);
             var accountsNow = _bridge.ListAccounts();
             Assert.AreEqual(accountsBefore + 1, accountsNow.Length, "length");
-            Assert.AreEqual($"{{\"id\":\"0x43\",\"jsonrpc\":\"2.0\",\"result\":\"{accountsNow.Last()}\"}}", serialized);
+            Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"{accountsNow.Last()}\"}}", serialized);
         }
     }
 }

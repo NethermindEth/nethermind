@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Data
             Value = transaction.Value;
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
-            Data = transaction.Data ?? transaction.Init;
+            Input = Data = transaction.Data ?? transaction.Init;
         }
         
         // ReSharper disable once UnusedMember.Global
@@ -56,6 +56,8 @@ namespace Nethermind.JsonRpc.Data
         public BigInteger? GasPrice { get; set; }
         public BigInteger? Gas { get; set; }
         public byte[] Data { get; set; }
+        
+        public byte[] Input { get; set; }
 
         public Transaction ToTransaction()
         {
@@ -68,11 +70,11 @@ namespace Nethermind.JsonRpc.Data
             tx.Value = (UInt256)(Value ?? 0);
             if (tx.To == null)
             {
-                tx.Init = Data;
+                tx.Init = Data ?? Input;
             }
             else
             {
-                tx.Data = Data;
+                tx.Data = Data ?? Input;
             }
 
             return tx;

@@ -42,6 +42,7 @@ namespace Nethermind.Runner.Controllers
             {
                 ContractResolver = new CamelCasePropertyNamesContractResolver()
             };
+            
             foreach (var converter in jsonRpcService.Converters)
             {
                 _jsonSettings.Converters.Add(converter);
