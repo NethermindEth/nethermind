@@ -256,8 +256,10 @@ namespace Nethermind.Cli
             ModuleLoader.LoadModule(typeof(EthCliModule));
             ModuleLoader.LoadModule(typeof(NetCliModule));
             ModuleLoader.LoadModule(typeof(NodeCliModule));
+            ModuleLoader.LoadModule(typeof(NdmCliModule));
             ModuleLoader.LoadModule(typeof(ParityCliModule));
             ModuleLoader.LoadModule(typeof(PersonalCliModule));
+            ModuleLoader.LoadModule(typeof(SystemCliModule));
             ModuleLoader.LoadModule(typeof(Web3CliModule));
         }
     }

@@ -24,6 +24,10 @@ namespace Nethermind.JsonRpc.Data
 {
     public class LogEntryForRpc
     {
+        public LogEntryForRpc()
+        {
+        }
+        
         public LogEntryForRpc(LogEntry logEntry)
         {
             Removed = false;

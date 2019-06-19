@@ -16,6 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+
 namespace Nethermind.Abi
 {
     public class AbiSignature
@@ -28,5 +31,22 @@ namespace Nethermind.Abi
 
         public string Name { get; }
         public AbiType[] Types { get; }
+
+        public byte[] Address
+        {
+            get
+            {
+                string[] argTypeNames = new string[Types.Length];
+                for (int i = 0; i < Types.Length; i++)
+                {
+                    argTypeNames[i] = Types[i].ToString();
+                }
+
+                string typeList = string.Join(",", argTypeNames);
+                string signatureString = $"{Name}({typeList})";
+                Keccak signatureKeccak = Keccak.Compute(signatureString);
+                return signatureKeccak.Bytes.Slice(0, 4);
+            }
+        }
     }
 }

@@ -40,7 +40,7 @@ namespace Nethermind.Cli
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public string CurrentUri { get; set; }
+        public string CurrentUri { get; private set; }
 
         public void SwitchUri(Uri uri)
         {

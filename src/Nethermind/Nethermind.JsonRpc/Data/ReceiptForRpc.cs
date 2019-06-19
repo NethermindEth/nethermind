@@ -25,6 +25,10 @@ namespace Nethermind.JsonRpc.Data
 {
     public class ReceiptForRpc
     {
+        public ReceiptForRpc()
+        {
+        }
+       
         public ReceiptForRpc(Keccak txHash, TxReceipt receipt)
         {
             TransactionHash = txHash;

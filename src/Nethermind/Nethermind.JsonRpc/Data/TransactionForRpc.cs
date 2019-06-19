@@ -19,10 +19,7 @@
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Json;
 using Nethermind.Dirichlet.Numerics;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
@@ -40,7 +37,7 @@ namespace Nethermind.JsonRpc.Data
             Value = transaction.Value;
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
-            Data = transaction.Data;
+            Data = transaction.Data ?? transaction.Init;
         }
         
         // ReSharper disable once UnusedMember.Global
