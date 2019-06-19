@@ -47,8 +47,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             GasLimit = block.GasLimit;
             GasUsed = block.GasUsed;
             Timestamp = block.Timestamp;
-            Transactions = includeFullTransactionData ? block.Transactions.Select((t, idx) => new TransactionForRpc(block.Hash, block.Number, idx, t)) : null;
-            TransactionHashes = includeFullTransactionData ? null : block.Transactions.Select(t => t.Hash);
+            Transactions = includeFullTransactionData ? block.Transactions.Select((t, idx) => new TransactionForRpc(block.Hash, block.Number, idx, t)).ToArray() : (object[])block.Transactions.Select(t => t.Hash).ToArray();
             Uncles = block.Ommers.Select(o => o.Hash);
         }
         
@@ -70,8 +69,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public BigInteger GasLimit { get; set; }
         public BigInteger GasUsed { get; set; }
         public BigInteger Timestamp { get; set; }
-        public IEnumerable<TransactionForRpc> Transactions { get; set; }
-        public IEnumerable<Keccak> TransactionHashes { get; set; }
+        public IEnumerable<object> Transactions { get; set; }
         public IEnumerable<Keccak> Uncles { get; set; }
     }
 }
