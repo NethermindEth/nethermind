@@ -77,7 +77,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
                 filterStore,
                 filterManager,
                 services.Wallet,
-                state.TransactionProcessor);
+                state.TransactionProcessor,
+                services.Ecdsa);
             var dataHeaderRlpDecoder = new DataHeaderDecoder();
             var encoder = new AbiEncoder();
             var depositService = new DepositService(blockchainBridge, encoder, services.Wallet, config,
@@ -167,7 +168,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             public IReceiptStorage ReceiptStorage { get; }
             public IWallet Wallet { get; }
             public ITimestamp Timestamp { get; }
-            public IEcdsa Ecdsa { get; }
+            public IEthereumEcdsa Ecdsa { get; }
             public IKeyStore KeyStore { get; }
             public IRpcModuleProvider RpcModuleProvider { get; }
             public IJsonSerializer JsonSerializer { get; }
@@ -183,7 +184,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
                 string baseDbPath, IDbProvider rocksProvider, IMongoProvider mongoProvider, ILogManager logManager,
                 IBlockProcessor blockProcessor, IBlockTree blockTree, ITxPool transactionPool,
                 ITxPoolInfoProvider transactionPoolInfoProvider, ISpecProvider specProvider, 
-                IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEcdsa ecdsa,
+                IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEthereumEcdsa ecdsa,
                 IKeyStore keyStore, IRpcModuleProvider rpcModuleProvider, IJsonSerializer jsonSerializer,
                 ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager ndmConsumerChannelManager,
                 INdmDataPublisher ndmDataPublisher, IGrpcService grpcService, EthRequestService ethRequestService,

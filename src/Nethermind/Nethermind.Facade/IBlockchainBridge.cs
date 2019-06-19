@@ -40,6 +40,10 @@ namespace Nethermind.Facade
         long BestKnown { get; }
         bool IsSyncing { get; }
 
+        void RecoverTxSenders(Block block);
+
+        void RecoverTxSender(Transaction tx, long blockNumber);
+        
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
         Block FindBlock(long blockNumber);
         Block RetrieveHeadBlock();

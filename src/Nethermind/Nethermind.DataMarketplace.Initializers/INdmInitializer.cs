@@ -42,7 +42,7 @@ namespace Nethermind.DataMarketplace.Initializers
         Task<INdmCapabilityConnector> InitAsync(IConfigProvider configProvider, IDbProvider dbProvider,
             string baseDbPath, IBlockProcessor blockProcessor, IBlockTree blockTree, ITxPool txPool,
             ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider, IReceiptStorage receiptStorage,
-            IWallet wallet, ITimestamp timestamp, IEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider,
+            IWallet wallet, ITimestamp timestamp, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider,
             IKeyStore keyStore, IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
             INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
             IGrpcService grpcService, INodeStatsManager nodeStatsManager, IProtocolsManager protocolsManager,

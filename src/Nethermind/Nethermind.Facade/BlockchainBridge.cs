@@ -48,6 +48,7 @@ namespace Nethermind.Facade
         private readonly IReceiptStorage _receiptStorage;
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
+        private readonly IEthereumEcdsa _ecdsa;
         private readonly ITxPoolInfoProvider _transactionPoolInfoProvider;
 
         public BlockchainBridge(
@@ -61,7 +62,8 @@ namespace Nethermind.Facade
             IFilterStore filterStore,
             IFilterManager filterManager,
             IWallet wallet,
-            ITransactionProcessor transactionProcessor)
+            ITransactionProcessor transactionProcessor,
+            IEthereumEcdsa ecdsa)
         {
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -74,6 +76,7 @@ namespace Nethermind.Facade
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         }
 
         public IReadOnlyCollection<Address> GetWalletAccounts()
@@ -267,6 +270,19 @@ namespace Nethermind.Facade
         public FilterLog[] GetLogFilterChanges(int filterId) => _filterManager.PollLogs(filterId);
         public Keccak[] GetBlockFilterChanges(int filterId) => _filterManager.PollBlockHashes(filterId);
 
+        public void RecoverTxSenders(Block block)
+        {
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                RecoverTxSender(block.Transactions[i], block.Number);
+            }
+        }
+
+        public void RecoverTxSender(Transaction tx, long blockNumber)
+        {
+            tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
+        }
+        
         public Keccak[] GetPendingTransactionFilterChanges(int filterId) =>
             _filterManager.PollPendingTransactionHashes(filterId);
     }

@@ -55,7 +55,7 @@ namespace Nethermind.DataMarketplace.Initializers
         public virtual async Task<INdmCapabilityConnector> InitAsync(IConfigProvider configProvider,
             IDbProvider dbProvider, string baseDbPath, IBlockProcessor blockProcessor, IBlockTree blockTree,
             ITxPool txPool, ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider,
-            IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEcdsa ecdsa,
+            IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEthereumEcdsa ecdsa,
             IRpcModuleProvider rpcModuleProvider, IKeyStore keyStore, IJsonSerializer jsonSerializer,
             ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager consumerChannelManager,
             INdmDataPublisher dataPublisher, IGrpcService grpcService, INodeStatsManager nodeStatsManager,
@@ -88,7 +88,7 @@ namespace Nethermind.DataMarketplace.Initializers
             Address consumerAddress, Address providerAddress)> PreInitAsync(
             IConfigProvider configProvider, IDbProvider dbProvider, string baseDbPath, IBlockProcessor blockProcessor,
             IBlockTree blockTree, ITxPool txPool, ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider,
-            IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEcdsa ecdsa,
+            IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEthereumEcdsa ecdsa,
             IRpcModuleProvider rpcModuleProvider, IKeyStore keyStore, IJsonSerializer jsonSerializer,
             ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager consumerChannelManager,
             INdmDataPublisher dataPublisher, IGrpcService grpcService, bool enableUnsecuredDevWallet,

@@ -468,6 +468,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 _readerWriterLockSlim.EnterReadLock();
                 var block = _blockchainBridge.FindBlock(blockHash, false);
+                if (block != null)
+                {
+                    _blockchainBridge.RecoverTxSenders(block);
+                }
+                
                 return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(block, returnFullTransactionObjects));
             }
             finally
@@ -486,7 +491,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<BlockForRpc>.Fail("Incorrect head block");
                 }
 
-                var result = GetBlock(blockParameter, true);
+                var result = GetBlock(blockParameter, true, true);
+                if (result.Data != null)
+                {
+                    _blockchainBridge.RecoverTxSenders(result.Data);
+                }
+
                 return result.Result.ResultType == ResultType.Failure
                     ? ResultWrapper<BlockForRpc>.Fail(result.Result.Error, result.ErrorType)
                     : ResultWrapper<BlockForRpc>.Success(result.Data == null ? null : new BlockForRpc(result.Data, returnFullTransactionObjects));
@@ -508,6 +518,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<TransactionForRpc>.Success(null);
                 }
 
+                _blockchainBridge.RecoverTxSender(transaction, receipt.BlockNumber);
                 var transactionModel = new TransactionForRpc(receipt.BlockHash, receipt.BlockNumber, receipt.Index, transaction);
                 if (Logger.IsTrace) Logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
                 return ResultWrapper<TransactionForRpc>.Success(transactionModel);
@@ -535,6 +546,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 var transaction = block.Transactions[(int) positionIndex];
+                _blockchainBridge.RecoverTxSender(transaction, block.Number);
+                
                 var transactionModel = new TransactionForRpc(block.Hash, block.Number, (int) positionIndex, transaction);
 
                 if (Logger.IsDebug) Logger.Debug($"eth_getTransactionByBlockHashAndIndex request {blockHash}, index: {positionIndex}, result: {transactionModel.Hash}");
@@ -569,6 +582,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 Block block = result.Data;
                 var transaction = block.Transactions[(int) positionIndex];
+                _blockchainBridge.RecoverTxSender(transaction, block.Number);
+                
                 var transactionModel = new TransactionForRpc(block.Hash, block.Number, (int) positionIndex, transaction);
 
                 if (Logger.IsDebug) Logger.Debug($"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
@@ -879,7 +894,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return GetAccountStorage(address, index, block.Data.Header.StateRoot);
         }
 
-        private ResultWrapper<Core.Block> GetBlock(BlockParameter blockParameter, bool allowNulls = false)
+        private ResultWrapper<Core.Block> GetBlock(BlockParameter blockParameter, bool allowNulls = false, bool recoverTxSenders = false)
         {
             switch (blockParameter.Type)
             {

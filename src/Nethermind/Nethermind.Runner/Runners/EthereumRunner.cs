@@ -117,7 +117,6 @@ namespace Nethermind.Runner.Runners
         private PrivateKey _nodeKey;
         private ChainSpec _chainSpec;
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
-        private IEcdsa _ecdsa = new Ecdsa();
         private IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
         private IJsonSerializer _ethereumJsonSerializer = new EthereumJsonSerializer();
         private CancellationTokenSource _runnerCancellation;
@@ -278,7 +277,8 @@ namespace Nethermind.Runner.Runners
                 filterStore,
                 filterManager,
                 _wallet,
-                rpcState.TransactionProcessor);
+                rpcState.TransactionProcessor,
+                _ethereumEcdsa);
 
             AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, NullTxPool.Instance, NullReceiptStorage.Instance);
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
@@ -850,7 +850,7 @@ namespace Nethermind.Runner.Runners
                 if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
                 var capabilityConnector = await _ndmInitializer.InitAsync(_configProvider, _dbProvider,
                     _initConfig.BaseDbPath, _blockProcessor, _blockTree, _txPool, _txPoolInfoProvider, _specProvider,
-                    _receiptStorage, _wallet, _timestamp, _ecdsa, _rpcModuleProvider, _keyStore, _jsonSerializer,
+                    _receiptStorage, _wallet, _timestamp, _ethereumEcdsa, _rpcModuleProvider, _keyStore, _jsonSerializer,
                     _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcService,
                     _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
                     _initConfig.EnableUnsecuredDevWallet, _logManager);
@@ -889,11 +889,11 @@ namespace Nethermind.Runner.Runners
 
             var privateKeyProvider = new SameKeyGenerator(_nodeKey);
             var discoveryMessageFactory = new DiscoveryMessageFactory(_timestamp);
-            var nodeIdResolver = new NodeIdResolver(_ecdsa);
+            var nodeIdResolver = new NodeIdResolver(_ethereumEcdsa);
 
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
                 _messageSerializationService,
-                _ecdsa,
+                _ethereumEcdsa,
                 privateKeyProvider,
                 discoveryMessageFactory,
                 nodeIdResolver);

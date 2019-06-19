@@ -184,6 +184,15 @@ namespace Nethermind.DataMarketplace.Test
             public BlockHeader BestSuggested { get; }
             public long BestKnown { get; }
             public bool IsSyncing { get; }
+            public void RecoverTxSenders(Block block)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void RecoverTxSender(Transaction tx, long blockNumber)
+            {
+                throw new NotImplementedException();
+            }
 
             public Block FindBlock(Keccak blockHash, bool mainChainOnly)
             {
