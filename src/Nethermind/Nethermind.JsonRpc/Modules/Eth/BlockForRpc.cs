@@ -21,6 +21,8 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -32,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Number = block.Number;
             Hash = block.Hash;
             ParentHash = block.ParentHash;
-            Nonce = block.Nonce;
+            Nonce = block.Nonce.ToBigEndianByteArray().PadLeft(8);
             MixHash = block.MixHash;
             Sha3Uncles = block.OmmersHash;
             LogsBloom = block.Bloom;
@@ -54,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public BigInteger Number { get; set; }
         public Keccak Hash { get; set; }
         public Keccak ParentHash { get; set; }
-        public BigInteger Nonce { get; set; }
+        public byte[] Nonce { get; set; }
         public Keccak MixHash { get; set; }
         public Keccak Sha3Uncles { get; set; }
         public Bloom LogsBloom { get; set; }
