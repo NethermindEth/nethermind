@@ -20,6 +20,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Nethermind.JsonRpc;
 using Newtonsoft.Json;
@@ -31,7 +32,6 @@ namespace Nethermind.Runner.Controllers
     [ApiController]
     public class MainController : ControllerBase
     {
-
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly JsonSerializerSettings _jsonSettings;
 
@@ -40,6 +40,7 @@ namespace Nethermind.Runner.Controllers
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonSettings = new JsonSerializerSettings
             {
+                Formatting = Formatting.Indented,
                 ContractResolver = new CamelCasePropertyNamesContractResolver()
             };
             
@@ -53,14 +54,15 @@ namespace Nethermind.Runner.Controllers
         public ActionResult<string> Get() => "Nethermind JSON RPC";
 
         [HttpPost]
-        public async Task<JsonResult> Post()
+        public async Task Post()
         {
             using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
             {
                 var result = await _jsonRpcProcessor.ProcessAsync(await reader.ReadToEndAsync());
-                return result.IsCollection
-                    ? new JsonResult(result.Responses, _jsonSettings)
-                    : new JsonResult(result.Responses.SingleOrDefault(), _jsonSettings);
+                var json = result.IsCollection
+                    ? JsonConvert.SerializeObject(result.Responses, _jsonSettings)
+                    : JsonConvert.SerializeObject(result.Responses.SingleOrDefault(), _jsonSettings);
+                await Response.WriteAsync($"{json}\n");
             }
         }
     }
