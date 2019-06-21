@@ -17,22 +17,25 @@
  */
 
 
-using Nethermind.Db.Config;
-using Nethermind.Logging;
-using Nethermind.Store;
+using Newtonsoft.Json;
 
-namespace Nethermind.Db.Databases
+namespace Nethermind.JsonRpc.Modules.DebugModule
 {
-    public class BlocksRocksDb : DbOnTheRocks
+    public class TraceOptions
     {
-        public override string Name { get; } = "Blocks";
-
-        public BlocksRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "blocks", dbConfig, logManager)
-        {
-        }
-
-        protected override void UpdateReadMetrics() => Metrics.BlocksDbReads++;
-        protected override void UpdateWriteMetrics() => Metrics.BlocksDbWrites++;
+        [JsonProperty("disableStorage")]
+        public bool DisableStorage { get; set; }
+        
+        [JsonProperty("disableMemory")]
+        public bool DisableMemory { get; set; }
+        
+        [JsonProperty("disableStack")]
+        public bool DisableStack { get; set; }
+        
+        [JsonProperty("tracer")]
+        public string Tracer { get; set; }
+        
+        [JsonProperty("timeout")]
+        public string Timeout { get; set; }
     }
 }

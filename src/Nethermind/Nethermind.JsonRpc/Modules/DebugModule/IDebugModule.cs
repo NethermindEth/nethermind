@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     public interface IDebugModule : IModule
     {
-        ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash);
+        ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, TraceOptions traceOptions);
         ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex);
         ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockHash, int txIndex);
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp);

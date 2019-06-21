@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return new[] {new GethLikeTxTraceConverter()};
         }
 
-        public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash)
+        public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, TraceOptions traceOptions)
         {
             var transactionTrace = _debugBridge.GetTransactionTrace(transactionHash);
             if (transactionTrace == null)
