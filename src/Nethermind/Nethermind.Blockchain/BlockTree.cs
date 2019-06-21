@@ -1206,7 +1206,7 @@ namespace Nethermind.Blockchain
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
             
-            if ((totalDifficultyNeeded && header.TotalDifficulty != null) || requiresCanonical)
+            if ((totalDifficultyNeeded && header.TotalDifficulty == null) || requiresCanonical)
             {
                 (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(header.Number, header.Hash);
                 if (level == null || blockInfo == null)
