@@ -324,7 +324,7 @@ namespace Nethermind.Clique
             // Assemble the voting snapshot to check which votes make sense
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
             bool isEpochBlock = (ulong) number % 30000 == 0;
-            if (!isEpochBlock)
+            if (!isEpochBlock && _proposals.Any())
             {
                 // Gather all the proposals that make sense voting on
                 List<Address> addresses = new List<Address>();
