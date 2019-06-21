@@ -236,7 +236,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (blocks.Length > 0)
                 {
-                    bool parentIsKnown = _blockTree.IsKnownBlock(blocks[0].Number, blocks[0].ParentHash);
+                    bool parentIsKnown = _blockTree.IsKnownBlock(blocks[0].Number - 1, blocks[0].ParentHash);
                     if (!parentIsKnown)
                     {
                         ancestorLookupLevel += _syncBatchSize.Current;
