@@ -53,7 +53,7 @@ namespace Nethermind.PubSub
                     StatusCode = receipt.StatusCode,
                     BlockNumber = receipt.BlockNumber.ToString(),
                     BlockHash = receipt.BlockHash?.Bytes,
-                    TransactionHash = receipt.TransactionHash?.Bytes,
+                    TransactionHash = receipt.TxHash?.Bytes,
                     Index = receipt.Index,
                     GasUsed = receipt.GasUsed,
                     Sender = receipt.Sender?.Bytes,

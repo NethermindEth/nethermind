@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Data
             Removed = false;
             LogIndex = index;
             TransactionIndex = receipt.Index;
-            TransactionHash = receipt.TransactionHash;
+            TransactionHash = receipt.TxHash;
             BlockHash = receipt.BlockHash;
             BlockNumber = receipt.BlockNumber;
             Address = logEntry.LoggersAddress;
