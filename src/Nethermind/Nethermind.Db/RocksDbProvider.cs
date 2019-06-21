@@ -39,7 +39,7 @@ namespace Nethermind.Db
             
             if (useReceiptsDb)
             {
-                ReceiptsDb = new HeadersRocksDb(basePath, dbConfig, logManager);
+                ReceiptsDb = new ReceiptsRocksDb(basePath, dbConfig, logManager);
             }
             else
             {
@@ -67,7 +67,7 @@ namespace Nethermind.Db
         public IDb ConfigsDb { get; }
         public IDb EthRequestsDb { get; }
 
-        public virtual void Dispose()
+        public void Dispose()
         {
             StateDb?.Dispose();
             CodeDb?.Dispose();
