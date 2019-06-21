@@ -220,7 +220,7 @@ namespace Nethermind.Blockchain.Synchronization
                 Block[] blocks = new Block[bodies.Length];
                 for (int i = 0; i < bodies.Length; i++)
                 {
-                    blocks[i] = new Block(null, bodies[i].Transactions, bodies[i].Ommers);
+                    blocks[i] = new Block(null, bodies[i]);
                 }
 
                 _sinceLastTimeout++;

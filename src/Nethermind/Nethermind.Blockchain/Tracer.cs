@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain
         {
             Block block = _blockTree.FindBlock(blockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
-            block.Transactions = new[] {tx};
+            block.Body = new BlockBody(new[] {tx}, new BlockHeader[]{});
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, blockTracer);
             return blockTracer.BuildResult().SingleOrDefault();

@@ -41,13 +41,19 @@ namespace Nethermind.Core
 
         private Block()
         {
+            Body = new BlockBody();
         }
 
+        public Block(BlockHeader blockHeader, BlockBody body)
+        {
+            Header = blockHeader;
+            Body = body;
+        }
+        
         public Block(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers)
         {
             Header = blockHeader;
-            Ommers = ommers.ToArray();
-            Transactions = transactions.ToArray();
+            Body = new BlockBody(transactions.ToArray(), ommers.ToArray());
         }
 
         public Block(BlockHeader blockHeader, params BlockHeader[] ommers)
@@ -57,9 +63,12 @@ namespace Nethermind.Core
 
         public bool IsGenesis => Header.IsGenesis;
 
+        public Transaction[] Transactions => Body.Transactions;
+        
+        public BlockHeader[] Ommers => Body.Ommers;
+        
         public BlockHeader Header { get; set; }
-        public Transaction[] Transactions { get; set; }
-        public BlockHeader[] Ommers { get; set; }
+        public BlockBody Body { get; set; }
 
         public Keccak Hash
         {
@@ -179,13 +188,13 @@ namespace Nethermind.Core
             builder.Append($"{Header.ToString("    ")}");
 
             builder.AppendLine("  Ommers:");
-            foreach (BlockHeader ommer in Ommers)
+            foreach (BlockHeader ommer in Body.Ommers)
             {
                 builder.Append($"{ommer.ToString("    ")}");
             }
 
             builder.AppendLine("  Transactions:");
-            foreach (Transaction tx in Transactions)
+            foreach (Transaction tx in Body.Transactions)
             {
                 builder.Append($"{tx.ToString("    ")}");
             }
@@ -216,20 +225,20 @@ namespace Nethermind.Core
                 case Format.HashNumberAndTx:
                     if (Hash == null)
                     {
-                        return $"{Number} null, tx count: {Transactions.Length}";
+                        return $"{Number} null, tx count: {Body.Transactions.Length}";
                     }
                     else
                     {
-                        return $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Transactions.Length}";
+                        return $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}";
                     }
                 case Format.HashNumberDiffAndTx:
                     if (Hash == null)
                     {
-                        return $"{Number} null, diff: {Difficulty}, tx count: {Transactions.Length}";
+                        return $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}";
                     }
                     else
                     {
-                        return $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Transactions.Length}";
+                        return $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}";
                     }
                 default:
                     if (Hash == null)

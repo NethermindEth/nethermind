@@ -139,7 +139,7 @@ namespace Nethermind.DataMarketplace.Test
             {
                 _txIndex = 0;
                 _headBlock = Build.A.Block.WithParent(Head).WithTimestamp(timestamp).TestObject;
-                _headBlock.Transactions = new Transaction[100];
+                _headBlock.Body.Transactions = new Transaction[100];
                 _receiptsTracer.StartNewBlockTrace(_headBlock);
             }
 
