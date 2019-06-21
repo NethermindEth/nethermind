@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     throw new TimeoutException();
                 }
 
-                BlockHeader startBlock = _blockTree.FindHeader(_testHeaderMapping[startNumber], false);
+                BlockHeader startBlock = _blockTree.FindHeader(_testHeaderMapping[startNumber], BlockTreeLookupOptions.None);
                 BlockHeader[] headers = new BlockHeader[number];
                 headers[0] = startBlock;
                 if (!justFirst)
@@ -116,7 +116,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     throw new TimeoutException();
                 }
 
-                BlockHeader startHeader = _blockTree.FindHeader(blockHashes[0], false);
+                BlockHeader startHeader = _blockTree.FindHeader(blockHashes[0], BlockTreeLookupOptions.None);
                 if (startHeader == null) startHeader = Build.A.BlockHeader.WithHash(blockHashes[0]).TestObject;
 
                 BlockHeader[] blockHeaders = new BlockHeader[blockHashes.Length];

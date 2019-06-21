@@ -82,7 +82,7 @@ namespace Nethermind.Clique.Test
         public void Test_real_block(string blockRlp)
         {
             Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
-            bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(block.ParentHash, false), block.Header);
+            bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None), block.Header);
             bool validSeal = _sealValidator.ValidateSeal(block.Header);
             Assert.True(validHeader);
             Assert.True(validSeal);

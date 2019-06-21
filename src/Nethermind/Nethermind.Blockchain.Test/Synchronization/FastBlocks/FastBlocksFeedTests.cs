@@ -659,11 +659,11 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 Assert.NotNull(header, $"header {tree.Head.Number - i}");
                 if (bodiesSync)
                 {
-                    Block expectedBlock = _localBlockTree.FindBlock(nextHash, false);
+                    Block expectedBlock = _localBlockTree.FindBlock(nextHash, BlockTreeLookupOptions.None);
                     Assert.AreEqual(nextHash, expectedBlock?.Hash, $"hash difference {tree.Head.Number - i}");
                     if (expectedBlock != null)
                     {
-                        Block actualBlock = tree.FindBlock(expectedBlock.Hash, false);
+                        Block actualBlock = tree.FindBlock(expectedBlock.Hash, BlockTreeLookupOptions.None);
                         Rlp saved = Rlp.Encode(actualBlock);
                         Rlp expected = Rlp.Encode(expectedBlock);
                         Assert.AreEqual(expected, saved, $"body {tree.Head.Number - i}");
@@ -832,7 +832,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             receiptSyncBatch.Response = new TxReceipt[receiptSyncBatch.Request.Length][];
             for (int i = 0; i < receiptSyncBatch.Request.Length; i++)
             {
-                Block block = tree.FindBlock(receiptSyncBatch.Request[i], false);
+                Block block = tree.FindBlock(receiptSyncBatch.Request[i], BlockTreeLookupOptions.None);
                 receiptSyncBatch.Response[i] = new TxReceipt[block.Transactions.Length];
                 for (int j = 0; j < block.Transactions.Length; j++)
                 {
@@ -861,7 +861,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             for (int i = 0; i < Math.Min(maxResponseSize, requestSize); i++)
             {
-                Block block = tree.FindBlock(bodiesSyncBatch.Request[i], false);
+                Block block = tree.FindBlock(bodiesSyncBatch.Request[i], BlockTreeLookupOptions.None);
                 bodiesSyncBatch.Response[i] = new BlockBody(block.Transactions, block.Ommers);
             }
 

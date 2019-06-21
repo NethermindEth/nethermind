@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Numerics;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
@@ -44,7 +45,7 @@ namespace Nethermind.Facade
 
         void RecoverTxSender(Transaction tx, long blockNumber);
         
-        Block FindBlock(Keccak blockHash, bool mainChainOnly);
+        Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
         Block FindBlock(long blockNumber);
         Block RetrieveHeadBlock();
         Block RetrieveGenesisBlock();

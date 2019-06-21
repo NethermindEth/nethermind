@@ -132,7 +132,7 @@ namespace Nethermind.Clique
                 {
                     if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamp.EpochSeconds)
                     {
-                        _signalsQueue.Add(_blockTree.FindBlock(_blockTree.Head.Hash, false));
+                        _signalsQueue.Add(_blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None));
                     }
 
                     _timer.Enabled = true;

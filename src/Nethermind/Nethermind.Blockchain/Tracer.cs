@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain
 
         public GethLikeTxTrace Trace(Keccak blockHash, int txIndex)
         {
-            Block block = _blockTree.FindBlock(blockHash, false);
+            Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
 
             if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain
 
         public GethLikeTxTrace[] TraceBlock(Keccak blockHash)
         {
-            Block block = _blockTree.FindBlock(blockHash, false);
+            Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             return TraceBlock(block);
         }
 
@@ -161,7 +161,7 @@ namespace Nethermind.Blockchain
 
         public ParityLikeTxTrace[] ParityTraceBlock(Keccak blockHash, ParityTraceTypes parityTraceTypes)
         {
-            Block block = _blockTree.FindBlock(blockHash, false);
+            Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             return ParityTraceBlock(block, parityTraceTypes);
         }
 

@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain
             BlockHeader parentHeader = _blockTree.Head;
             if (parentHeader == null) return null;
 
-            Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
+            Block parent = _blockTree.FindBlock(parentHeader.Hash, BlockTreeLookupOptions.None);
             UInt256 timestamp = _timestamp.EpochSeconds;
 
             BlockHeader header = new BlockHeader(

@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain.Synchronization
                             // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
                             if (peerInfo.TotalDifficulty == _blockTree.BestSuggestedHeader?.TotalDifficulty && peerInfo.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
                             {
-                                Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash, false);
+                                Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
                                 if (block != null) // can be null if fast syncing headers only
                                 {
                                     peerInfo.SyncPeer.SendNewBlock(block);

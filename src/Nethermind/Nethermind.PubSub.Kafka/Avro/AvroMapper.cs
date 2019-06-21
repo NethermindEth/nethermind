@@ -89,7 +89,7 @@ namespace Nethermind.PubSub.Kafka.Avro
 
             return new FullTransaction
             {
-                minedAt = (long) _blockTree.FindBlock(receipt.BlockHash, false).Timestamp,
+                minedAt = (long) _blockTree.FindBlock(receipt.BlockHash, BlockTreeLookupOptions.None).Timestamp,
                 blockNumber = (long) receipt.BlockNumber,
                 receipt = new Receipt
                 {

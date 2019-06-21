@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -158,7 +159,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_hash()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<bool>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
 
             IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
@@ -171,7 +172,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<bool>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
@@ -186,7 +187,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number_without_tx_details()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<bool>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
@@ -232,7 +233,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number_empty_param()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<bool>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 

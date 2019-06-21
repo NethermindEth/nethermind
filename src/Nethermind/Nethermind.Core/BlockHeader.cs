@@ -68,6 +68,8 @@ namespace Nethermind.Core
         public ulong Nonce { get; set; }
         public Keccak Hash { get; set; }
         public UInt256? TotalDifficulty { get; set; }
+        
+        public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
 
         private static ThreadLocal<byte[]> _rlpBuffer = new ThreadLocal<byte[]>(() => new byte[1024]);

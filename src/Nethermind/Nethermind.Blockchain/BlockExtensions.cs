@@ -28,16 +28,20 @@ namespace Nethermind.Blockchain
     {
         public static Keccak CalculateReceiptRoot(this Block block, ISpecProvider specProvider, TxReceipt[] txReceipts)
         {
-            PatriciaTree receiptTree = txReceipts.Length > 0 ? new PatriciaTree(NullDb.Instance, Keccak.EmptyTreeHash, false) : null;
+            if (txReceipts.Length == 0)
+            {
+                return PatriciaTree.EmptyTreeHash;
+            }
+            
+            PatriciaTree receiptTree = new PatriciaTree();
             for (int i = 0; i < txReceipts.Length; i++)
             {
                 Rlp receiptRlp = Rlp.Encode(txReceipts[i], specProvider.GetSpec(block.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
-                receiptTree?.Set(Rlp.Encode(i).Bytes, receiptRlp);
+                receiptTree.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 
-            receiptTree?.UpdateRootHash();
-            Keccak receiptRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
-            return receiptRoot;
+            receiptTree.UpdateRootHash();
+            return receiptTree.RootHash;
         }
         
         public static Keccak CalculateTxRoot(this Block block)
@@ -60,7 +64,9 @@ namespace Nethermind.Blockchain
         
         public static Keccak CalculateOmmersHash(this Block block)
         {
-            return Keccak.Compute(Rlp.Encode(block.Ommers));
+            return block.Ommers.Length == 0
+                ? Keccak.OfAnEmptySequenceRlp
+                : Keccak.Compute(Rlp.Encode(block.Ommers));
         }
     }
 }

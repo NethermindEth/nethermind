@@ -169,16 +169,42 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         {
                             batch.Prioritized = true;
                         }
-
-                        for (int i = requestSize - 1; i >= 0; i--)
+                        
+                        int collectedRequests = 0;
+                        while (collectedRequests < requestSize)
                         {
-                            batch.Bodies.Headers[i] = header;
-                            _lowestRequestedBodyHash = batch.Bodies.Request[i] = header.Hash;
-                            header = _blockTree.FindHeader(header.ParentHash);
-                            if (header == null)
+                            int i = requestSize - collectedRequests - 1;
+//                            while (header != null && !header.HasBody)
+//                            {
+//                                header = _blockTree.FindHeader(header.ParentHash);
+//                            }
+                            
+                            if(header == null)
                             {
                                 break;
                             }
+                            
+                            batch.Bodies.Headers[i] = header;
+                            collectedRequests++;
+                            _lowestRequestedBodyHash = batch.Bodies.Request[i] = header.Hash;
+                            
+                            header = _blockTree.FindHeader(header.ParentHash);
+                        }
+                        
+                        if (collectedRequests == 0)
+                        {
+                            return null;
+                        }
+                        
+                        //only for the final one
+                        if (collectedRequests < requestSize)
+                        {
+                            BlockHeader[] currentHeaders = batch.Bodies.Headers;
+                            Keccak[] currentRequests = batch.Bodies.Request;
+                            batch.Bodies.Request = new Keccak[collectedRequests];
+                            batch.Bodies.Headers = new BlockHeader[collectedRequests];
+                            Array.Copy(currentHeaders, requestSize - collectedRequests, batch.Bodies.Headers, 0, collectedRequests);
+                            Array.Copy(currentRequests, requestSize - collectedRequests, batch.Bodies.Request, 0, collectedRequests);
                         }
 
                         break;
@@ -199,7 +225,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     case FastBlocksBatchType.Receipts:
                     {
                         Keccak hash = _lowestRequestedReceiptsHash;
-                        Block predecessorBlock = _blockTree.FindBlock(hash, false);
+                        Block predecessorBlock = _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                         Block block = predecessorBlock;
                         if (block == null)
                         {
@@ -249,7 +275,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 collectedRequests++;
                             }
 
-                            block = _blockTree.FindBlock(block.ParentHash, false);
+                            block = _blockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             if (block == null || block.IsGenesis)
                             {
                                 break;

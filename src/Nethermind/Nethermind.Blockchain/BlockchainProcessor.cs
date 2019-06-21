@@ -204,7 +204,7 @@ namespace Nethermind.Blockchain
         {
             if (blockRef.IsInDb)
             {
-                Block block = _blockTree.FindBlock(blockRef.BlockHash, false);
+                Block block = _blockTree.FindBlock(blockRef.BlockHash, BlockTreeLookupOptions.None);
                 if (block == null)
                 {
                     return false;
