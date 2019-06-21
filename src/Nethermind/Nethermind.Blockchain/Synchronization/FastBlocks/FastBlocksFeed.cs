@@ -499,7 +499,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         break;
                     }
 
-                    receipt.TransactionHash = block
+                    receipt.TxHash = block
                         .Transactions[receiptIndex]
                         .Hash;
                 }

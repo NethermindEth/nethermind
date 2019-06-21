@@ -57,7 +57,7 @@ namespace Nethermind.Core.Test.Builders
 
         public ReceiptBuilder WithTransactionHash(Keccak hash)
         {
-            TestObject.TransactionHash = hash;
+            TestObject.TxHash = hash;
             return this;
         }
 

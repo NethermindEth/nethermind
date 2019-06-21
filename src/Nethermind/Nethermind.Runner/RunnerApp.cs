@@ -81,7 +81,7 @@ namespace Nethermind.Runner
             var configurationType = typeof(IConfig);
             var configs = AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => a.GetTypes())
-                .Where(t => configurationType.IsAssignableFrom(t) && t.IsInterface && t != configurationType)
+                .Where(t => configurationType.IsAssignableFrom(t) && !t.IsInterface)
                 .ToList();
             
             var app = new CommandLineApplication {Name = "Nethermind.Runner"};

@@ -245,7 +245,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public TxReceipt GetReceipt(Keccak txHash)
             {
-                return _receiptsTracer.TxReceipts.Single(r => r?.TransactionHash == txHash);
+                return _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
             }
 
             public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction)

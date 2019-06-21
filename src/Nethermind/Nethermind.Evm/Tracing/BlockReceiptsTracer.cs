@@ -87,7 +87,7 @@ namespace Nethermind.Evm.Tracing
             txReceipt.GasUsed = spentGas;
             txReceipt.Sender = transaction.SenderAddress;
             txReceipt.ContractAddress = transaction.IsContractCreation ? recipient : null;
-            txReceipt.TransactionHash = transaction.Hash;
+            txReceipt.TxHash = transaction.Hash;
 
             return txReceipt;
         }

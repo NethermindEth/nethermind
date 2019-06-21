@@ -126,7 +126,7 @@ namespace Nethermind.Core.Test.Builders
                 foreach (Transaction transaction in current.Transactions)
                 {
                     TxReceipt receipt = new TxReceipt();
-                    receipt.TransactionHash = transaction.Hash;
+                    receipt.TxHash = transaction.Hash;
                     _receiptStorage.Add(receipt, false);
                     receipts.Add(receipt);
                 }
