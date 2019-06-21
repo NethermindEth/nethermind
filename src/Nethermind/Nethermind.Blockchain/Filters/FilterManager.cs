@@ -303,7 +303,7 @@ namespace Nethermind.Blockchain.Filters
         private FilterLog CreateLog(UInt256 logIndex, TxReceipt txReceipt, LogEntry logEntry)
         {
             return new FilterLog(logIndex, txReceipt.BlockNumber, txReceipt.BlockHash,
-                (UInt256)txReceipt.Index, txReceipt.TransactionHash, logEntry.LoggersAddress,
+                (UInt256)txReceipt.Index, txReceipt.TxHash, logEntry.LoggersAddress,
                 logEntry.Data, logEntry.Topics);
         }
     }

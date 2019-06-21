@@ -101,7 +101,7 @@ namespace Nethermind.PubSub.Kafka.Avro
                     logsBloom = receipt.Bloom.ToString(),
                     gasUsed = receipt.GasUsed,
                     contractAddress = receipt.ContractAddress?.ToString() ?? string.Empty,
-                    transactionHash = receipt.TransactionHash.ToString(),
+                    transactionHash = receipt.TxHash.ToString(),
                     cumulativeGasUsed = receipt.GasUsedTotal,
                     status = receipt.StatusCode,
                     logs = receipt.Logs?.Select((l, i) => new Log
@@ -111,7 +111,7 @@ namespace Nethermind.PubSub.Kafka.Avro
                         transactionIndex = receipt.Index,
                         blockHash = receipt.BlockHash.ToString(),
                         data = l.Data.ToString(),
-                        transactionHash = receipt.TransactionHash.ToString(),
+                        transactionHash = receipt.TxHash.ToString(),
                         address = l.LoggersAddress.ToString(),
                         logTopics = l.Topics?.Select(t => t.ToString()).ToList() ?? new List<string>(),
                         removed = removed

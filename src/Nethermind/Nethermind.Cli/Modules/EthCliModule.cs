@@ -100,15 +100,15 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getTransactionByBlockNumberAndIndex")]
-        public string GetTransactionByBlockNumberAndIndex(string blockParameter, string index)
+        public object GetTransactionByBlockNumberAndIndex(string blockParameter, string index)
         {
-            return NodeManager.Post<string>("eth_getTransactionByBlockNumberAndIndex", blockParameter, index).Result;
+            return NodeManager.Post<object>("eth_getTransactionByBlockNumberAndIndex", blockParameter, index).Result;
         }
 
         [CliFunction("eth", "getTransactionReceipt")]
-        public string GetTransactionReceipt(string txHash)
+        public object GetTransactionReceipt(string txHash)
         {
-            return NodeManager.Post<string>("eth_getTransactionReceipt", txHash).Result;
+            return NodeManager.Post<object>("eth_getTransactionReceipt", txHash).Result;
         }
 
         [CliFunction("eth", "getBalance")]

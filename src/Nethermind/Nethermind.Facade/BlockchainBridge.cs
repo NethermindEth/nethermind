@@ -131,9 +131,9 @@ namespace Nethermind.Facade
 
         public TxReceipt GetReceipt(Keccak txHash)
         {
-            var receipt = _receiptStorage.Find(txHash);
-            receipt.TransactionHash = txHash;
-            return receipt;
+            var txReceipt = _receiptStorage.Find(txHash);
+            txReceipt.TxHash = txHash;
+            return txReceipt;
         }
 
         public class CallOutput

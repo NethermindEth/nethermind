@@ -34,13 +34,13 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public void Add(TxReceipt txReceipt, bool isProcessed)
-            => _receipts.TryAdd(txReceipt.TransactionHash, txReceipt);
+            => _receipts.TryAdd(txReceipt.TxHash, txReceipt);
 
         public void Insert(long blockNumber, TxReceipt txReceipt)
         {
             if (txReceipt != null)
             {
-                _receipts.TryAdd(txReceipt.TransactionHash, txReceipt);
+                _receipts.TryAdd(txReceipt.TxHash, txReceipt);
             }
 
             LowestInsertedReceiptBlock = blockNumber;
