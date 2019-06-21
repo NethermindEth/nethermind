@@ -199,7 +199,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             Assert.AreEqual(miner1Tree.BestSuggestedHeader.Hash, _blockTree.BestSuggestedHeader.Hash, "client agrees with miner before split");
 
-            Block splitBlock = Build.A.Block.WithParent(miner1Tree.FindParent(miner1Tree.Head)).WithDifficulty(miner1Tree.Head.Difficulty - 1).TestObject;
+            Block splitBlock = Build.A.Block.WithParent(miner1Tree.FindParent(miner1Tree.Head, BlockTreeLookupOptions.TotalDifficultyNotNeeded)).WithDifficulty(miner1Tree.Head.Difficulty - 1).TestObject;
             Block splitBlockChild = Build.A.Block.WithParent(splitBlock).TestObject;
 
             miner1Tree.SuggestBlock(splitBlock);

@@ -1173,7 +1173,7 @@ namespace Nethermind.Blockchain.Test
             Block lastBlock = previousBlock;
             
             BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
-            loadedTree.FindHeader(lastBlock.Hash);
+            loadedTree.FindHeader(lastBlock.Hash, BlockTreeLookupOptions.None);
         }
 
         static object[] SourceOfBSearchTestCases =

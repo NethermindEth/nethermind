@@ -377,7 +377,7 @@ namespace Nethermind.Blockchain.Synchronization
                         peerInfo.HeadNumber = header.Number;
                         peerInfo.HeadHash = header.Hash;
 
-                        BlockHeader parent = _blockTree.FindHeader(header.ParentHash);
+                        BlockHeader parent = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.None);
                         if (parent != null)
                         {
                             peerInfo.TotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;

@@ -84,11 +84,6 @@ namespace Nethermind.Blockchain
             return _wrapped.FindHeader(blockHash, options);
         }
 
-        public BlockHeader FindHeader(Keccak blockHash)
-        {
-            return _wrapped.FindHeader(blockHash);
-        }
-
         public BlockHeader FindHeader(long blockNumber)
         {
             return _wrapped.FindHeader(blockNumber);

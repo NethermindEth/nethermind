@@ -23,29 +23,29 @@ namespace Nethermind.Blockchain.Validators
     // ReSharper disable once InconsistentNaming
     public static class IBlockTreeExtensions
     {
-        public static BlockHeader FindParentHeader(this IBlockTree tree, BlockHeader header, BlockTreeLookupOptions options = BlockTreeLookupOptions.None)
+        public static BlockHeader FindParentHeader(this IBlockTree tree, BlockHeader header, BlockTreeLookupOptions options)
         {
             return tree.FindHeader(header.ParentHash, options);
         }
 
-        public static Block FindParent(this IBlockTree tree, Block block, BlockTreeLookupOptions options = BlockTreeLookupOptions.None)
+        public static Block FindParent(this IBlockTree tree, Block block, BlockTreeLookupOptions options)
         {
             return tree.FindBlock(block.Header.ParentHash, options);
         }
         
-        public static Block FindParent(this IBlockTree tree, BlockHeader blockHeader, BlockTreeLookupOptions options = BlockTreeLookupOptions.None)
+        public static Block FindParent(this IBlockTree tree, BlockHeader blockHeader, BlockTreeLookupOptions options)
         {
             return tree.FindBlock(blockHeader.ParentHash, options);
         }
 
-        public static Block RetrieveHeadBlock(this IBlockTree tree, BlockTreeLookupOptions options = BlockTreeLookupOptions.None)
+        public static Block RetrieveHeadBlock(this IBlockTree tree)
         {
-            return tree.FindBlock(tree.Head.Hash, options);
+            return tree.FindBlock(tree.Head.Hash, BlockTreeLookupOptions.None);
         }
 
-        public static Block RetrieveGenesisBlock(this IBlockTree tree, BlockTreeLookupOptions options = BlockTreeLookupOptions.RequireCanonical)
+        public static Block RetrieveGenesisBlock(this IBlockTree tree)
         {
-            return tree.FindBlock(tree.Genesis.Hash, options);
+            return tree.FindBlock(tree.Genesis.Hash, BlockTreeLookupOptions.RequireCanonical);
         }
     }
 }

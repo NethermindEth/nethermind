@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     case FastBlocksBatchType.Bodies:
                     {
                         Keccak hash = _lowestRequestedBodyHash;
-                        BlockHeader header = _blockTree.FindHeader(hash);
+                        BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                         if (header == null)
                         {
                             throw new InvalidDataException($"Last header is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 return null;
                             }
 
-                            header = _blockTree.FindParentHeader(header);
+                            header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             if (header == null)
                             {
                                 throw new InvalidDataException($"Parent header is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
@@ -188,7 +188,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             collectedRequests++;
                             _lowestRequestedBodyHash = batch.Bodies.Request[i] = header.Hash;
                             
-                            header = _blockTree.FindHeader(header.ParentHash);
+                            header = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                         }
                         
                         if (collectedRequests == 0)
@@ -239,7 +239,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 return null;
                             }
 
-                            block = _blockTree.FindParent(predecessorBlock);
+                            block = _blockTree.FindParent(predecessorBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             if (block == null)
                             {
                                 throw new InvalidDataException($"Parent block is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");

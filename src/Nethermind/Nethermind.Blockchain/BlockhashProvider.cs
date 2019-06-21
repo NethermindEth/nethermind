@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain
 
             bool isFastSyncSearch = false;
 
-            BlockHeader header = _blockTree.FindHeader(currentBlock.ParentHash);
+            BlockHeader header = _blockTree.FindHeader(currentBlock.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             for (var i = 0; i < _maxDepth; i++)
             {
                 if (number == header.Number)
@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain
                     return header.Hash;
                 }
 
-                header = _blockTree.FindHeader(header.ParentHash);
+                header = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (_blockTree.IsMainChain(header.Hash) && !isFastSyncSearch)
                 {
                     try

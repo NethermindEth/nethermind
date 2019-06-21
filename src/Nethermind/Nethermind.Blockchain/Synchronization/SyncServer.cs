@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 bool headIsGenesis = _blockTree.Head.Hash == _blockTree.Genesis.Hash;
                 return headIsGenesis
-                    ? _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString())) ?? _blockTree.Genesis
+                    ? _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString()), BlockTreeLookupOptions.None) ?? _blockTree.Genesis
                     : _blockTree.Head;
             }
         }

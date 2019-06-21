@@ -148,7 +148,7 @@ namespace Nethermind.Clique
                     {
                         if(ReferenceEquals(scheduledBlock, _scheduledBlock))
                         {
-                            BlockHeader parent = _blockTree.FindParentHeader(scheduledBlock.Header);
+                            BlockHeader parent = _blockTree.FindParentHeader(scheduledBlock.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             Address parentSigner = _snapshotManager.GetBlockSealer(parent);
                             
                             string parentTurnDescription = parent.IsInTurn() ? "IN TURN" : "OUT OF TURN";

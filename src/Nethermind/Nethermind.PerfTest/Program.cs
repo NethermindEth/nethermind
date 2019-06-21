@@ -248,11 +248,6 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindHeader(blockHash, options);
             }
 
-            public BlockHeader FindHeader(Keccak blockHash)
-            {
-                return _blockTree.FindHeader(blockHash);
-            }
-
             public BlockHeader FindHeader(long number)
             {
                 return _blockTree.FindHeader(number);

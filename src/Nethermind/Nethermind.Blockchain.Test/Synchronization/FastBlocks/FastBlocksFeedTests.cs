@@ -655,7 +655,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             Keccak nextHash = tree.Head.Hash;
             for (int i = 0; i < tree.Head.Number; i++)
             {
-                BlockHeader header = _localBlockTree.FindHeader(nextHash);
+                BlockHeader header = _localBlockTree.FindHeader(nextHash, BlockTreeLookupOptions.None);
                 Assert.NotNull(header, $"header {tree.Head.Number - i}");
                 if (bodiesSync)
                 {

@@ -134,12 +134,10 @@ namespace Nethermind.Blockchain
         
         Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
         
-        Block FindBlock(long blockNumber);
-        
         BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
         
-        BlockHeader FindHeader(Keccak blockHash);
-        
+        Block FindBlock(long blockNumber);
+
         BlockHeader FindHeader(long blockNumber);
         
         Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
