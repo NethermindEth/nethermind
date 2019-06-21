@@ -348,7 +348,7 @@ namespace Nethermind.Blockchain.Test
                     _processingTestContext._resetEvent.WaitOne(IgnoreWait);
                     Assert.AreEqual(_processingTestContext._headBefore, _processingTestContext._blockTree.Head.Hash, "head");
                     _logger.Info($"Finished waiting for {_block.ToString(Block.Format.Short)} to be deleted");
-                    Assert.Null(_processingTestContext._blockTree.FindBlock(_block.Hash, false));
+                    Assert.Null(_processingTestContext._blockTree.FindBlock(_block.Hash, BlockTreeLookupOptions.None));
                     return _processingTestContext;
                 }
             }

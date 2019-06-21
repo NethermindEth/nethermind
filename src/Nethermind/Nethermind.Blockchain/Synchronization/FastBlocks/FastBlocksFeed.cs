@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     case FastBlocksBatchType.Bodies:
                     {
                         Keccak hash = _lowestRequestedBodyHash;
-                        BlockHeader header = _blockTree.FindHeader(hash);
+                        BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                         if (header == null)
                         {
                             throw new InvalidDataException($"Last header is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 return null;
                             }
 
-                            header = _blockTree.FindParentHeader(header);
+                            header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             if (header == null)
                             {
                                 throw new InvalidDataException($"Parent header is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
@@ -169,16 +169,42 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         {
                             batch.Prioritized = true;
                         }
-
-                        for (int i = requestSize - 1; i >= 0; i--)
+                        
+                        int collectedRequests = 0;
+                        while (collectedRequests < requestSize)
                         {
-                            batch.Bodies.Headers[i] = header;
-                            _lowestRequestedBodyHash = batch.Bodies.Request[i] = header.Hash;
-                            header = _blockTree.FindHeader(header.ParentHash);
-                            if (header == null)
+                            int i = requestSize - collectedRequests - 1;
+//                            while (header != null && !header.HasBody)
+//                            {
+//                                header = _blockTree.FindHeader(header.ParentHash);
+//                            }
+                            
+                            if(header == null)
                             {
                                 break;
                             }
+                            
+                            batch.Bodies.Headers[i] = header;
+                            collectedRequests++;
+                            _lowestRequestedBodyHash = batch.Bodies.Request[i] = header.Hash;
+                            
+                            header = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                        }
+                        
+                        if (collectedRequests == 0)
+                        {
+                            return null;
+                        }
+                        
+                        //only for the final one
+                        if (collectedRequests < requestSize)
+                        {
+                            BlockHeader[] currentHeaders = batch.Bodies.Headers;
+                            Keccak[] currentRequests = batch.Bodies.Request;
+                            batch.Bodies.Request = new Keccak[collectedRequests];
+                            batch.Bodies.Headers = new BlockHeader[collectedRequests];
+                            Array.Copy(currentHeaders, requestSize - collectedRequests, batch.Bodies.Headers, 0, collectedRequests);
+                            Array.Copy(currentRequests, requestSize - collectedRequests, batch.Bodies.Request, 0, collectedRequests);
                         }
 
                         break;
@@ -199,7 +225,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     case FastBlocksBatchType.Receipts:
                     {
                         Keccak hash = _lowestRequestedReceiptsHash;
-                        Block predecessorBlock = _blockTree.FindBlock(hash, false);
+                        Block predecessorBlock = _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                         Block block = predecessorBlock;
                         if (block == null)
                         {
@@ -213,7 +239,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 return null;
                             }
 
-                            block = _blockTree.FindParent(predecessorBlock);
+                            block = _blockTree.FindParent(predecessorBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             if (block == null)
                             {
                                 throw new InvalidDataException($"Parent block is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
@@ -249,7 +275,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                 collectedRequests++;
                             }
 
-                            block = _blockTree.FindBlock(block.ParentHash, false);
+                            block = _blockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             if (block == null || block.IsGenesis)
                             {
                                 break;

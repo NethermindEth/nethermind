@@ -34,7 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Bodies = new BlockBody[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
             {
-                Bodies[i] = blocks[i] == null ? null : new BlockBody(blocks[i].Transactions, blocks[i].Ommers);
+                Bodies[i] = blocks[i] == null ? null : blocks[i].Body;
             }
         }
         

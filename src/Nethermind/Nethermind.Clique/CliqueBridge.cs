@@ -69,7 +69,7 @@ namespace Nethermind.Clique
 
         public Snapshot GetSnapshot(Keccak hash)
         {
-            BlockHeader head = _blockTree.FindHeader(hash);
+            BlockHeader head = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
         }
 
@@ -93,26 +93,26 @@ namespace Nethermind.Clique
 
         public Address[] GetSigners(long number)
         {
-            BlockHeader head = _blockTree.FindHeader(number);
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => s.Key).ToArray();
+            BlockHeader header = _blockTree.FindHeader(number);
+            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers.Select(s => s.Key).ToArray();
         }
 
         public string[] GetSignersAnnotated()
         {
-            BlockHeader head = _blockTree.Head;
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
+            BlockHeader header = _blockTree.Head;
+            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers.Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
         
         public Address[] GetSigners(Keccak hash)
         {
-            BlockHeader head = _blockTree.FindHeader(hash);
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => s.Key).ToArray();
+            BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers.Select(s => s.Key).ToArray();
         }
         
         public string[] GetSignersAnnotated(Keccak hash)
         {
-            BlockHeader head = _blockTree.FindHeader(hash);
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
+            BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers.Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
     }
 }

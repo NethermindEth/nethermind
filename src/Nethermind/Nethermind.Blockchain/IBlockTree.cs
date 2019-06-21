@@ -132,19 +132,17 @@ namespace Nethermind.Blockchain
         
         Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue);
         
-        Block FindBlock(Keccak blockHash, bool mainChainOnly);
+        Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
         
-        BlockHeader FindHeader(Keccak blockHash, bool mainChainOnly);
+        BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
         
-        BlockHeader FindHeader(Keccak blockHash);
-        
+        Block FindBlock(long blockNumber);
+
         BlockHeader FindHeader(long blockNumber);
         
         Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
         
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
-        
-        Block FindBlock(long blockNumber);
         
         void DeleteInvalidBlock(Block invalidBlock);
         

@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Synchronization
                     break;
                 }
 
-                bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash);
+                bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
 
             return bestFullState;

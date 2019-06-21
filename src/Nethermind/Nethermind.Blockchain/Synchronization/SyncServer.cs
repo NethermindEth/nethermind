@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 bool headIsGenesis = _blockTree.Head.Hash == _blockTree.Genesis.Hash;
                 return headIsGenesis
-                    ? _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString())) ?? _blockTree.Genesis
+                    ? _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString()), BlockTreeLookupOptions.None) ?? _blockTree.Genesis
                     : _blockTree.Head;
             }
         }
@@ -218,17 +218,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public Block Find(Keccak hash)
         {
-            return _blockTree.FindBlock(hash, false);
-        }
-
-        public BlockHeader FindHeader(Keccak hash)
-        {
-            return _blockTree.FindHeader(hash, false);
-        }
-
-        public Block Find(long number)
-        {
-            return _blockTree.Head.Number >= number ? _blockTree.FindBlock(number) : null;
+            return _blockTree.FindBlock(hash, BlockTreeLookupOptions.None);
         }
 
         public BlockHeader FindHeader(long number)
@@ -236,7 +226,7 @@ namespace Nethermind.Blockchain.Synchronization
             return _blockTree.FindHeader(number);
         }
 
-        public Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse)
+        public Block[] FindBlocks(Keccak hash, int numberOfBlocks, int skip, bool reverse)
         {
             return _blockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
         }

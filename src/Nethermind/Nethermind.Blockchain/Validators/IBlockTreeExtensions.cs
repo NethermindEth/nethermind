@@ -23,34 +23,29 @@ namespace Nethermind.Blockchain.Validators
     // ReSharper disable once InconsistentNaming
     public static class IBlockTreeExtensions
     {
-        public static BlockHeader FindParentHeader(this IBlockTree tree, BlockHeader header)
+        public static BlockHeader FindParentHeader(this IBlockTree tree, BlockHeader header, BlockTreeLookupOptions options)
         {
-            return tree.FindHeader(header.ParentHash, false);
+            return tree.FindHeader(header.ParentHash, options);
         }
 
-        public static Block FindParent(this IBlockTree tree, Block block)
+        public static Block FindParent(this IBlockTree tree, Block block, BlockTreeLookupOptions options)
         {
-            return tree.FindBlock(block.Header.ParentHash, false);
+            return tree.FindBlock(block.Header.ParentHash, options);
         }
         
-        public static Block FindParent(this IBlockTree tree, BlockHeader blockHeader)
+        public static Block FindParent(this IBlockTree tree, BlockHeader blockHeader, BlockTreeLookupOptions options)
         {
-            return tree.FindBlock(blockHeader.ParentHash, false);
-        }
-
-        public static Block RetrieveBestSuggestedBlock(this IBlockTree tree)
-        {
-            return tree.FindBlock(tree.BestSuggestedHeader.Hash, false);
+            return tree.FindBlock(blockHeader.ParentHash, options);
         }
 
         public static Block RetrieveHeadBlock(this IBlockTree tree)
         {
-            return tree.FindBlock(tree.Head.Hash, false);
+            return tree.FindBlock(tree.Head.Hash, BlockTreeLookupOptions.None);
         }
 
         public static Block RetrieveGenesisBlock(this IBlockTree tree)
         {
-            return tree.FindBlock(tree.Genesis.Hash, true);
+            return tree.FindBlock(tree.Genesis.Hash, BlockTreeLookupOptions.RequireCanonical);
         }
     }
 }

@@ -22,6 +22,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -236,7 +237,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             try
             {
                 _readerWriterLockSlim.EnterReadLock();
-                var block = _blockchainBridge.FindBlock(blockHash, false);
+                var block = _blockchainBridge.FindBlock(blockHash, BlockTreeLookupOptions.None);
                 if (block == null)
                 {
                     return ResultWrapper<BigInteger?>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound, null);
@@ -281,7 +282,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             try
             {
                 _readerWriterLockSlim.EnterReadLock();
-                var block = _blockchainBridge.FindBlock(blockHash, false);
+                var block = _blockchainBridge.FindBlock(blockHash, BlockTreeLookupOptions.None);
                 if (block == null)
                 {
                     return ResultWrapper<BigInteger?>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound, null);
@@ -467,7 +468,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             try
             {
                 _readerWriterLockSlim.EnterReadLock();
-                var block = _blockchainBridge.FindBlock(blockHash, false);
+                var block = _blockchainBridge.FindBlock(blockHash, BlockTreeLookupOptions.None);
                 if (block != null && returnFullTransactionObjects)
                 {
                     _blockchainBridge.RecoverTxSenders(block);
@@ -534,7 +535,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             try
             {
                 _readerWriterLockSlim.EnterReadLock();
-                var block = _blockchainBridge.FindBlock(blockHash, false);
+                var block = _blockchainBridge.FindBlock(blockHash, BlockTreeLookupOptions.None);
                 if (block == null)
                 {
                     return ResultWrapper<TransactionForRpc>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
@@ -622,7 +623,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 _readerWriterLockSlim.EnterReadLock();
                 Keccak blockHash = blockHashData;
-                var block = _blockchainBridge.FindBlock(blockHash, false);
+                var block = _blockchainBridge.FindBlock(blockHash, BlockTreeLookupOptions.None);
                 if (block == null)
                 {
                     return ResultWrapper<BlockForRpc>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
@@ -634,7 +635,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 var ommerHeader = block.Ommers[(int) positionIndex];
-                var ommer = _blockchainBridge.FindBlock(ommerHeader.Hash, false);
+                var ommer = _blockchainBridge.FindBlock(ommerHeader.Hash, BlockTreeLookupOptions.None);
                 if (ommer == null)
                 {
                     return ResultWrapper<BlockForRpc>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
@@ -671,7 +672,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 var ommerHeader = result.Data.Ommers[(int) positionIndex];
-                var ommer = _blockchainBridge.FindBlock(ommerHeader.Hash, false);
+                var ommer = _blockchainBridge.FindBlock(ommerHeader.Hash, BlockTreeLookupOptions.None);
                 if (ommer == null)
                 {
                     return ResultWrapper<BlockForRpc>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
@@ -796,7 +797,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
-                var headBlock = _blockchainBridge.FindBlock(_blockchainBridge.BestSuggested.Hash, false);
+                var headBlock = _blockchainBridge.FindBlock(_blockchainBridge.BestSuggested.Hash, BlockTreeLookupOptions.None);
                 var count = headBlock.Ommers.Length;
                 return ResultWrapper<BigInteger?>.Success(count);
             }
@@ -814,7 +815,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
-                var headBlock = _blockchainBridge.FindBlock(_blockchainBridge.BestSuggested.Hash, false);
+                var headBlock = _blockchainBridge.FindBlock(_blockchainBridge.BestSuggested.Hash, BlockTreeLookupOptions.None);
                 var count = headBlock.Transactions.Length;
                 return ResultWrapper<BigInteger?>.Success(count);
             }
@@ -901,7 +902,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             switch (blockParameter.Type)
             {
                 case BlockParameterType.Pending:
-                    var pending = _blockchainBridge.FindBlock(_blockchainBridge.BestSuggested.Hash, false);
+                    var pending = _blockchainBridge.FindBlock(_blockchainBridge.BestSuggested.Hash, BlockTreeLookupOptions.None);
                     return ResultWrapper<Block>.Success(pending); // TODO: a pending block for sealEngine, work in progress
                 case BlockParameterType.Latest:
                     return ResultWrapper<Block>.Success(_blockchainBridge.RetrieveHeadBlock());

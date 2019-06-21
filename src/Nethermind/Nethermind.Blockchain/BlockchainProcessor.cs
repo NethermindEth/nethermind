@@ -204,7 +204,7 @@ namespace Nethermind.Blockchain
         {
             if (blockRef.IsInDb)
             {
-                Block block = _blockTree.FindBlock(blockRef.BlockHash, false);
+                Block block = _blockTree.FindBlock(blockRef.BlockHash, BlockTreeLookupOptions.None);
                 if (block == null)
                 {
                     return false;
@@ -293,7 +293,7 @@ namespace Nethermind.Blockchain
                         break;
                     }
 
-                    branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header);
+                    branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (branchingPoint == null)
                     {
                         break; //failure here
@@ -302,7 +302,7 @@ namespace Nethermind.Blockchain
                     bool isFastSyncTransition = _blockTree.Head == _blockTree.Genesis && toBeProcessed.Number > 1; 
                     if (!isFastSyncTransition)
                     {
-                        toBeProcessed = _blockTree.FindParent(toBeProcessed.Header);    
+                        toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);    
                     }
                     else
                     {
@@ -406,7 +406,7 @@ namespace Nethermind.Blockchain
         private bool RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)
         {
             /* a bit hacky way to get the invalid branch out of the processing loop */
-            if (suggestedBlock.Number != 0 && _blockTree.FindParentHeader(suggestedBlock.Header) == null)
+            if (suggestedBlock.Number != 0 && !_blockTree.IsKnownBlock(suggestedBlock.Number - 1, suggestedBlock.ParentHash))
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
                 return false;

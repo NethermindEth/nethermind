@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
@@ -138,7 +139,7 @@ namespace Nethermind.DataMarketplace.Test
             {
                 _txIndex = 0;
                 _headBlock = Build.A.Block.WithParent(Head).WithTimestamp(timestamp).TestObject;
-                _headBlock.Transactions = new Transaction[100];
+                _headBlock.Body.Transactions = new Transaction[100];
                 _receiptsTracer.StartNewBlockTrace(_headBlock);
             }
 
@@ -194,7 +195,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public Block FindBlock(Keccak blockHash, bool mainChainOnly)
+            public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
             {
                 throw new System.NotImplementedException();
             }

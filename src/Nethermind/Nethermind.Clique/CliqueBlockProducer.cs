@@ -132,7 +132,7 @@ namespace Nethermind.Clique
                 {
                     if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamp.EpochSeconds)
                     {
-                        _signalsQueue.Add(_blockTree.FindBlock(_blockTree.Head.Hash, false));
+                        _signalsQueue.Add(_blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None));
                     }
 
                     _timer.Enabled = true;
@@ -148,7 +148,7 @@ namespace Nethermind.Clique
                     {
                         if(ReferenceEquals(scheduledBlock, _scheduledBlock))
                         {
-                            BlockHeader parent = _blockTree.FindParentHeader(scheduledBlock.Header);
+                            BlockHeader parent = _blockTree.FindParentHeader(scheduledBlock.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             Address parentSigner = _snapshotManager.GetBlockSealer(parent);
                             
                             string parentTurnDescription = parent.IsInTurn() ? "IN TURN" : "OUT OF TURN";
@@ -324,7 +324,7 @@ namespace Nethermind.Clique
             // Assemble the voting snapshot to check which votes make sense
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
             bool isEpochBlock = (ulong) number % 30000 == 0;
-            if (!isEpochBlock)
+            if (!isEpochBlock && _proposals.Any())
             {
                 // Gather all the proposals that make sense voting on
                 List<Address> addresses = new List<Address>();

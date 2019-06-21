@@ -98,17 +98,17 @@ namespace Nethermind.Facade
         public BlockHeader BestSuggested => _blockTree.BestSuggestedHeader;
         public long BestKnown => _blockTree.BestKnownNumber;
         public bool IsSyncing => _blockTree.BestSuggestedHeader.Hash != _blockTree.Head.Hash;
-        public Block FindBlock(Keccak blockHash, bool mainChainOnly) => _blockTree.FindBlock(blockHash, mainChainOnly);
+        public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options) => _blockTree.FindBlock(blockHash, options);
         public Block FindBlock(long blockNumber) => _blockTree.FindBlock(blockNumber);
-        public Block RetrieveHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, false);
-        public Block RetrieveGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, true);
+        public Block RetrieveHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None);
+        public Block RetrieveGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, BlockTreeLookupOptions.RequireCanonical);
 
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
             TxReceipt txReceipt = _receiptStorage.Find(transactionHash);
             if (txReceipt?.BlockHash == null) return (null, null);
 
-            Block block = _blockTree.FindBlock(txReceipt.BlockHash, true);
+            Block block = _blockTree.FindBlock(txReceipt.BlockHash, BlockTreeLookupOptions.RequireCanonical);
             return (txReceipt, block.Transactions[txReceipt.Index]);
         }
 

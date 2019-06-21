@@ -88,7 +88,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_logger.IsTrace) _logger.Trace($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
                 var headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
-                BlockHeader startingPoint = headers[0] == null ? null : _blockTree.FindHeader(headers[0].Hash);
+                BlockHeader startingPoint = headers[0] == null ? null : _blockTree.FindHeader(headers[0].Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (startingPoint == null)
                 {
                     ancestorLookupLevel += _syncBatchSize.Current;
@@ -220,7 +220,14 @@ namespace Nethermind.Blockchain.Synchronization
                 Block[] blocks = new Block[bodies.Length];
                 for (int i = 0; i < bodies.Length; i++)
                 {
-                    blocks[i] = new Block(null, bodies[i].Transactions, bodies[i].Ommers);
+                    BlockBody body = bodies[i];
+                    if (body == null)
+                    {
+                        // TODO: this is how it used to be... I do not want to touch it without extensive testing 
+                        throw new EthSynchronizationException($"{bestPeer} sent an empty body for {blocks[i].ToString(Block.Format.Short)}.");
+                    }
+                    
+                    blocks[i] = new Block(null, body);
                 }
 
                 _sinceLastTimeout++;
@@ -236,8 +243,8 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (blocks.Length > 0)
                 {
-                    BlockHeader parent = _blockTree.FindParentHeader(blocks[0].Header);
-                    if (parent == null)
+                    bool parentIsKnown = _blockTree.IsKnownBlock(blocks[0].Number - 1, blocks[0].ParentHash);
+                    if (!parentIsKnown)
                     {
                         ancestorLookupLevel += _syncBatchSize.Current;
                         currentNumber = currentNumber >= _syncBatchSize.Current ? (currentNumber - _syncBatchSize.Current) : 0L;

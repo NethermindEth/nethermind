@@ -109,7 +109,7 @@ namespace Nethermind.Clique
                     if (snapshot != null) break;
 
                     // If we're at an checkpoint block, make a snapshot if it's known
-                    BlockHeader header = _blockTree.FindHeader(hash);
+                    BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (header == null)
                     {
                         throw new InvalidOperationException("Unknown ancestor");

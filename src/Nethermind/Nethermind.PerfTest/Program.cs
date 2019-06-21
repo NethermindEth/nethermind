@@ -238,19 +238,14 @@ namespace Nethermind.PerfTest
                 return _blockTree.SuggestHeader(header);
             }
 
-            public Block FindBlock(Keccak blockHash, bool mainChainOnly)
+            public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions option)
             {
-                return _blockTree.FindBlock(blockHash, mainChainOnly);
+                return _blockTree.FindBlock(blockHash, option);
             }
 
-            public BlockHeader FindHeader(Keccak blockHash, bool mainChainOnly)
+            public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options)
             {
-                return _blockTree.FindHeader(blockHash, mainChainOnly);
-            }
-
-            public BlockHeader FindHeader(Keccak blockHash)
-            {
-                return _blockTree.FindHeader(blockHash);
+                return _blockTree.FindHeader(blockHash, options);
             }
 
             public BlockHeader FindHeader(long number)
@@ -465,7 +460,7 @@ namespace Nethermind.PerfTest
             {
                 if (!isStarted)
                 {
-                    blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true), ProcessingOptions.None, NullBlockTracer.Instance);
+                    blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, BlockTreeLookupOptions.RequireCanonical), ProcessingOptions.None, NullBlockTracer.Instance);
                     stopwatch.Start();
                     blockchainProcessor.Start();
                     isStarted = true;

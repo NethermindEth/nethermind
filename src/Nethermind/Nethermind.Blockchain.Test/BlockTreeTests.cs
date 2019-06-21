@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
-            Block found = blockTree.FindBlock(block.Hash, false);
+            Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None);
             Assert.AreEqual(block.Hash, BlockHeader.CalculateHash(found.Header));
         }
 
@@ -177,7 +177,7 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             AddToMain(blockTree, block);
-            Block found = blockTree.FindBlock(block.Hash, true);
+            Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
             Assert.AreEqual(block.Hash, BlockHeader.CalculateHash(found.Header));
         }
 
@@ -187,7 +187,7 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
-            Block found = blockTree.FindBlock(block.Hash, true);
+            Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
             Assert.IsNull(found);
         }
 
@@ -473,7 +473,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             blockTree.SuggestBlock(block1B);
 
-            Block found = blockTree.FindBlock(block1B.Hash, false);
+            Block found = blockTree.FindBlock(block1B.Hash, BlockTreeLookupOptions.None);
 
             Assert.AreEqual(block1B.Hash, BlockHeader.CalculateHash(found.Header));
         }
@@ -1146,6 +1146,34 @@ namespace Nethermind.Blockchain.Test
             }
 
             tree.Insert(blocks);
+        }
+        
+        [Test]
+        public void Block_loading_is_lazy()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotNumber = 0L.ToString();
+
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
+            tree.SuggestBlock(genesis);
+
+            Block previousBlock = genesis;
+            for (int i = 1; i < 10; i++)
+            {
+                Block block = Build.A.Block.WithNumber(i).WithParent(previousBlock).TestObject;
+                tree.SuggestBlock(block);
+                previousBlock = block;
+            }
+
+            Block lastBlock = previousBlock;
+            
+            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
+            loadedTree.FindHeader(lastBlock.Hash, BlockTreeLookupOptions.None);
         }
 
         static object[] SourceOfBSearchTestCases =

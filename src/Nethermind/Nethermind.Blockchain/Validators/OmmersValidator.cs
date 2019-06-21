@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Validators
                     return false;
                 }
 
-                Block ancestor = _blockTree.FindBlock(header.ParentHash, false);
+                Block ancestor = _blockTree.FindBlock(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 for (int ancestorLevel = 0; ancestorLevel < 5; ancestorLevel++)
                 {
                     if (ancestor == null)
@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Validators
                         return false;
                     }
                     
-                    ancestor = _blockTree.FindBlock(ancestor.Header.ParentHash, false);
+                    ancestor = _blockTree.FindBlock(ancestor.Header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 }
             }
 
@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
             
-            BlockHeader parent = _blockTree.FindHeader(header.ParentHash, false);
+            BlockHeader parent = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (parent == null)
             {
                 return false;

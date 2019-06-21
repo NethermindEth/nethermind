@@ -120,7 +120,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
+            Block parent = _blockTree.FindBlock(parentHeader.Hash, BlockTreeLookupOptions.None);
             UInt256 timestamp = _timestamp.EpochSeconds;
 
             UInt256 difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, _timestamp.EpochSeconds, parent.Number + 1, parent.Ommers.Length > 0);

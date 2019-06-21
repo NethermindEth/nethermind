@@ -20,10 +20,10 @@ namespace Nethermind.Core
 {
     public class BlockBody
     {
-        public BlockBody(Block block)
+        public BlockBody()
         {
-            Transactions = block.Transactions;
-            Ommers = block.Ommers;
+            Transactions = new Transaction[0];
+            Ommers = new BlockHeader[0];
         }
         
         public BlockBody(Transaction[] transactions, BlockHeader[] ommers)
@@ -32,7 +32,7 @@ namespace Nethermind.Core
             Ommers = ommers;
         }
 
-        public Transaction[] Transactions { get; }
-        public BlockHeader[] Ommers { get; }
+        public Transaction[] Transactions { get; set; }
+        public BlockHeader[] Ommers { get; set; }
     }
 }
