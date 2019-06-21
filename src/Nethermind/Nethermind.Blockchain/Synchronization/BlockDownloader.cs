@@ -220,8 +220,14 @@ namespace Nethermind.Blockchain.Synchronization
                 Block[] blocks = new Block[bodies.Length];
                 for (int i = 0; i < bodies.Length; i++)
                 {
-                    var a = bodies[i].Transactions;
-                    blocks[i] = new Block(null, bodies[i]);
+                    BlockBody body = bodies[i];
+                    if (body == null)
+                    {
+                        // TODO: this is how it used to be... I do not want to touch it without extensive testing 
+                        throw new EthSynchronizationException($"{bestPeer} sent an empty body for {blocks[i].ToString(Block.Format.Short)}.");
+                    }
+                    
+                    blocks[i] = new Block(null, body);
                 }
 
                 _sinceLastTimeout++;
