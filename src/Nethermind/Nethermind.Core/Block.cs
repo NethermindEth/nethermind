@@ -63,9 +63,9 @@ namespace Nethermind.Core
 
         public bool IsGenesis => Header.IsGenesis;
 
-        public Transaction[] Transactions => Body.Transactions;
+        public Transaction[] Transactions => Body?.Transactions;
         
-        public BlockHeader[] Ommers => Body.Ommers;
+        public BlockHeader[] Ommers => Body?.Ommers;
         
         public BlockHeader Header { get; set; }
         public BlockBody Body { get; set; }
