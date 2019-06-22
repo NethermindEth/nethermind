@@ -535,6 +535,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     Keccak receiptsRoot = block.CalculateReceiptRoot(_specProvider, blockReceipts);
                     if (receiptsRoot != block.ReceiptsRoot)
                     {
+                        if (_logger.IsWarn) _logger.Warn($"{batch} - invalid receipt root");
+                        _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                         wasInvalid = true;
                     }
                 }
@@ -547,6 +549,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     }
 
                     added++;
+                }
+                else
+                {
+                    break;
                 }
             }
 

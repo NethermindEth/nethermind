@@ -53,6 +53,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private Dictionary<LatencySyncPeerMock, FastBlocksBatch> _pendingResponses;
         private Dictionary<long, Action> _scheduledActions;
         private HashSet<LatencySyncPeerMock> _maliciousByRepetition;
+        private HashSet<LatencySyncPeerMock> _maliciousByInvalidReceipts;
         private HashSet<LatencySyncPeerMock> _maliciousByInvalidTxs;
         private HashSet<LatencySyncPeerMock> _maliciousByInvalidOmmers;
         private HashSet<LatencySyncPeerMock> _maliciousByShiftedOneForward;
@@ -95,6 +96,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _maliciousByShiftedOneForward = new HashSet<LatencySyncPeerMock>();
             _maliciousByShiftedOneBack = new HashSet<LatencySyncPeerMock>();
             _maliciousByShortAtStart = new HashSet<LatencySyncPeerMock>();
+            _maliciousByInvalidReceipts = new HashSet<LatencySyncPeerMock>();
             _incorrectByTooShortMessages = new HashSet<LatencySyncPeerMock>();
             _incorrectByTooLongMessages = new HashSet<LatencySyncPeerMock>();
             _timingOut = new HashSet<LatencySyncPeerMock>();
@@ -561,6 +563,22 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
 
         [Test]
+        public void One_valid_one_malicious_with_receipts_and_one_restart()
+        {
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 300);
+            LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
+            SetupFeed(true, true);
+
+            _maliciousByInvalidReceipts.Add(syncPeer2);
+            SetupSyncPeers(syncPeer1, syncPeer2);
+
+            RunFeed(5000);
+//            Assert.AreEqual(2116, _time);
+
+            AssertTreeSynced(_validTree2048, true, true);
+        }
+
+        [Test]
         public void Two_peers_with_valid_chain_one_shorter()
         {
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
@@ -837,6 +855,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 for (int j = 0; j < block.Transactions.Length; j++)
                 {
                     receiptSyncBatch.Response[i][j] = _remoteReceiptStorage.Find(block.Transactions[j].Hash);
+
+                    if (i < 10 && j == 0 && _maliciousByInvalidReceipts.Contains(syncPeer))
+                    {
+                        receiptSyncBatch.Response[i][j] = new TxReceipt();
+                        receiptSyncBatch.Response[i][j].StatusCode = (byte) (1 - receiptSyncBatch.Response[i][j].StatusCode);
+                        receiptSyncBatch.Response[i][j].PostTransactionState = Keccak.Compute(receiptSyncBatch.Response[i][j].PostTransactionState?.Bytes ?? new byte[] {1});
+                    }
                 }
             }
         }
