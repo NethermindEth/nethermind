@@ -50,7 +50,10 @@ CLI access is not currently included in the Nethermind launcher but will be adde
                 Assembly assembly = Assembly.Load(new AssemblyName(assemblyName));
                 foreach (Type type in assembly.GetTypes().Where(t => typeof(CliModuleBase).IsAssignableFrom(t)).Where(t => !t.IsInterface && !t.IsAbstract))
                 {
-                    cliModules.Add(type);
+                    if (!type.Name.Contains("Ndm"))
+                    {
+                        cliModules.Add(type);
+                    }
                 }
             }
 

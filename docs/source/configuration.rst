@@ -35,6 +35,54 @@ DbConfig
 
  CodeDbWriteBufferSize
 
+ ConfigsDbBlockCacheSize
+
+ ConfigsDbCacheIndexAndFilterBlocks
+
+ ConfigsDbWriteBufferNumber
+
+ ConfigsDbWriteBufferSize
+
+ ConsumerDepositApprovalsDbBlockCacheSize
+
+ ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks
+
+ ConsumerDepositApprovalsDbWriteBufferNumber
+
+ ConsumerDepositApprovalsDbWriteBufferSize
+
+ ConsumerReceiptsDbBlockCacheSize
+
+ ConsumerReceiptsDbCacheIndexAndFilterBlocks
+
+ ConsumerReceiptsDbWriteBufferNumber
+
+ ConsumerReceiptsDbWriteBufferSize
+
+ ConsumerSessionsDbBlockCacheSize
+
+ ConsumerSessionsDbCacheIndexAndFilterBlocks
+
+ ConsumerSessionsDbWriteBufferNumber
+
+ ConsumerSessionsDbWriteBufferSize
+
+ DepositsDbBlockCacheSize
+
+ DepositsDbCacheIndexAndFilterBlocks
+
+ DepositsDbWriteBufferNumber
+
+ DepositsDbWriteBufferSize
+
+ EthRequestsDbBlockCacheSize
+
+ EthRequestsDbCacheIndexAndFilterBlocks
+
+ EthRequestsDbWriteBufferNumber
+
+ EthRequestsDbWriteBufferSize
+
  HeadersDbBlockCacheSize
 
  HeadersDbCacheIndexAndFilterBlocks
@@ -148,15 +196,15 @@ These items need only be set when testing with Hive (Ethereum Foundation tool)
 
  BlocksDir
    Path to a directory with additional blocks.
-   default value: null
+   default value: "/blocks"
 
  ChainFile
    Path to a file with a test chain definition.
-   default value: null
+   default value: "/chain.rlp"
 
  KeysDir
    Path to a test key store directory.
-   default value: null
+   default value: "/keys"
 
 InitConfig
 ^^^^^^^^^^
@@ -182,7 +230,7 @@ InitConfig
    default value: 30303
 
  EnableUnsecuredDevWallet
-   If 'true' then it enables thewallet / key store in the application.
+   If 'true' then it enables the wallet / key store in the application.
    default value: false
 
  GenesisHash
@@ -232,6 +280,10 @@ InitConfig
  ProcessingEnabled
    If 'false' then the node does not download/process new blocks..
    default value: true
+
+ PubSubEnabled
+   If 'true' then it enables the Kafka producer which can be configured to stream the transactions data.
+   default value: false
 
  StaticNodesPath
    Path to the file with a list of static nodes.
@@ -430,6 +482,30 @@ Sample configuration (mainnet)
           "CodeDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
           "CodeDbWriteBufferNumber" : [MISSING_DOCS],
           "CodeDbWriteBufferSize" : [MISSING_DOCS],
+          "ConfigsDbBlockCacheSize" : [MISSING_DOCS],
+          "ConfigsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "ConfigsDbWriteBufferNumber" : [MISSING_DOCS],
+          "ConfigsDbWriteBufferSize" : [MISSING_DOCS],
+          "ConsumerDepositApprovalsDbBlockCacheSize" : [MISSING_DOCS],
+          "ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "ConsumerDepositApprovalsDbWriteBufferNumber" : [MISSING_DOCS],
+          "ConsumerDepositApprovalsDbWriteBufferSize" : [MISSING_DOCS],
+          "ConsumerReceiptsDbBlockCacheSize" : [MISSING_DOCS],
+          "ConsumerReceiptsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "ConsumerReceiptsDbWriteBufferNumber" : [MISSING_DOCS],
+          "ConsumerReceiptsDbWriteBufferSize" : [MISSING_DOCS],
+          "ConsumerSessionsDbBlockCacheSize" : [MISSING_DOCS],
+          "ConsumerSessionsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "ConsumerSessionsDbWriteBufferNumber" : [MISSING_DOCS],
+          "ConsumerSessionsDbWriteBufferSize" : [MISSING_DOCS],
+          "DepositsDbBlockCacheSize" : [MISSING_DOCS],
+          "DepositsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "DepositsDbWriteBufferNumber" : [MISSING_DOCS],
+          "DepositsDbWriteBufferSize" : [MISSING_DOCS],
+          "EthRequestsDbBlockCacheSize" : [MISSING_DOCS],
+          "EthRequestsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+          "EthRequestsDbWriteBufferNumber" : [MISSING_DOCS],
+          "EthRequestsDbWriteBufferSize" : [MISSING_DOCS],
           "HeadersDbBlockCacheSize" : [MISSING_DOCS],
           "HeadersDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
           "HeadersDbWriteBufferNumber" : [MISSING_DOCS],
@@ -490,9 +566,9 @@ Sample configuration (mainnet)
       {
         "ConfigModule": "HiveConfig"
         "ConfigItems": {
-          "BlocksDir" : null,
-          "ChainFile" : null,
-          "KeysDir" : null,
+          "BlocksDir" : "/blocks",
+          "ChainFile" : "/chain.rlp",
+          "KeysDir" : "/keys",
         }
       },
       {
@@ -516,6 +592,7 @@ Sample configuration (mainnet)
           "P2PPort" : 30303,
           "PeerManagerEnabled" : true,
           "ProcessingEnabled" : true,
+          "PubSubEnabled" : false,
           "StaticNodesPath" : "Data/static-nodes.json",
           "StoreReceipts" : true,
           "StoreTraces" : false,
