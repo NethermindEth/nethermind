@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
@@ -35,9 +36,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
         ResultWrapper<ParityLikeTxTrace> trace_replayTransaction(Keccak txHash, string[] traceTypes);
         ResultWrapper<ParityLikeTxTrace[]> trace_replayBlockTransactions(BlockParameter numberOrTag, string[] traceTypes);
         
-//        ResultWrapper<ParityLikeTxTrace[]> trace_filter();
-//        ResultWrapper<ParityLikeTxTrace[]> trace_block(BlockParameter numberOrTag);
-//        ResultWrapper<ParityLikeTxTrace> trace_get(Data txHash, int[] positions);
-//        ResultWrapper<ParityLikeTxTrace> trace_transaction(Data transactionHash);
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
+        ResultWrapper<ParityLikeTxTrace[]> trace_filter(BlockParameter fromBlock, BlockParameter toBlock, Address toAddress, int after, int count);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
+        ResultWrapper<ParityLikeTxTrace[]> trace_block(BlockParameter numberOrTag);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
+        ResultWrapper<ParityLikeTxTrace> trace_get(Keccak txHash, int[] positions);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
+        ResultWrapper<ParityLikeTxTrace> trace_transaction(Keccak transactionHash);
     }
 }

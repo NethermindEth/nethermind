@@ -195,7 +195,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
+            public Block FindBlock(Keccak blockHash)
             {
                 throw new System.NotImplementedException();
             }
@@ -205,12 +205,27 @@ namespace Nethermind.DataMarketplace.Test
                 throw new System.NotImplementedException();
             }
 
-            public Block RetrieveHeadBlock()
+            public Block FindLatestBlock()
+            {
+                throw new NotImplementedException();
+            }
+
+            public Block FindPendingBlock()
+            {
+                throw new NotImplementedException();
+            }
+
+            public Block FindEarliestBlock()
+            {
+                throw new NotImplementedException();
+            }
+
+            public Block FindHeadBlock()
             {
                 throw new System.NotImplementedException();
             }
 
-            public Block RetrieveGenesisBlock()
+            public Block FindGenesisBlock()
             {
                 throw new System.NotImplementedException();
             }

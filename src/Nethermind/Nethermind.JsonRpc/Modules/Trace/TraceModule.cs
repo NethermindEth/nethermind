@@ -18,11 +18,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Newtonsoft.Json;
@@ -31,11 +34,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class TraceModule : ModuleBase, ITraceModule
     {
+        private readonly IBlockchainBridge _blockchainBridge;
         private readonly ITracer _tracer;
 
-        public TraceModule(ILogManager logManager, ITracer tracer)
+        public TraceModule(IBlockchainBridge blockchainBridge, ILogManager logManager, ITracer tracer)
             : base(logManager)
         {
+            _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         }
 
@@ -64,20 +69,39 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<ParityLikeTxTrace>.Success(_tracer.ParityTrace(hash, GetParityTypes(traceTypes)));
         }
 
-        public ResultWrapper<ParityLikeTxTrace[]> trace_replayBlockTransactions(BlockParameter numberOrTag, string[] traceTypes)
+        public ResultWrapper<ParityLikeTxTrace[]> trace_replayBlockTransactions(BlockParameter blockParameter, string[] traceTypes)
         {
-            long? blockNo = numberOrTag.BlockId;
-            if (!blockNo.HasValue)
+            Block block;
+            try
             {
-                throw new InvalidDataException("Block number value incorrect");
+                block = _blockchainBridge.GetBlock(blockParameter, true, true);
+            }
+            catch (JsonRpcException ex)
+            {
+                return ResultWrapper<ParityLikeTxTrace[]>.Fail(ex.Message, ex.ErrorType, null);
             }
 
-            return ResultWrapper<ParityLikeTxTrace[]>.Success(_tracer.ParityTraceBlock(blockNo.Value, GetParityTypes(traceTypes)));
+            return ResultWrapper<ParityLikeTxTrace[]>.Success(_tracer.ParityTraceBlock(block.Hash, GetParityTypes(traceTypes)));
         }
 
-        public ResultWrapper<ParityLikeTxTrace[]> trace_block(BlockParameter block)
+        public ResultWrapper<ParityLikeTxTrace[]> trace_filter(BlockParameter fromBlock, BlockParameter toBlock, Address toAddress, int after, int count)
         {
             throw new NotImplementedException();
+        }
+
+        public ResultWrapper<ParityLikeTxTrace[]> trace_block(BlockParameter blockParameter)
+        {
+            Block block;
+            try
+            {
+                block = _blockchainBridge.GetBlock(blockParameter, true, true);
+            }
+            catch (JsonRpcException ex)
+            {
+                return ResultWrapper<ParityLikeTxTrace[]>.Fail(ex.Message, ex.ErrorType, null);
+            }
+            
+            return ResultWrapper<ParityLikeTxTrace[]>.Success(_tracer.ParityTraceBlock(block.Hash, ParityTraceTypes.Trace));
         }
 
         public ResultWrapper<ParityLikeTxTrace> trace_get(Keccak txHash, int[] positions)

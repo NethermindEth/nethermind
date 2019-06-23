@@ -17,6 +17,7 @@
  */
 
 using System;
+using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
@@ -159,7 +160,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_hash()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindBlock(Arg.Any<Keccak>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
 
             IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
@@ -172,8 +173,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
-            bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindBlock(Arg.Any<Keccak>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindLatestBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
             IEthModule module = new EthModule(NullLogManager.Instance, bridge);
@@ -187,8 +188,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number_without_tx_details()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
-            bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindBlock(Arg.Any<Keccak>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindLatestBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
             IEthModule module = new EthModule(NullLogManager.Instance, bridge);
@@ -203,7 +204,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
-            bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
             IEthModule module = new EthModule(NullLogManager.Instance, bridge);
@@ -216,11 +217,28 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void Eth_get_code()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            Block block = Build.A.Block.TestObject;
+            bridge.Head.Returns(block.Header);
+            bridge.FindLatestBlock().Returns(block);
+            
+            bridge.GetAccount(TestItem.AddressA, block.StateRoot).Returns(Account.TotallyEmpty);
+            bridge.GetCode(Account.TotallyEmpty.CodeHash).Returns(Bytes.FromHexString("0xabcd"));
+
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
+
+            string serialized = RpcTest.TestSerializedRequest(module, "eth_getCode", TestItem.AddressA.ToString(), "latest");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0xabcd\"}", serialized);
+        }
+
+        [Test]
         public void Eth_get_block_by_number_with_number_bad_number()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
-            bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
             IEthModule module = new EthModule(NullLogManager.Instance, bridge);
@@ -233,8 +251,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number_empty_param()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
-            bridge.RetrieveHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindBlock(Arg.Any<Keccak>()).Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
+            bridge.FindHeadBlock().Returns(Build.A.Block.WithTotalDifficulty(0).WithTransactions(Build.A.Transaction.TestObject).TestObject);
             bridge.Head.Returns(Build.A.BlockHeader.TestObject);
 
             IEthModule module = new EthModule(NullLogManager.Instance, bridge);

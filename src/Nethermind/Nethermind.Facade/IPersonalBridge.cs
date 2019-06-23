@@ -18,6 +18,7 @@
 
 using System.Security;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Facade
 {
@@ -28,5 +29,7 @@ namespace Nethermind.Facade
         bool UnlockAccount(Address address, SecureString notSecuredHere);
         bool LockAccount(Address address);
         bool IsUnlocked(Address address);
+        Address EcRecover(byte[] message, Signature signature);
+        Signature Sign(byte[] message, Address address);
     }
 }

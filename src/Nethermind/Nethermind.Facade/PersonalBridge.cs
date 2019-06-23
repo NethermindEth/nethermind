@@ -16,20 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Linq;
 using System.Security;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Wallet;
 
 namespace Nethermind.Facade
 {
     public class PersonalBridge : IPersonalBridge
     {
+        private readonly IEthereumEcdsa _ecdsa;
         private readonly IWallet _wallet;
 
-        public PersonalBridge(IWallet wallet)
+        public PersonalBridge(IEthereumEcdsa ecdsa, IWallet wallet)
         {
-            _wallet = wallet;
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
         }
         
         public Address[] ListAccounts()
@@ -55,6 +59,18 @@ namespace Nethermind.Facade
         public bool IsUnlocked(Address address)
         {
             return _wallet.IsUnlocked(address);
+        }
+
+        public Address EcRecover(byte[] message, Signature signature)
+        {
+            throw new NotImplementedException();
+            return _ecdsa.RecoverAddress(signature, Keccak.Compute(message));
+        }
+
+        public Signature Sign(byte[] message, Address address)
+        {
+            throw new NotImplementedException();
+            return _wallet.Sign(Keccak.Compute(message), address);
         }
     }
 }

@@ -16,22 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Newtonsoft.Json;
+using System;
 
-namespace Nethermind.JsonRpc.Modules.Trace
+namespace Nethermind.JsonRpc
 {
-    public static class JsonWriterExtensions
+    public class JsonRpcException : Exception
     {
-        public static void WriteProperty<T>(this JsonWriter jsonWriter, string propertyName, T propertyValue)
+        public ErrorType ErrorType { get; }
+
+        public JsonRpcException()
         {
-            jsonWriter.WritePropertyName(propertyName);
-            jsonWriter.WriteValue(propertyValue);
         }
-        
-        public static void WriteProperty<T>(this JsonWriter jsonWriter, string propertyName, T propertyValue, JsonSerializer serializer)
+
+        public JsonRpcException(ErrorType errorType, string message) : base(message)
         {
-            jsonWriter.WritePropertyName(propertyName);
-            serializer.Serialize(jsonWriter, propertyValue);
+            ErrorType = errorType;
+        }
+
+        public JsonRpcException(ErrorType errorType, string message, Exception inner) : base(message, inner)
+        {
+            ErrorType = errorType;
         }
     }
 }

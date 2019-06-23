@@ -19,6 +19,7 @@
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.JsonRpc.Data
@@ -63,7 +64,7 @@ namespace Nethermind.JsonRpc.Data
         {
             Transaction tx = new Transaction();
             tx.GasLimit = (UInt256)(Gas ?? 90000);
-            tx.GasPrice = (UInt256)(GasPrice ?? 0);
+            tx.GasPrice = (UInt256)(GasPrice ?? 20.GWei());
             tx.Nonce = (ulong)(Nonce ?? 0); // here pick the last nonce?
             tx.To = To;
             tx.SenderAddress = From;

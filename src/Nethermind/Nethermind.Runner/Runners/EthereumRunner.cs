@@ -312,7 +312,7 @@ namespace Nethermind.Runner.Runners
             NetModule netModule = new NetModule(_logManager, new NetBridge(_enode, _syncServer, _peerManager));
             _rpcModuleProvider.Register<INetModule>(netModule);
 
-            TraceModule traceModule = new TraceModule(_logManager, tracer);
+            TraceModule traceModule = new TraceModule(blockchainBridge, _logManager, tracer);
             _rpcModuleProvider.Register<ITraceModule>(traceModule);
         }
 
