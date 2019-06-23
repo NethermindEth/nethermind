@@ -110,7 +110,6 @@ namespace Nethermind.Facade
 
         public Block FindPendingBlock()
         {
-            
             return _blockTree.FindBlock(_blockTree.BestSuggestedHeader?.Hash, BlockTreeLookupOptions.None);
         }
 

@@ -112,7 +112,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 services.RequiredServices.Timestamp);
 
             IPersonalBridge personalBridge = services.RequiredServices.EnableUnsecuredDevWallet
-                ? new PersonalBridge(services.RequiredServices.Wallet)
+                ? new PersonalBridge(services.RequiredServices.Ecdsa, services.RequiredServices.Wallet)
                 : null;
             services.RequiredServices.RpcModuleProvider.Register<INdmRpcConsumerModule>(
                 new NdmRpcConsumerModule(consumerService, reportService,

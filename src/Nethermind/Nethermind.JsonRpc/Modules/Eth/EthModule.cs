@@ -696,18 +696,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<BigInteger?> eth_newFilter(Filter filter)
         {
-            var fromBlock = MapFilterBlock(filter.FromBlock);
-            var toBlock = MapFilterBlock(filter.ToBlock);
+            FilterBlock fromBlock = MapFilterBlock(filter.FromBlock);
+            FilterBlock toBlock = MapFilterBlock(filter.ToBlock);
             int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
             return ResultWrapper<BigInteger?>.Success(filterId);
         }
 
-        private FilterBlock MapFilterBlock(BlockParameter parameter)
+        private static FilterBlock MapFilterBlock(BlockParameter parameter)
             => parameter.BlockId != null
                 ? new FilterBlock(parameter.BlockId ?? 0)
                 : new FilterBlock(MapFilterBlockType(parameter.Type));
 
-        private FilterBlockType MapFilterBlockType(BlockParameterType type)
+        private static FilterBlockType MapFilterBlockType(BlockParameterType type)
         {
             switch (type)
             {
@@ -739,28 +739,39 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(BigInteger filterId)
         {
-            var id = (int) filterId;
+            int id = (int) filterId;
             FilterType filterType = _blockchainBridge.GetFilterType(id);
             switch (filterType)
             {
                 case FilterType.BlockFilter:
+                {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id)
                             .Select(b => new JsonRpc.Data.Data(b.Bytes)).ToArray())
                         : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                }
+
                 case FilterType.PendingTransactionFilter:
+                {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
                             .GetPendingTransactionFilterChanges(id).Select(b => new JsonRpc.Data.Data(b.Bytes))
                             .ToArray())
                         : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                }
+
                 case FilterType.LogFilter:
+                {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(
                             _blockchainBridge.GetLogFilterChanges(id).ToArray())
                         : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                }
+
                 default:
+                {
                     throw new NotSupportedException($"Filter type {filterType} is not supported");
+                }
             }
         }
 
@@ -775,8 +786,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
         {
-            var fromBlock = MapFilterBlock(filter.FromBlock);
-            var toBlock = MapFilterBlock(filter.ToBlock);
+            FilterBlock fromBlock = MapFilterBlock(filter.FromBlock);
+            FilterBlock toBlock = MapFilterBlock(filter.ToBlock);
 
             return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock,
                 filter.Address,
@@ -800,13 +811,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private ResultWrapper<BigInteger?> GetOmmersCount(BlockParameter blockParameter)
         {
-            if (blockParameter.Type == BlockParameterType.Pending)
-            {
-                var headBlock = _blockchainBridge.FindBlock(_blockchainBridge.BestSuggested.Hash);
-                var count = headBlock.Ommers.Length;
-                return ResultWrapper<BigInteger?>.Success(count);
-            }
-
             Block block;
             try
             {
@@ -822,13 +826,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private ResultWrapper<BigInteger?> GetTransactionCount(BlockParameter blockParameter)
         {
-            if (blockParameter.Type == BlockParameterType.Pending)
-            {
-                var headBlock = _blockchainBridge.FindBlock(_blockchainBridge.BestSuggested.Hash);
-                var count = headBlock.Transactions.Length;
-                return ResultWrapper<BigInteger?>.Success(count);
-            }
-
             Block block;
             try
             {
@@ -846,8 +843,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
-                var code = _blockchainBridge.GetCode(address);
-                return ResultWrapper<byte[]>.Success(code);
+                blockParameter.Type = BlockParameterType.Latest;
             }
 
             Block block;
@@ -867,8 +863,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
-                var nonce = _blockchainBridge.GetNonce(address);
-                return ResultWrapper<BigInteger?>.Success(nonce);
+                blockParameter.Type = BlockParameterType.Latest;
             }
 
             Block block;
@@ -881,15 +876,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<BigInteger?>.Fail(ex.Message, ex.ErrorType, null);
             }
 
-            return GetAccountNonce(address, block.StateRoot);
+            if (block == null)
+            {
+                return ResultWrapper<BigInteger?>.Fail("Block not found", ErrorType.NotFound, null);
+            }
+
+            Account account = _blockchainBridge.GetAccount(address, block.StateRoot);
+            return ResultWrapper<BigInteger?>.Success(account?.Nonce ?? 0);
         }
 
         private ResultWrapper<BigInteger?> GetAccountBalance(Address address, BlockParameter blockParameter)
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
-                var balance = _blockchainBridge.GetBalance(address);
-                return ResultWrapper<BigInteger?>.Success(balance);
+                blockParameter.Type = BlockParameterType.Latest;
             }
 
             Block block;
@@ -909,8 +909,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
-                var storageValue = _blockchainBridge.GetStorage(address, index);
-                return ResultWrapper<byte[]>.Success(storageValue);
+                blockParameter.Type = BlockParameterType.Latest;
             }
 
             Block block;
@@ -928,7 +927,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private ResultWrapper<byte[]> GetAccountStorage(Address address, BigInteger index, Keccak stateRoot)
         {
-            var account = _blockchainBridge.GetAccount(address, stateRoot);
+            Account account = _blockchainBridge.GetAccount(address, stateRoot);
             if (account == null)
             {
                 return ResultWrapper<byte[]>.Success(Bytes.Empty);
@@ -939,7 +938,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private ResultWrapper<BigInteger?> GetAccountBalance(Address address, Keccak stateRoot)
         {
-            var account = _blockchainBridge.GetAccount(address, stateRoot);
+            Account account = _blockchainBridge.GetAccount(address, stateRoot);
             if (account == null)
             {
                 return ResultWrapper<BigInteger?>.Success(0);
@@ -948,20 +947,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<BigInteger?>.Success(account.Balance);
         }
 
-        private ResultWrapper<BigInteger?> GetAccountNonce(Address address, Keccak stateRoot)
-        {
-            var account = _blockchainBridge.GetAccount(address, stateRoot);
-            if (account == null)
-            {
-                return ResultWrapper<BigInteger?>.Success(0);
-            }
-
-            return ResultWrapper<BigInteger?>.Success(account.Nonce);
-        }
-
         private ResultWrapper<byte[]> GetAccountCode(Address address, Keccak stateRoot)
         {
-            var account = _blockchainBridge.GetAccount(address, stateRoot);
+            Account account = _blockchainBridge.GetAccount(address, stateRoot);
             if (account == null)
             {
                 return ResultWrapper<byte[]>.Success(Bytes.Empty);

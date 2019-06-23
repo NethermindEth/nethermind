@@ -298,7 +298,7 @@ namespace Nethermind.Runner.Runners
 
             if (_initConfig.EnableUnsecuredDevWallet)
             {
-                PersonalBridge personalBridge = new PersonalBridge(_wallet);
+                PersonalBridge personalBridge = new PersonalBridge(_ethereumEcdsa, _wallet);
                 PersonalModule personalModule = new PersonalModule(personalBridge, _logManager);
                 _rpcModuleProvider.Register<IPersonalModule>(personalModule);
             }
