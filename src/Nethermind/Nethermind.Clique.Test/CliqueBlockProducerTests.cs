@@ -88,7 +88,7 @@ namespace Nethermind.Clique.Test
                 MemDb headersDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
 
-                TxPool txPool = new TxPool(new InMemoryTxStorage(), new PendingTxThresholdValidator(), _timestamp, _ethereumEcdsa, GoerliSpecProvider.Instance, _logManager);
+                TxPool txPool = new TxPool(new InMemoryTxStorage(), _timestamp, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), _logManager);
                 _pools[privateKey] = txPool;
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, GoerliSpecProvider.Instance, txPool, nodeLogManager);

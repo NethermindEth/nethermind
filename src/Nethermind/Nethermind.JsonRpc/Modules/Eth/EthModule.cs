@@ -466,7 +466,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     _blockchainBridge.RecoverTxSenders(block);
                 }
 
-                return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(block, returnFullTransactionObjects));
+                return ResultWrapper<BlockForRpc>.Success(block == null ? null : new BlockForRpc(block, returnFullTransactionObjects));
             }
             finally
             {

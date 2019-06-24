@@ -62,11 +62,10 @@ namespace Nethermind.Blockchain.Test
 
             /* store & validation */
 
-            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider, logManager);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, logManager);
             MemDb receiptsDb = new MemDb();
             MemDb traceDb = new MemDb();
-            TxPool txPool = new TxPool(new NullTxStorage(),
-                new PendingTxThresholdValidator(), new Timestamp(), ethereumEcdsa, specProvider, logManager);
+            TxPool txPool = new TxPool(NullTxStorage.Instance, Timestamp.Default, ecdsa, specProvider, new TxPoolConfig(), logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider, logManager);
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, txPool, logManager);
             Timestamp timestamp = new Timestamp();
@@ -82,7 +81,7 @@ namespace Nethermind.Blockchain.Test
             StateProvider stateProvider = new StateProvider(stateDb, codeDb, logManager);
             StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
 
-            TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ethereumEcdsa, TimeSpan.FromMilliseconds(5 * timeMultiplier), NullLogManager.Instance);
+            TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ecdsa, TimeSpan.FromMilliseconds(5 * timeMultiplier), NullLogManager.Instance);
             generator.Start();
 
             /* blockchain processing */
@@ -92,7 +91,7 @@ namespace Nethermind.Blockchain.Test
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator,
                 processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumEcdsa, NullTxPool.Instance, LimboLogs.Instance), logManager, false, false);
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ecdsa, NullTxPool.Instance, LimboLogs.Instance), logManager, false, false);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());

@@ -418,10 +418,10 @@ namespace Nethermind.Runner.Runners
             _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
             _txPool = new TxPool(
                 new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
-                new PendingTxThresholdValidator(_txPoolConfig.ObsoletePendingTransactionInterval,
-                    _txPoolConfig.RemovePendingTransactionInterval), new Timestamp(),
-                _ethereumEcdsa, _specProvider, _logManager, _txPoolConfig.RemovePendingTransactionInterval,
-                _txPoolConfig.PeerNotificationThreshold);
+                Timestamp.Default,
+                _ethereumEcdsa,
+                _specProvider,
+                _txPoolConfig, _logManager);
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
 
 //            IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig);

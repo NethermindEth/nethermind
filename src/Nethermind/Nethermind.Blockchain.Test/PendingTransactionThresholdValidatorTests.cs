@@ -67,8 +67,13 @@ namespace Nethermind.Blockchain.Test
             _obsoletePendingTransactionInterval = obsoletePendingTransactionInterval;
             _removePendingTransactionInterval = removePendingTransactionInterval;
 
-            return new PendingTxThresholdValidator(_obsoletePendingTransactionInterval,
-                _removePendingTransactionInterval);
+            TxPoolConfig config = new TxPoolConfig
+            {
+                ObsoletePendingTransactionInterval = _obsoletePendingTransactionInterval,
+                RemovePendingTransactionInterval = _removePendingTransactionInterval
+            };
+            
+            return new PendingTxThresholdValidator(config);
         }
 
         private Transaction GetTransaction(DateTime utcNow, int createdSecondsAgo = 0)

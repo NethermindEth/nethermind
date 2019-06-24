@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Modules
                 throw new JsonRpcException(ErrorType.NotFound, $"Cannot find block {blockParameter}");
             }
 
-            if (recoverTxSenders)
+            if (block != null && recoverTxSenders)
             {
                 blockchainBridge.RecoverTxSenders(block);
             }

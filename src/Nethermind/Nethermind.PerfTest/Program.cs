@@ -157,9 +157,8 @@ namespace Nethermind.PerfTest
             ISnapshotableDb stateDb = new StateDb();
             IStateProvider stateProvider = new StateProvider(stateDb, new StateDb(), logManager);
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance,
-                new TxPool(NullTxStorage.Instance,
-                    new PendingTxThresholdValidator(), new Timestamp(),
-                    NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, logManager), logManager);
+                new TxPool(NullTxStorage.Instance, Timestamp.Default, 
+                    NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, new TxPoolConfig(), logManager), logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree, LimboLogs.Instance), logManager);
 
             Stopwatch stopwatch = new Stopwatch();
@@ -348,8 +347,8 @@ namespace Nethermind.PerfTest
 
             /* store & validation */
             var transactionPool = new TxPool(NullTxStorage.Instance,
-                new PendingTxThresholdValidator(), new Timestamp(),
-                NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, _logManager);
+                Timestamp.Default,
+                NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, new TxPoolConfig(), _logManager);
             var receiptStorage = new InMemoryReceiptStorage();
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, specProvider, transactionPool, _logManager));
             var headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, _logManager);
