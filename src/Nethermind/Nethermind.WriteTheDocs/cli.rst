@@ -115,6 +115,13 @@ personal
 
  - personal.unlockAccount(addressHex, password) - 
 
+system
+^^^^^^
+
+ - system.getVariable(name, defaultValue) - 
+
+ - system.memory - 
+
 web3
 ^^^^
 

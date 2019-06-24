@@ -18,8 +18,10 @@
 
 using System;
 using System.Security;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Wallet
 {
@@ -31,6 +33,10 @@ namespace Nethermind.Wallet
         public void Import(byte[] keyData, SecureString passphrase)
         {
         }
+
+        private static NullWallet _instance;
+        
+        public static NullWallet Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullWallet());
 
         public Address NewAccount(SecureString passphrase)
         {

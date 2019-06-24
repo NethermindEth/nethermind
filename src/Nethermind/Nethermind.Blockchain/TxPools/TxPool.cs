@@ -44,8 +44,6 @@ namespace Nethermind.Blockchain.TxPools
             new ConcurrentDictionary<Keccak, bool>();
         private readonly ConcurrentDictionary<Type, ITxFilter> _filters =
             new ConcurrentDictionary<Type, ITxFilter>();
-        private readonly ITxStorage _transactionStorage;
-        private readonly IPendingTxThresholdValidator _pendingTransactionThresholdValidator;
 
         private readonly ITxStorage _txStorage;
         private readonly IPendingTxThresholdValidator _pendingTxThresholdValidator;
@@ -59,18 +57,21 @@ namespace Nethermind.Blockchain.TxPools
         private readonly Timer _ownTimer;
 
         public TxPool(ITxStorage txStorage,
-            IPendingTxThresholdValidator pendingTxThresholdValidator,
-            ITimestamp timestamp, IEthereumEcdsa ecdsa, ISpecProvider specProvider, ILogManager logManager,
-            int removePendingTransactionInterval = 600,
-            int peerNotificationThreshold = 20)
+            ITimestamp timestamp,
+            IEthereumEcdsa ecdsa,
+            ISpecProvider specProvider,
+            ITxPoolConfig txPoolConfig,
+            ILogManager logManager)
         {
+            int removePendingTransactionInterval = txPoolConfig.RemovePendingTransactionInterval;
+            _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
-            _pendingTxThresholdValidator = pendingTxThresholdValidator;
             _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _peerNotificationThreshold = peerNotificationThreshold;
+            
+            _pendingTxThresholdValidator = new PendingTxThresholdValidator(txPoolConfig);
             if (removePendingTransactionInterval <= 0)
             {
                 return;

@@ -57,7 +57,7 @@ namespace Nethermind.Facade
             IStorageProvider storageProvider,
             IBlockTree blockTree,
             ITxPool txPool,
-            ITxPoolInfoProvider transactionPoolInfoProvider,
+            ITxPoolInfoProvider txPoolInfoProvider,
             IReceiptStorage receiptStorage,
             IFilterStore filterStore,
             IFilterManager filterManager,
@@ -70,7 +70,7 @@ namespace Nethermind.Facade
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
-            _transactionPoolInfoProvider = transactionPoolInfoProvider ?? throw new ArgumentNullException(nameof(transactionPoolInfoProvider));
+            _transactionPoolInfoProvider = txPoolInfoProvider ?? throw new ArgumentNullException(nameof(txPoolInfoProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
@@ -95,13 +95,29 @@ namespace Nethermind.Facade
         }
 
         public BlockHeader Head => _blockTree.Head;
+        
         public BlockHeader BestSuggested => _blockTree.BestSuggestedHeader;
+        
         public long BestKnown => _blockTree.BestKnownNumber;
+        
         public bool IsSyncing => _blockTree.BestSuggestedHeader.Hash != _blockTree.Head.Hash;
-        public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options) => _blockTree.FindBlock(blockHash, options);
+        
+        public Block FindBlock(Keccak blockHash) => _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
+        
         public Block FindBlock(long blockNumber) => _blockTree.FindBlock(blockNumber);
-        public Block RetrieveHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None);
-        public Block RetrieveGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, BlockTreeLookupOptions.RequireCanonical);
+        
+        public Block FindGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, BlockTreeLookupOptions.RequireCanonical);
+        
+        public Block FindHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None);
+        
+        public Block FindEarliestBlock() => FindGenesisBlock();
+        
+        public Block FindLatestBlock() => FindHeadBlock();
+
+        public Block FindPendingBlock()
+        {
+            return _blockTree.FindBlock(_blockTree.BestSuggestedHeader?.Hash, BlockTreeLookupOptions.None);
+        }
 
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {

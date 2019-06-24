@@ -26,12 +26,6 @@ jobs:
     - stage: run tests
       script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test
       name: "Ethereum.Basic.Test"
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind.DataMarketplace.Consumers.Test
-      name: "Nethermind.DataMarketplace.Consumers.Test"
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind.DataMarketplace.Integration.Test
-      name: "Nethermind.DataMarketplace.Integration.Test"  
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind.DataMarketplace.Test
-      name: "Nethermind.DataMarketplace.Test"  
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Block.Test
       name: "Ethereum.Blockchain.Block.Test"
     - script: dotnet test src/Nethermind/Ethereum.Blockchain.Test
@@ -95,3 +89,9 @@ jobs:
       name: "Nethermind.Store.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Wallet.Test
       name: "Nethermind.Wallet.Test"
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+      name: "Nethermind.DataMarketplace.Consumers.Test"
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Integration.Test
+      name: "Nethermind.DataMarketplace.Integration.Test"  
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Test
+      name: "Nethermind.DataMarketplace.Test"  

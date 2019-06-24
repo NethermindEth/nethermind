@@ -594,6 +594,11 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true)
         {
+            if (Genesis == null && !block.IsGenesis)
+            {
+                throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
+            }
+            
             return Suggest(block, block.Header, shouldProcess);
         }
 

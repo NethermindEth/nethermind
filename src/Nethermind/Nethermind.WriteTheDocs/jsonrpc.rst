@@ -40,6 +40,11 @@ clique
 
  - clique_propose(signer, vote)
 
+data
+^^^^
+
+ - data_streamBlocks(startBlockNumber, endBlockNumber)
+
 debug
 ^^^^^
 
@@ -67,7 +72,7 @@ debug
 
  - [NOT IMPLEMENTED]debug_traceBlockFromFile(fileName)
 
- - debug_traceTransaction(transactionHash)
+ - debug_traceTransaction(transactionHash, traceOptions)
 
  - debug_traceTransactionByBlockAndIndex(blockParameter, txIndex)
 
@@ -191,15 +196,23 @@ personal
 trace
 ^^^^^
 
+ - trace_block(numberOrTag)
+
  - [NOT IMPLEMENTED]trace_call(message, traceTypes, numberOrTag)
 
  - [NOT IMPLEMENTED]trace_callMany(calls)
+
+ - [NOT IMPLEMENTED]trace_filter(fromBlock, toBlock, toAddress, after, count)
+
+ - [NOT IMPLEMENTED]trace_get(txHash, positions)
 
  - [NOT IMPLEMENTED]trace_rawTransaction(data, traceTypes)
 
  - trace_replayBlockTransactions(numberOrTag, traceTypes)
 
  - trace_replayTransaction(txHash, traceTypes)
+
+ - trace_transaction(txHash)
 
 txpool
 ^^^^^^

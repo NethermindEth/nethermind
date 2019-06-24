@@ -19,8 +19,10 @@
 using System;
 using System.Linq;
 using System.Security;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -29,6 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
 {
     public class PersonalModule : ModuleBase, IPersonalModule
     {
+        private Encoding _messageEncoding = Encoding.UTF8;
         private readonly IPersonalBridge _bridge;
 
         public PersonalModule(IPersonalBridge bridge, ILogManager logManager) : base(logManager)
@@ -92,13 +95,36 @@ namespace Nethermind.JsonRpc.Modules.Personal
 
         public ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature)
         {
-            throw new NotImplementedException();
+            message = ToEthSignedMessage(message);
+            return ResultWrapper<Address>.Success(_bridge.EcRecover(message, new Signature(signature)));
+        }
+
+        private static byte[] ToEthSignedMessage(byte[] message)
+        {
+            string messageString = $"\\x19Ethereum Signed Message:\\n{message.Length}{UTF8Encoding.UTF8.GetString(message)}";
+            message = UTF8Encoding.UTF8.GetBytes(messageString);
+            return message;
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<byte[]> personal_sign(byte[] message, Address address, string passphrase = null)
         {
-            throw new NotImplementedException();
+            if (!_bridge.IsUnlocked(address))
+            {
+                if (passphrase != null)
+                {
+                    var notSecuredHere = new SecureString();
+                    foreach (char c in passphrase)
+                    {
+                        notSecuredHere.AppendChar(c);
+                    }
+                    
+                    _bridge.UnlockAccount(address, notSecuredHere);
+                }
+            }
+            
+            message = ToEthSignedMessage(message);
+            return ResultWrapper<byte[]>.Success(_bridge.Sign(message, address).Bytes);
         }
     }
 }

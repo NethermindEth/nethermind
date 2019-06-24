@@ -43,7 +43,8 @@ namespace Nethermind.JsonRpc
             {ErrorType.MethodNotFound, -32601},
             {ErrorType.InvalidParams, -32602},
             {ErrorType.InternalError, -32603},
-            {ErrorType.ExecutionError, -32015}
+            {ErrorType.ExecutionError, -32015},
+            {ErrorType.NotFound, -32601}, // ??
         };
 
         public const string JsonRpcVersion = "2.0";

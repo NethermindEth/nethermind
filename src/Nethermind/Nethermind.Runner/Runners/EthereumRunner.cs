@@ -298,7 +298,7 @@ namespace Nethermind.Runner.Runners
 
             if (_initConfig.EnableUnsecuredDevWallet)
             {
-                PersonalBridge personalBridge = new PersonalBridge(_wallet);
+                PersonalBridge personalBridge = new PersonalBridge(_ethereumEcdsa, _wallet);
                 PersonalModule personalModule = new PersonalModule(personalBridge, _logManager);
                 _rpcModuleProvider.Register<IPersonalModule>(personalModule);
             }
@@ -312,7 +312,7 @@ namespace Nethermind.Runner.Runners
             NetModule netModule = new NetModule(_logManager, new NetBridge(_enode, _syncServer, _peerManager));
             _rpcModuleProvider.Register<INetModule>(netModule);
 
-            TraceModule traceModule = new TraceModule(_logManager, tracer);
+            TraceModule traceModule = new TraceModule(blockchainBridge, _logManager, tracer);
             _rpcModuleProvider.Register<ITraceModule>(traceModule);
         }
 
@@ -418,10 +418,10 @@ namespace Nethermind.Runner.Runners
             _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
             _txPool = new TxPool(
                 new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
-                new PendingTxThresholdValidator(_txPoolConfig.ObsoletePendingTransactionInterval,
-                    _txPoolConfig.RemovePendingTransactionInterval), new Timestamp(),
-                _ethereumEcdsa, _specProvider, _logManager, _txPoolConfig.RemovePendingTransactionInterval,
-                _txPoolConfig.PeerNotificationThreshold);
+                Timestamp.Default,
+                _ethereumEcdsa,
+                _specProvider,
+                _txPoolConfig, _logManager);
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
 
 //            IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig);

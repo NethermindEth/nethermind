@@ -24,6 +24,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Json;
+using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Newtonsoft.Json;
@@ -65,7 +66,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
         private static JsonSerializer BuildSerializer<T>()
         {
-            TraceModule module = new TraceModule(NullLogManager.Instance, Substitute.For<ITracer>());
+            TraceModule module = new TraceModule(Substitute.For<IBlockchainBridge>(), NullLogManager.Instance, Substitute.For<ITracer>());
             JsonSerializer serializer = new JsonSerializer();
             IReadOnlyCollection<JsonConverter> converters = module.GetConverters();
             foreach (JsonConverter converter in converters)

@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Security.Cryptography.X509Certificates;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Data;
@@ -38,10 +37,10 @@ namespace Nethermind.JsonRpc.Modules.Personal
         [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<Keccak> personal_sendTransaction(TransactionForRpc transaction, string passphrase);
      
-        [JsonRpcMethod(Description = "", IsImplemented = false)]
+        [JsonRpcMethod(Description = "ecRecover returns the address associated with the private key that was used to calculate the signature in personal_sign", IsImplemented = false)]
         ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature);
         
-        [JsonRpcMethod(Description = "", IsImplemented = false)]
+        [JsonRpcMethod(Description = "The sign method calculates an Ethereum specific signature with: sign(keccack256(\"\x19Ethereum Signed Message:\n\" + len(message) + message))).", IsImplemented = false)]
         ResultWrapper<byte[]> personal_sign(byte[] message, Address address, string passphrase = null);
     }
 }

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TxPools
@@ -25,11 +26,12 @@ namespace Nethermind.Blockchain.TxPools
         private readonly int _obsoletePendingTransactionInterval;
         private readonly int _removePendingTransactionInterval;
 
-        public PendingTxThresholdValidator(int obsoletePendingTransactionInterval = 15,
-            int removePendingTransactionInterval = 600)
+        public PendingTxThresholdValidator(ITxPoolConfig txPoolConfig)
         {
-            _obsoletePendingTransactionInterval = obsoletePendingTransactionInterval;
-            _removePendingTransactionInterval = removePendingTransactionInterval;
+            if(txPoolConfig == null) throw new ArgumentNullException(nameof(txPoolConfig));
+            
+            _obsoletePendingTransactionInterval = txPoolConfig.ObsoletePendingTransactionInterval;
+            _removePendingTransactionInterval = txPoolConfig.RemovePendingTransactionInterval;
         }
 
         public bool IsObsolete(UInt256 currentTimestamp, UInt256 transactionTimestamp)

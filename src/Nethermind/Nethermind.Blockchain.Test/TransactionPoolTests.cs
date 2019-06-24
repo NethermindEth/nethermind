@@ -227,8 +227,8 @@ namespace Nethermind.Blockchain.Test
         }
 
         private TxPool CreatePool(ITxStorage txStorage)
-            => new TxPool(txStorage, new PendingTxThresholdValidator(),
-                new Timestamp(), _ethereumEcdsa, _specProvider, _logManager);
+            => new TxPool(txStorage,
+                Timestamp.Default, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _logManager);
 
         private ISyncPeer GetPeer(PublicKey publicKey)
             => new SyncPeerMock(_remoteBlockTree, publicKey);

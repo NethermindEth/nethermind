@@ -31,8 +31,13 @@ namespace Nethermind.Core
         }
         
         public ulong EpochSeconds => (ulong) Offset.ToUnixTimeSeconds();
+        
         public ulong EpochMilliseconds => (ulong) Offset.ToUnixTimeMilliseconds();
+        
         public DateTime UtcNow => _constantDate ?? DateTime.UtcNow;
+        
         private DateTimeOffset Offset => new DateTimeOffset(UtcNow);
+        
+        public static Timestamp Default = new Timestamp();
     }
 }

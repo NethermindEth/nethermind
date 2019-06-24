@@ -45,10 +45,18 @@ namespace Nethermind.Facade
 
         void RecoverTxSender(Transaction tx, long blockNumber);
         
-        Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
+        Block FindBlock(Keccak blockHash);
+        
         Block FindBlock(long blockNumber);
-        Block RetrieveHeadBlock();
-        Block RetrieveGenesisBlock();
+        
+        Block FindLatestBlock();
+        
+        Block FindPendingBlock();
+        
+        Block FindEarliestBlock();
+        
+        Block FindHeadBlock();
+        Block FindGenesisBlock();
 
         (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
