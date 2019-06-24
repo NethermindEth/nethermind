@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test
 
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage()
-            => TestAddAndGetReceipt(new PersistentReceiptStorage(new MemDb(), _specProvider, LimboLogs.Instance));
+            => TestAddAndGetReceipt(new PersistentReceiptStorage(new MemDb(), NullDb.Instance, _specProvider, LimboLogs.Instance));
 
         private void TestAddAndGetReceipt(IReceiptStorage storage)
         {

@@ -29,13 +29,15 @@ namespace Nethermind.Blockchain.Receipts
     public class PersistentReceiptStorage : IReceiptStorage
     {
         private readonly IDb _database;
+        private readonly IDb _headersFixDb;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public PersistentReceiptStorage(IDb database, ISpecProvider specProvider, ILogManager logManager)
+        public PersistentReceiptStorage(IDb receiptsDb, IDb headersFixDb, ISpecProvider specProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _database = database ?? throw new ArgumentNullException(nameof(database));
+            _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
+            _headersFixDb = headersFixDb ?? throw new ArgumentNullException(nameof(headersFixDb));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
 
             byte[] lowestBytes = _database.Get(Keccak.Zero);
@@ -45,6 +47,10 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt Find(Keccak hash)
         {
             var receiptData = _database.Get(hash);
+            if (receiptData == null)
+            {
+                receiptData = _headersFixDb.Get(hash);
+            }
 
             return receiptData == null
                 ? null
