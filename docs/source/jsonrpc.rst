@@ -196,7 +196,7 @@ personal
 trace
 ^^^^^
 
- - [NOT IMPLEMENTED]trace_block(numberOrTag)
+ - trace_block(numberOrTag)
 
  - [NOT IMPLEMENTED]trace_call(message, traceTypes, numberOrTag)
 
@@ -212,7 +212,7 @@ trace
 
  - trace_replayTransaction(txHash, traceTypes)
 
- - [NOT IMPLEMENTED]trace_transaction(transactionHash)
+ - trace_transaction(txHash)
 
 txpool
 ^^^^^^

@@ -64,9 +64,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<ParityLikeTxTrace> trace_replayTransaction(Keccak hash, string[] traceTypes)
+        public ResultWrapper<ParityLikeTxTrace> trace_replayTransaction(Keccak txHash, string[] traceTypes)
         {
-            return ResultWrapper<ParityLikeTxTrace>.Success(_tracer.ParityTrace(hash, GetParityTypes(traceTypes)));
+            return ResultWrapper<ParityLikeTxTrace>.Success(_tracer.ParityTrace(txHash, GetParityTypes(traceTypes)));
         }
 
         public ResultWrapper<ParityLikeTxTrace[]> trace_replayBlockTransactions(BlockParameter blockParameter, string[] traceTypes)
@@ -109,9 +109,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<ParityLikeTxTrace> trace_transaction(Keccak transactionHash)
+        public ResultWrapper<ParityLikeTxTrace> trace_transaction(Keccak txHash)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<ParityLikeTxTrace>.Success(_tracer.ParityTrace(txHash, ParityTraceTypes.Trace));
         }
 
         public override ModuleType ModuleType => ModuleType.Trace;

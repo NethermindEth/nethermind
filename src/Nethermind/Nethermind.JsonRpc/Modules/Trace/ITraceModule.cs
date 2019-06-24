@@ -39,13 +39,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
         [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<ParityLikeTxTrace[]> trace_filter(BlockParameter fromBlock, BlockParameter toBlock, Address toAddress, int after, int count);
         
-        [JsonRpcMethod(Description = "", IsImplemented = false)]
+        [JsonRpcMethod(Description = "", IsImplemented = true)]
         ResultWrapper<ParityLikeTxTrace[]> trace_block(BlockParameter numberOrTag);
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<ParityLikeTxTrace> trace_get(Keccak txHash, int[] positions);
         
-        [JsonRpcMethod(Description = "", IsImplemented = false)]
-        ResultWrapper<ParityLikeTxTrace> trace_transaction(Keccak transactionHash);
+        [JsonRpcMethod(Description = "", IsImplemented = true)]
+        ResultWrapper<ParityLikeTxTrace> trace_transaction(Keccak txHash);
     }
 }
