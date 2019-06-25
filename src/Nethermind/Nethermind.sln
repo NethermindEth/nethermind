@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.28917.181
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.645
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Core", "Nethermind.Core\Nethermind.Core.csproj", "{5751C57B-9F2D-45DE-BCC2-42645B85E39E}"
 EndProject
@@ -129,13 +129,13 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.EthStats", "Neth
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PubSub", "PubSub", "{1B8FD0C8-4F0E-4E14-89A7-F7E69B9C7375}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PubSub", "Nethermind.PubSub\Nethermind.PubSub.csproj", "{EB6140AE-86B8-4207-BF17-2826980BB908}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.PubSub", "Nethermind.PubSub\Nethermind.PubSub.csproj", "{EB6140AE-86B8-4207-BF17-2826980BB908}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PubSub.Kafka", "Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj", "{8BAA8D55-EFBE-425A-9027-CDED985C0C37}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.PubSub.Kafka", "Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj", "{8BAA8D55-EFBE-425A-9027-CDED985C0C37}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PubSub.Kafka.Consumer", "Nethermind.PubSub.Kafka.Consumer\Nethermind.PubSub.Kafka.Consumer.csproj", "{DE56503A-E80F-4B16-A01E-60CAC2B0A84E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.PubSub.Kafka.Consumer", "Nethermind.PubSub.Kafka.Consumer\Nethermind.PubSub.Kafka.Consumer.csproj", "{DE56503A-E80F-4B16-A01E-60CAC2B0A84E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Grpc", "Nethermind.Grpc\Nethermind.Grpc.csproj", "{B1B6C55A-04C4-4A66-828E-9A808A78E65F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Grpc", "Nethermind.Grpc\Nethermind.Grpc.csproj", "{B1B6C55A-04C4-4A66-828E-9A808A78E65F}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "DataMarketplace", "DataMarketplace", "{1584F88E-C618-4B37-BAB5-05AAC31DF60A}"
 EndProject
@@ -143,29 +143,29 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Consumers", "Consumers", "{
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Core", "Core", "{568F4A96-2AA2-4B80-A58A-36950E13A242}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Consumers", "Nethermind.DataMarketplace.Consumers\Nethermind.DataMarketplace.Consumers.csproj", "{DE8DB5DD-5FB6-49FF-B371-00D66FCCAA12}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Consumers", "Nethermind.DataMarketplace.Consumers\Nethermind.DataMarketplace.Consumers.csproj", "{DE8DB5DD-5FB6-49FF-B371-00D66FCCAA12}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Consumers.Infrastructure", "Nethermind.DataMarketplace.Consumers.Infrastructure\Nethermind.DataMarketplace.Consumers.Infrastructure.csproj", "{32C5BB7A-BAA7-4289-BF89-7058CAD63D0E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Consumers.Infrastructure", "Nethermind.DataMarketplace.Consumers.Infrastructure\Nethermind.DataMarketplace.Consumers.Infrastructure.csproj", "{32C5BB7A-BAA7-4289-BF89-7058CAD63D0E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Consumers.Test", "Nethermind.DataMarketplace.Consumers.Test\Nethermind.DataMarketplace.Consumers.Test.csproj", "{C419DD84-C03B-440C-814D-90C33B3F4AF6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Consumers.Test", "Nethermind.DataMarketplace.Consumers.Test\Nethermind.DataMarketplace.Consumers.Test.csproj", "{C419DD84-C03B-440C-814D-90C33B3F4AF6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Channels", "Nethermind.DataMarketplace.Channels\Nethermind.DataMarketplace.Channels.csproj", "{BD165DBE-1B82-48F7-ADE3-A5DA6005AD6F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Channels", "Nethermind.DataMarketplace.Channels\Nethermind.DataMarketplace.Channels.csproj", "{BD165DBE-1B82-48F7-ADE3-A5DA6005AD6F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Channels.Grpc", "Nethermind.DataMarketplace.Channels.Grpc\Nethermind.DataMarketplace.Channels.Grpc.csproj", "{E399539A-D76D-409F-A4ED-01CDD26855AA}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Channels.Grpc", "Nethermind.DataMarketplace.Channels.Grpc\Nethermind.DataMarketplace.Channels.Grpc.csproj", "{E399539A-D76D-409F-A4ED-01CDD26855AA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Core", "Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj", "{98086FCA-FF4C-4FDD-ABE0-DDEC12CDD410}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Core", "Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj", "{98086FCA-FF4C-4FDD-ABE0-DDEC12CDD410}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Infrastructure", "Nethermind.DataMarketplace.Infrastructure\Nethermind.DataMarketplace.Infrastructure.csproj", "{AEBEE967-1A0E-4131-90E5-60C0A3F0B28C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Infrastructure", "Nethermind.DataMarketplace.Infrastructure\Nethermind.DataMarketplace.Infrastructure.csproj", "{AEBEE967-1A0E-4131-90E5-60C0A3F0B28C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Initializers", "Nethermind.DataMarketplace.Initializers\Nethermind.DataMarketplace.Initializers.csproj", "{451AEB4E-2023-4389-9A91-1804E1813E3D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Initializers", "Nethermind.DataMarketplace.Initializers\Nethermind.DataMarketplace.Initializers.csproj", "{451AEB4E-2023-4389-9A91-1804E1813E3D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Integration.Test", "Nethermind.DataMarketplace.Integration.Test\Nethermind.DataMarketplace.Integration.Test.csproj", "{EAE80F29-6628-4341-B6F6-E01BBF591B85}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Integration.Test", "Nethermind.DataMarketplace.Integration.Test\Nethermind.DataMarketplace.Integration.Test.csproj", "{EAE80F29-6628-4341-B6F6-E01BBF591B85}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Subprotocols", "Nethermind.DataMarketplace.Subprotocols\Nethermind.DataMarketplace.Subprotocols.csproj", "{7E5DBEDD-C5FB-4E3B-B697-5C7111535A03}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Subprotocols", "Nethermind.DataMarketplace.Subprotocols\Nethermind.DataMarketplace.Subprotocols.csproj", "{7E5DBEDD-C5FB-4E3B-B697-5C7111535A03}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Test", "Nethermind.DataMarketplace.Test\Nethermind.DataMarketplace.Test.csproj", "{6708432B-C547-44B0-ADCB-8396B916B26F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Test", "Nethermind.DataMarketplace.Test\Nethermind.DataMarketplace.Test.csproj", "{6708432B-C547-44B0-ADCB-8396B916B26F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.WebSockets", "Nethermind.DataMarketplace.WebSockets\Nethermind.DataMarketplace.WebSockets.csproj", "{5A0D6198-E28A-4B19-AA61-9F983B6031D3}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.WebSockets", "Nethermind.DataMarketplace.WebSockets\Nethermind.DataMarketplace.WebSockets.csproj", "{5A0D6198-E28A-4B19-AA61-9F983B6031D3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -349,6 +349,10 @@ Global
 		{F3A983E4-1E44-49DF-B948-210490415CEB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F3A983E4-1E44-49DF-B948-210490415CEB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F3A983E4-1E44-49DF-B948-210490415CEB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4796E327-D5A1-4CEF-B402-3FB155ED400A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4796E327-D5A1-4CEF-B402-3FB155ED400A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4796E327-D5A1-4CEF-B402-3FB155ED400A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4796E327-D5A1-4CEF-B402-3FB155ED400A}.Release|Any CPU.Build.0 = Release|Any CPU
 		{DCFB31ED-429F-4BA1-AAD3-BBA0C23FBD48}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{DCFB31ED-429F-4BA1-AAD3-BBA0C23FBD48}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DCFB31ED-429F-4BA1-AAD3-BBA0C23FBD48}.Release|Any CPU.ActiveCfg = Release|Any CPU
