@@ -422,7 +422,8 @@ namespace Nethermind.Runner.Runners
                 _ethereumEcdsa,
                 _specProvider,
                 _txPoolConfig, _logManager);
-            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
+            var _rc7FixDb = _initConfig.EnableRc7Fix ? _dbProvider.HeadersDb : NullDb.Instance; 
+            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _rc7FixDb, _specProvider, _logManager);
 
 //            IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig);
 //            _dbProvider = new RpcDbProvider(_jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.NethVm1, _jsonSerializer, _logManager), _logManager, debugRecorder);

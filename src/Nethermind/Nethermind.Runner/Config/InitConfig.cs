@@ -45,5 +45,6 @@ namespace Nethermind.Runner.Config
         public bool StoreTraces { get; set; } = false;
         public bool StoreReceipts { get; set; } = false;
         
+        public bool EnableRc7Fix { get; set; } = false;
     }
 }
