@@ -58,8 +58,16 @@ namespace Nethermind.Blockchain
         public GethLikeTxTrace Trace(Keccak txHash)
         {
             TxReceipt txReceipt = _receiptStorage.Find(txHash);
+            if (txReceipt == null)
+            {
+                return null;
+            }
+            
             Block block = _blockTree.FindBlock(txReceipt.BlockNumber);
-            if (block == null) throw new InvalidOperationException("Only historical blocks");
+            if (block == null)
+            {
+                return null;
+            }
 
             return Trace(block, txHash);
         }
