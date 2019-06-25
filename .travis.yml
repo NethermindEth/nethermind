@@ -12,6 +12,9 @@ notifications:
     rooms:
       - demerzelsolutions:hzD3lmq2hbUgHuLFxjCOvk6x#team
       - demerzelsolutions:hzD3lmq2hbUgHuLFxjCOvk6x#general
+env: 
+  matrix:
+    - TEST_MODULE=
 after_success:
   - ./scripts/docker-publish.sh
 after_script: 
@@ -19,79 +22,73 @@ after_script:
 jobs:
   include:
     - stage: build
-      matrix:
-        include:
-        - script: dotnet build src/Nethermind/Nethermind.sln
-          name: "Build Nethermind"
-        - script: dotnet build src/Nethermind/EthereumTests.sln
-          name: "Build Ethereum tests"
+    - script: dotnet build src/Nethermind/Nethermind.sln
+      name: "Build Nethermind"
+    - script: dotnet build src/Nethermind/EthereumTests.sln
+      name: "Build Ethereum tests"
     - stage: Ethereum tests
-      matrix:
-        include:
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Ethereum.Basic.Test"
-          env: TEST_MODULE=Ethereum.Basic.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Ethereum.Blockchain.Block.Test"
-          env: TEST_MODULE=Ethereum.Blockchain.Block.Test
-        - script: dotnet test src/Nethermind/$TEST_MODULE
-          name: "Ethereum.Blockchain.Test"
-          env: TEST_MODULE=Ethereum.Blockchain.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Ethereum.Difficulty.Test"
-          env: TEST_MODULE=Ethereum.Difficulty.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Ethereum.HexPrefix.Test"
-          env: TEST_MODULE=Ethereum.HexPrefix.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Ethereum.KeyAddress.Test"
-          env: TEST_MODULE=Ethereum.KeyAddress.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Ethereum.PoW.Test"
-          env: TEST_MODULE=Ethereum.PoW.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
-          name: "Ethereum.Rlp.Test"
-          env: TEST_MODULE=Ethereum.Rlp.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Ethereum.Transaction.Test"
-          env: TEST_MODULE=Ethereum.Transaction.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Ethereum.Transition.Test"
-          env: TEST_MODULE=Ethereum.Transition.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Ethereum.Trie.Test"
-          env: TEST_MODULE=Ethereum.Trie.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Ethereum.Basic.Test"
+      env: TEST_MODULE=Ethereum.Basic.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Ethereum.Blockchain.Block.Test"
+      env: TEST_MODULE=Ethereum.Blockchain.Block.Test
+    - script: dotnet test src/Nethermind/$TEST_MODULE
+      name: "Ethereum.Blockchain.Test"
+      env: TEST_MODULE=Ethereum.Blockchain.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Ethereum.Difficulty.Test"
+      env: TEST_MODULE=Ethereum.Difficulty.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Ethereum.HexPrefix.Test"
+      env: TEST_MODULE=Ethereum.HexPrefix.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Ethereum.KeyAddress.Test"
+      env: TEST_MODULE=Ethereum.KeyAddress.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Ethereum.PoW.Test"
+      env: TEST_MODULE=Ethereum.PoW.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
+      name: "Ethereum.Rlp.Test"
+      env: TEST_MODULE=Ethereum.Rlp.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Ethereum.Transaction.Test"
+      env: TEST_MODULE=Ethereum.Transaction.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Ethereum.Transition.Test"
+      env: TEST_MODULE=Ethereum.Transition.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Ethereum.Trie.Test"
+      env: TEST_MODULE=Ethereum.Trie.Test
     # - script: dotnet test src/Nethermind/Ethereum.VM.Test
     #  name: "Ethereum.VM.Test"
     - stage: Nethermind tests
-      matrix:
-        include:
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.Abi.Test"
-          env: TEST_MODULE=Nethermind.Abi.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.Blockchain.Test"
-          env: TEST_MODULE=Nethermind.Blockchain.Tes
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.Clique.Test"
-          env: TEST_MODULE=Nethermind.Clique.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.Config.Test"
-          env: TEST_MODULE=Nethermind.Config.Test
-        - script: dotnet test src/Nethermind/$TEST_MODULE
-          name: "Nethermind.Core.Test"
-          env: TEST_MODULE=Nethermind.Core.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.Abi.Test"
+      env: TEST_MODULE=Nethermind.Abi.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.Blockchain.Test"
+      env: TEST_MODULE=Nethermind.Blockchain.Tes
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.Clique.Test"
+      env: TEST_MODULE=Nethermind.Clique.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.Config.Test"
+      env: TEST_MODULE=Nethermind.Config.Test
+    - script: dotnet test src/Nethermind/$TEST_MODULE
+      name: "Nethermind.Core.Test"
+      env: TEST_MODULE=Nethermind.Core.Test
     #- script: dotnet test src/Nethermind/Nethermind.Db.Test
     #  name: "Nethermind.Db.Test.Linux"
     #- script: dotnet test src/Nethermind/Nethermind.Db.Test
     #  name: "Nethermind.Db.Test.Osx"
     #  os: osx
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.Evm.Test"
-          env: TEST_MODULE=Nethermind.Evm.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.JsonRpc.Test"
-          env: TEST_MODULE=Nethermind.JsonRpc.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.Evm.Test"
+      env: TEST_MODULE=Nethermind.Evm.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.JsonRpc.Test"
+      env: TEST_MODULE=Nethermind.JsonRpc.Test
     #- script: dotnet test src/Nethermind/Nethermind.KeyStore.Test
     #  name: "Nethermind.KeyStore.Test"
     #- script: dotnet test src/Nethermind/Nethermind.LibSolc.Test
@@ -99,32 +96,32 @@ jobs:
     #- script: dotnet test src/Nethermind/Nethermind.LibSolc.Test
     #  name: "Nethermind.LibSolc.Test.Osx"
     #  os: osx
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.Mining.Test"
-          env: TEST_MODULE=Nethermind.Mining.Test
-        - script:
-          - sudo apt-get install libsnappy-dev 
-          - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.Network.Test"
-          env: TEST_MODULE=Nethermind.Network.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.Secp256k1.Test.Linux"
-          env: TEST_MODULE=Nethermind.Secp256k1.Test.Linux
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.Mining.Test"
+      env: TEST_MODULE=Nethermind.Mining.Test
+    - script:
+      - sudo apt-get install libsnappy-dev 
+      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.Network.Test"
+      env: TEST_MODULE=Nethermind.Network.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.Secp256k1.Test.Linux"
+      env: TEST_MODULE=Nethermind.Secp256k1.Test.Linux
     #- script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
     #  name: "Nethermind.Secp256k1.Test.Osx"
     #  os: osx
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.DataMarketplace.Consumers.Test"
-          env: TEST_MODULE=Nethermind.DataMarketplace.Consumers.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.DataMarketplace.Integration.Test"
-          env: TEST_MODULE=Nethermind.DataMarketplace.Integration.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.DataMarketplace.Test"
-          env: TEST_MODULE=Nethermind.DataMarketplace.Test 
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.Store.Test"
-          env: TEST_MODULE=Nethermind.Store.Test
-        - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
-          name: "Nethermind.Wallet.Test"
-          env: TEST_MODULE=Nethermind.Wallet.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.DataMarketplace.Consumers.Test"
+      env: TEST_MODULE=Nethermind.DataMarketplace.Consumers.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.DataMarketplace.Integration.Test"
+      env: TEST_MODULE=Nethermind.DataMarketplace.Integration.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.DataMarketplace.Test"
+      env: TEST_MODULE=Nethermind.DataMarketplace.Test 
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.Store.Test"
+      env: TEST_MODULE=Nethermind.Store.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/$TEST_MODULE
+      name: "Nethermind.Wallet.Test"
+      env: TEST_MODULE=Nethermind.Wallet.Test
