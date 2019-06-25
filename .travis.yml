@@ -38,7 +38,7 @@ jobs:
       name: "Ethereum.KeyAddress.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.PoW.Test
       name: "Ethereum.PoW.Test"
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Ethereum.Rlp.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Rlp.Test
       name: "Ethereum.Rlp.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Transaction.Test
       name: "Ethereum.Transaction.Test"
@@ -50,9 +50,9 @@ jobs:
     #  name: "Ethereum.VM.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Abi.Test
       name: "Nethermind.Abi.Test"
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Blockchain.Test 
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Blockchain.Test 
       name: "Nethermind.Blockchain.Test"
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Clique.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Clique.Test
       name: "Nethermind.Clique.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Config.Test
       name: "Nethermind.Config.Test"
@@ -63,9 +63,9 @@ jobs:
     #- script: dotnet test src/Nethermind/Nethermind.Db.Test
     #  name: "Nethermind.Db.Test.Osx"
     #  os: osx
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Evm.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Evm.Test
       name: "Nethermind.Evm.Test"
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.JsonRpc.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.JsonRpc.Test
       name: "Nethermind.JsonRpc.Test"
     #- script: dotnet test src/Nethermind/Nethermind.KeyStore.Test
     #  name: "Nethermind.KeyStore.Test"
@@ -74,24 +74,24 @@ jobs:
     #- script: dotnet test src/Nethermind/Nethermind.LibSolc.Test
     #  name: "Nethermind.LibSolc.Test.Osx"
     #  os: osx
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Mining.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Mining.Test
       name: "Nethermind.Mining.Test"
     - script:
       - sudo apt-get install libsnappy-dev 
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Network.Test
+      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Network.Test
       name: "Nethermind.Network.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Secp256k1.Test
       name: "Nethermind.Secp256k1.Test.Linux"
     #- script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
     #  name: "Nethermind.Secp256k1.Test.Osx"
     #  os: osx
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Store.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Store.Test
       name: "Nethermind.Store.Test"
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Wallet.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Wallet.Test
       name: "Nethermind.Wallet.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
       name: "Nethermind.DataMarketplace.Consumers.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Integration.Test
       name: "Nethermind.DataMarketplace.Integration.Test"  
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.DataMarketplace.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Test
       name: "Nethermind.DataMarketplace.Test"  
