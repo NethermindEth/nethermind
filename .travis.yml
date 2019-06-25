@@ -5,16 +5,13 @@ dist: xenial
 dotnet: 2.2
 git:
   depth: 3
-  submodules: false
+  submodules_depth: 3
 matrix:
   include:
     - env: TEST_MODULE=Nethermind
     - env: TEST_MODULE=Ethereum
 before_script:
   - chmod -R +x scripts
-before_install:
-  - git submodule update --init --recursive src/Dirichlet
-  - git submodule update --init --recursive src/rocksdb-sharp
 notifications:
   slack:
     rooms:
@@ -29,13 +26,16 @@ jobs:
     - stage: build
       script: dotnet build src/Nethermind/Nethermind.sln
       name: "Build Nethermind"
+      env: TEST_MODULE=Nethermind
     - script: dotnet build src/Nethermind/EthereumTests.sln
       name: "Build Ethereum tests"
+      env: TEST_MODULE=Ethereum
     # - script: dotnet test src/Nethermind/Ethereum.VM.Test
     #  name: "Ethereum.VM.Test"
     - stage: Nethermind tests
       script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Abi.Test
       name: "Nethermind.Abi.Test"
+      env: TEST_MODULE=Nethermind
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Blockchain.Test
       name: "Nethermind.Blockchain.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Clique.Test
