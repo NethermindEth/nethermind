@@ -13,8 +13,8 @@ matrix:
 before_script:
   - chmod -R +x scripts
 before_install:
-  - git submodule update --init src/Dirichlet --recursive
-  - git submodule update --init src/rocksdb-sharp --recursive
+  - git submodule update --init --recursive src/Dirichlet
+  - git submodule update --init --recursive src/rocksdb-sharp
 notifications:
   slack:
     rooms:
@@ -82,7 +82,7 @@ jobs:
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Wallet.Test
       name: "Nethermind.Wallet.Test"
     - stage: Ethereum tests
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test
+      script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test
       name: "Ethereum.Basic.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Block.Test
       name: "Ethereum.Blockchain.Block.Test"
