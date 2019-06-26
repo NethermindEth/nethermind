@@ -17,7 +17,6 @@
     <PackageReference Include="NUnit3TestAdapter" Version="3.13.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Blockchain.Test\Nethermind.Blockchain.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj">
       <Project>{53D62515-72D1-4DEA-BC60-71BCC9C928E3}</Project>
