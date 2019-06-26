@@ -71,10 +71,10 @@ jobs:
     #- script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
     #  name: "Nethermind.Secp256k1.Test.Osx"
     #  os: osx
-    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
-      name: "Nethermind.DataMarketplace.Consumers.Test"
-    - script: dotnet test /p:CollectCNethermind.Network.TesttFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DatNethermind.Network.Test
-      name: "Nethermind.DataMarketplaNethermind.Network.Test"
+    #- script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+    #  name: "Nethermind.DataMarketplace.Consumers.Test"
+    #- script: dotnet test /p:CollectCNethermind.Network.TesttFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DatNethermind.Network.Test
+    #  name: "Nethermind.DataMarketplaNethermind.Network.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.DataMarketplace.Test
       name: "Nethermind.DataMarketplace.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermid.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Store.Test
