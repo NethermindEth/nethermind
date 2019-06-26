@@ -45,8 +45,7 @@ Nethermind uses the same format chainspec files that can be used for setting up 
 The following elements are NOT supported at the moment:
 
 * hardcoded sync block hashes
-* precompile definitions
-* params and EIP transition blocks
+* precompile definitions and precompile activation blocks
 
 You can find below links to some of the chainspec files used to define arious Ethereum networks:
 

@@ -22,17 +22,15 @@ namespace Nethermind.Cli.Modules
     public class ParityCliModule : CliModuleBase
     {
         [CliFunction("trace", "replayTransaction")]
-        public string ReplayTransaction(string txHash, string[] traceTypes)
+        public object ReplayTransaction(string txHash, string[] traceTypes)
         {
-            string parityLikeTxTrace = NodeManager.Post<string>("trace_replayTransaction", txHash, traceTypes).Result;
-            return parityLikeTxTrace;
+            return NodeManager.Post<object>("trace_replayTransaction", txHash, traceTypes).Result;
         }
         
         [CliFunction("trace", "replayBlockTransactions")]
-        public string ReplayBlockTransactions(string blockNumber, string[] traceTypes)
+        public object ReplayBlockTransactions(string blockNumber, string[] traceTypes)
         {
-            string parityLikeTxTrace = NodeManager.Post<string>("trace_replayBlockTransactions", blockNumber, traceTypes).Result;
-            return parityLikeTxTrace;
+            return NodeManager.Post<object>("trace_replayBlockTransactions", blockNumber, traceTypes).Result;
         }
 
         public ParityCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)

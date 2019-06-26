@@ -140,6 +140,10 @@ namespace Nethermind.Cli
             {
                 try
                 {
+                    if (_terminal == Terminal.Cmd)
+                    {
+                        Console.ForegroundColor = ColorScheme.Text;
+                    }
                     int bufferSize = 1024 * 16;
                     string statement;
                     using (Stream inStream = System.Console.OpenStandardInput(bufferSize))
