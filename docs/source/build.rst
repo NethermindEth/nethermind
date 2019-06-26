@@ -29,6 +29,7 @@ MacOS
 
     brew install gmp
     brew install snappy
+    brew install lz4
     
 Windows
 ^^^^^^^
