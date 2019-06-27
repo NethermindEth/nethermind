@@ -6,10 +6,6 @@ dotnet: 2.2
 git:
   depth: 3
   submodules_depth: 3
-matrix:
-  include:
-    - env: TEST_MODULE=Nethermind
-    - env: TEST_MODULE=Ethereum
 before_script:
   - chmod -R +x scripts
 notifications:
@@ -26,23 +22,20 @@ jobs:
     - stage: build
       script: dotnet build src/Nethermind/Nethermind.sln
       name: "Build Nethermind"
-      env: TEST_MODULE=Nethermind
     - script: dotnet build src/Nethermind/EthereumTests.sln
       name: "Build Ethereum tests"
-      env: TEST_MODULE=Ethereum
     # - script: dotnet test src/Nethermind/Ethereum.VM.Test
     #  name: "Ethereum.VM.Test"
     - stage: Nethermind tests
       script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Abi.Test
       name: "Nethermind.Abi.Test"
-      env: TEST_MODULE=Nethermind
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Blockchain.Test
       name: "Nethermind.Blockchain.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Clique.Test
       name: "Nethermind.Clique.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Config.Test
       name: "Nethermind.Config.Test"
-    - script: dotnet test src/Nethermind/Nethermind.Core.Test
+    - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Core.Test
       name: "Nethermind.Core.Test"
     #- script: dotnet test src/Nethermind/Nethermind.Db.Test
     #  name: "Nethermind.Db.Test.Linux"
