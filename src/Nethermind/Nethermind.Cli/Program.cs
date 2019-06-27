@@ -140,7 +140,7 @@ namespace Nethermind.Cli
             {
                 try
                 {
-                    if (_terminal == Terminal.Cmd)
+                    if (_terminal != Terminal.Cmder)
                     {
                         Console.ForegroundColor = ColorScheme.Text;
                     }
