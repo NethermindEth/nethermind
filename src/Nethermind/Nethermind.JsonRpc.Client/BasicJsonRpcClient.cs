@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Client
                 JsonRpcResponse<T> jsonResponse = _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString);
                 if (jsonResponse.Error != null)
                 {
-                    if(_logger.IsError) _logger.Error(jsonResponse.Error.Message);
+                    if(_logger.IsError) _logger.Error(string.Concat(jsonResponse.Error.Message, " | ", jsonResponse.Error.Data));
                 }
                 
                 return jsonResponse.Result;
