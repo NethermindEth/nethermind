@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Client
             {
                 jsonrpc = "2.0",
                 method,
-                Params = parameters ?? Enumerable.Empty<object>(),
+                @params = parameters ?? Enumerable.Empty<object>(),
                 id = 67
             };
 
