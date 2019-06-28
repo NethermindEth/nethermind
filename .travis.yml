@@ -18,7 +18,7 @@ after_success:
 after_script: 
   - bash <(curl -s https://codecov.io/bash)
 before_install:
-  - git submodule update --init --remote --recursive
+  - git submodule update --init
 jobs:
   include:
     - stage: build
