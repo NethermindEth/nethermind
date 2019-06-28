@@ -17,14 +17,16 @@ after_success:
   - ./scripts/docker-publish.sh
 after_script: 
   - bash <(curl -s https://codecov.io/bash)
-before_install:
-  - git submodule update --init
 jobs:
   include:
     - stage: build
-      script: dotnet build src/Nethermind/Nethermind.sln
+      script: 
+      - git submodule update --init
+      - dotnet build src/Nethermind/Nethermind.sln
       name: "Build Nethermind"
-    - script: dotnet build src/Nethermind/EthereumTests.sln
+    - script: 
+      - git submodule update --init
+      - dotnet build src/Nethermind/EthereumTests.sln
       name: "Build Ethereum tests"
     # - script: dotnet test src/Nethermind/Ethereum.VM.Test
     #  name: "Ethereum.VM.Test"
@@ -77,7 +79,9 @@ jobs:
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Wallet.Test
       name: "Nethermind.Wallet.Test"
     - stage: Ethereum tests
-      script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test
+      script: 
+      - git submodule update --init
+      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test
       name: "Ethereum.Basic.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Block.Test
       name: "Ethereum.Blockchain.Block.Test"
