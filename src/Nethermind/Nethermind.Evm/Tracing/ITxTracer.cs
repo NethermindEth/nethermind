@@ -46,5 +46,6 @@ namespace Nethermind.Evm.Tracing
         
         void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType);
         void ReportCallEnd(long gas, byte[] output);
+        void ReportCreateEnd(long gas, Address deploymentAddress, byte[] deployedCode);
     }
 }

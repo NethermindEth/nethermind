@@ -125,15 +125,15 @@ namespace Nethermind.JsonRpc
 
         private void TraceResult(params JsonRpcResponse[] responses)
         {
-            var builder = new StringBuilder();
-            using (var stringWriter = new StringWriter(builder))
-            using (var jsonWriter = new JsonTextWriter(stringWriter))
-            {
-                _traceSerializer.Serialize(jsonWriter, responses);
-            }
-
             if (_logger.IsTrace)
             {
+                var builder = new StringBuilder();
+                using (var stringWriter = new StringWriter(builder))
+                using (var jsonWriter = new JsonTextWriter(stringWriter))
+                {
+                    _traceSerializer.Serialize(jsonWriter, responses);
+                }
+                
                 _logger.Trace($"Sending JSON RPC response: {builder}");
             }
         }

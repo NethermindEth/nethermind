@@ -23,8 +23,8 @@ namespace Nethermind.Store
 {
     public interface IStateTracer
     {
-        void ReportBalanceChange(Address address, UInt256 before, UInt256 after);
+        void ReportBalanceChange(Address address, UInt256? before, UInt256? after);
         void ReportCodeChange(Address address, byte[] before, byte[] after);
-        void ReportNonceChange(Address address, UInt256 before, UInt256 after);
+        void ReportNonceChange(Address address, UInt256? before, UInt256? after);
     }
 }

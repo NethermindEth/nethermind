@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 
@@ -28,6 +29,8 @@ namespace Nethermind.Evm
         public Address Originator { get; set; }
 
         public Address Sender { get; set; }
+        
+        public Address CodeSource { get; set; }
 
         public UInt256 GasPrice { get; set; }
 

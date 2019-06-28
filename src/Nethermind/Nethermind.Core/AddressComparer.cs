@@ -17,17 +17,16 @@
  */
 
 using System.Collections.Generic;
-using Nethermind.Core;
 
-namespace Nethermind.Clique
+namespace Nethermind.Core
 {
-    internal class CliqueAddressComparer : IComparer<Address>
+    public class AddressComparer : IComparer<Address>
     {
-        private CliqueAddressComparer()
+        private AddressComparer()
         {
         }
             
-        public static CliqueAddressComparer Instance { get; } = new CliqueAddressComparer();
+        public static AddressComparer Instance { get; } = new AddressComparer();
 
         public int Compare(Address x, Address y)
         {

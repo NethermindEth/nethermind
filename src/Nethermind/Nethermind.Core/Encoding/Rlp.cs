@@ -314,6 +314,18 @@ namespace Nethermind.Core.Encoding
             }
         }
 
+        public static Rlp Encode(UInt256? value)
+        {
+            if (value.HasValue)
+            {
+                return Encode(value.Value);
+            }
+            else
+            {
+                return new Rlp(0);
+            }
+        }
+        
         public static Rlp Encode(UInt256 value)
         {
             if (value.IsZero)
@@ -1109,6 +1121,17 @@ namespace Nethermind.Core.Encoding
 
                 UInt256.CreateFromBigEndian(out UInt256 result, byteSpan);
                 return result;
+            }
+            
+            public UInt256? DecodeNullableUInt256()
+            {
+                if (Data[Position] == 0)
+                {
+                    Position++;
+                    return null;
+                }
+
+                return DecodeUInt256();
             }
 
             public BigInteger DecodeUBigInt()

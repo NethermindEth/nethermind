@@ -107,10 +107,33 @@ namespace Nethermind.Evm
             IsContinuation = isContinuation;
         }
 
+        public Address From
+        {
+            get
+            {
+                switch (ExecutionType)
+                {
+                    
+                    case ExecutionType.StaticCall:
+                    case ExecutionType.Call:
+                    case ExecutionType.CallCode:
+                    case ExecutionType.Create:
+                        return Env.Sender;
+                    case ExecutionType.DelegateCall:
+                        return Env.ExecutingAccount;
+                    case ExecutionType.Transaction:
+                        return Env.Originator;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+        }
+
+        public Address To => Env.CodeSource;
+        
         public ExecutionEnvironment Env { get; }
         public long GasAvailable { get; set; }
         public UInt256 ProgramCounter { get; set; }
-
         internal ExecutionType ExecutionType { get; }
         internal bool IsPrecompile { get; }
         public bool IsTopLevel { get; }

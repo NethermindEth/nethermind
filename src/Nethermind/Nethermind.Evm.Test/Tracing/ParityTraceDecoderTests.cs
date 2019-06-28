@@ -73,8 +73,8 @@ namespace Nethermind.Evm.Test.Tracing
             txTrace.Action.TraceAddress = new int[] {1, 2, 3};
 
             ParityAccountStateChange stateChange = new ParityAccountStateChange();
-            stateChange.Balance = new ParityStateChange<UInt256>(1, 2);
-            stateChange.Nonce = new ParityStateChange<UInt256>(0, 1);
+            stateChange.Balance = new ParityStateChange<UInt256?>(null, 2);
+            stateChange.Nonce = new ParityStateChange<UInt256?>(0, 1);
             stateChange.Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>();
             stateChange.Storage[1] = new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {2});
 
@@ -108,7 +108,7 @@ namespace Nethermind.Evm.Test.Tracing
             txTrace.TransactionPosition = null;
 
             ParityAccountStateChange stateChange = new ParityAccountStateChange();
-            stateChange.Balance = new ParityStateChange<UInt256>(0, 2.Ether());
+            stateChange.Balance = new ParityStateChange<UInt256?>(0, 2.Ether());
 
             txTrace.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
             txTrace.StateChanges.Add(TestItem.AddressA, stateChange);

@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -63,11 +62,11 @@ namespace Nethermind.Evm.Tracing
                 return CurrentTxTracer;
             }
             
-//            if(!_isTracingEntireBlock && _txHash != txHash)
-//            {
-//                throw new InvalidOperationException($"Unexpected tx trace started - awaiting {_txHash}, received {txHash}");
-//            }
-            
+            // if(!_isTracingEntireBlock && _txHash != txHash)
+            // {
+            //     throw new InvalidOperationException($"Unexpected tx trace started - awaiting {_txHash}, received {txHash}");
+            // }
+
             return NullTxTracer.Instance;
         }
 

@@ -25,6 +25,8 @@ namespace Nethermind.Evm.Tracing
 {
     public class ParityLikeTxTrace
     {
+        public byte[] Output { get; set; }
+        
         public ParityTraceAction Action { get; set; }
         
         public Keccak BlockHash { get; set; }

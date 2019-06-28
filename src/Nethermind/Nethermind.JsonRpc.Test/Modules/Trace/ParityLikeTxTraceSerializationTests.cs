@@ -64,15 +64,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             result.Action.TraceAddress = new int[] {1, 2, 3};
 
             ParityAccountStateChange stateChange = new ParityAccountStateChange();
-            stateChange.Balance = new ParityStateChange<UInt256>(1, 2);
-            stateChange.Nonce = new ParityStateChange<UInt256>(0, 1);
+            stateChange.Balance = new ParityStateChange<UInt256?>(1, 2);
+            stateChange.Nonce = new ParityStateChange<UInt256?>(0, 1);
             stateChange.Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>();
             stateChange.Storage[1] = new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {2});
 
             result.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
             result.StateChanges.Add(TestItem.AddressC, stateChange);
 
-            TestOneWaySerialization(result, "{\"trace\":[{\"action\":{\"callType\":\"init\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"gas\":\"0x9c40\",\"input\":\"0x010203040506\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x3039\"},\"blockHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"blockNumber\":\"0x1e240\",\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":1,\"traceAddress\":\"[1, 2, 3]\",\"transactionHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"transactionPosition\":5,\"type\":\"init\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0x2710\",\"input\":\"0x\",\"to\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"value\":\"0x10932\"},\"blockHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"blockNumber\":\"0x1e240\",\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"traceAddress\":\"[0, 0]\",\"transactionHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"transactionPosition\":5,\"type\":\"call\"}],\"stateDiff\":{\"0x76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":\"0x2\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x1\"}},\"storage\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":{\"*\":{\"from\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"to\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}}}}}");
+            TestOneWaySerialization(result, "{\"output\":null,\"stateDiff\":{\"0x76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":\"0x2\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x1\"}},\"storage\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":{\"*\":{\"from\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"to\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}}}},\"trace\":[{\"action\":{\"callType\":\"init\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"gas\":\"0x9c40\",\"input\":\"0x010203040506\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x3039\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":1,\"traceAddress\":[1,2,3],\"type\":null},{\"action\":{\"callType\":\"call\",\"from\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0x2710\",\"input\":\"0x\",\"to\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"value\":\"0x10932\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"traceAddress\":[0,0],\"type\":null}],\"transactionHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"vmTrace\":null}");
         }
 
         [Test]
@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             ParityLikeTxTrace trace = ((ParityLikeBlockTracer)blockTracer).BuildResult().SingleOrDefault();
             
-            TestOneWaySerialization(trace, "{\"trace\":[{\"action\":{\"callType\":\"reward\",\"from\":null,\"gas\":\"0x0\",\"input\":null,\"to\":null,\"value\":\"0x1\"},\"blockHash\":\"0xfed4f714d3626e046786ef043cbb30a4b87cdc288469d0b70e4529bbd4e15396\",\"blockNumber\":\"0x4563918244f40000\",\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"traceAddress\":\"[]\",\"transactionHash\":null,\"transactionPosition\":null,\"type\":\"reward\"}],\"stateDiff\":{\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x29a2241af62c0000\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}}}");
+            TestOneWaySerialization(trace, "{\"output\":null,\"stateDiff\":{\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x29a2241af62c0000\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}},\"trace\":[{\"action\":{\"callType\":\"reward\",\"from\":null,\"gas\":\"0x0\",\"input\":null,\"to\":null,\"value\":\"0x1\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"traceAddress\":[],\"type\":null}],\"vmTrace\":null}");
         }
         
         [Test]
@@ -105,7 +105,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             ParityLikeTxTrace trace = ((ParityLikeBlockTracer)blockTracer).BuildResult().SingleOrDefault();
             
-            TestOneWaySerialization(trace, "{\"trace\":null,\"stateDiff\":{\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x29a2241af62c0000\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}}}");
+            TestOneWaySerialization(trace, "{\"output\":null,\"stateDiff\":{\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x29a2241af62c0000\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}},\"trace\":null,\"vmTrace\":null}");
         }
     }
 }

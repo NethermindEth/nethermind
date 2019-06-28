@@ -31,8 +31,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         public void Can_serialize()
         {
             ParityAccountStateChange result = new ParityAccountStateChange();
-            result.Balance = new ParityStateChange<UInt256>(1, 2);
-            result.Nonce = new ParityStateChange<UInt256>(0, 1);
+            result.Balance = new ParityStateChange<UInt256?>(1, 2);
+            result.Nonce = new ParityStateChange<UInt256?>(0, 1);
             result.Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>();
             result.Storage[1] = new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {2});
 

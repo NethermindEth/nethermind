@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json;
@@ -32,16 +33,33 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 writer.WriteNull();
             }
-            
-            writer.WriteValue($"[{string.Join(", ", value)}]");
+            else
+            {
+                writer.WriteStartArray();
+                foreach (int i in value)
+                {
+                    writer.WriteValue(i);
+                }
+
+                writer.WriteEndArray();
+            }
         }
 
         public override int[] ReadJson(JsonReader reader, Type objectType, int[] existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            string s = ((string) reader.Value);
-            s = s.AsSpan().Slice(1, s.Length - 2).ToString();
-            string[] split = s.Split(", ");
-            return split.Select(i => int.Parse(i, CultureInfo.InvariantCulture)).ToArray();
+            List<int> result = new List<int>();
+            int? pathPart;
+
+            do
+            {
+                pathPart = reader.ReadAsInt32();
+                if (pathPart.HasValue)
+                {
+                    result.Add(pathPart.Value);
+                }
+            } while (pathPart != null);
+            
+            return result.ToArray();
         }
     }
 }
