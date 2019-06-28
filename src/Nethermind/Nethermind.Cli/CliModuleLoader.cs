@@ -46,6 +46,13 @@ namespace Nethermind.Cli
             _client = client ?? throw new ArgumentNullException(nameof(client));
         }
 
+        /// <summary>
+        /// Can just use Delegate.CreateDelegate???
+        /// </summary>
+        /// <param name="methodInfo"></param>
+        /// <param name="module"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentNullException"></exception>
         private static Delegate CreateDelegate(MethodInfo methodInfo, CliModuleBase module)
         {
             if (methodInfo == null)

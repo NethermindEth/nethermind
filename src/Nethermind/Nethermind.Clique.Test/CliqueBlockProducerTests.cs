@@ -766,7 +766,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public async Task Many_validators_can_process_blocks()
         {
-            PrivateKey[] keys = new[] {TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC}.OrderBy(pk => pk.Address, CliqueAddressComparer.Instance).ToArray();
+            PrivateKey[] keys = new[] {TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC}.OrderBy(pk => pk.Address, AddressComparer.Instance).ToArray();
 
             var goerli = On.FastGoerli;
             for (int i = 0; i < keys.Length; i++)

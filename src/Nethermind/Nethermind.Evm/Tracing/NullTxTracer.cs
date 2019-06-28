@@ -65,17 +65,19 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationMemory(List<string> memoryTrace) => throw new InvalidOperationException(ErrorMessage);
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new InvalidOperationException(ErrorMessage);
-        
-        public void ReportBalanceChange(Address address, UInt256 before, UInt256 after) => throw new InvalidOperationException(ErrorMessage);
+
+        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportCodeChange(Address address, byte[] before, byte[] after) => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportNonceChange(Address address, UInt256 before, UInt256 after) => throw new InvalidOperationException(ErrorMessage);
+        public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportCallEnd(long gas, byte[] output) => throw new InvalidOperationException(ErrorMessage);
+        
+        public void ReportCreateEnd(long gas, Address deploymentAddress, byte[] deployedCode) => throw new InvalidOperationException(ErrorMessage);
     }
 }

@@ -95,7 +95,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportBalanceChange(Address address, UInt256 before, UInt256 after)
+        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             throw new NotSupportedException();
         }
@@ -105,7 +105,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportNonceChange(Address address, UInt256 before, UInt256 after)
+        public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
             throw new NotSupportedException();
         }
@@ -121,6 +121,11 @@ namespace Nethermind.Evm.Tracing
         }
 
         public void ReportCallEnd(long gas, byte[] output)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportCreateEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
             throw new NotSupportedException();
         }

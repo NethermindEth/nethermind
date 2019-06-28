@@ -109,8 +109,13 @@ namespace Nethermind.Evm.Tracing
                 throw new InvalidOperationException($"Closing trace at level {_currentCall.TraceAddress.Length}");
             }
 
-            _trace.Action.To = recipient;
-            _trace.Action.Result = new ParityTraceResult {Output = output ?? Bytes.Empty, GasUsed = (long) gasSpent};
+            if (_trace.Action.TraceAddress.Length == 0)
+            {
+                _trace.Output = output;
+            }
+
+//            _trace.Action.To = recipient;
+            _trace.Action.Result.Output = output;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error)
@@ -132,8 +137,8 @@ namespace Nethermind.Evm.Tracing
                 _trace.Action.CallType = _tx.IsMessageCall ? "call" : "init";
             }
             
-            _trace.Action.To = recipient;
-            _trace.Action.Result = new ParityTraceResult {Output = output ?? Bytes.Empty, GasUsed = (long) gasSpent};
+//            _trace.Action.To = recipient;
+//            _trace.Action.Result = new ParityTraceResult {Output = output ?? Bytes.Empty, GasUsed = (long) gasSpent};
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new NotSupportedException();
@@ -150,7 +155,7 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new NotSupportedException();
 
-        public void ReportBalanceChange(Address address, UInt256 before, UInt256 after)
+        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             if (!_trace.StateChanges.ContainsKey(address))
             {
@@ -161,7 +166,7 @@ namespace Nethermind.Evm.Tracing
                 before = _trace.StateChanges[address].Balance?.Before ?? before;
             }
 
-            _trace.StateChanges[address].Balance = new ParityStateChange<UInt256>(before, after);
+            _trace.StateChanges[address].Balance = new ParityStateChange<UInt256?>(before, after);
         }
 
         public void ReportCodeChange(Address address, byte[] before, byte[] after)
@@ -178,7 +183,7 @@ namespace Nethermind.Evm.Tracing
             _trace.StateChanges[address].Code = new ParityStateChange<byte[]>(before, after);
         }
 
-        public void ReportNonceChange(Address address, UInt256 before, UInt256 after)
+        public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
             if (!_trace.StateChanges.ContainsKey(address))
             {
@@ -189,7 +194,7 @@ namespace Nethermind.Evm.Tracing
                 before = _trace.StateChanges[address].Nonce?.Before ?? before;
             }
 
-            _trace.StateChanges[address].Nonce = new ParityStateChange<UInt256>(before, after);
+            _trace.StateChanges[address].Nonce = new ParityStateChange<UInt256?>(before, after);
         }
 
         public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
@@ -223,6 +228,7 @@ namespace Nethermind.Evm.Tracing
             action.Input = input;
             action.Gas = gas;
             action.CallType = GetCallType(callType);
+            action.Type = GetType(callType);
 
             PushCall(action);
         }
@@ -234,15 +240,36 @@ namespace Nethermind.Evm.Tracing
                 case ExecutionType.Transaction:
                     return "call";
                 case ExecutionType.Create:
-                    return "init";
+                    return "create";
                 case ExecutionType.Call:
                     return "call";
                 case ExecutionType.DelegateCall:
-                    return "delegateCall";
+                    return "delegatecall";
                 case ExecutionType.StaticCall:
-                    return "staticCall";
+                    return "staticcall";
                 case ExecutionType.CallCode:
-                    return "callCode";
+                    return "callcode";
+                default:
+                    throw new NotImplementedException($"Parity trace call type is undefined for {Enum.GetName(typeof(ExecutionType), executionType)}");
+            }
+        }
+        
+        private string GetType(ExecutionType executionType)
+        {
+            switch (executionType)
+            {
+                case ExecutionType.Transaction:
+                    return "call";
+                case ExecutionType.Create:
+                    return "create";
+                case ExecutionType.Call:
+                    return "call";
+                case ExecutionType.DelegateCall:
+                    return "call";
+                case ExecutionType.StaticCall:
+                    return "call";
+                case ExecutionType.CallCode:
+                    return "call";
                 default:
                     throw new NotImplementedException($"Parity trace call type is undefined for {Enum.GetName(typeof(ExecutionType), executionType)}");
             }
@@ -251,6 +278,14 @@ namespace Nethermind.Evm.Tracing
         public void ReportCallEnd(long gas, byte[] output)
         {
             _currentCall.Result.Output = output ?? Bytes.Empty;
+            _currentCall.Result.GasUsed = _currentCall.Gas - gas;
+            PopCall();
+        }
+        
+        public void ReportCreateEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        {
+            _currentCall.Result.Address = deploymentAddress;
+            _currentCall.Result.Code = deployedCode;
             _currentCall.Result.GasUsed = _currentCall.Gas - gas;
             PopCall();
         }

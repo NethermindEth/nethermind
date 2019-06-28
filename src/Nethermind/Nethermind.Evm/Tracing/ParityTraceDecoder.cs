@@ -92,7 +92,7 @@ namespace Nethermind.Evm.Tracing
             return change;
         }
 
-        private ParityStateChange<UInt256> DecodeChange(Rlp.DecoderContext context)
+        private ParityStateChange<UInt256?> DecodeChange(Rlp.DecoderContext context)
         {
             int sequenceLength = context.ReadSequenceLength();
             if (sequenceLength == 0)
@@ -100,7 +100,7 @@ namespace Nethermind.Evm.Tracing
                 return null;
             }
 
-            ParityStateChange<UInt256> change = new ParityStateChange<UInt256>(context.DecodeUInt256(), context.DecodeUInt256());
+            ParityStateChange<UInt256?> change = new ParityStateChange<UInt256?>(context.DecodeNullableUInt256(), context.DecodeNullableUInt256());
             return change;
         }
 
@@ -189,7 +189,7 @@ namespace Nethermind.Evm.Tracing
             return Rlp.Encode(Rlp.Encode(stateChange.Before), Rlp.Encode(stateChange.After));
         }
 
-        private static Rlp EncodeChange(ParityStateChange<UInt256> stateChange)
+        private static Rlp EncodeChange(ParityStateChange<UInt256?> stateChange)
         {
             if (stateChange == null)
             {

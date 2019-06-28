@@ -188,6 +188,7 @@ namespace Nethermind.Evm
                 env.Value = value;
                 env.TransferValue = value;
                 env.Sender = sender;
+                env.CodeSource = recipient;
                 env.ExecutingAccount = recipient;
                 env.CurrentBlock = block;
                 env.GasPrice = gasPrice;

@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-            Assert.AreEqual(100000, trace.Action.Result.GasUsed);
+            Assert.AreEqual(79000, trace.Action.Result.GasUsed);
         }
 
         [Test]
@@ -143,7 +143,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteInitAndTraceParityCall(initCode);
-            Assert.AreEqual("init", trace.Action.CallType);
+            Assert.AreEqual("create", trace.Action.CallType);
         }
 
         [Test]
@@ -226,7 +226,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-            Assert.AreEqual(21003, trace.Action.Result.GasUsed);
+            Assert.AreEqual(3, trace.Action.Result.GasUsed);
         }
 
         [Test]
@@ -316,7 +316,7 @@ namespace Nethermind.Evm.Test.Tracing
                 1, // STOP
             };
 
-            Assert.AreEqual("delegateCall", trace.Action.Subtraces[0].CallType, "[0] type");
+            Assert.AreEqual("delegatecall", trace.Action.Subtraces[0].CallType, "[0] type");
         }
 
         [Test]
@@ -352,7 +352,7 @@ namespace Nethermind.Evm.Test.Tracing
                 1, // STOP
             };
 
-            Assert.AreEqual("callCode", trace.Action.Subtraces[0].CallType, "[0] type");
+            Assert.AreEqual("callcode", trace.Action.Subtraces[0].CallType, "[0] type");
         }
 
         [Test]
@@ -388,7 +388,7 @@ namespace Nethermind.Evm.Test.Tracing
                 1, // STOP
             };
 
-            Assert.AreEqual("staticCall", trace.Action.Subtraces[0].CallType, "[0] type");
+            Assert.AreEqual("staticcall", trace.Action.Subtraces[0].CallType, "[0] type");
         }
 
         [Test]
@@ -461,11 +461,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.AreEqual(new[] {0, 0}, trace.Action.Subtraces[0].Subtraces[0].TraceAddress, "[0, 0] address");
             Assert.AreEqual(0, trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, "[0, 0] subtraces");
-            Assert.AreEqual("init", trace.Action.Subtraces[1].Subtraces[0].CallType, "[0, 0] type");
+            Assert.AreEqual("create", trace.Action.Subtraces[1].Subtraces[0].CallType, "[0, 0] type");
 
             Assert.AreEqual(new[] {1, 0}, trace.Action.Subtraces[1].Subtraces[0].TraceAddress, "[1, 0] address");
             Assert.AreEqual(0, trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, "[1, 0] subtraces");
-            Assert.AreEqual("init", trace.Action.Subtraces[1].Subtraces[0].CallType, "[1, 0] type");
+            Assert.AreEqual("create", trace.Action.Subtraces[1].Subtraces[0].CallType, "[1, 0] type");
         }
 
         [Test]
@@ -540,7 +540,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.True(trace.StateChanges.ContainsKey(Sender), "sender");
             Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
             Assert.True(trace.StateChanges.ContainsKey(Miner), "miner");
-            Assert.AreEqual(Bytes.Empty, trace.StateChanges[Contract].Code.Before, "code before");
+            Assert.AreEqual(null, trace.StateChanges[Contract].Code.Before, "code before");
             Assert.AreEqual(deployedCode, trace.StateChanges[Contract].Code.After, "code after");
         }
 
@@ -561,8 +561,8 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(100.Ether() - 21001, trace.StateChanges[Sender].Balance.After, "sender after");
             Assert.AreEqual(100.Ether(), trace.StateChanges[Recipient].Balance.Before, "recipient before");
             Assert.AreEqual(100.Ether() + 1, trace.StateChanges[Recipient].Balance.After, "recipient after");
-            Assert.AreEqual(0.Ether(), trace.StateChanges[Miner].Balance.Before, "miner before");
-            Assert.AreEqual(0.Ether() + 21000, trace.StateChanges[Miner].Balance.After, "miner after");
+            Assert.AreEqual(null, trace.StateChanges[Miner].Balance.Before, "miner before");
+            Assert.AreEqual((UInt256)21000, trace.StateChanges[Miner].Balance.After, "miner after");
         }
 
         [Test]

@@ -18,6 +18,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
@@ -40,19 +42,29 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
             else
             {
-                writer.WriteStartObject();
-                writer.WritePropertyName("*");
-                writer.WriteStartObject();
-                writer.WritePropertyName("from");
-                _bytesConverter.WriteJson(writer, change.Before, serializer);
-                writer.WritePropertyName("to");
-                _bytesConverter.WriteJson(writer, change.After, serializer);
-                writer.WriteEndObject();
-                writer.WriteEndObject();
+                if (change.Before == null)
+                {
+                    writer.WriteStartObject();
+                    writer.WritePropertyName("+");
+                    _bytesConverter.WriteJson(writer, change.After, serializer);
+                    writer.WriteEndObject();
+                }
+                else
+                {
+                    writer.WriteStartObject();
+                    writer.WritePropertyName("*");
+                    writer.WriteStartObject();
+                    writer.WritePropertyName("from");
+                    _bytesConverter.WriteJson(writer, change.Before, serializer);
+                    writer.WritePropertyName("to");
+                    _bytesConverter.WriteJson(writer, change.After, serializer);
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                }
             }
         }
 
-        private void WriteChange(JsonWriter writer, ParityStateChange<UInt256> change, JsonSerializer serializer)
+        private void WriteChange(JsonWriter writer, ParityStateChange<UInt256?> change, JsonSerializer serializer)
         {
             if (change == null)
             {
@@ -60,19 +72,29 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
             else
             {
-                writer.WriteStartObject();
-                writer.WritePropertyName("*");
-                writer.WriteStartObject();
-                writer.WritePropertyName("from");
-                _intConverter.WriteJson(writer, change.Before, serializer);
-                writer.WritePropertyName("to");
-                _intConverter.WriteJson(writer, change.After, serializer);
-                writer.WriteEndObject();
-                writer.WriteEndObject();
+                if (change.Before == null)
+                {
+                    writer.WriteStartObject();
+                    writer.WritePropertyName("+");
+                    _intConverter.WriteJson(writer, change.After, serializer);
+                    writer.WriteEndObject();
+                }
+                else
+                {
+                    writer.WriteStartObject();
+                    writer.WritePropertyName("*");
+                    writer.WriteStartObject();
+                    writer.WritePropertyName("from");
+                    _intConverter.WriteJson(writer, change.Before, serializer);
+                    writer.WritePropertyName("to");
+                    _intConverter.WriteJson(writer, change.After, serializer);
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                }
             }
         }
 
-        private void WriteStorageChange(JsonWriter writer, ParityStateChange<byte[]> change, JsonSerializer serializer)
+        private void WriteStorageChange(JsonWriter writer, ParityStateChange<byte[]> change, bool isNew, JsonSerializer serializer)
         {
             if (change == null)
             {
@@ -80,15 +102,25 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
             else
             {
-                writer.WriteStartObject();
-                writer.WritePropertyName("*");
-                writer.WriteStartObject();
-                writer.WritePropertyName("from");
-                _32BytesConverter.WriteJson(writer, change.Before, serializer);
-                writer.WritePropertyName("to");
-                _32BytesConverter.WriteJson(writer, change.After, serializer);
-                writer.WriteEndObject();
-                writer.WriteEndObject();
+                if (isNew)
+                {
+                    writer.WriteStartObject();
+                    writer.WritePropertyName("+");
+                    _32BytesConverter.WriteJson(writer, change.After, serializer);
+                    writer.WriteEndObject();
+                }
+                else
+                {
+                    writer.WriteStartObject();
+                    writer.WritePropertyName("*");
+                    writer.WriteStartObject();
+                    writer.WritePropertyName("from");
+                    _32BytesConverter.WriteJson(writer, change.Before, serializer);
+                    writer.WritePropertyName("to");
+                    _32BytesConverter.WriteJson(writer, change.After, serializer);
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                }
             }
         }
 
@@ -106,7 +138,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             writer.WritePropertyName("code");
-            if (value.Balance == null)
+            if (value.Code == null)
             {
                 writer.WriteValue("=");
             }
@@ -116,7 +148,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             writer.WritePropertyName("nonce");
-            if (value.Balance == null)
+            if (value.Nonce == null)
             {
                 writer.WriteValue("=");
             }
@@ -130,12 +162,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteStartObject();
             if (value.Storage != null)
             {
-                foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> pair in value.Storage)
+                foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> pair in value.Storage.OrderBy(s => s.Key))
                 {
-                    writer.WritePropertyName(string.Concat("0x", pair.Key.ToString("x64")));
-                    WriteStorageChange(writer, pair.Value, serializer);
+                    string trimmedKey = pair.Key.ToString("x64");
+                    trimmedKey = trimmedKey.Substring(trimmedKey.Length - 64, 64);
+                    
+                    writer.WritePropertyName(string.Concat("0x", trimmedKey));
+                    WriteStorageChange(writer, pair.Value, value.Balance?.Before == null && value.Balance?.After != null, serializer);
                 }
             }
+
             writer.WriteEndObject();
 
             writer.WriteEndObject();

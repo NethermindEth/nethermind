@@ -27,8 +27,20 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public override void WriteJson(JsonWriter writer, ParityTraceResult value, JsonSerializer serializer)
         {
             writer.WriteStartObject();
+
+            if (value.Address != null)
+            {
+                writer.WriteProperty("address", value.Address, serializer);    
+                writer.WriteProperty("code", value.Code, serializer);
+            }
+            
             writer.WriteProperty("gasUsed", string.Concat("0x", value.GasUsed.ToString("x")));
-            writer.WriteProperty("output", value.Output, serializer);
+            
+            if(value.Address == null)
+            {
+                writer.WriteProperty("output", value.Output, serializer);    
+            }
+            
             writer.WriteEndObject();
         }
 

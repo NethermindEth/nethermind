@@ -37,7 +37,7 @@ namespace Nethermind.Clique
         {
             Number = number;
             Hash = hash;
-            Signers = new SortedList<Address, long>(signers, CliqueAddressComparer.Instance);
+            Signers = new SortedList<Address, long>(signers, AddressComparer.Instance);
             Votes = new List<Vote>();
             Tally = tally;
         }
@@ -49,7 +49,7 @@ namespace Nethermind.Clique
 
         public object Clone()
         {
-            Snapshot clone = new Snapshot(Number, Hash, new SortedList<Address, long>(Signers, CliqueAddressComparer.Instance), new Dictionary<Address, Tally>(Tally));
+            Snapshot clone = new Snapshot(Number, Hash, new SortedList<Address, long>(Signers, AddressComparer.Instance), new Dictionary<Address, Tally>(Tally));
             clone.Votes = new List<Vote>(Votes);
             return clone;
         }

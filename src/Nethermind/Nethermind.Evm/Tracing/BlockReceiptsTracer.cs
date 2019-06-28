@@ -117,7 +117,7 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
         }
 
-        public void ReportBalanceChange(Address address, UInt256 before, UInt256 after)
+        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             _currentTxTracer.ReportBalanceChange(address, before, after);
         }
@@ -127,7 +127,7 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportCodeChange(address, before, after);
         }
 
-        public void ReportNonceChange(Address address, UInt256 before, UInt256 after)
+        public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
             _currentTxTracer.ReportNonceChange(address, before, after);
         }
@@ -145,6 +145,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportCallEnd(long gas, byte[] output)
         {
             _currentTxTracer.ReportCallEnd(gas, output);
+        }
+
+        public void ReportCreateEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        {
+            _currentTxTracer.ReportCreateEnd(gas, deploymentAddress, deployedCode);
         }
 
         public void SetOperationStack(List<string> stackTrace)

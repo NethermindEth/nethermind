@@ -71,7 +71,7 @@ namespace Nethermind.Clique
         private SortedList<Address, long> DecodeSigners(Rlp.DecoderContext context)
         {
             context.ReadSequenceLength();
-            SortedList<Address, long> signers = new SortedList<Address, long>(CliqueAddressComparer.Instance);
+            SortedList<Address, long> signers = new SortedList<Address, long>(AddressComparer.Instance);
             int length = context.DecodeInt();
             for (int i = 0; i < length; i++)
             {

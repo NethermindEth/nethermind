@@ -16,11 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
+
 namespace Nethermind.Evm.Tracing
 {
     public class ParityTraceResult
     {
         public long GasUsed { get; set; }
-        public byte[] Output { get; set; }   
+        public byte[] Output { get; set; }
+        
+        public Address Address { get; set; }
+        
+        public byte[] Code { get; set; }
     }
 }

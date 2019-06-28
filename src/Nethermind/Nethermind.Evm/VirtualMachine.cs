@@ -103,14 +103,10 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingCalls)
                         {
-                            _txTracer.ReportCall(currentState.GasAvailable, currentState.Env.TransferValue, currentState.Env.Sender, currentState.Env.ExecutingAccount, currentState.Env.InputData, currentState.ExecutionType);
+                            _txTracer.ReportCall(currentState.GasAvailable, currentState.Env.TransferValue, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType);
                         }
                         
                         callResult = ExecutePrecompile(currentState, spec);
-                        if (_txTracer.IsTracingCalls)
-                        {
-                            _txTracer.ReportCallEnd(!callResult.PrecompileSuccess.Value ? currentState.GasAvailable : 0, _returnDataBuffer);
-                        }
                         
                         if (!callResult.PrecompileSuccess.Value)
                         {
@@ -129,7 +125,7 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingCalls && !currentState.IsContinuation)
                         {
-                            _txTracer.ReportCall(currentState.GasAvailable, currentState.Env.TransferValue, currentState.Env.Sender, currentState.Env.ExecutingAccount, currentState.Env.InputData, currentState.ExecutionType);
+                            _txTracer.ReportCall(currentState.GasAvailable, currentState.Env.TransferValue, currentState.From, currentState.To, currentState.ExecutionType == ExecutionType.Create ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
                         }
                         
                         callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
@@ -140,11 +136,6 @@ namespace Nethermind.Evm
                             previousCallResult = null; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests (failing block 9411 on Ropsten https://ropsten.etherscan.io/vmtrace?txhash=0x666194d15c14c54fffafab1a04c08064af165870ef9a87f65711dcce7ed27fe1)
                             _returnDataBuffer = previousCallOutput = Bytes.Empty; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests
                             continue;
-                        }
-                        
-                        if (_txTracer.IsTracingCalls)
-                        {
-                            _txTracer.ReportCallEnd(callResult.IsException ? 0 : currentState.GasAvailable, _returnDataBuffer);
                         }
 
                         if (callResult.IsException)
@@ -170,12 +161,25 @@ namespace Nethermind.Evm
                             currentState.Dispose();
                             currentState = _stateStack.Pop();
                             currentState.IsContinuation = true;
+                            if(_txTracer.IsTracingCalls) _txTracer.ReportCallEnd(0, _returnDataBuffer);
                             continue;
                         }
                     }
 
                     if (currentState.IsTopLevel)
                     {
+                        if (_txTracer.IsTracingCalls)
+                        {
+                            if (currentState.ExecutionType == ExecutionType.Create)
+                            {
+                                _txTracer.ReportCreateEnd(currentState.GasAvailable - callResult.Output.Length * GasCostOf.CodeDeposit, currentState.To, callResult.Output);   
+                            }
+                            else
+                            {
+                                _txTracer.ReportCallEnd(currentState.GasAvailable, _returnDataBuffer);   
+                            }
+                        }
+                        
                         return new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert);
                     }
 
@@ -207,6 +211,11 @@ namespace Nethermind.Evm
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
                                 _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
                                 currentState.GasAvailable -= codeDepositGasCost;
+                                
+                                if (_txTracer.IsTracingCalls)
+                                {
+                                    _txTracer.ReportCreateEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output);
+                                }
                             }
                             else
                             {
@@ -218,6 +227,11 @@ namespace Nethermind.Evm
                                     _state.DeleteAccount(callCodeOwner);
                                     previousCallResult = BytesZero;
                                     previousStateSucceeded = false;
+                                    
+                                    if (_txTracer.IsTracingCalls)
+                                    {
+                                        _txTracer.ReportCallEnd(previousState.GasAvailable, previousCallOutput);
+                                    }
                                 }
                             }
                         }
@@ -227,6 +241,11 @@ namespace Nethermind.Evm
                             previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
                             previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                             previousCallOutputDestination = (ulong)previousState.OutputDestination;
+                            
+                            if (_txTracer.IsTracingCalls)
+                            {
+                                _txTracer.ReportCallEnd(previousState.GasAvailable, _returnDataBuffer);
+                            }
                         }
 
                         if (previousStateSucceeded)
@@ -253,6 +272,11 @@ namespace Nethermind.Evm
                         previousCallResult = StatusCode.FailureBytes;
                         previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
+                        
+                        if (_txTracer.IsTracingCalls)
+                        {
+                            _txTracer.ReportCallEnd(previousState.GasAvailable, _returnDataBuffer);
+                        }
                     }
 
                     previousState.Dispose();
@@ -2094,7 +2118,7 @@ namespace Nethermind.Evm
 
                         Span<byte> initCode = evmState.Memory.LoadSpan(ref memoryPositionOfInitCode, initCodeLength);
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
-                        if (value > _state.GetBalance(env.ExecutingAccount))
+                        if (value > balance)
                         {
                             PushZero(bytesOnStack);
                             break;
@@ -2138,6 +2162,7 @@ namespace Nethermind.Evm
                         callEnv.TransferValue = value;
                         callEnv.Value = value;
                         callEnv.Sender = env.ExecutingAccount;
+                        callEnv.CodeSource = null;
                         callEnv.Originator = env.Originator;
                         callEnv.CallDepth = env.CallDepth + 1;
                         callEnv.CurrentBlock = env.CurrentBlock;
@@ -2295,6 +2320,7 @@ namespace Nethermind.Evm
                         callEnv.GasPrice = env.GasPrice;
                         callEnv.Originator = env.Originator;
                         callEnv.Sender = sender;
+                        callEnv.CodeSource = codeSource;
                         callEnv.ExecutingAccount = target;
                         callEnv.TransferValue = transferValue;
                         callEnv.Value = callValue;

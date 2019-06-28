@@ -488,11 +488,11 @@ namespace Nethermind.Store
                 Account before = change.Before;
                 Account after = change.After;
                 
-                UInt256 beforeBalance = before?.Balance ?? 0;
-                UInt256 afterBalance = after?.Balance ?? 0;
+                UInt256? beforeBalance = before?.Balance;
+                UInt256? afterBalance = after?.Balance;
                 
-                UInt256 beforeNonce = before?.Nonce ?? 0;
-                UInt256 afterNonce = after?.Nonce ?? 0;
+                UInt256? beforeNonce = before?.Nonce;
+                UInt256? afterNonce = after?.Nonce;
                 
                 Keccak beforeCodeHash = before?.CodeHash;
                 Keccak afterCodeHash = after?.CodeHash;
@@ -500,17 +500,17 @@ namespace Nethermind.Store
                 if (beforeCodeHash != afterCodeHash)
                 {
                     byte[] beforeCode = beforeCodeHash == null
-                        ? Bytes.Empty
+                        ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
                             ? Bytes.Empty 
                             : _codeDb.Get(beforeCodeHash);
                     byte[] afterCode = afterCodeHash == null
-                        ? Bytes.Empty
+                        ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
                             ? Bytes.Empty 
                             : _codeDb.Get(afterCodeHash);
 
-                    if (!(beforeCode.Length == 0 && afterCode.Length == 0))
+                    if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
                     {
                         stateTracer.ReportCodeChange(address, beforeCode, afterCode);
                     }
