@@ -5,7 +5,7 @@ dist: xenial
 dotnet: 2.2
 git:
   depth: 3
-  submodules_depth: 3
+  submodules: false
 before_script:
   - chmod -R +x scripts
 notifications:
@@ -17,6 +17,8 @@ after_success:
   - ./scripts/docker-publish.sh
 after_script: 
   - bash <(curl -s https://codecov.io/bash)
+before_install:
+  - git submodule update --init --remote --recursive
 jobs:
   include:
     - stage: build
@@ -79,7 +81,7 @@ jobs:
       name: "Ethereum.Basic.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Block.Test
       name: "Ethereum.Blockchain.Block.Test"
-    - script: travis_wait 20 dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Test
+    - script: travis_wait 20 dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Ethereum.Test.Base]*" src/Nethermind/Ethereum.Blockchain.Test
       name: "Ethereum.Blockchain.Test"
     - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Difficulty.Test
       name: "Ethereum.Difficulty.Test"
