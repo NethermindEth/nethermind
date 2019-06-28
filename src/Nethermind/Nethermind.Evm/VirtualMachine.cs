@@ -140,6 +140,7 @@ namespace Nethermind.Evm
 
                         if (callResult.IsException)
                         {
+                            if(_txTracer.IsTracingCalls) _txTracer.ReportCallEnd(0, _returnDataBuffer);
                             _state.Restore(currentState.StateSnapshot);
                             _storage.Restore(currentState.StorageSnapshot);
 
@@ -161,7 +162,6 @@ namespace Nethermind.Evm
                             currentState.Dispose();
                             currentState = _stateStack.Pop();
                             currentState.IsContinuation = true;
-                            if(_txTracer.IsTracingCalls) _txTracer.ReportCallEnd(0, _returnDataBuffer);
                             continue;
                         }
                     }
