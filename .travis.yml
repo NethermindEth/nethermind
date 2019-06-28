@@ -36,19 +36,19 @@ jobs:
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Abi.Test
       name: "Nethermind.Abi.Test"
     - script: 
-      - git submodule update --init src/Dirichlet
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Blockchain.Test
       name: "Nethermind.Blockchain.Test"
     - script: 
-      - git submodule update --init src/Dirichlet
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Clique.Test
       name: "Nethermind.Clique.Test"
     - script:
-      - git submodule update --init src/Dirichlet
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Config.Test
       name: "Nethermind.Config.Test"
     - script: 
-      - git submodule update --init src/Dirichlet
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Core.Test
       name: "Nethermind.Core.Test"
     #- script: dotnet test src/Nethermind/Nethermind.Db.Test
@@ -57,11 +57,11 @@ jobs:
     #  name: "Nethermind.Db.Test.Osx"
     #  os: osx
     - script: 
-      - git submodule update --init src/Dirichlet
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Evm.Test
       name: "Nethermind.Evm.Test"
     - script:
-      - git submodule update --init src/Dirichlet
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.JsonRpc.Test
       name: "Nethermind.JsonRpc.Test"
     #- script: dotnet test src/Nethermind/Nethermind.KeyStore.Test
@@ -72,16 +72,16 @@ jobs:
     #  name: "Nethermind.LibSolc.Test.Osx"
     #  os: osx
     - script:
-      - git submodule update --init src/Dirichlet
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Mining.Test
       name: "Nethermind.Mining.Test"
     - script:
       - sudo apt-get install libsnappy-dev 
-      - git submodule update --init src/Dirichlet
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Network.Test
       name: "Nethermind.Network.Test"
     - script: 
-      - git submodule update --init src/Dirichlet
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Secp256k1.Test
       name: "Nethermind.Secp256k1.Test.Linux"
     #- script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
@@ -94,11 +94,11 @@ jobs:
     #- script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.DataMarketplace.Test
     #  name: "Nethermind.DataMarketplace.Test"
     - script: 
-      - git submodule update --init src/Dirichlet
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Store.Test
       name: "Nethermind.Store.Test"
     - script: 
-      - git submodule update --init src/Dirichlet
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Wallet.Test
       name: "Nethermind.Wallet.Test"
     - stage: Ethereum tests
