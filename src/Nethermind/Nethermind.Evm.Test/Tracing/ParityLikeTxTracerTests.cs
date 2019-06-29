@@ -36,25 +36,14 @@ namespace Nethermind.Evm.Test.Tracing
         private const string HexZero = "00";
 
         [Test]
-        public void On_failure_gas_used_is_gas_limit()
+        public void On_failure_result_is_null()
         {
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.ADD)
                 .Done;
 
-            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-            Assert.AreEqual(79000, trace.Action.Result.GasUsed);
-        }
-
-        [Test]
-        public void On_failure_output_is_empty()
-        {
-            byte[] code = Prepare.EvmCode
-                .Op(Instruction.ADD)
-                .Done;
-
-            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-            Assert.AreEqual(Bytes.Empty, trace.Action.Result.Output);
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+            Assert.IsNull(trace.Action.Result);
         }
 
         [Test]
