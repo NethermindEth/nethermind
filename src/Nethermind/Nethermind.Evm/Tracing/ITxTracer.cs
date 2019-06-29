@@ -47,6 +47,8 @@ namespace Nethermind.Evm.Tracing
         void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress);
         void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType);
         void ReportActionEnd(long gas, byte[] output);
+        
+        void ReportActionError(string error);
         void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode);
     }
 }

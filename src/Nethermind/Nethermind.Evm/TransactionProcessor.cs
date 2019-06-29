@@ -215,12 +215,7 @@ namespace Nethermind.Evm
                     // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
                     if (transaction.IsContractCreation)
                     {
-                        long codeDepositGasCost = substate.Output.Length * GasCostOf.CodeDeposit;
-                        if (spec.IsEip170Enabled && substate.Output.Length > 0x6000)
-                        {
-                            codeDepositGasCost = long.MaxValue;
-                        }
-
+                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
                         if (unspentGas < codeDepositGasCost && spec.IsEip2Enabled)
                         {
                             throw new OutOfGasException();

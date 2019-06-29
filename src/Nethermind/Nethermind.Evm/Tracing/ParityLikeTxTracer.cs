@@ -126,6 +126,8 @@ namespace Nethermind.Evm.Tracing
                 throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
             }
 
+            _trace.Output = Bytes.Empty;
+            
             // quick tx fail (before execution)
             if (_trace.Action == null)
             {
@@ -295,7 +297,14 @@ namespace Nethermind.Evm.Tracing
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;
             PopAction();
         }
-        
+
+        public void ReportActionError(string error)
+        {
+            _currentAction.Result = null;
+            _currentAction.Error = error;
+            PopAction();
+        }
+
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
             _currentAction.Result.Address = deploymentAddress;

@@ -96,7 +96,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteProperty("action", traceAction, serializer);
 //            writer.WriteProperty("blockHash", value.BlockHash, serializer);
 //            writer.WriteProperty("blockNumber", value.BlockNumber, serializer);
-            writer.WriteProperty("result", traceAction.Result, serializer);
+            if (traceAction.Result != null)
+            {
+                writer.WriteProperty("result", traceAction.Result, serializer);
+            }
+
+            if (traceAction.Error != null)
+            {
+                writer.WriteProperty("error", traceAction.Error, serializer);
+            }
+
             writer.WriteProperty("subtraces", traceAction.Subtraces.Count);
             writer.WritePropertyName("traceAddress");
             _traceAddressConverter.WriteJson(writer, traceAction.TraceAddress, serializer);

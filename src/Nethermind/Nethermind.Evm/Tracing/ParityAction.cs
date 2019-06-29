@@ -39,5 +39,6 @@ namespace Nethermind.Evm.Tracing
         
         public Address Author { get; set; }
         public string RewardType { get; set; }
+        public string Error { get; set; }
     }
 }

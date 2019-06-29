@@ -152,6 +152,11 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportActionEnd(gas, output);
         }
 
+        public void ReportActionError(string error)
+        {
+            _currentTxTracer.ReportActionError(error);
+        }
+
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
             _currentTxTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);

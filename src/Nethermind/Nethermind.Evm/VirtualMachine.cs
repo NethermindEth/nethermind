@@ -172,7 +172,15 @@ namespace Nethermind.Evm
                         {
                             if (currentState.ExecutionType == ExecutionType.Create)
                             {
-                                _txTracer.ReportActionEnd(currentState.GasAvailable - callResult.Output.Length * GasCostOf.CodeDeposit, currentState.To, callResult.Output);   
+                                long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                                if (currentState.GasAvailable >= codeDepositGasCost)
+                                {
+                                    _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);    
+                                }
+                                else
+                                {
+                                    _txTracer.ReportActionError("Out of gas");
+                                }
                             }
                             else
                             {
@@ -198,14 +206,8 @@ namespace Nethermind.Evm
                             previousCallResult = callCodeOwner.Bytes;
                             previousCallOutputDestination = UInt256.Zero;
                             _returnDataBuffer = previousCallOutput = Bytes.Empty;
-                            
-                            long codeDepositGasCost = GasCostOf.CodeDeposit * callResult.Output.Length;
-                            if (spec.IsEip170Enabled && callResult.Output.Length > spec.MaxCodeSize)
-                            {
-                                codeDepositGasCost = long.MaxValue;
-                            }
-                            
-                            if (_logger.IsTrace) _logger.Trace($"Code deposit cost is {codeDepositGasCost} ({GasCostOf.CodeDeposit} * {callResult.Output.Length})");
+
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
@@ -230,7 +232,7 @@ namespace Nethermind.Evm
                                     
                                     if (_txTracer.IsTracingActions)
                                     {
-                                        _txTracer.ReportActionEnd(previousState.GasAvailable, previousCallOutput);
+                                        _txTracer.ReportActionError("Out of gas");
                                     }
                                 }
                             }
@@ -302,7 +304,18 @@ namespace Nethermind.Evm
                     
                     if (_txTracer.IsTracingActions)
                     {
-                        _txTracer.ReportActionEnd(0, _returnDataBuffer);
+                        if (ex is OutOfGasException)
+                        {
+                            _txTracer.ReportActionError("Out of gas");
+                        }
+                        else if (ex is InvalidJumpDestinationException)
+                        {
+                            _txTracer.ReportActionError("Bad jump destination");
+                        }
+                        else
+                        {
+                            _txTracer.ReportActionError(ex.GetType().Name);
+                        }
                     }
                     
                     if (currentState.IsTopLevel)

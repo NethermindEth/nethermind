@@ -142,6 +142,11 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
+        public void ReportActionError(string error)
+        {
+            throw new NotSupportedException();
+        }
+
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
             throw new NotSupportedException();
