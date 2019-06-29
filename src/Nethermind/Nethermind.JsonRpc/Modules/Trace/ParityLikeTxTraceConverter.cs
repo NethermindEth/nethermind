@@ -96,12 +96,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteProperty("action", traceAction, serializer);
 //            writer.WriteProperty("blockHash", value.BlockHash, serializer);
 //            writer.WriteProperty("blockNumber", value.BlockNumber, serializer);
-            if (traceAction.Result != null)
+            if (traceAction.Error == null)
             {
                 writer.WriteProperty("result", traceAction.Result, serializer);
             }
-
-            if (traceAction.Error != null)
+            else
             {
                 writer.WriteProperty("error", traceAction.Error, serializer);
             }
