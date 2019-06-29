@@ -103,7 +103,7 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
-                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.TransferValue, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType);
+                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType);
                         }
                         
                         callResult = ExecutePrecompile(currentState, spec);
@@ -125,7 +125,7 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions && !currentState.IsContinuation)
                         {
-                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.TransferValue, currentState.From, currentState.To, currentState.ExecutionType == ExecutionType.Create ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
+                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.ExecutionType == ExecutionType.Create ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
                         }
                         
                         callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
@@ -307,6 +307,18 @@ namespace Nethermind.Evm
                         if (ex is OutOfGasException)
                         {
                             _txTracer.ReportActionError("Out of gas");
+                        }
+                        else if (ex is InvalidJumpDestinationException)
+                        {
+                            _txTracer.ReportActionError("Bad jump destination");
+                        }
+                        else if (ex is EvmStackOverflowException)
+                        {
+                            _txTracer.ReportActionError("Stack overflow");
+                        }
+                        else if (ex is EvmStackUnderflowException)
+                        {
+                            _txTracer.ReportActionError("Stack underflow");
                         }
                         else if (ex is InvalidJumpDestinationException)
                         {
