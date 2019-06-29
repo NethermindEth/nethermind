@@ -31,15 +31,15 @@ namespace Nethermind.Db.Test
         [Test]
         public void Save_and_load()
         {
-            File.Delete(Path.Combine(Path.GetTempPath(), SimpleFilePublicKeyDb.DbName));
+            File.Delete(Path.Combine(Path.GetTempPath(), SimpleFilePublicKeyDb.DbFileName));
             
-            SimpleFilePublicKeyDb filePublicKeyDb = new SimpleFilePublicKeyDb(Path.GetTempPath(), LimboLogs.Instance);
+            SimpleFilePublicKeyDb filePublicKeyDb = new SimpleFilePublicKeyDb("Test", Path.GetTempPath(), LimboLogs.Instance);
             filePublicKeyDb[TestItem.PublicKeyA.Bytes] = new byte[] {1, 2, 3};
             filePublicKeyDb[TestItem.PublicKeyB.Bytes] = new byte[] {4, 5, 6};
             filePublicKeyDb[TestItem.PublicKeyC.Bytes] = new byte[] {1, 2, 3};
             filePublicKeyDb.CommitBatch();
             
-            SimpleFilePublicKeyDb copy = new SimpleFilePublicKeyDb(Path.GetTempPath(), LimboLogs.Instance);
+            SimpleFilePublicKeyDb copy = new SimpleFilePublicKeyDb("Test", Path.GetTempPath(), LimboLogs.Instance);
             Assert.AreEqual(3, copy.Keys.Count);
         }
     }

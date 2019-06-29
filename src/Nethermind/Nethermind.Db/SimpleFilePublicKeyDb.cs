@@ -21,41 +21,40 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Store;
 
 namespace Nethermind.Db
 {
-    [Todo(Improve.Performance, "Remove this entirely and replace with RocksDB")]
     public class SimpleFilePublicKeyDb : IFullDb
     {
-        private readonly ILogger _logger;
+        public const string DbFileName = "SimpleFileDb.db";
+     
+        private ILogger _logger;
+        private bool _hasPendingChanges;
         private ConcurrentDictionary<byte[], byte[]> _cache;
-        public const string DbName = "SimpleFileDb.db";
-        private readonly string _dbPath;
-        private readonly string _dbLastDirName;
-        private bool _anyPendingChanges;
-        public string Name { get; } = "SimpleFilePublicKeyDb";
+
+        public string DbPath { get; }
+        public string Name { get; }
+        public string Description { get; }
         
-        public string Description => _dbPath;
         public ICollection<byte[]> Keys => _cache.Keys.ToArray();
         public ICollection<byte[]> Values => _cache.Values;
 
-        public SimpleFilePublicKeyDb(string dbDirectoryPath, ILogManager logManager)
+        public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             if (dbDirectoryPath == null) throw new ArgumentNullException(nameof(dbDirectoryPath));
-
-            _dbPath = Path.Combine(dbDirectoryPath, DbName);
+            Name = name ?? throw new ArgumentNullException(nameof(name));
+            DbPath = Path.Combine(dbDirectoryPath, DbFileName);
+            Description = $"{Name}|{DbPath}";
+            
             if (!Directory.Exists(dbDirectoryPath))
             {
                 Directory.CreateDirectory(dbDirectoryPath);
             }
-
-            _dbLastDirName = new DirectoryInfo(dbDirectoryPath).Name;
-
+            
             LoadData();
         }
 
@@ -67,7 +66,7 @@ namespace Nethermind.Db
 
         public void Remove(byte[] key)
         {
-            _anyPendingChanges = true;
+            _hasPendingChanges = true;
             _cache.TryRemove(key, out _);
         }
 
@@ -84,21 +83,21 @@ namespace Nethermind.Db
 
         public void CommitBatch()
         {
-            if (!_anyPendingChanges)
+            if (!_hasPendingChanges)
             {
-                if (_logger.IsTrace) _logger.Trace($"Skipping commit ({_dbLastDirName}), no changes");
+                if (_logger.IsTrace) _logger.Trace($"Skipping commit ({Name}), no changes");
                 return;
             }
 
-            using (Backup backup = new Backup(_dbPath, _logger))
+            using (Backup backup = new Backup(DbPath, _logger))
             {
-                _anyPendingChanges = false;
+                _hasPendingChanges = false;
                 var snapshot = _cache.ToArray();
 
-                if (_logger.IsDebug) _logger.Debug($"Saving data in {_dbPath} | backup stored in {backup.BackupPath}");
+                if (_logger.IsDebug) _logger.Debug($"Saving data in {DbPath} | backup stored in {backup.BackupPath}");
                 try
                 {
-                    using (var streamWriter = new StreamWriter(_dbPath))
+                    using (var streamWriter = new StreamWriter(DbPath))
                     {
                         foreach (var keyValuePair in snapshot)
                         {
@@ -111,7 +110,7 @@ namespace Nethermind.Db
                 }
                 catch (Exception e)
                 {
-                    _logger.Error($"Failed to store data in {_dbPath}", e);
+                    _logger.Error($"Failed to store data in {DbPath}", e);
                 }
             }
         }
@@ -163,18 +162,18 @@ namespace Nethermind.Db
         {
             _cache = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
 
-            if (!File.Exists(_dbPath))
+            if (!File.Exists(DbPath))
             {
                 return;
             }
 
-            var lines = File.ReadAllLines(_dbPath);
-            foreach (var line in lines)
+            var lines = File.ReadAllLines(DbPath);
+            foreach (string line in lines)
             {
                 var values = line.Split(",");
                 if (values.Length != 2)
                 {
-                    if (_logger.IsError) _logger.Error($"Error in data file, too many items: {line}");
+                    if (_logger.IsError) _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
                     continue;
                 }
 
@@ -186,7 +185,7 @@ namespace Nethermind.Db
         {
             if (!Bytes.AreEqual(oldValue, newValue))
             {
-                _anyPendingChanges = true;
+                _hasPendingChanges = true;
             }
 
             return newValue;
@@ -194,7 +193,7 @@ namespace Nethermind.Db
 
         private byte[] Add(byte[] value)
         {
-            _anyPendingChanges = true;
+            _hasPendingChanges = true;
             return value;
         }
 
