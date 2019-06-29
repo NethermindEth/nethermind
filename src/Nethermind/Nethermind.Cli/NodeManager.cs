@@ -21,6 +21,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Jint;
+using Jint.Native;
+using Jint.Native.Json;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
@@ -29,16 +32,22 @@ namespace Nethermind.Cli
 {
     public class NodeManager : INodeManager
     {
-        private readonly IJsonSerializer _serializer;
-        private readonly ILogManager _logManager;
+        private ICliEngine _cliEngine;
+        private ILogManager _logManager;
+        private IJsonSerializer _serializer;
+        private JsonParser _jsonParser;
+        
         private Dictionary<Uri, IJsonRpcClient> _clients = new Dictionary<Uri, IJsonRpcClient>();
         
         private IJsonRpcClient _currentClient;
 
-        public NodeManager(IJsonSerializer serializer, ILogManager logManager)
+        public NodeManager(ICliEngine cliEngine, IJsonSerializer serializer, ILogManager logManager)
         {
+            _cliEngine = cliEngine ?? throw new ArgumentNullException(nameof(cliEngine));
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            
+            _jsonParser = new JsonParser(_cliEngine.JintEngine);
         }
 
         public string CurrentUri { get; private set; }
@@ -54,6 +63,29 @@ namespace Nethermind.Cli
             _currentClient = _clients[uri];
         }
 
+        public async Task<JsValue> PostJint(string method, params object[] parameters)
+        {
+            try
+            {
+                Stopwatch stopwatch = new Stopwatch();
+                stopwatch.Start();
+                object result = await _currentClient.Post<object>(method, parameters);
+                stopwatch.Stop();
+                Console.WriteLine($"Request complete in {stopwatch.ElapsedMilliseconds}ms");
+                return result == null ? JsValue.Null : _jsonParser.Parse(result.ToString());
+            }
+            catch (HttpRequestException e)
+            {
+                CliConsole.WriteErrorLine(e.Message);
+            }
+            catch (Exception e)
+            {
+                CliConsole.WriteException(e);
+            }
+
+            return JsValue.Null;
+        }
+        
         public async Task<string> Post(string method, params object[] parameters)
         {
             return await Post<string>(method, parameters);
@@ -79,7 +111,7 @@ namespace Nethermind.Cli
                 CliConsole.WriteException(e);
             }
             
-            return default(T);
+            return default;
         }
     }
 }

@@ -17,6 +17,8 @@
  */
 
 using System;
+using System.Threading.Tasks;
+using Jint.Native;
 using Nethermind.JsonRpc.Client;
 
 namespace Nethermind.Cli
@@ -26,5 +28,7 @@ namespace Nethermind.Cli
         string CurrentUri { get; }
 
         void SwitchUri(Uri uri);
+        
+        Task<JsValue> PostJint(string method, params object[] parameters);
     }
 }

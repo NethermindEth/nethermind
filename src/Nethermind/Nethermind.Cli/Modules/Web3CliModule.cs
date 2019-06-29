@@ -17,6 +17,7 @@
  */
 
 using System.Globalization;
+using Jint.Native;
 
 namespace Nethermind.Cli.Modules
 {
@@ -28,10 +29,10 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliProperty("web3", "clientVersion")]
-        public string ClientVersion() => NodeManager.Post<string>("web3_clientVersion").Result;
+        public JsValue ClientVersion() => NodeManager.PostJint("web3_clientVersion").Result;
 
         [CliFunction("web3", "sha3")]
-        public string Sha3(string data) => NodeManager.Post<string>("web3_sha3", data).Result;
+        public JsValue Sha3(string data) => NodeManager.PostJint("web3_sha3", data).Result;
         
         [CliFunction("web3", "toDecimal")]
         public int ToDecimal(string hex) => int.Parse(hex.Replace("0x", string.Empty), NumberStyles.AllowHexSpecifier);

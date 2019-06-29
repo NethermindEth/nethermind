@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using Jint.Native;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network;
@@ -70,18 +71,17 @@ namespace Nethermind.Cli.Modules
         [CliProperty("node", "address")]
         public string Address()
         {
-            return new Enode(Enode()).Address.ToString();
+            return new Enode(Enode().ToString()).Address.ToString();
         }
         
         [CliProperty("node", "enode")]
-        public string Enode()
+        public JsValue Enode()
         {
-            string result = NodeManager.Post<string>("net_localEnode").Result;
-            return result;
+            return NodeManager.PostJint("net_localEnode").Result;
         }
         
         [CliProperty("node", "uri")]
-        public string Uri()
+        public JsValue Uri()
         {
             return NodeManager.CurrentUri;
         }

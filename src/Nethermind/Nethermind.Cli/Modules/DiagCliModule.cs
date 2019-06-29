@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using Jint.Native;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network;
@@ -29,9 +30,9 @@ namespace Nethermind.Cli.Modules
     public class DiagCliModule : CliModuleBase
     {
         [CliProperty("diag", "cliVersion")]
-        public string CliVersion()
+        public JsValue CliVersion()
         {
-            return this.GetType().Assembly.FullName;
+            return GetType().Assembly.FullName;
         }
 
         public DiagCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
