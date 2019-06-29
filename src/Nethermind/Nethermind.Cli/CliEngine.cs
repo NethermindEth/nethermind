@@ -38,6 +38,7 @@ namespace Nethermind.Cli
             JintEngine = new Engine();
             JintEngine.SetValue("gasPrice", (double) 20.GWei());
             JintEngine.SetValue("load", new Action<string>(LoadFile));
+            JintEngine.SetValue("print", new Action<object>(Console.WriteLine));
         }
 
         private void LoadFile(string filePath)

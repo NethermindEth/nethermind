@@ -4,8 +4,8 @@ sudo: required
 dist: xenial
 dotnet: 2.2
 git:
-  depth: 3
-  submodules_depth: 3
+  depth: 1
+  submodules_depth: 1
 before_script:
   - chmod -R +x scripts
 notifications:

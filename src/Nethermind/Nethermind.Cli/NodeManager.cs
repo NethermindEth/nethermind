@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -62,7 +63,12 @@ namespace Nethermind.Cli
         {
             try
             {
-                return await _currentClient.Post<T>(method, parameters);
+                Stopwatch stopwatch = new Stopwatch();
+                stopwatch.Start();
+                T result = await _currentClient.Post<T>(method, parameters);
+                stopwatch.Stop();
+                Console.WriteLine($"Request complete in {stopwatch.ElapsedMilliseconds}ms");
+                return result;
             }
             catch (HttpRequestException e)
             {

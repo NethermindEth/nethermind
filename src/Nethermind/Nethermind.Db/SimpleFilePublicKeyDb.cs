@@ -38,30 +38,31 @@ namespace Nethermind.Db
         private readonly string _dbLastDirName;
         private bool _anyPendingChanges;
         public string Name { get; } = "SimpleFilePublicKeyDb";
+        
+        public string Description => _dbPath;
+        public ICollection<byte[]> Keys => _cache.Keys.ToArray();
+        public ICollection<byte[]> Values => _cache.Values;
 
         public SimpleFilePublicKeyDb(string dbDirectoryPath, ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ??  throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             if (dbDirectoryPath == null) throw new ArgumentNullException(nameof(dbDirectoryPath));
-            
+
             _dbPath = Path.Combine(dbDirectoryPath, DbName);
             if (!Directory.Exists(dbDirectoryPath))
             {
                 Directory.CreateDirectory(dbDirectoryPath);
             }
-            
+
             _dbLastDirName = new DirectoryInfo(dbDirectoryPath).Name;
-            
+
             LoadData();
         }
 
         public byte[] this[byte[] key]
         {
             get => _cache[key];
-            set
-            {
-                _cache.AddOrUpdate(key, newValue => Add(value), (x, oldValue) => Update(oldValue, value));
-            }
+            set { _cache.AddOrUpdate(key, newValue => Add(value), (x, oldValue) => Update(oldValue, value)); }
         }
 
         public void Remove(byte[] key)
@@ -89,64 +90,74 @@ namespace Nethermind.Db
                 return;
             }
 
-            var tempFilePath = CreateBackup();
-
-            _anyPendingChanges = false;
-            var snapshot = _cache.ToArray();
-
-            using (var streamWriter = new StreamWriter(_dbPath))
+            using (Backup backup = new Backup(_dbPath, _logger))
             {
-                foreach (var keyValuePair in snapshot)
+                _anyPendingChanges = false;
+                var snapshot = _cache.ToArray();
+
+                if (_logger.IsDebug) _logger.Debug($"Saving data in {_dbPath} | backup stored in {backup.BackupPath}");
+                try
                 {
-                    keyValuePair.Key.StreamHex(streamWriter);
-                    streamWriter.Write(',');
-                    keyValuePair.Value.StreamHex(streamWriter);
-                    streamWriter.WriteLine();
+                    using (var streamWriter = new StreamWriter(_dbPath))
+                    {
+                        foreach (var keyValuePair in snapshot)
+                        {
+                            keyValuePair.Key.StreamHex(streamWriter);
+                            streamWriter.Write(',');
+                            keyValuePair.Value.StreamHex(streamWriter);
+                            streamWriter.WriteLine();
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    _logger.Error($"Failed to store data in {_dbPath}", e);
                 }
             }
-
-            RemoveBackup(tempFilePath);
         }
 
-        private void RemoveBackup(string tempFilePath)
+        private class Backup : IDisposable
         {
-            try
+            private string _dbPath;
+            private ILogger _logger;
+            
+            public string BackupPath { get; }
+
+            public Backup(string dbPath, ILogger logger)
             {
-                if (tempFilePath != null && File.Exists(tempFilePath))
+                _dbPath = dbPath;
+                _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+                try
                 {
-                    File.Delete(tempFilePath);
+                    BackupPath = $"{_dbPath}_{Guid.NewGuid().ToString()}";
+
+                    if (File.Exists(_dbPath))
+                    {
+                        File.Move(_dbPath, BackupPath);
+                    }
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Error during backup creation for {_dbPath} | backup path {BackupPath}", e);
                 }
             }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Error during backup removal: {_dbPath}, tempFilePath: {tempFilePath}", e);
-            }
-        }
 
-        private string CreateBackup()
-        {
-            try
+            public void Dispose()
             {
-                var tempFilePath = $"{_dbPath}_{Guid.NewGuid().ToString()}";
-
-                if (File.Exists(_dbPath))
+                try
                 {
-                    File.Move(_dbPath, tempFilePath);
-                    return tempFilePath;
+                    if (BackupPath != null && File.Exists(BackupPath))
+                    {
+                        File.Delete(BackupPath);
+                    }
                 }
-
-                return null;
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Error during backup creation: {_dbPath}", e);
-                return null;
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Error during backup removal of {_dbPath} | backup path {BackupPath}", e);
+                }
             }
         }
-
-        public string Description => _dbPath;
-        public ICollection<byte[]> Keys => _cache.Keys.ToArray();
-        public ICollection<byte[]> Values => _cache.Values;
 
         private void LoadData()
         {
