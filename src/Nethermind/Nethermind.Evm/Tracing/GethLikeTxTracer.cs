@@ -132,7 +132,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
             throw new NotSupportedException();
         }

@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after) => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType) => throw new InvalidOperationException(ErrorMessage);
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportActionEnd(long gas, byte[] output) => throw new InvalidOperationException(ErrorMessage);
         public void ReportActionError(EvmExceptionType exceptionType) => throw new InvalidOperationException(ErrorMessage);

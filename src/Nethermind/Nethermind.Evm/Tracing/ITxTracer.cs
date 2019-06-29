@@ -45,7 +45,7 @@ namespace Nethermind.Evm.Tracing
         void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue);
         
         void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress);
-        void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType);
+        void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false);
         void ReportActionEnd(long gas, byte[] output);
         
         void ReportActionError(EvmExceptionType evmExceptionType);

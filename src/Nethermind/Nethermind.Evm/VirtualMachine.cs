@@ -103,7 +103,7 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
-                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType);
+                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
                         }
                         
                         callResult = ExecutePrecompile(currentState, spec);

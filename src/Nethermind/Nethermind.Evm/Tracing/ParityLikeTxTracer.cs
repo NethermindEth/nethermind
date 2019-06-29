@@ -222,9 +222,10 @@ namespace Nethermind.Evm.Tracing
             storage[storageAddress.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
             ParityTraceAction action = new ParityTraceAction();
+            action.IsPrecompiled = isPrecompileCall;
             action.From = @from;
             action.To = to;
             action.Value = value;

@@ -28,6 +28,7 @@ namespace Nethermind.Evm.Tracing
         public int[] TraceAddress { get; set; }
         public string CallType { get; set; }
         
+        public bool IsPrecompiled { get; set; }
         public string Type { get; set; }
         public Address From { get; set; }
         public Address To { get; set; }

@@ -142,9 +142,9 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportStorageChange(storageAddress, before, after);
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
-            _currentTxTracer.ReportAction(gas, value, @from, to, input, callType);
+            _currentTxTracer.ReportAction(gas, value, @from, to, input, callType, isPrecompileCall);
         }
 
         public void ReportActionEnd(long gas, byte[] output)
