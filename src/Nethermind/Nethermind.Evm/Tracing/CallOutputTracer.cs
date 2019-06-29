@@ -130,7 +130,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportActionError(string error)
+        public void ReportActionError(EvmExceptionType exceptionType)
         {
             throw new NotSupportedException();
         }

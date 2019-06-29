@@ -298,10 +298,35 @@ namespace Nethermind.Evm.Tracing
             PopAction();
         }
 
-        public void ReportActionError(string error)
+        private string GetErrorDescription(EvmExceptionType evmExceptionType)
+        {
+            switch (evmExceptionType)
+            {
+                case EvmExceptionType.None:
+                    return null;
+                case EvmExceptionType.BadInstruction:
+                    return "Bad instruction";
+                case EvmExceptionType.StackOverflow:
+                    return "Stack overflow";
+                case EvmExceptionType.StackUnderflow:
+                    return "Stack underflow";
+                case EvmExceptionType.OutOfGas:
+                    return "Out of gas";
+                case EvmExceptionType.InvalidJumpDestination:
+                    return "Bad jump destination";
+                case EvmExceptionType.AccessViolation:
+                    return "Access violation";
+                case EvmExceptionType.StaticCallViolation:
+                    return "Static call violation";
+                default:
+                    return "Error";
+            }
+        }
+        
+        public void ReportActionError(EvmExceptionType evmExceptionType)
         {
             _currentAction.Result = null;
-            _currentAction.Error = error;
+            _currentAction.Error = GetErrorDescription(evmExceptionType);
             PopAction();
         }
 

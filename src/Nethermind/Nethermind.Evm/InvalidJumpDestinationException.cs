@@ -20,5 +20,6 @@ namespace Nethermind.Evm
 {
     public class InvalidJumpDestinationException : EvmException
     {
+        public override EvmExceptionType ExceptionType => EvmExceptionType.InvalidJumpDestination;
     }
 }

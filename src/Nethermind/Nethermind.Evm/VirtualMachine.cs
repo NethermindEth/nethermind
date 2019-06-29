@@ -140,7 +140,7 @@ namespace Nethermind.Evm
 
                         if (callResult.IsException)
                         {
-                            if(_txTracer.IsTracingActions) _txTracer.ReportActionEnd(0, _returnDataBuffer);
+                            if(_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
                             _state.Restore(currentState.StateSnapshot);
                             _storage.Restore(currentState.StorageSnapshot);
 
@@ -179,7 +179,7 @@ namespace Nethermind.Evm
                                 }
                                 else
                                 {
-                                    _txTracer.ReportActionError("Out of gas");
+                                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
                             }
                             else
@@ -232,7 +232,7 @@ namespace Nethermind.Evm
                                     
                                     if (_txTracer.IsTracingActions)
                                     {
-                                        _txTracer.ReportActionError("Out of gas");
+                                        _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                     }
                                 }
                             }
@@ -304,30 +304,8 @@ namespace Nethermind.Evm
                     
                     if (_txTracer.IsTracingActions)
                     {
-                        if (ex is OutOfGasException)
-                        {
-                            _txTracer.ReportActionError("Out of gas");
-                        }
-                        else if (ex is InvalidJumpDestinationException)
-                        {
-                            _txTracer.ReportActionError("Bad jump destination");
-                        }
-                        else if (ex is EvmStackOverflowException)
-                        {
-                            _txTracer.ReportActionError("Stack overflow");
-                        }
-                        else if (ex is EvmStackUnderflowException)
-                        {
-                            _txTracer.ReportActionError("Stack underflow");
-                        }
-                        else if (ex is InvalidJumpDestinationException)
-                        {
-                            _txTracer.ReportActionError("Bad jump destination");
-                        }
-                        else
-                        {
-                            _txTracer.ReportActionError(ex.GetType().Name);
-                        }
+                        EvmException evmException = ex as EvmException;
+                        _txTracer.ReportActionError(evmException?.ExceptionType ?? EvmExceptionType.Other);
                     }
                     
                     if (currentState.IsTopLevel)
@@ -2632,14 +2610,13 @@ namespace Nethermind.Evm
         
         private struct CallResult
         {
-            public static CallResult Exception = new CallResult(StatusCode.FailureBytes, null, false, true);
-            public static CallResult OutOfGasException = Exception;
-            public static CallResult AccessViolationException = Exception;
-            public static CallResult InvalidJumpDestination = Exception;
-            public static CallResult InvalidInstructionException = Exception;
-            public static CallResult StaticCallViolationException = Exception;
-            public static CallResult StackOverflowException = Exception; // TODO: use these to avoid CALL POP attacks
-            public static CallResult StackUnderflowException = Exception; // TODO: use these to avoid CALL POP attacks
+            public static CallResult OutOfGasException = new CallResult(EvmExceptionType.OutOfGas);
+            public static CallResult AccessViolationException = new CallResult(EvmExceptionType.AccessViolation);
+            public static CallResult InvalidJumpDestination = new CallResult(EvmExceptionType.InvalidJumpDestination);
+            public static CallResult InvalidInstructionException = new CallResult(EvmExceptionType.BadInstruction);
+            public static CallResult StaticCallViolationException = new CallResult(EvmExceptionType.StaticCallViolation);
+            public static CallResult StackOverflowException = new CallResult(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
+            public static CallResult StackUnderflowException = new CallResult(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
             public static readonly CallResult Empty = new CallResult(Bytes.Empty, null);
 
             public CallResult(EvmState stateToExecute)
@@ -2648,16 +2625,25 @@ namespace Nethermind.Evm
                 Output = Bytes.Empty;
                 PrecompileSuccess = null;
                 ShouldRevert = false;
-                IsException = false;
+                ExceptionType = EvmExceptionType.None;
+            }
+            
+            private CallResult(EvmExceptionType exceptionType)
+            {
+                StateToExecute = null;
+                Output = StatusCode.FailureBytes;
+                PrecompileSuccess = null;
+                ShouldRevert = false;
+                ExceptionType = exceptionType;
             }
 
-            public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, bool isException = false)
+            public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
             {
                 StateToExecute = null;
                 Output = output;
                 PrecompileSuccess = precompileSuccess;
                 ShouldRevert = shouldRevert;
-                IsException = isException;
+                ExceptionType = exceptionType;
             }
 
             public bool ShouldRevert { get; }
@@ -2666,7 +2652,9 @@ namespace Nethermind.Evm
             public EvmState StateToExecute { get; }
             public byte[] Output { get; }
             public bool IsReturn => StateToExecute == null;
-            public bool IsException { get; }
+            public bool IsException => ExceptionType != EvmExceptionType.None;
+
+            public EvmExceptionType ExceptionType { get; }
         }
     }
 }

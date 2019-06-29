@@ -20,5 +20,6 @@ namespace Nethermind.Evm
 {
     public class TransactionCollisionException : EvmException
     {
+        public override EvmExceptionType ExceptionType => EvmExceptionType.TransactionCollision;
     }
 }
