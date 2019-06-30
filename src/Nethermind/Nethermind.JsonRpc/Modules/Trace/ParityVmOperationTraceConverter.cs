@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 writer.WriteNull();
             }
-            
+
             writer.WritePropertyName("push");
             if (value.Push != null)
             {
@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     writer.WriteValue(value.Push[i].ToHexString(true, true));
                 }
-                
+
                 writer.WriteEndArray();
             }
             else

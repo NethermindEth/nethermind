@@ -159,7 +159,7 @@ namespace Nethermind.Evm.Tracing
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            Console.WriteLine($"{opcode} | {gas} | {pc}");
+//            Console.WriteLine($"{opcode} | {gas} | {pc}");
             ParityVmOperationTrace operationTrace = new ParityVmOperationTrace();
             operationTrace.Pc = pc;
             operationTrace.Cost = gas;

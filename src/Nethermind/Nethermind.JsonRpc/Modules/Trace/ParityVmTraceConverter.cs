@@ -31,6 +31,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             writer.WriteProperty("code", value.Code ?? Bytes.Empty, serializer);
             writer.WriteProperty("ops", value.Operations, serializer);
+            
+            writer.WriteEndObject();
         }
 
         public override ParityVmTrace ReadJson(JsonReader reader, Type objectType, ParityVmTrace existingValue, bool hasExistingValue, JsonSerializer serializer)
