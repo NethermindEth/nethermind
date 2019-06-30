@@ -87,11 +87,11 @@ namespace Nethermind.Evm
 
         private static void CheckMemoryAccessViolation(ref UInt256 location, in UInt256 length)
         {
-            UInt256 totalSize = location + length; // TODO: add with overflow check
+            UInt256 totalSize = location + length;
             if (totalSize < location || totalSize > long.MaxValue)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmAccessViolationException(); // TODO: memory range error code
+                throw new OutOfGasException();
             }
         }
 
