@@ -200,7 +200,7 @@ namespace Nethermind.Cli
                     else if (!result.IsNull())
                     {
                         string text = Serializer.Serialize(result.ToObject(), true);
-                        File.AppendAllText("C:\\temp\\cli.txt", text);
+//                        File.AppendAllText("C:\\temp\\cli.txt", text);
                         CliConsole.WriteGood(text);
                     }
                     else
@@ -273,7 +273,7 @@ namespace Nethermind.Cli
             _engine.JintEngine.SetValue("serialize", new Action<JsValue>(v =>
             {
                 string text = Serializer.Serialize(v.ToObject(), true);
-                File.AppendAllText("C:\\temp\\cli.txt", text);
+//                File.AppendAllText("C:\\temp\\cli.txt", text);
                 CliConsole.WriteGood(text);
             }));
             

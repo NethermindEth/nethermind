@@ -98,7 +98,7 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.StartOperation(depth, gas, opcode, pc);
         }
 
-        public void SetOperationError(string error)
+        public void SetOperationError(EvmExceptionType error)
         {
             _currentTxTracer.SetOperationError(error);
         }

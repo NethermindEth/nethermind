@@ -86,9 +86,34 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void SetOperationError(string error)
+        public void SetOperationError(EvmExceptionType error)
         {
-            _traceEntry.Error = error;
+            _traceEntry.Error = GetErrorDescription(error);
+        }
+        
+        private string GetErrorDescription(EvmExceptionType evmExceptionType)
+        {
+            switch (evmExceptionType)
+            {
+                case EvmExceptionType.None:
+                    return null;
+                case EvmExceptionType.BadInstruction:
+                    return "BadInstruction";
+                case EvmExceptionType.StackOverflow:
+                    return "StackOverflow";
+                case EvmExceptionType.StackUnderflow:
+                    return "StackUnderflow";
+                case EvmExceptionType.OutOfGas:
+                    return "OutOfGass";
+                case EvmExceptionType.InvalidJumpDestination:
+                    return "BadJumpDestination";
+                case EvmExceptionType.AccessViolation:
+                    return "AccessViolation";
+                case EvmExceptionType.StaticCallViolation:
+                    return "StaticCallViolation";
+                default:
+                    return "Error";
+            }
         }
 
         public void SetOperationRemainingGas(long gas)

@@ -160,6 +160,7 @@ namespace Nethermind.Evm.Tracing
         {
 //            Console.WriteLine($"{opcode} | {gas} | {pc}");
             ParityVmOperationTrace operationTrace = new ParityVmOperationTrace();
+            _gasAlreadySetForCurrentOp = false;
             operationTrace.Pc = pc;
             operationTrace.Cost = gas;
             _currentOperation = operationTrace;
@@ -167,16 +168,26 @@ namespace Nethermind.Evm.Tracing
             _operations.Add(operationTrace);
         }
 
-        public void SetOperationError(string error)
+        private bool _gasAlreadySetForCurrentOp = false; // workaround for jump destination errors
+        
+        public void SetOperationError(EvmExceptionType error)
         {
-            _operations.Remove(_currentOperation);
+            if (error != EvmExceptionType.InvalidJumpDestination)
+            {
+                _operations.Remove(_currentOperation);
+            }
         }
 
         public void SetOperationRemainingGas(long gas)
         {
-            _currentOperation.Cost = _currentOperation.Cost - gas;
-            _currentOperation.Push = _currentPushList.ToArray();
-            _currentOperation.Used = gas;
+            if (!_gasAlreadySetForCurrentOp)
+            {
+                _gasAlreadySetForCurrentOp = true;
+
+                _currentOperation.Cost = _currentOperation.Cost - gas;
+                _currentOperation.Push = _currentPushList.ToArray();
+                _currentOperation.Used = gas;
+            }
         }
 
         public void ReportStackPush(Span<byte> stackItem)

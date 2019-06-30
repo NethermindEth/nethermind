@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void SetOperationError(string error)
+        public void SetOperationError(EvmExceptionType error)
         {
             throw new NotSupportedException();
         }

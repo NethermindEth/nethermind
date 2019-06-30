@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Tracing
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new InvalidOperationException(ErrorMessage);
 
-        public void SetOperationError(string error) => throw new InvalidOperationException(ErrorMessage);
+        public void SetOperationError(EvmExceptionType error) => throw new InvalidOperationException(ErrorMessage);
 
         public void SetOperationRemainingGas(long gas) => throw new InvalidOperationException(ErrorMessage);
 

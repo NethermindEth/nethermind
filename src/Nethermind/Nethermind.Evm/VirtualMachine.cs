@@ -36,8 +36,8 @@ namespace Nethermind.Evm
 {
     public class VirtualMachine : IVirtualMachine
     {
-        private const string BadInstructionErrorText = "BadInstruction";
-        private const string OutOfGasErrorText = "OutOfGas";
+        private const EvmExceptionType BadInstructionErrorText = EvmExceptionType.BadInstruction;
+        private const EvmExceptionType OutOfGasErrorText = EvmExceptionType.OutOfGas;
         
         public const int MaxCallDepth = 1024;
         public const int MaxStackSize = 1025;
@@ -299,7 +299,7 @@ namespace Nethermind.Evm
 
                     if (txTracer.IsTracingInstructions)
                     {
-                        txTracer.SetOperationError(ex.GetType().Name);
+                        txTracer.SetOperationError((ex as EvmException)?.ExceptionType ?? EvmExceptionType.Other);
                         txTracer.SetOperationRemainingGas(0);
                     }
                     
@@ -509,11 +509,11 @@ namespace Nethermind.Evm
                 }
             }
             
-            void EndInstructionTraceError(string error)
+            void EndInstructionTraceError(EvmExceptionType evmExceptionType)
             {
                 if (traceOpcodes)
                 {
-                    _txTracer.SetOperationError(error);
+                    _txTracer.SetOperationError(evmExceptionType);
                     _txTracer.SetOperationRemainingGas(gasAvailable);
                 }
             }
@@ -1866,7 +1866,7 @@ namespace Nethermind.Evm
                         if (jumpDest > int.MaxValue)
                         {
                             Metrics.EvmExceptions++;
-                            EndInstructionTraceError("Invalid_JUMP");
+                            EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
                             // https://github.com/NethermindEth/nethermind/issues/140
                             throw new InvalidJumpDestinationException();
 //                            return CallResult.InvalidJumpDestination;
@@ -1876,8 +1876,9 @@ namespace Nethermind.Evm
                         if (!env.CodeInfo.ValidateJump(dest))
                         {
                             // https://github.com/NethermindEth/nethermind/issues/140
-                            EndInstructionTraceError("Invalid_JUMP");
-                            return CallResult.InvalidJumpDestination;
+                            EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
+                            throw new InvalidJumpDestinationException();
+//                            return CallResult.InvalidJumpDestination;
                         }
 
                         programCounter = jumpDest;
@@ -1898,7 +1899,7 @@ namespace Nethermind.Evm
                             if (jumpDest > int.MaxValue)
                             {
                                 Metrics.EvmExceptions++;
-                                EndInstructionTraceError("Invalid_JUMP");
+                                EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
                                 // https://github.com/NethermindEth/nethermind/issues/140
                                 throw new InvalidJumpDestinationException();
 //                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
@@ -1908,7 +1909,7 @@ namespace Nethermind.Evm
 
                             if (!env.CodeInfo.ValidateJump(dest))
                             {
-                                EndInstructionTraceError("Invalid_JUMP");
+                                EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
                                 // https://github.com/NethermindEth/nethermind/issues/140
                                 throw new InvalidJumpDestinationException();
 //                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
