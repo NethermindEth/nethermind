@@ -19,6 +19,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Newtonsoft.Json;
@@ -42,13 +43,46 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             writer.WriteStartObject();
 
-            writer.WriteProperty("cost", value.Cost, serializer);
+            writer.WriteProperty("cost", value.Cost);
             writer.WritePropertyName("ex");
             writer.WriteStartObject();
-            writer.WriteProperty("mem", value.Memory, serializer);
-            writer.WriteProperty("push", value.Stack, serializer);
+            writer.WritePropertyName("mem");
+            if (value.Memory != null)
+            {
+                writer.WriteStartArray();
+                for (int i = 0; i < value.Push.Length; i++)
+                {
+                    writer.WritePropertyName("data");
+                    writer.WriteValue(value.Memory[i].Data.ToHexString(true, true));
+                    writer.WritePropertyName("off");
+                    writer.WriteValue(value.Memory[i].Offset);
+                }
+                
+                writer.WriteEndArray();
+            }
+            else
+            {
+                writer.WriteNull();
+            }
+            
+            writer.WritePropertyName("push");
+            if (value.Push != null)
+            {
+                writer.WriteStartArray();
+                for (int i = 0; i < value.Push.Length; i++)
+                {
+                    writer.WriteValue(value.Push[i].ToHexString(true, true));
+                }
+                
+                writer.WriteEndArray();
+            }
+            else
+            {
+                writer.WriteNull();
+            }
+
             writer.WriteProperty("store", value.Store, serializer);
-            writer.WriteProperty("used", value.Used, serializer);
+            writer.WriteProperty("used", value.Used);
             writer.WriteEndObject();
 
             writer.WriteProperty("pc", value.Pc, serializer);

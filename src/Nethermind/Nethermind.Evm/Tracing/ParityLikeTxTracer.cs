@@ -36,6 +36,11 @@ namespace Nethermind.Evm.Tracing
 
         public ParityLikeTxTrace BuildResult()
         {
+            if (IsTracingInstructions)
+            {
+                _trace.VmTrace.Operations = _operations.ToArray();
+            }
+            
             return _trace;
         }
 
@@ -62,9 +67,16 @@ namespace Nethermind.Evm.Tracing
 
             if ((parityTraceTypes & ParityTraceTypes.VmTrace) != 0)
             {
-                throw new NotImplementedException();
+                _trace.VmTrace = new ParityVmTrace();
+                IsTracingInstructions = true;
+                IsTracingCode = true;
             }
         }
+        
+        private List<ParityVmOperationTrace> _operations = new List<ParityVmOperationTrace>();
+        private ParityVmOperationTrace _currentOperation;
+        private List<byte[]> _currentPushList = new List<byte[]>();
+        private List<ParityMemoryChangeTrace> _currentMemoryChangeList = new List<ParityMemoryChangeTrace>();
 
         private void PushAction(ParityTraceAction action)
         {
@@ -99,8 +111,9 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingActions { get; }
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
-        public bool IsTracingInstructions => false;
-        public bool IsTracingStack => false;
+        public bool IsTracingInstructions { get; }
+        public bool IsTracingCode { get; }
+        public bool IsTracingStack { get; }
         public bool IsTracingState { get; }
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
@@ -144,17 +157,45 @@ namespace Nethermind.Evm.Tracing
 //            _trace.Action.Result = new ParityTraceResult {Output = output ?? Bytes.Empty, GasUsed = (long) gasSpent};
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new NotSupportedException();
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        {
+            ParityVmOperationTrace operationTrace = new ParityVmOperationTrace();
+            operationTrace.Pc = pc;
+            operationTrace.Cost = gas;
+            _currentOperation = operationTrace;
+            _currentPushList.Clear();
+            _currentMemoryChangeList.Clear();
+            _operations.Add(operationTrace);
+        }
 
-        public void SetOperationError(string error) => throw new NotSupportedException();
+        public void SetOperationError(string error)
+        {
+        }
 
-        public void SetOperationRemainingGas(long gas) => throw new NotSupportedException();
+        public void SetOperationRemainingGas(long gas)
+        {
+            _currentOperation.Cost = _currentOperation.Cost - gas;
+            _currentOperation.Push = _currentPushList.ToArray();
+            _currentOperation.Memory = _currentMemoryChangeList.ToArray();
+            _currentOperation.Used = gas;
+        }
 
-        public void SetOperationStack(List<string> stackTrace) => throw new NotSupportedException();
+        public void ReportStackPush(Span<byte> stackItem)
+        {
+            _currentPushList.Add(stackItem.ToArray());
+        }
+
+        public void SetOperationStack(List<string> stackTrace)
+        {
+        }
 
         public void SetOperationMemory(List<string> memoryTrace) => throw new NotSupportedException();
 
         public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
+        public void ReportMemoryChange(long offset, byte[] data)
+        {
+            _currentMemoryChangeList.Add(new ParityMemoryChangeTrace{Offset = offset, Data = data});
+        }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new NotSupportedException();
 
@@ -337,6 +378,11 @@ namespace Nethermind.Evm.Tracing
             _currentAction.Result.Code = deployedCode;
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;
             PopAction();
+        }
+
+        public void ReportByteCode(byte[] byteCode)
+        {
+            _trace.VmTrace.Code = byteCode;
         }
     }
 }

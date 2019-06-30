@@ -265,6 +265,7 @@ namespace Nethermind.Cli
             Serializer.RegisterConverter(new ParityTraceActionConverter());
             Serializer.RegisterConverter(new ParityTraceResultConverter());
             Serializer.RegisterConverter(new ParityVmOperationTraceConverter());
+            Serializer.RegisterConverter(new ParityVmTraceConverter());
 
             _engine = new CliEngine();
             _engine.JintEngine.SetValue("serialize", new Action<JsValue>(v => CliConsole.WriteGood(Serializer.Serialize(v.ToObject(), true))));

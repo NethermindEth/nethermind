@@ -35,6 +35,7 @@ namespace Nethermind.Evm.Tracing
         bool ITxTracer.IsTracingOpLevelStorage => true;
         bool ITxTracer.IsTracingMemory => true;
         bool ITxTracer.IsTracingInstructions => true;
+        public bool IsTracingCode => false;
         bool ITxTracer.IsTracingStack => true;
         bool ITxTracer.IsTracingState => false;
         
@@ -100,6 +101,10 @@ namespace Nethermind.Evm.Tracing
             _traceEntry.UpdateMemorySize(newSize);
         }
 
+        public void ReportMemoryChange(long offset, byte[] data)
+        {
+        }
+
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
             byte[] bigEndian = new byte[32];
@@ -152,9 +157,18 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
+        public void ReportByteCode(byte[] byteCode)
+        {
+            throw new NotSupportedException();
+        }
+
         public void SetOperationStack(List<string> stackTrace)
         {
             _traceEntry.Stack = stackTrace;
+        }
+
+        public void ReportStackPush(Span<byte> stackItem)
+        {
         }
 
         public void SetOperationMemory(List<string> memoryTrace)

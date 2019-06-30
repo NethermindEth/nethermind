@@ -83,7 +83,8 @@ namespace Nethermind.Evm
         public TransactionSubstate Run(EvmState state, IReleaseSpec releaseSpec, ITxTracer txTracer)
         {
             _txTracer = txTracer;
-
+            if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(state.Env.CodeInfo.MachineCode); 
+            
             IReleaseSpec spec = releaseSpec;
             EvmState currentState = state;
             byte[] previousCallResult = null;
@@ -519,6 +520,8 @@ namespace Nethermind.Evm
 
             void PushBytes(Span<byte> value, Span<byte> stack)
             {
+                if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(value);
+                
                 if (value.Length != 32)
                 {
                     stack.Slice(stackHead * 32, 32 - value.Length).Clear();
@@ -533,8 +536,10 @@ namespace Nethermind.Evm
                 }
             }
 
-            void PushBytesRightPadded(Span<byte> value, int paddingLength, Span<byte> stack)
+            void PushLeftPaddedBytes(Span<byte> value, int paddingLength, Span<byte> stack)
             {
+                if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(value);
+                
                 if (value.Length != 32)
                 {
                     stack.Slice(stackHead * 32, 32).Clear();
@@ -551,6 +556,8 @@ namespace Nethermind.Evm
 
             void PushByte(byte value, Span<byte> stack)
             {
+                if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(new byte[] {value});
+                
                 stack.Slice(stackHead * 32, 32).Clear();
                 stack[stackHead * 32 + 31] = value;
                 stackHead++;
@@ -563,6 +570,8 @@ namespace Nethermind.Evm
 
             void PushOne(Span<byte> stack)
             {
+                if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(new byte[] {1});
+                
                 stack.Slice(stackHead * 32, 32).Clear();
                 stack[stackHead * 32 + 31] = 1;
                 stackHead++;
@@ -575,6 +584,8 @@ namespace Nethermind.Evm
 
             void PushZero(Span<byte> stack)
             {
+                if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(new byte[] {0});
+                
                 stack.Slice(stackHead * 32, 32).Clear();
                 stackHead++;
                 if (stackHead >= MaxStackSize)
@@ -588,6 +599,8 @@ namespace Nethermind.Evm
             {
                 Span<byte> target = stack.Slice(stackHead * 32, 32);
                 value.ToBigEndian(target);
+                
+                if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(target);
                 
                 stackHead++;
                 if (stackHead >= MaxStackSize)
@@ -609,6 +622,8 @@ namespace Nethermind.Evm
 
                 value.TryWriteBytes(target, out int bytesWritten, true, true);
 
+                if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(target);
+                
                 stackHead++;
                 if (stackHead >= MaxStackSize)
                 {
@@ -643,6 +658,8 @@ namespace Nethermind.Evm
 
                 value.TryWriteBytes(target, out int bytesWritten, treatAsUnsigned, true);
 
+                if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(target);
+                
                 stackHead++;
                 if (stackHead >= MaxStackSize)
                 {
@@ -1976,7 +1993,7 @@ namespace Nethermind.Evm
                         int programCounterInt = (int)programCounter;
                         int usedFromCode = Math.Min(code.Length - programCounterInt, length);
 
-                        PushBytesRightPadded(code.Slice(programCounterInt, usedFromCode), length, bytesOnStack);
+                        PushLeftPaddedBytes(code.Slice(programCounterInt, usedFromCode), length, bytesOnStack);
 
                         programCounter += (ulong)length;
                         break;

@@ -16,27 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Evm.Tracing
+using System;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing;
+using Newtonsoft.Json;
+
+namespace Nethermind.JsonRpc.Modules.Trace
 {
-    //        {
-//            "cost": 0.0,
-//            "ex": {
-//                "mem": null,
-//                "push": [],
-//                "store": null,
-//                "used": 16961.0
-//            },
-//            "pc": 526.0,
-//            "sub": null
-//        }
-    public class ParityVmOperationTrace
+    public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
     {
-        public long Cost { get; set; }
-        public ParityMemoryChangeTrace[] Memory { get; set; }
-        public byte[][] Push { get; set; }
-        public byte[][] Store { get; set; }
-        public long Used { get; set; }
-        public int Pc { get; set; }
-        public string Sub { get; set; }
+        public override void WriteJson(JsonWriter writer, ParityVmTrace value, JsonSerializer serializer)
+        {
+            writer.WriteStartObject();
+
+            writer.WriteProperty("code", value.Code ?? Bytes.Empty, serializer);
+            writer.WriteProperty("ops", value.Operations, serializer);
+        }
+
+        public override ParityVmTrace ReadJson(JsonReader reader, Type objectType, ParityVmTrace existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

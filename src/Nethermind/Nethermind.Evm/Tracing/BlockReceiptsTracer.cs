@@ -26,7 +26,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class BlockReceiptsTracer : IBlockTracer, ITxTracer
+    public class BlockReceiptsTracer : IBlockTracer,  ITxTracer
     {
         private Block _block;
         private readonly ISpecProvider _specProvider;
@@ -36,6 +36,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
         public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
         public bool IsTracingInstructions => _currentTxTracer.IsTracingInstructions;
+        public bool IsTracingCode => _currentTxTracer.IsTracingCode;
         public bool IsTracingStack => _currentTxTracer.IsTracingStack;
         public bool IsTracingState => _currentTxTracer.IsTracingState;
 
@@ -112,6 +113,11 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.SetOperationMemorySize(newSize);
         }
 
+        public void ReportMemoryChange(long offset, byte[] data)
+        {
+            _currentTxTracer.ReportMemoryChange(offset, data);
+        }
+
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
             _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
@@ -162,9 +168,19 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
         }
 
+        public void ReportByteCode(byte[] byteCode)
+        {
+            _currentTxTracer.ReportByteCode(byteCode);
+        }
+
         public void SetOperationStack(List<string> stackTrace)
         {
             _currentTxTracer.SetOperationStack(stackTrace);
+        }
+
+        public void ReportStackPush(Span<byte> stackItem)
+        {
+            _currentTxTracer.ReportStackPush(stackItem);
         }
 
         public void SetOperationMemory(List<string> memoryTrace)

@@ -26,7 +26,7 @@ namespace Nethermind.Cli.Modules
     public class NetCliModule : CliModuleBase
     {   
         [CliProperty("net", "localEnode")]
-        public JsValue LocalEnode() => NodeManager.PostJint("net_localEnode").Result;
+        public string LocalEnode() => NodeManager.Post<string>("net_localEnode").Result;
 
         [CliProperty("net", "version")]
         public JsValue Version() => NodeManager.PostJint("net_version").Result;

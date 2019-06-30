@@ -32,6 +32,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
+        public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
 
@@ -80,12 +81,22 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
+        public void ReportStackPush(Span<byte> stackItem)
+        {
+            throw new NotSupportedException();
+        }
+
         public void SetOperationMemory(List<string> memoryTrace)
         {
             throw new NotSupportedException();
         }
 
         public void SetOperationMemorySize(ulong newSize)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportMemoryChange(long offset, byte[] data)
         {
             throw new NotSupportedException();
         }
@@ -136,6 +147,11 @@ namespace Nethermind.Evm.Tracing
         }
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportByteCode(byte[] byteCode)
         {
             throw new NotSupportedException();
         }

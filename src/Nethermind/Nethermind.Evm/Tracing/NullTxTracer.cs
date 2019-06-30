@@ -45,6 +45,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
+        public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
 
@@ -59,8 +60,12 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationRemainingGas(long gas) => throw new InvalidOperationException(ErrorMessage);
 
         public void SetOperationMemorySize(ulong newSize) => throw new InvalidOperationException(ErrorMessage);
+        
+        public void ReportMemoryChange(long offset, byte[] data) => throw new InvalidOperationException(ErrorMessage);
 
         public void SetOperationStack(List<string> stackTrace) => throw new InvalidOperationException(ErrorMessage);
+        
+        public void ReportStackPush(Span<byte> stackItem) => throw new InvalidOperationException(ErrorMessage);
 
         public void SetOperationMemory(List<string> memoryTrace) => throw new InvalidOperationException(ErrorMessage);
 
@@ -82,5 +87,6 @@ namespace Nethermind.Evm.Tracing
         public void ReportActionError(EvmExceptionType exceptionType) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode) => throw new InvalidOperationException(ErrorMessage);
+        public void ReportByteCode(byte[] byteCode) => throw new InvalidOperationException(ErrorMessage);
     }
 }
