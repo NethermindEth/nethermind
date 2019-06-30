@@ -124,6 +124,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 new ParityAccountStateChangeConverter(),
                 new ParityTraceActionConverter(),
                 new ParityTraceResultConverter(),
+                new ParityVmOperationTraceConverter()
             };
         }
     }
