@@ -49,16 +49,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("mem");
             if (value.Memory != null)
             {
-                writer.WriteStartArray();
-                for (int i = 0; i < value.Push.Length; i++)
+                for (int i = 0; i < value.Memory.Length; i++)
                 {
+                    writer.WriteStartObject();
                     writer.WritePropertyName("data");
-                    writer.WriteValue(value.Memory[i].Data.ToHexString(true, true));
+                    writer.WriteValue(value.Memory[i].Data.ToHexString(true, false));
                     writer.WritePropertyName("off");
                     writer.WriteValue(value.Memory[i].Offset);
+                    writer.WriteEndObject();
                 }
-                
-                writer.WriteEndArray();
             }
             else
             {

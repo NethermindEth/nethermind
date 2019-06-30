@@ -113,7 +113,7 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.SetOperationMemorySize(newSize);
         }
 
-        public void ReportMemoryChange(long offset, byte[] data)
+        public void ReportMemoryChange(long offset, Span<byte> data)
         {
             _currentTxTracer.ReportMemoryChange(offset, data);
         }

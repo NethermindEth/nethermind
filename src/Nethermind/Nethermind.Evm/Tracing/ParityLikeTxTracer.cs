@@ -159,6 +159,7 @@ namespace Nethermind.Evm.Tracing
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
+            Console.WriteLine($"{opcode} | {gas} | {pc}");
             ParityVmOperationTrace operationTrace = new ParityVmOperationTrace();
             operationTrace.Pc = pc;
             operationTrace.Cost = gas;
@@ -176,7 +177,12 @@ namespace Nethermind.Evm.Tracing
         {
             _currentOperation.Cost = _currentOperation.Cost - gas;
             _currentOperation.Push = _currentPushList.ToArray();
-            _currentOperation.Memory = _currentMemoryChangeList.ToArray();
+
+            if (_currentMemoryChangeList.Count > 0)
+            {
+                _currentOperation.Memory = _currentMemoryChangeList.ToArray();
+            }
+
             _currentOperation.Used = gas;
         }
 
@@ -192,9 +198,9 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationMemory(List<string> memoryTrace) => throw new NotSupportedException();
 
         public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
-        public void ReportMemoryChange(long offset, byte[] data)
+        public void ReportMemoryChange(long offset, Span<byte> data)
         {
-            _currentMemoryChangeList.Add(new ParityMemoryChangeTrace{Offset = offset, Data = data});
+            _currentMemoryChangeList.Add(new ParityMemoryChangeTrace{Offset = offset, Data = data.ToArray()});
         }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new NotSupportedException();

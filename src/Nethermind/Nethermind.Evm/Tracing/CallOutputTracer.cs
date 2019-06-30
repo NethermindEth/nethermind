@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportMemoryChange(long offset, byte[] data)
+        public void ReportMemoryChange(long offset, Span<byte> data)
         {
             throw new NotSupportedException();
         }

@@ -688,6 +688,14 @@ namespace Nethermind.Evm
                 }
 
                 stack.Slice((stackHead - depth) * 32, 32).CopyTo(stack.Slice(stackHead * 32, 32));
+                if (_txTracer.IsTracingInstructions)
+                {
+                    for (int i = 0; i < depth + 1; i++)
+                    {
+                        _txTracer.ReportStackPush(stack.Slice(stackHead * 32 - i * 32, 32));    
+                    }
+                }
+                
                 stackHead++;
                 if (stackHead >= MaxStackSize)
                 {
@@ -1449,8 +1457,9 @@ namespace Nethermind.Evm
                         }
 
                         UpdateMemoryCost(ref dest, length);
-                        Span<byte> callDataSlice = code.SliceWithZeroPadding(src, (int)length);
-                        evmState.Memory.Save(ref dest, callDataSlice);
+                        Span<byte> codeSlice = code.SliceWithZeroPadding(src, (int)length);
+                        evmState.Memory.Save(ref dest, codeSlice);
+                        if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, codeSlice);
                         break;
                     }
                     case Instruction.GASPRICE:
@@ -1496,6 +1505,7 @@ namespace Nethermind.Evm
                         byte[] externalCode = GetCachedCodeInfo(address)?.MachineCode;
                         byte[] callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
                         evmState.Memory.Save(ref dest, callDataSlice);
+                        if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, callDataSlice);
                         break;
                     }
                     case Instruction.RETURNDATASIZE:
@@ -1545,6 +1555,7 @@ namespace Nethermind.Evm
 
                         byte[] returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int)length);
                         evmState.Memory.Save(ref dest, returnDataSlice);
+                        if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, returnDataSlice);
                         break;
                     }
                     case Instruction.BLOCKHASH:
@@ -1657,6 +1668,8 @@ namespace Nethermind.Evm
                         Span<byte> data = PopBytes(bytesOnStack);
                         UpdateMemoryCost(ref memPosition, 32);
                         evmState.Memory.SaveWord(ref memPosition, data);
+                        if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, data.PadLeft(32));
+                        
                         break;
                     }
                     case Instruction.MSTORE8:
@@ -1671,6 +1684,8 @@ namespace Nethermind.Evm
                         byte data = PopByte(bytesOnStack);
                         UpdateMemoryCost(ref memPosition, UInt256.One);
                         evmState.Memory.SaveByte(ref memPosition, data);
+                        if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, new [] {data});
+                        
                         break;
                     }
                     case Instruction.SLOAD:

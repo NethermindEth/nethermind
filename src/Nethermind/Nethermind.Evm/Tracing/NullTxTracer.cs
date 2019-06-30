@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemorySize(ulong newSize) => throw new InvalidOperationException(ErrorMessage);
         
-        public void ReportMemoryChange(long offset, byte[] data) => throw new InvalidOperationException(ErrorMessage);
+        public void ReportMemoryChange(long offset, Span<byte> data) => throw new InvalidOperationException(ErrorMessage);
 
         public void SetOperationStack(List<string> stackTrace) => throw new InvalidOperationException(ErrorMessage);
         

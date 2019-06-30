@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Tracing
             _traceEntry.UpdateMemorySize(newSize);
         }
 
-        public void ReportMemoryChange(long offset, byte[] data)
+        public void ReportMemoryChange(long offset, Span<byte> data)
         {
         }
 
