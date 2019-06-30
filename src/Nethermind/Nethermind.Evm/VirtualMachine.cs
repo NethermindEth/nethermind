@@ -490,11 +490,6 @@ namespace Nethermind.Evm
                 {
                     return;
                 }
-
-                if (programCounter == 2249)
-                {
-                    
-                }
                 
                 _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, (int)programCounter);
                 if (_txTracer.IsTracingMemory) { _txTracer.SetOperationMemory(evmState.Memory.GetTrace()); }
@@ -1720,11 +1715,6 @@ namespace Nethermind.Evm
                     }
                     case Instruction.SSTORE:
                     {
-                        if (programCounter == 2250)
-                        {
-                            
-                        }
-                        
                         if (evmState.IsStatic)
                         {
                             Metrics.EvmExceptions++;

@@ -169,6 +169,7 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationError(string error)
         {
+            _operations.Remove(_currentOperation);
         }
 
         public void SetOperationRemainingGas(long gas)
