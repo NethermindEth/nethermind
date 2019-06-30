@@ -39,8 +39,8 @@ namespace Nethermind.Evm.Tracing
         void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error);
 
         void StartOperation(int depth, long gas, Instruction opcode, int pc);
-        void SetOperationError(EvmExceptionType error);
-        void SetOperationRemainingGas(long gas);
+        void ReportOperationError(EvmExceptionType error);
+        void ReportOperationRemainingGas(long gas);
         void SetOperationStack(List<string> stackTrace);
         void ReportStackPush(Span<byte> stackItem);
         void SetOperationMemory(List<string> memoryTrace);

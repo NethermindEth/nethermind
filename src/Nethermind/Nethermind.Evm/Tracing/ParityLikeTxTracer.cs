@@ -142,7 +142,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions { get; }
         public bool IsTracingCode { get; }
-        public bool IsTracingStack { get; }
+        public bool IsTracingStack => false;
         public bool IsTracingState { get; }
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
@@ -201,7 +201,7 @@ namespace Nethermind.Evm.Tracing
         private bool _treatGasParityStyle = false; // strange cost calculation from parity
         private bool _gasAlreadySetForCurrentOp = false; // workaround for jump destination errors
         
-        public void SetOperationError(EvmExceptionType error)
+        public void ReportOperationError(EvmExceptionType error)
         {
             if (error != EvmExceptionType.InvalidJumpDestination)
             {
@@ -209,7 +209,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void SetOperationRemainingGas(long gas)
+        public void ReportOperationRemainingGas(long gas)
         {
             if (!_gasAlreadySetForCurrentOp)
             {

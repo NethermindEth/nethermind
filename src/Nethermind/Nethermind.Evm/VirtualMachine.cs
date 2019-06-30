@@ -299,8 +299,8 @@ namespace Nethermind.Evm
 
                     if (txTracer.IsTracingInstructions)
                     {
-                        txTracer.SetOperationError((ex as EvmException)?.ExceptionType ?? EvmExceptionType.Other);
-                        txTracer.SetOperationRemainingGas(0);
+                        txTracer.ReportOperationError((ex as EvmException)?.ExceptionType ?? EvmExceptionType.Other);
+                        txTracer.ReportOperationRemainingGas(0);
                     }
                     
                     if (_txTracer.IsTracingActions)
@@ -505,7 +505,7 @@ namespace Nethermind.Evm
                         _txTracer.SetOperationMemorySize(evmState.Memory.Size);
                     }
 
-                    _txTracer.SetOperationRemainingGas(gasAvailable);
+                    _txTracer.ReportOperationRemainingGas(gasAvailable);
                 }
             }
             
@@ -513,8 +513,8 @@ namespace Nethermind.Evm
             {
                 if (traceOpcodes)
                 {
-                    _txTracer.SetOperationError(evmExceptionType);
-                    _txTracer.SetOperationRemainingGas(gasAvailable);
+                    _txTracer.ReportOperationError(evmExceptionType);
+                    _txTracer.ReportOperationRemainingGas(gasAvailable);
                 }
             }
 
@@ -813,7 +813,7 @@ namespace Nethermind.Evm
             if (previousCallResult != null)
             {
                 PushBytes(previousCallResult, bytesOnStack);
-                if(_txTracer.IsTracingInstructions) _txTracer.SetOperationRemainingGas(evmState.GasAvailable);
+                if(_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(evmState.GasAvailable);
             }
 
             if (previousCallOutput.Length > 0)

@@ -86,7 +86,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void SetOperationError(EvmExceptionType error)
+        public void ReportOperationError(EvmExceptionType error)
         {
             _traceEntry.Error = GetErrorDescription(error);
         }
@@ -116,7 +116,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void SetOperationRemainingGas(long gas)
+        public void ReportOperationRemainingGas(long gas)
         {
             _traceEntry.GasCost = _traceEntry.Gas - gas;
         }

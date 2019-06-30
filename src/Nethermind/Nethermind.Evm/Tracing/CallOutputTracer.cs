@@ -66,12 +66,12 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void SetOperationError(EvmExceptionType error)
+        public void ReportOperationError(EvmExceptionType error)
         {
             throw new NotSupportedException();
         }
 
-        public void SetOperationRemainingGas(long gas)
+        public void ReportOperationRemainingGas(long gas)
         {
             throw new NotSupportedException();
         }

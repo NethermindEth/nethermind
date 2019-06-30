@@ -98,14 +98,14 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.StartOperation(depth, gas, opcode, pc);
         }
 
-        public void SetOperationError(EvmExceptionType error)
+        public void ReportOperationError(EvmExceptionType error)
         {
-            _currentTxTracer.SetOperationError(error);
+            _currentTxTracer.ReportOperationError(error);
         }
 
-        public void SetOperationRemainingGas(long gas)
+        public void ReportOperationRemainingGas(long gas)
         {
-            _currentTxTracer.SetOperationRemainingGas(gas);
+            _currentTxTracer.ReportOperationRemainingGas(gas);
         }
 
         public void SetOperationMemorySize(ulong newSize)
