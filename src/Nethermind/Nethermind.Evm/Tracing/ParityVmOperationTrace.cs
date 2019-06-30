@@ -37,6 +37,6 @@ namespace Nethermind.Evm.Tracing
         public ParityStorageChangeTrace Store { get; set; }
         public long Used { get; set; }
         public int Pc { get; set; }
-        public string Sub { get; set; }
+        public ParityVmTrace Sub { get; set; }
     }
 }

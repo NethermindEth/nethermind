@@ -32,15 +32,12 @@ namespace Nethermind.Evm.Tracing
         private readonly Transaction _tx;
         private ParityLikeTxTrace _trace;
         private Stack<ParityTraceAction> _actionStack = new Stack<ParityTraceAction>();
+        private Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)>();
         private ParityTraceAction _currentAction;
+        private (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) _currentVmTrace;
 
         public ParityLikeTxTrace BuildResult()
         {
-            if (IsTracingInstructions)
-            {
-                _trace.VmTrace.Operations = _operations.ToArray();
-            }
-            
             return _trace;
         }
 
@@ -67,13 +64,13 @@ namespace Nethermind.Evm.Tracing
 
             if ((parityTraceTypes & ParityTraceTypes.VmTrace) != 0)
             {
-                _trace.VmTrace = new ParityVmTrace();
+                IsTracingActions = true;
                 IsTracingInstructions = true;
                 IsTracingCode = true;
+                IsTracingReceipt = true;
             }
         }
         
-        private List<ParityVmOperationTrace> _operations = new List<ParityVmOperationTrace>();
         private ParityVmOperationTrace _currentOperation;
         private List<byte[]> _currentPushList = new List<byte[]>();
 
@@ -98,10 +95,35 @@ namespace Nethermind.Evm.Tracing
 
             _actionStack.Push(action);
             _currentAction = action;
+
+            if (IsTracingInstructions)
+            {
+                (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) currentVmTrace = (new ParityVmTrace(), new List<ParityVmOperationTrace>());
+                if (_currentOperation != null)
+                {
+                    _currentOperation.Sub = currentVmTrace.VmTrace;
+                }
+
+                _vmTraceStack.Push(currentVmTrace);
+                _currentVmTrace = currentVmTrace;
+                if (_trace.VmTrace == null)
+                {
+                    _trace.VmTrace = _currentVmTrace.VmTrace;
+                }
+            }
         }
 
         private void PopAction()
         {
+            if (IsTracingInstructions)
+            {
+                _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops.ToArray();
+                _vmTraceStack.Pop();
+                _currentVmTrace = _vmTraceStack.Count == 0 ? (null, null) : _vmTraceStack.Peek();
+                _currentOperation = _currentVmTrace.Ops?.Last();
+                _gasAlreadySetForCurrentOp = false;
+            }
+            
             _actionStack.Pop();
             _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
         }
@@ -165,7 +187,7 @@ namespace Nethermind.Evm.Tracing
             operationTrace.Cost = gas;
             _currentOperation = operationTrace;
             _currentPushList.Clear();
-            _operations.Add(operationTrace);
+            _currentVmTrace.Ops.Add(operationTrace);
         }
 
         private bool _gasAlreadySetForCurrentOp = false; // workaround for jump destination errors
@@ -174,7 +196,7 @@ namespace Nethermind.Evm.Tracing
         {
             if (error != EvmExceptionType.InvalidJumpDestination)
             {
-                _operations.Remove(_currentOperation);
+                _currentVmTrace.Ops.Remove(_currentOperation);
             }
         }
 
@@ -400,7 +422,7 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportByteCode(byte[] byteCode)
         {
-            _trace.VmTrace.Code = byteCode;
+            _currentVmTrace.VmTrace.Code = byteCode;
         }
     }
 }
