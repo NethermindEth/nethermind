@@ -122,6 +122,7 @@ namespace Nethermind.Evm.Tracing
                 _currentVmTrace = _vmTraceStack.Count == 0 ? (null, null) : _vmTraceStack.Peek();
                 _currentOperation = _currentVmTrace.Ops?.Last();
                 _gasAlreadySetForCurrentOp = false;
+                _treatGasParityStyle = true;
             }
             
             _actionStack.Pop();
@@ -190,6 +191,7 @@ namespace Nethermind.Evm.Tracing
             _currentVmTrace.Ops.Add(operationTrace);
         }
 
+        private bool _treatGasParityStyle = false; // strange cost calculation from parity
         private bool _gasAlreadySetForCurrentOp = false; // workaround for jump destination errors
         
         public void SetOperationError(EvmExceptionType error)
@@ -205,10 +207,12 @@ namespace Nethermind.Evm.Tracing
             if (!_gasAlreadySetForCurrentOp)
             {
                 _gasAlreadySetForCurrentOp = true;
-
-                _currentOperation.Cost = _currentOperation.Cost - gas;
+                
+                _currentOperation.Cost = _currentOperation.Cost - (_treatGasParityStyle ? 0 : gas);
                 _currentOperation.Push = _currentPushList.ToArray();
                 _currentOperation.Used = gas;
+                
+                _treatGasParityStyle = false;
             }
         }
 
