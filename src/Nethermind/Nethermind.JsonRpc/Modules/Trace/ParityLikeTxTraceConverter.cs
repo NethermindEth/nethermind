@@ -48,16 +48,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             writer.WritePropertyName("trace");
+            writer.WriteStartArray();
             if (value.Action != null)
             {
-                writer.WriteStartArray();
                 WriteJson(writer, value.Action, serializer);
-                writer.WriteEndArray();
             }
-            else
-            {
-                writer.WriteNull();
-            }
+            writer.WriteEndArray();
 
             if (value.TransactionHash != null)
             {
