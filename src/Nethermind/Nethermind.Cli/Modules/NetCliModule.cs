@@ -32,7 +32,7 @@ namespace Nethermind.Cli.Modules
         public JsValue Version() => NodeManager.PostJint("net_version").Result;
         
         [CliProperty("net", "peerCount")]
-        public JsValue PeerCount() => NodeManager.PostJint("net_peerCount").Result;
+        public long PeerCount() => NodeManager.Post<long>("net_peerCount").Result;
 
         public NetCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {

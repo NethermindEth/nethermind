@@ -71,9 +71,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliProperty("eth", "blockNumber")]
-        public JsValue BlockNumber()
+        public long BlockNumber()
         {
-            return NodeManager.Post("eth_blockNumber").Result;
+            return NodeManager.Post<long>("eth_blockNumber").Result;
         }
 
         [CliFunction("eth", "getCode")]
