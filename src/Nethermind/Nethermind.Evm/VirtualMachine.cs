@@ -813,7 +813,7 @@ namespace Nethermind.Evm
             if (previousCallResult != null)
             {
                 PushBytes(previousCallResult, bytesOnStack);
-                _txTracer.SetOperationRemainingGas(evmState.GasAvailable);
+                if(_txTracer.IsTracingInstructions) _txTracer.SetOperationRemainingGas(evmState.GasAvailable);
             }
 
             if (previousCallOutput.Length > 0)
@@ -821,7 +821,6 @@ namespace Nethermind.Evm
                 UInt256 localPreviousDest = previousCallOutputDestination;
                 UpdateMemoryCost(ref localPreviousDest, (ulong)previousCallOutput.Length);
                 evmState.Memory.Save(ref localPreviousDest, previousCallOutput);
-                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
 
             while (programCounter < code.Length)

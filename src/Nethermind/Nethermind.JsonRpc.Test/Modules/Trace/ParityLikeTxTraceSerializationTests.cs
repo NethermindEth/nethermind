@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             TestOneWaySerialization(trace, "{\"output\":null,\"stateDiff\":{\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x29a2241af62c0000\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}},\"trace\":[{\"action\":{\"callType\":\"reward\",\"from\":null,\"gas\":\"0x0\",\"input\":null,\"to\":null,\"value\":\"0x1\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"traceAddress\":[],\"type\":null}],\"vmTrace\":null}");
         }
         
-        [Test]
+        [Test, Ignore("Reenable it after running compare on PoW chains")]
         public void Can_serialize_reward_state_only()
         {
             Block block = Build.A.Block.WithNumber(long.Parse("4563918244f40000".AsSpan(), NumberStyles.AllowHexSpecifier)).TestObject;

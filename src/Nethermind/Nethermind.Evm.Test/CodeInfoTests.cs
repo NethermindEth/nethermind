@@ -35,14 +35,8 @@ namespace Nethermind.Evm.Test
 
             CodeInfo codeInfo = new CodeInfo(code);
 
-            if (!isValid)
-            {
-                Assert.Throws<InvalidJumpDestinationException>(() => codeInfo.ValidateJump(destination));
-            }
-            else
-            {
-                codeInfo.ValidateJump(destination);
-            }
+            
+            Assert.AreEqual(isValid, codeInfo.ValidateJump(destination));
         }
 
         [Test]
@@ -56,7 +50,7 @@ namespace Nethermind.Evm.Test
 
             CodeInfo codeInfo = new CodeInfo(code);
 
-            Assert.Throws<InvalidJumpDestinationException>(() => codeInfo.ValidateJump(1));
+            Assert.AreEqual(false, codeInfo.ValidateJump(1));
         }
     }
 }
