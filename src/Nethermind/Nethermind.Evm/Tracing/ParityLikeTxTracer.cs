@@ -216,6 +216,13 @@ namespace Nethermind.Evm.Tracing
                 _gasAlreadySetForCurrentOp = true;
                 
                 _currentOperation.Cost = _currentOperation.Cost - (_treatGasParityStyle ? 0 : gas);
+                
+                // I would say it is a Parity issue where stipend is added as a gas cost...
+                if (_currentOperation.Cost == 7400)
+                {
+                    _currentOperation.Cost = 9700;
+                }
+                
                 _currentOperation.Push = _currentPushList.ToArray();
                 _currentOperation.Used = gas;
                 
@@ -326,6 +333,12 @@ namespace Nethermind.Evm.Tracing
             action.CallType = GetCallType(callType);
             action.Type = GetType(callType);
 
+            if (_currentOperation != null && callType == ExecutionType.Create)
+            {
+                // another Parity quirkiness
+                _currentOperation.Cost += gas;
+            }
+            
             PushAction(action);
         }
         
