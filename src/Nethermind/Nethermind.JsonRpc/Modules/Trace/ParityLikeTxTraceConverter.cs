@@ -61,7 +61,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
             
             writer.WritePropertyName("vmTrace");
-            writer.WriteNull();
+            if (value.VmTrace != null)
+            {
+                writer.WriteProperty("vmTrace", value.VmTrace, serializer);
+            }
+            else
+            {
+                writer.WriteNull();
+            }
 
             writer.WriteEndObject();
         }
