@@ -49,15 +49,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("mem");
             if (value.Memory != null)
             {
-                for (int i = 0; i < value.Memory.Length; i++)
-                {
-                    writer.WriteStartObject();
-                    writer.WritePropertyName("data");
-                    writer.WriteValue(value.Memory[i].Data.ToHexString(true, false));
-                    writer.WritePropertyName("off");
-                    writer.WriteValue(value.Memory[i].Offset);
-                    writer.WriteEndObject();
-                }
+                writer.WriteStartObject();
+                writer.WritePropertyName("data");
+                writer.WriteValue(value.Memory.Data.ToHexString(true, false));
+                writer.WritePropertyName("off");
+                writer.WriteValue(value.Memory.Offset);
+                writer.WriteEndObject();
             }
             else
             {
@@ -80,7 +77,21 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 writer.WriteNull();
             }
 
-            writer.WriteProperty("store", value.Store, serializer);
+            writer.WritePropertyName("store");
+            if (value.Store != null)
+            {
+                writer.WriteStartObject();
+                writer.WritePropertyName("key");
+                writer.WriteValue(value.Store.Key.ToHexString(true, true));
+                writer.WritePropertyName("val");
+                writer.WriteValue(value.Store.Value.ToHexString(true, true));
+                writer.WriteEndObject();
+            }
+            else
+            {
+                writer.WriteNull();
+            }
+
             writer.WriteProperty("used", value.Used);
             writer.WriteEndObject();
 

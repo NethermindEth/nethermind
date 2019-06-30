@@ -76,7 +76,6 @@ namespace Nethermind.Evm.Tracing
         private List<ParityVmOperationTrace> _operations = new List<ParityVmOperationTrace>();
         private ParityVmOperationTrace _currentOperation;
         private List<byte[]> _currentPushList = new List<byte[]>();
-        private List<ParityMemoryChangeTrace> _currentMemoryChangeList = new List<ParityMemoryChangeTrace>();
 
         private void PushAction(ParityTraceAction action)
         {
@@ -165,7 +164,6 @@ namespace Nethermind.Evm.Tracing
             operationTrace.Cost = gas;
             _currentOperation = operationTrace;
             _currentPushList.Clear();
-            _currentMemoryChangeList.Clear();
             _operations.Add(operationTrace);
         }
 
@@ -177,12 +175,6 @@ namespace Nethermind.Evm.Tracing
         {
             _currentOperation.Cost = _currentOperation.Cost - gas;
             _currentOperation.Push = _currentPushList.ToArray();
-
-            if (_currentMemoryChangeList.Count > 0)
-            {
-                _currentOperation.Memory = _currentMemoryChangeList.ToArray();
-            }
-
             _currentOperation.Used = gas;
         }
 
@@ -200,7 +192,15 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
         public void ReportMemoryChange(long offset, Span<byte> data)
         {
-            _currentMemoryChangeList.Add(new ParityMemoryChangeTrace{Offset = offset, Data = data.ToArray()});
+            if (data.Length != 0)
+            {
+                _currentOperation.Memory = new ParityMemoryChangeTrace {Offset = offset, Data = data.ToArray()};
+            }
+        }
+
+        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        {
+            _currentOperation.Store = new ParityStorageChangeTrace{Key = key.ToArray(), Value = value.ToArray()};
         }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new NotSupportedException();

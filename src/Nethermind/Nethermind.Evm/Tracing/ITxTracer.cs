@@ -46,6 +46,7 @@ namespace Nethermind.Evm.Tracing
         void SetOperationMemory(List<string> memoryTrace);
         void SetOperationMemorySize(ulong newSize);
         void ReportMemoryChange(long offset, Span<byte> data);
+        void ReportStorageChange(Span<byte> key, Span<byte> value);
         void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue);
         
         void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress);

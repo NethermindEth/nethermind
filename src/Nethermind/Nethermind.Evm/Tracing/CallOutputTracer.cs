@@ -101,6 +101,11 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
+        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        {
+            throw new NotSupportedException();
+        }
+
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
             throw new NotSupportedException();

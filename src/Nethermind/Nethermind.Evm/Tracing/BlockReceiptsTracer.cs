@@ -118,6 +118,11 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportMemoryChange(offset, data);
         }
 
+        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        {
+            _currentTxTracer.ReportStorageChange(key, value);
+        }
+
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
             _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);

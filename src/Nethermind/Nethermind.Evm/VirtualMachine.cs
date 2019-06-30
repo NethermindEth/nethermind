@@ -491,6 +491,11 @@ namespace Nethermind.Evm
                     return;
                 }
 
+                if (programCounter == 2249)
+                {
+                    
+                }
+                
                 _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, (int)programCounter);
                 if (_txTracer.IsTracingMemory) { _txTracer.SetOperationMemory(evmState.Memory.GetTrace()); }
                 if (_txTracer.IsTracingStack) { _txTracer.SetOperationStack(GetStackTrace(stack)); }
@@ -690,7 +695,7 @@ namespace Nethermind.Evm
                 stack.Slice((stackHead - depth) * 32, 32).CopyTo(stack.Slice(stackHead * 32, 32));
                 if (_txTracer.IsTracingInstructions)
                 {
-                    for (int i = 0; i < depth + 1; i++)
+                    for (int i = depth; i >= 0; i--)
                     {
                         _txTracer.ReportStackPush(stack.Slice(stackHead * 32 - i * 32, 32));    
                     }
@@ -720,6 +725,14 @@ namespace Nethermind.Evm
                 bottomSpan.CopyTo(buffer);
                 topSpan.CopyTo(bottomSpan);
                 buffer.CopyTo(topSpan);
+                
+                if (_txTracer.IsTracingInstructions)
+                {
+                    for (int i = depth; i > 0; i--)
+                    {
+                        _txTracer.ReportStackPush(stack.Slice(stackHead * 32 - i * 32, 32));    
+                    }
+                }
             }
 
             Span<byte> PopBytes(Span<byte> stack)
@@ -812,6 +825,7 @@ namespace Nethermind.Evm
                 UInt256 localPreviousDest = previousCallOutputDestination;
                 UpdateMemoryCost(ref localPreviousDest, (ulong)previousCallOutput.Length);
                 evmState.Memory.Save(ref localPreviousDest, previousCallOutput);
+                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
 
             while (programCounter < code.Length)
@@ -1431,6 +1445,7 @@ namespace Nethermind.Evm
 
                         byte[] callDataSlice = env.InputData.SliceWithZeroPadding(src, (int)length);
                         evmState.Memory.Save(ref dest, callDataSlice);
+                        if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, callDataSlice);
                         break;
                     }
                     case Instruction.CODESIZE:
@@ -1653,6 +1668,8 @@ namespace Nethermind.Evm
                         PopUInt256(out UInt256 memPosition, bytesOnStack);
                         UpdateMemoryCost(ref memPosition, 32);
                         Span<byte> memData = evmState.Memory.LoadSpan(ref memPosition);
+                        if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, memData);
+                        
                         PushBytes(memData, bytesOnStack);
                         break;
                     }
@@ -1702,7 +1719,12 @@ namespace Nethermind.Evm
                         break;
                     }
                     case Instruction.SSTORE:
-                    {                        
+                    {
+                        if (programCounter == 2250)
+                        {
+                            
+                        }
+                        
                         if (evmState.IsStatic)
                         {
                             Metrics.EvmExceptions++;
@@ -1825,6 +1847,14 @@ namespace Nethermind.Evm
                         {
                             byte[] valueToStore = newIsZero ? BytesZero : newValue;
                             _storage.Set(storageAddress, valueToStore);
+                        }
+                        
+                        if (_txTracer.IsTracingInstructions)
+                        {
+                            byte[] valueToStore = newIsZero ? BytesZero : newValue;
+                            Span<byte> span = stackalloc byte[32];
+                            storageAddress.Index.ToBigEndian(span);
+                            _txTracer.ReportStorageChange(span, valueToStore);
                         }
                         
                         if (_txTracer.IsTracingOpLevelStorage)

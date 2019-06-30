@@ -26,9 +26,7 @@ namespace Nethermind.Evm
     {
         ulong Size { get; }
         void SaveWord(ref UInt256 location, Span<byte> word);
-        void SaveWord(ref UInt256 location, byte[] word);
         void SaveByte(ref UInt256 location, byte value);
-        void SaveByte(ref UInt256 location, byte[] value);
         void Save(ref UInt256 location, Span<byte> value);
         void Save(ref UInt256 location, byte[] value);
         Span<byte> LoadSpan(ref UInt256 location);

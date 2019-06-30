@@ -199,7 +199,9 @@ namespace Nethermind.Cli
                     }
                     else if (!result.IsNull())
                     {
-                        CliConsole.WriteGood(Serializer.Serialize(result.ToObject(), true));
+                        string text = Serializer.Serialize(result.ToObject(), true);
+                        File.AppendAllText("C:\\temp\\cli.txt", text);
+                        CliConsole.WriteGood(text);
                     }
                     else
                     {
@@ -268,7 +270,12 @@ namespace Nethermind.Cli
             Serializer.RegisterConverter(new ParityVmTraceConverter());
 
             _engine = new CliEngine();
-            _engine.JintEngine.SetValue("serialize", new Action<JsValue>(v => CliConsole.WriteGood(Serializer.Serialize(v.ToObject(), true))));
+            _engine.JintEngine.SetValue("serialize", new Action<JsValue>(v =>
+            {
+                string text = Serializer.Serialize(v.ToObject(), true);
+                File.AppendAllText("C:\\temp\\cli.txt", text);
+                CliConsole.WriteGood(text);
+            }));
             
             _logManager = new OneLoggerLogManager(new CliLogger());
             _nodeManager = new NodeManager(_engine, Serializer, _logManager);

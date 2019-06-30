@@ -105,6 +105,10 @@ namespace Nethermind.Evm.Tracing
         {
         }
 
+        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        {
+        }
+
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
             byte[] bigEndian = new byte[32];

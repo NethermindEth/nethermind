@@ -18,25 +18,13 @@
 
 namespace Nethermind.Evm.Tracing
 {
-    //        {
-//            "cost": 0.0,
-//            "ex": {
-//                "mem": null,
-//                "push": [],
-//                "store": null,
-//                "used": 16961.0
-//            },
-//            "pc": 526.0,
-//            "sub": null
-//        }
-    public class ParityVmOperationTrace
+//    "store": {
+//"key": "0x0",
+//"val": "0x486974636861696e"
+//},
+    public class ParityStorageChangeTrace
     {
-        public long Cost { get; set; }
-        public ParityMemoryChangeTrace Memory { get; set; }
-        public byte[][] Push { get; set; }
-        public ParityStorageChangeTrace Store { get; set; }
-        public long Used { get; set; }
-        public int Pc { get; set; }
-        public string Sub { get; set; }
+        public byte[] Key { get; set; }
+        public byte[] Value { get; set; }
     }
 }

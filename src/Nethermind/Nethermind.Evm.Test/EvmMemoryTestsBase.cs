@@ -72,7 +72,7 @@ namespace Nethermind.Evm.Test
         {
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = EvmPooledMemory.WordSize / 2;
-            memory.SaveByte(ref dest, new byte[] {1});
+            memory.SaveByte(ref dest, 1);
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(1, trace.Count);
         }
