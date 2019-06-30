@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Tracing
         private GethLikeTxTrace _trace = new GethLikeTxTrace();
         
         public bool IsTracingReceipt => true;
-        bool ITxTracer.IsTracingCalls => false;
+        bool ITxTracer.IsTracingActions => false;
         bool ITxTracer.IsTracingOpLevelStorage => true;
         bool ITxTracer.IsTracingMemory => true;
         bool ITxTracer.IsTracingInstructions => true;
@@ -107,6 +107,11 @@ namespace Nethermind.Evm.Tracing
             _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);
         }
 
+        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        {
+            throw new NotSupportedException();
+        }
+
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             throw new NotSupportedException();
@@ -127,17 +132,22 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportCallEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, byte[] output)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportCreateEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionError(EvmExceptionType exceptionType)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
             throw new NotSupportedException();
         }

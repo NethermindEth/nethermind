@@ -38,6 +38,7 @@ namespace Nethermind.Cli
             JintEngine = new Engine();
             JintEngine.SetValue("gasPrice", (double) 20.GWei());
             JintEngine.SetValue("load", new Action<string>(LoadFile));
+            JintEngine.SetValue("log", new Action<JsValue>(v => Console.WriteLine(v.ToString())));
         }
 
         private void LoadFile(string filePath)
@@ -45,7 +46,7 @@ namespace Nethermind.Cli
             string content = File.ReadAllText(filePath);
             JintEngine.Execute(content);
         }
-        
+
         private static Delegate CreateDelegate(MethodInfo methodInfo, CliModuleBase module)
         {
             if (methodInfo == null)
@@ -64,12 +65,13 @@ namespace Nethermind.Cli
 
             return methodInfo.CreateDelegate(Expression.GetDelegateType(), module);
         }
-        
+
         public JsValue Execute(string statement)
         {
             try
             {
-                return JintEngine.Execute(statement).GetCompletionValue();
+                Engine e = JintEngine.Execute(statement);
+                return e.GetCompletionValue();
             }
             catch (ParserException e)
             {

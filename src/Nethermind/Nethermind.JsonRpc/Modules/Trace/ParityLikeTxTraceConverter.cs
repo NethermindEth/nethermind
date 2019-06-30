@@ -19,6 +19,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Newtonsoft.Json;
 
@@ -92,12 +93,25 @@ namespace Nethermind.JsonRpc.Modules.Trace
          */
         private void WriteJson(JsonWriter writer, ParityTraceAction traceAction, JsonSerializer serializer)
         {
+            if (traceAction.IsPrecompiled)
+            {
+                return;
+            }
+            
             writer.WriteStartObject();
             writer.WriteProperty("action", traceAction, serializer);
 //            writer.WriteProperty("blockHash", value.BlockHash, serializer);
 //            writer.WriteProperty("blockNumber", value.BlockNumber, serializer);
-            writer.WriteProperty("result", traceAction.Result, serializer);
-            writer.WriteProperty("subtraces", traceAction.Subtraces.Count);
+            if (traceAction.Error == null)
+            {
+                writer.WriteProperty("result", traceAction.Result, serializer);
+            }
+            else
+            {
+                writer.WriteProperty("error", traceAction.Error, serializer);
+            }
+
+            writer.WriteProperty("subtraces", traceAction.Subtraces.Count(s => !s.IsPrecompiled));
             writer.WritePropertyName("traceAddress");
             _traceAddressConverter.WriteJson(writer, traceAction.TraceAddress, serializer);
 

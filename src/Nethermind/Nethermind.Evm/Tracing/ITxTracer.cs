@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Tracing
     public interface ITxTracer : IStateTracer, IStorageTracer
     {
         bool IsTracingReceipt { get; }
-        bool IsTracingCalls { get; }
+        bool IsTracingActions { get; }
         bool IsTracingOpLevelStorage { get; }
         bool IsTracingMemory { get; }
         bool IsTracingInstructions { get; }
@@ -44,8 +44,11 @@ namespace Nethermind.Evm.Tracing
         void SetOperationMemorySize(ulong newSize);
         void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue);
         
-        void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType);
-        void ReportCallEnd(long gas, byte[] output);
-        void ReportCreateEnd(long gas, Address deploymentAddress, byte[] deployedCode);
+        void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress);
+        void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false);
+        void ReportActionEnd(long gas, byte[] output);
+        
+        void ReportActionError(EvmExceptionType evmExceptionType);
+        void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode);
     }
 }

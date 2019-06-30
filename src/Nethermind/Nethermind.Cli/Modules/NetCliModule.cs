@@ -18,6 +18,7 @@
 
 using System;
 using System.Numerics;
+using Jint.Native;
 
 namespace Nethermind.Cli.Modules
 {
@@ -25,13 +26,13 @@ namespace Nethermind.Cli.Modules
     public class NetCliModule : CliModuleBase
     {   
         [CliProperty("net", "localEnode")]
-        public string LocalEnode() => NodeManager.Post<string>("net_localEnode").Result;
+        public JsValue LocalEnode() => NodeManager.PostJint("net_localEnode").Result;
 
         [CliProperty("net", "version")]
-        public BigInteger Version() => NodeManager.Post<BigInteger>("net_version").Result;
+        public JsValue Version() => NodeManager.PostJint("net_version").Result;
         
         [CliProperty("net", "peerCount")]
-        public BigInteger PeerCount() => NodeManager.Post<BigInteger>("net_peerCount").Result;
+        public JsValue PeerCount() => NodeManager.PostJint("net_peerCount").Result;
 
         public NetCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {

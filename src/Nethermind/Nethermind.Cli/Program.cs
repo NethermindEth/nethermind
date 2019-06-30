@@ -245,11 +245,12 @@ namespace Nethermind.Cli
             Serializer.RegisterConverter(new ParityTraceActionConverter());
             Serializer.RegisterConverter(new ParityTraceResultConverter());
 
+            _engine = new CliEngine();
+            _engine.JintEngine.SetValue("serialize", new Action<JsValue>(v => CliConsole.WriteGood(Serializer.Serialize(v.ToObject(), true))));
             
             _logManager = new OneLoggerLogManager(new CliLogger());
-            _nodeManager = new NodeManager(Serializer, _logManager);
+            _nodeManager = new NodeManager(_engine, Serializer, _logManager);
             _nodeManager.SwitchUri(new Uri("http://localhost:8545"));
-            _engine = new CliEngine();
         }
 
         private static void LoadModules()

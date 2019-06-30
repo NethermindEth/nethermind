@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Tracing
     public class CallOutputTracer : ITxTracer
     {
         public bool IsTracingReceipt => true;
-        public bool IsTracingCalls => false;
+        public bool IsTracingActions => false;
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
@@ -95,6 +95,11 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
+        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        {
+            throw new NotSupportedException();
+        }
+
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             throw new NotSupportedException();
@@ -115,17 +120,22 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportCallEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, byte[] output)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportCreateEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionError(EvmExceptionType exceptionType)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
             throw new NotSupportedException();
         }

@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.VisualBasic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
@@ -30,8 +31,8 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly Transaction _tx;
         private ParityLikeTxTrace _trace;
-        private Stack<ParityTraceAction> _callStack = new Stack<ParityTraceAction>();
-        private ParityTraceAction _currentCall;
+        private Stack<ParityTraceAction> _actionStack = new Stack<ParityTraceAction>();
+        private ParityTraceAction _currentAction;
 
         public ParityLikeTxTrace BuildResult()
         {
@@ -55,7 +56,7 @@ namespace Nethermind.Evm.Tracing
 
             if ((parityTraceTypes & ParityTraceTypes.Trace) != 0)
             {
-                IsTracingCalls = true;
+                IsTracingActions = true;
                 IsTracingReceipt = true;
             }
 
@@ -65,37 +66,37 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        private void PushCall(ParityTraceAction call)
+        private void PushAction(ParityTraceAction action)
         {
-            if (_currentCall != null)
+            if (_currentAction != null)
             {
-                call.TraceAddress = new int[_currentCall.TraceAddress.Length + 1];
-                for (int i = 0; i < _currentCall.TraceAddress.Length; i++)
+                action.TraceAddress = new int[_currentAction.TraceAddress.Length + 1];
+                for (int i = 0; i < _currentAction.TraceAddress.Length; i++)
                 {
-                    call.TraceAddress[i] = _currentCall.TraceAddress[i];
+                    action.TraceAddress[i] = _currentAction.TraceAddress[i];
                 }
 
-                call.TraceAddress[_currentCall.TraceAddress.Length] = _currentCall.Subtraces.Count;
-                _currentCall.Subtraces.Add(call);
+                action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(st => !st.IsPrecompiled);
+                _currentAction.Subtraces.Add(action);
             }
             else
             {
-                _trace.Action = call;
-                call.TraceAddress = Array.Empty<int>();
+                _trace.Action = action;
+                action.TraceAddress = Array.Empty<int>();
             }
 
-            _callStack.Push(call);
-            _currentCall = call;
+            _actionStack.Push(action);
+            _currentAction = action;
         }
 
-        private void PopCall()
+        private void PopAction()
         {
-            _callStack.Pop();
-            _currentCall = _callStack.Count == 0 ? null : _callStack.Peek();
+            _actionStack.Pop();
+            _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
         }
 
         public bool IsTracingReceipt { get; }
-        public bool IsTracingCalls { get; }
+        public bool IsTracingActions { get; }
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
@@ -104,9 +105,9 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
-            if (_currentCall != null)
+            if (_currentAction != null)
             {
-                throw new InvalidOperationException($"Closing trace at level {_currentCall.TraceAddress.Length}");
+                throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
             }
 
             if (_trace.Action.TraceAddress.Length == 0)
@@ -120,11 +121,13 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error)
         {
-            if (_currentCall != null)
+            if (_currentAction != null)
             {
-                throw new InvalidOperationException($"Closing trace at level {_currentCall.TraceAddress.Length}");
+                throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
             }
 
+            _trace.Output = Bytes.Empty;
+            
             // quick tx fail (before execution)
             if (_trace.Action == null)
             {
@@ -219,9 +222,10 @@ namespace Nethermind.Evm.Tracing
             storage[storageAddress.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
-        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
             ParityTraceAction action = new ParityTraceAction();
+            action.IsPrecompiled = isPrecompileCall;
             action.From = @from;
             action.To = to;
             action.Value = value;
@@ -230,7 +234,20 @@ namespace Nethermind.Evm.Tracing
             action.CallType = GetCallType(callType);
             action.Type = GetType(callType);
 
-            PushCall(action);
+            PushAction(action);
+        }
+        
+        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        {
+            ParityTraceAction action = new ParityTraceAction();
+            action.From = address;
+            action.To = refundAddress;
+            action.Value = balance;
+            action.Type = "suicide";
+
+            PushAction(action);
+            _currentAction.Result = null;
+            PopAction();
         }
 
         private string GetCallType(ExecutionType executionType)
@@ -275,19 +292,51 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportCallEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, byte[] output)
         {
-            _currentCall.Result.Output = output ?? Bytes.Empty;
-            _currentCall.Result.GasUsed = _currentCall.Gas - gas;
-            PopCall();
+            _currentAction.Result.Output = output ?? Bytes.Empty;
+            _currentAction.Result.GasUsed = _currentAction.Gas - gas;
+            PopAction();
+        }
+
+        private string GetErrorDescription(EvmExceptionType evmExceptionType)
+        {
+            switch (evmExceptionType)
+            {
+                case EvmExceptionType.None:
+                    return null;
+                case EvmExceptionType.BadInstruction:
+                    return "Bad instruction";
+                case EvmExceptionType.StackOverflow:
+                    return "Stack overflow";
+                case EvmExceptionType.StackUnderflow:
+                    return "Stack underflow";
+                case EvmExceptionType.OutOfGas:
+                    return "Out of gas";
+                case EvmExceptionType.InvalidJumpDestination:
+                    return "Bad jump destination";
+                case EvmExceptionType.AccessViolation:
+                    return "Access violation";
+                case EvmExceptionType.StaticCallViolation:
+                    return "Static call violation";
+                default:
+                    return "Error";
+            }
         }
         
-        public void ReportCreateEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionError(EvmExceptionType evmExceptionType)
         {
-            _currentCall.Result.Address = deploymentAddress;
-            _currentCall.Result.Code = deployedCode;
-            _currentCall.Result.GasUsed = _currentCall.Gas - gas;
-            PopCall();
+            _currentAction.Result = null;
+            _currentAction.Error = GetErrorDescription(evmExceptionType);
+            PopAction();
+        }
+
+        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        {
+            _currentAction.Result.Address = deploymentAddress;
+            _currentAction.Result.Code = deployedCode;
+            _currentAction.Result.GasUsed = _currentAction.Gas - gas;
+            PopAction();
         }
     }
 }

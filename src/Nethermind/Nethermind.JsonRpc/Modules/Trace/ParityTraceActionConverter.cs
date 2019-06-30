@@ -36,6 +36,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
     {
         public override void WriteJson(JsonWriter writer, ParityTraceAction value, JsonSerializer serializer)
         {
+            if (value.Type == "suicide")
+            {
+                WriteSelfDestructJson(writer, value, serializer);
+                return;
+            }
+            
             writer.WriteStartObject();
             if (value.CallType != "create")
             {
@@ -56,6 +62,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
             
             writer.WriteProperty("value", value.Value, serializer);
+            writer.WriteEndObject();
+        }
+
+        private void WriteSelfDestructJson(JsonWriter writer, ParityTraceAction value, JsonSerializer serializer)
+        {
+            writer.WriteStartObject();
+            writer.WriteProperty("address", value.From, serializer);
+            writer.WriteProperty("balance", value.Value, serializer);
+            writer.WriteProperty("refundAddress", value.To, serializer);
             writer.WriteEndObject();
         }
 

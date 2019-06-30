@@ -20,5 +20,6 @@ namespace Nethermind.Evm
 {
     public class EvmAccessViolationException : EvmException
     {
+        public override EvmExceptionType ExceptionType => EvmExceptionType.AccessViolation;
     }
 }

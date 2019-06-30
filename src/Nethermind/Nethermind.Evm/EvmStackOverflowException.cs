@@ -20,5 +20,6 @@ namespace Nethermind.Evm
 {
     public class EvmStackOverflowException : EvmException
     {
+        public override EvmExceptionType ExceptionType => EvmExceptionType.StackOverflow;
     }
 }

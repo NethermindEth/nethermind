@@ -20,5 +20,6 @@ namespace Nethermind.Evm
 {
     public class PrecompileExecutionFailureException : EvmException
     {
+        public override EvmExceptionType ExceptionType => EvmExceptionType.PrecompileFailure;
     }
 }
