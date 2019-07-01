@@ -40,7 +40,7 @@ namespace Nethermind.Cli
             JintEngine.SetValue("load", new Action<string>(LoadFile));
             JintEngine.SetValue("log", new Action<JsValue>(v =>
             {
-                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
+//                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
                 Console.WriteLine(v.ToString());
             }));
         }
