@@ -4,7 +4,7 @@ sudo: required
 dist: xenial
 dotnet: 2.2
 git:
-  depth: 3
+  depth: 1
   submodules: false
 before_script:
   - chmod -R +x scripts
@@ -112,7 +112,7 @@ jobs:
       name: "Ethereum.Blockchain.Block.Test"
     - script:
       - git submodule update --init
-      - travis_wait 20 dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Ethereum.Test.Base]*" src/Nethermind/Ethereum.Blockchain.Test
+      - travis_wait 21 dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Ethereum.Test.Base]*" src/Nethermind/Ethereum.Blockchain.Test
       name: "Ethereum.Blockchain.Test"
     - script:
       - git submodule update --init
