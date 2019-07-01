@@ -51,7 +51,7 @@ namespace Nethermind.Network.StaticNodes
         {
             if (!File.Exists(_staticNodesPath))
             {
-                if (_logger.IsWarn) _logger.Warn($"Static nodes file was not found for path: {_staticNodesPath}");
+                if (_logger.IsDebug) _logger.Debug($"Static nodes file was not found for path: {_staticNodesPath}");
 
                 return;
             }

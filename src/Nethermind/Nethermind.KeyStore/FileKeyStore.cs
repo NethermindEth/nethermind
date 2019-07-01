@@ -345,6 +345,11 @@ namespace Nethermind.KeyStore
         
         private string ReadKey(Address address)
         {
+            if (address == Address.Zero)
+            {
+                return null;
+            }
+            
             try
             {
                 var files = FindKeyFiles(address);
