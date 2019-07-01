@@ -33,11 +33,11 @@ namespace Nethermind.Wallet
     [DoNotUseInSecuredContext("For dev purposes only")]
     public class DevKeyStoreWallet : IWallet
     {
-        private static byte[] _keySeed = new byte[32];
+        private static readonly byte[] KeySeed = new byte[32];
         private readonly IKeyStore _keyStore;
         private readonly ILogger _logger;
 
-        private Dictionary<Address, PrivateKey> _unlockedAccounts = new Dictionary<Address, PrivateKey>();
+        private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = new Dictionary<Address, PrivateKey>();
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
@@ -45,22 +45,21 @@ namespace Nethermind.Wallet
         {
             _keyStore = keyStore;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-
-            _keySeed[31] = 1;
+            KeySeed[31] = 1;
             for (int i = 0; i < 3; i++)
             {
-                PrivateKey key = new PrivateKey(_keySeed);
+                PrivateKey key = new PrivateKey(KeySeed);
                 if (GetAccounts().All(a => a != key.Address))
                 {
                     SecureString secureString = new SecureString();
                     secureString.MakeReadOnly();
                     _keyStore.StoreKey(key, secureString);
                 }
-                
+
                 _unlockedAccounts.Add(key.Address, key);
-                _keySeed[31]++;
+                KeySeed[31]++;
             }
-        }      
+        }
 
         public void Import(byte[] keyData, SecureString passphrase)
         {
@@ -85,18 +84,23 @@ namespace Nethermind.Wallet
 
         public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
         {
+            if (address == Address.Zero)
+            {
+                return false;
+            }
+            
             if (_unlockedAccounts.ContainsKey(address)) return true;
 
             (PrivateKey key, Result result) = _keyStore.GetKey(address, passphrase);
             if (result.ResultType == ResultType.Success)
             {
-                _logger.Info($"Unlocking account: {address}");
+                if (_logger.IsInfo) _logger.Info($"Unlocking account: {address}");
                 _unlockedAccounts.Add(key.Address, key);
                 AccountUnlocked?.Invoke(this, new AccountUnlockedEventArgs(address));
                 return true;
             }
 
-            _logger.Error($"Failed to unlock the account: {address}");
+            if (_logger.IsError) _logger.Error($"Failed to unlock the account: {address}");
             return false;
         }
 
