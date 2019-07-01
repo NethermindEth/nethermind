@@ -486,6 +486,11 @@ namespace Nethermind.Evm
 
             void StartInstructionTrace(Instruction instruction, Span<byte> stack)
             {
+                if (programCounter == 5269)
+                {
+                    
+                }
+                
                 if (!traceOpcodes)
                 {
                     return;
@@ -2358,10 +2363,22 @@ namespace Nethermind.Evm
 
                         if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
                         {
-                            RefundGas(gasLimitUl, ref gasAvailable);
                             _returnDataBuffer = new byte[0];
                             PushZero(bytesOnStack);
+                            
+                            if (_txTracer.IsTracingInstructions)
+                            {
+                                // very specific for Parity trace, need to find generalization - very peculiar 32 length...
+                                byte[] memoryTrace = evmState.Memory.Load(ref dataOffset, 32);
+                                _txTracer.ReportMemoryChange((long)dataOffset, memoryTrace);
+                            }
+                            
                             if (isTrace) _logger.Trace("FAIL - call depth");
+                            if(_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(gasAvailable);
+                            if(_txTracer.IsTracingInstructions) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+                            
+                            RefundGas(gasLimitUl, ref gasAvailable);
+                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(gasAvailable);
                             break;
                         }
 

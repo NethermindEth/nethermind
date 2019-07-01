@@ -191,6 +191,10 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
+        public void ReportRefund(long gasAvailable)
+        {
+        }
+
         public void SetOperationStack(List<string> stackTrace)
         {
             _traceEntry.Stack = stackTrace;

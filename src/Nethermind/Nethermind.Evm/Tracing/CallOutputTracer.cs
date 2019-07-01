@@ -160,5 +160,10 @@ namespace Nethermind.Evm.Tracing
         {
             throw new NotSupportedException();
         }
+
+        public void ReportRefund(long gasAvailable)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

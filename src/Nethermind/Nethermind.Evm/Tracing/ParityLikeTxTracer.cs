@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Tracing
                     action.TraceAddress[i] = _currentAction.TraceAddress[i];
                 }
 
-                action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(st => !st.IsPrecompiled);
+                action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(st => st.IncludeInTrace);
                 _currentAction.Subtraces.Add(action);
             }
             else
@@ -198,12 +198,13 @@ namespace Nethermind.Evm.Tracing
             _currentVmTrace.Ops.Add(operationTrace);
         }
 
-        private bool _treatGasParityStyle = false; // strange cost calculation from parity
-        private bool _gasAlreadySetForCurrentOp = false; // workaround for jump destination errors
+        private bool _treatGasParityStyle; // strange cost calculation from parity
+        private bool _gasAlreadySetForCurrentOp; // workaround for jump destination errors
         
         public void ReportOperationError(EvmExceptionType error)
         {
-            if (error != EvmExceptionType.InvalidJumpDestination)
+            if (error != EvmExceptionType.InvalidJumpDestination &&
+                error != EvmExceptionType.NotEnoughBalance)
             {
                 _currentVmTrace.Ops.Remove(_currentOperation);
             }
@@ -447,6 +448,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportByteCode(byte[] byteCode)
         {
             _currentVmTrace.VmTrace.Code = byteCode;
+        }
+
+        public void ReportRefund(long gasAvailable)
+        {
+            _currentOperation.Used = gasAvailable;
         }
     }
 }

@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
          */
         private void WriteJson(JsonWriter writer, ParityTraceAction traceAction, JsonSerializer serializer)
         {
-            if (traceAction.IsPrecompiled)
+            if (!traceAction.IncludeInTrace)
             {
                 return;
             }
@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 writer.WriteProperty("error", traceAction.Error, serializer);
             }
 
-            writer.WriteProperty("subtraces", traceAction.Subtraces.Count(s => !s.IsPrecompiled));
+            writer.WriteProperty("subtraces", traceAction.Subtraces.Count(s => s.IncludeInTrace));
             writer.WritePropertyName("traceAddress");
             _traceAddressConverter.WriteJson(writer, traceAction.TraceAddress, serializer);
 
