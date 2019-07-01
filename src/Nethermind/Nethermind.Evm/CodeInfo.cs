@@ -48,10 +48,7 @@ namespace Nethermind.Evm
 
             if (destination < 0 || destination >= MachineCode.Length || !_validJumpDestinations.Get(destination))
             {
-                // tks: do not remember why we use exceptions instead of return value here
-                // https://github.com/NethermindEth/nethermind/issues/140
-                throw new InvalidJumpDestinationException();
-//                return false;
+                return false;
             }
 
             return true;

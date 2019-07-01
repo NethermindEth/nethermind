@@ -17,6 +17,7 @@
  */
 
 using System.Globalization;
+using Jint.Native;
 
 namespace Nethermind.Cli.Modules
 {

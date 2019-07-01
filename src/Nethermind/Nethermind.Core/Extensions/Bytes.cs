@@ -33,7 +33,7 @@ namespace Nethermind.Core.Extensions
     public static class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
-        
+
         public static readonly IComparer<byte[]> Comparer = new BytesComparer();
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
@@ -214,18 +214,23 @@ namespace Nethermind.Core.Extensions
 
         public static byte[] PadLeft(this byte[] bytes, int length, byte padding = 0)
         {
+            return PadLeft(bytes.AsSpan(), length, padding);
+        }
+
+        public static byte[] PadLeft(this Span<byte> bytes, int length, byte padding = 0)
+        {
             if (bytes.Length == length)
             {
-                return (byte[]) bytes.Clone();
+                return bytes.ToArray();
             }
 
             if (bytes.Length > length)
             {
-                return bytes.Slice(0, length);
+                return bytes.Slice(0, length).ToArray();
             }
 
             byte[] result = new byte[length];
-            Buffer.BlockCopy(bytes, 0, result, length - bytes.Length, bytes.Length);
+            bytes.CopyTo(result.AsSpan().Slice(length - bytes.Length));
 
             if (padding != 0)
             {
@@ -525,7 +530,7 @@ namespace Nethermind.Core.Extensions
         {
             return ToHexString(bytes, false, false, false);
         }
-        
+
         public static void StreamHex(this byte[] bytes, StreamWriter streamWriter)
         {
             for (int i = 0; i < bytes.Length; i++)

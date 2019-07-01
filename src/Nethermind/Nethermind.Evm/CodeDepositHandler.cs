@@ -16,10 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Specs;
+
 namespace Nethermind.Evm
 {
-    public class InvalidJumpDestinationException : EvmException
+    public static class CodeDepositHandler
     {
-        public override EvmExceptionType ExceptionType => EvmExceptionType.InvalidJumpDestination;
+        public static long CalculateCost(int byteCodeLength, IReleaseSpec spec)
+        {
+            if (spec.IsEip170Enabled && byteCodeLength > spec.MaxCodeSize)
+            {
+                return long.MaxValue;
+            }
+
+            return GasCostOf.CodeDeposit * byteCodeLength;
+        }
     }
 }

@@ -26,16 +26,17 @@ using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class BlockReceiptsTracer : IBlockTracer, ITxTracer
+    public class BlockReceiptsTracer : IBlockTracer,  ITxTracer
     {
         private Block _block;
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
         public bool IsTracingReceipt => true;
-        public bool IsTracingCalls => _currentTxTracer.IsTracingCalls;
+        public bool IsTracingActions => _currentTxTracer.IsTracingActions;
         public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
         public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
         public bool IsTracingInstructions => _currentTxTracer.IsTracingInstructions;
+        public bool IsTracingCode => _currentTxTracer.IsTracingCode;
         public bool IsTracingStack => _currentTxTracer.IsTracingStack;
         public bool IsTracingState => _currentTxTracer.IsTracingState;
 
@@ -97,14 +98,14 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.StartOperation(depth, gas, opcode, pc);
         }
 
-        public void SetOperationError(string error)
+        public void ReportOperationError(EvmExceptionType error)
         {
-            _currentTxTracer.SetOperationError(error);
+            _currentTxTracer.ReportOperationError(error);
         }
 
-        public void SetOperationRemainingGas(long gas)
+        public void ReportOperationRemainingGas(long gas)
         {
-            _currentTxTracer.SetOperationRemainingGas(gas);
+            _currentTxTracer.ReportOperationRemainingGas(gas);
         }
 
         public void SetOperationMemorySize(ulong newSize)
@@ -112,9 +113,24 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.SetOperationMemorySize(newSize);
         }
 
+        public void ReportMemoryChange(long offset, Span<byte> data)
+        {
+            _currentTxTracer.ReportMemoryChange(offset, data);
+        }
+
+        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        {
+            _currentTxTracer.ReportStorageChange(key, value);
+        }
+
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
             _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
+        }
+
+        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        {
+            _currentTxTracer.ReportSelfDestruct(address, balance, refundAddress);
         }
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -137,24 +153,39 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportStorageChange(storageAddress, before, after);
         }
 
-        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
-            _currentTxTracer.ReportCall(gas, value, @from, to, input, callType);
+            _currentTxTracer.ReportAction(gas, value, @from, to, input, callType, isPrecompileCall);
         }
 
-        public void ReportCallEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, byte[] output)
         {
-            _currentTxTracer.ReportCallEnd(gas, output);
+            _currentTxTracer.ReportActionEnd(gas, output);
         }
 
-        public void ReportCreateEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionError(EvmExceptionType exceptionType)
         {
-            _currentTxTracer.ReportCreateEnd(gas, deploymentAddress, deployedCode);
+            _currentTxTracer.ReportActionError(exceptionType);
+        }
+
+        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        {
+            _currentTxTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
+        }
+
+        public void ReportByteCode(byte[] byteCode)
+        {
+            _currentTxTracer.ReportByteCode(byteCode);
         }
 
         public void SetOperationStack(List<string> stackTrace)
         {
             _currentTxTracer.SetOperationStack(stackTrace);
+        }
+
+        public void ReportStackPush(Span<byte> stackItem)
+        {
+            _currentTxTracer.ReportStackPush(stackItem);
         }
 
         public void SetOperationMemory(List<string> memoryTrace)

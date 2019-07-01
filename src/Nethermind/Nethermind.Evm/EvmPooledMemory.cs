@@ -38,11 +38,6 @@ namespace Nethermind.Evm
         public ulong Length { get; private set; }
         public ulong Size { get; private set; }
 
-        public void SaveWord(ref UInt256 location, byte[] word)
-        {
-            SaveWord(ref location, word.AsSpan());
-        }
-
         public void SaveWord(ref UInt256 location, Span<byte> word)
         {
             CheckMemoryAccessViolation(ref location, WordSize);
@@ -64,14 +59,6 @@ namespace Nethermind.Evm
             _memory[(long)location] = value;
         }
 
-        public void SaveByte(ref UInt256 location, byte[] value)
-        {
-            CheckMemoryAccessViolation(ref location, WordSize);
-            UpdateSize(ref location, 1);
-
-            _memory[(long)location] = value[value.Length - 1];
-        }
-
         public void Save(ref UInt256 location, Span<byte> value)
         {
             if (value.Length == 0)
@@ -87,11 +74,11 @@ namespace Nethermind.Evm
 
         private static void CheckMemoryAccessViolation(ref UInt256 location, in UInt256 length)
         {
-            UInt256 totalSize = location + length; // TODO: add with overflow check
+            UInt256 totalSize = location + length;
             if (totalSize < location || totalSize > long.MaxValue)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmAccessViolationException(); // TODO: memory range error code
+                throw new OutOfGasException();
             }
         }
 

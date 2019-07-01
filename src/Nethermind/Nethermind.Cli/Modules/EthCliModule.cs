@@ -17,6 +17,7 @@
  */
 
 using System.Numerics;
+using Jint.Native;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -52,9 +53,9 @@ namespace Nethermind.Cli.Modules
         }
         
         [CliFunction("eth", "getBlockByNumber")]
-        public object GetBlockByNumber(string blockParameter, bool returnFullTransactionObjects)
+        public JsValue GetBlockByNumber(string blockParameter, bool returnFullTransactionObjects)
         {
-            return NodeManager.Post<object>("eth_getBlockByNumber", blockParameter, returnFullTransactionObjects).Result;
+            return NodeManager.PostJint("eth_getBlockByNumber", blockParameter, returnFullTransactionObjects).Result;
         }
 
         [CliFunction("eth", "sendEth")]
@@ -76,51 +77,51 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getCode")]
-        public string GetCode(string address, string blockParameter)
+        public JsValue GetCode(string address, string blockParameter)
         {
-            return NodeManager.Post<string>("eth_getCode", address, blockParameter).Result;
+            return NodeManager.PostJint("eth_getCode", address, blockParameter).Result;
         }
 
         [CliFunction("eth", "getBlockTransactionCountByNumber")]
-        public string GetBlockTransactionCountByNumber(string blockParameter)
+        public JsValue GetBlockTransactionCountByNumber(string blockParameter)
         {
-            return NodeManager.Post<string>("eth_getBlockTransactionCountByNumber", blockParameter).Result;
+            return NodeManager.PostJint("eth_getBlockTransactionCountByNumber", blockParameter).Result;
         }
 
         [CliFunction("eth", "getBlockTransactionCountByHash")]
-        public string GetBlockTransactionCountByHash(string hash)
+        public JsValue GetBlockTransactionCountByHash(string hash)
         {
-            return NodeManager.Post<string>("eth_getBlockTransactionCountByHash", hash).Result;
+            return NodeManager.PostJint("eth_getBlockTransactionCountByHash", hash).Result;
         }
 
         [CliFunction("eth", "getUncleCountByBlockNumber")]
-        public string GetUncleCountByBlockNumber(string blockParameter)
+        public JsValue GetUncleCountByBlockNumber(string blockParameter)
         {
-            return NodeManager.Post<string>("eth_getUncleCountByBlockNumber", blockParameter).Result;
+            return NodeManager.PostJint("eth_getUncleCountByBlockNumber", blockParameter).Result;
         }
 
         [CliFunction("eth", "getTransactionByBlockNumberAndIndex")]
-        public object GetTransactionByBlockNumberAndIndex(string blockParameter, string index)
+        public JsValue GetTransactionByBlockNumberAndIndex(string blockParameter, string index)
         {
-            return NodeManager.Post<object>("eth_getTransactionByBlockNumberAndIndex", blockParameter, index).Result;
+            return NodeManager.PostJint("eth_getTransactionByBlockNumberAndIndex", blockParameter, index).Result;
         }
 
         [CliFunction("eth", "getTransactionReceipt")]
-        public object GetTransactionReceipt(string txHash)
+        public JsValue GetTransactionReceipt(string txHash)
         {
-            return NodeManager.Post<object>("eth_getTransactionReceipt", txHash).Result;
+            return NodeManager.PostJint("eth_getTransactionReceipt", txHash).Result;
         }
 
         [CliFunction("eth", "getBalance")]
-        public string GetBalance(string address, string blockParameter)
+        public JsValue GetBalance(string address, string blockParameter)
         {
-            return NodeManager.Post<string>("eth_getBalance", CliParseAddress(address), blockParameter).Result;
+            return NodeManager.PostJint("eth_getBalance", CliParseAddress(address), blockParameter).Result;
         }
 
         [CliProperty("eth", "protocolVersion")]
-        public int ProtocolVersion()
+        public JsValue ProtocolVersion()
         {
-            return NodeManager.Post<int>("eth_protocolVersion").Result;
+            return NodeManager.PostJint("eth_protocolVersion").Result;
         }
 
         public EthCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)

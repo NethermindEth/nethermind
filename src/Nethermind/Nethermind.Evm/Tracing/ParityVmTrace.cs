@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,10 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.Tracing
 {
-    public class InvalidJumpDestinationException : EvmException
+    public class ParityVmTrace
     {
-        public override EvmExceptionType ExceptionType => EvmExceptionType.InvalidJumpDestination;
+        public byte[] Code { get; set; }
+        public ParityVmOperationTrace[] Operations { get; set; }
     }
 }

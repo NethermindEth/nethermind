@@ -85,7 +85,7 @@ namespace Nethermind.Network.Test.Discovery
 
             _udpClient = Substitute.For<IMessageSender>();
 
-            var discoveryDb = new SimpleFilePublicKeyDb("test", logManager);
+            var discoveryDb = new SimpleFilePublicKeyDb("Test","test", logManager);
             _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, logManager);
             _discoveryManager.MessageSender = _udpClient;
         }

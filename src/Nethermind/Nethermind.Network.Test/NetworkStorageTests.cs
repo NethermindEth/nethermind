@@ -47,7 +47,7 @@ namespace Nethermind.Network.Test
             _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
             _statsConfig = configSource.GetConfig<IStatsConfig>();
 
-            var db = new SimpleFilePublicKeyDb(_tempDir, logManager);
+            var db = new SimpleFilePublicKeyDb("Test",_tempDir, logManager);
             _storage = new NetworkStorage(db, logManager);
         }
         

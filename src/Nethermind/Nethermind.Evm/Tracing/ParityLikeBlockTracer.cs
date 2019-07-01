@@ -26,15 +26,15 @@ namespace Nethermind.Evm.Tracing
     public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLikeTxTracer>
     {
         private Block _block;
-        
+
         private readonly ParityTraceTypes _types;
 
         public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types)
-            :base(txHash)
+            : base(txHash)
         {
             _types = types;
         }
-        
+
         public ParityLikeBlockTracer(ParityTraceTypes types)
         {
             _types = types;
@@ -50,20 +50,17 @@ namespace Nethermind.Evm.Tracing
             return txTracer.BuildResult();
         }
 
-        public override bool IsTracingRewards => true;
+        public override bool IsTracingRewards => (_types & ParityTraceTypes.Trace) != ParityTraceTypes.None;
 
         public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
-            if ((_types & ParityTraceTypes.Trace) != 0)
-            {
-                ParityLikeTxTrace rewardTrace = TxTraces.Last();
-                rewardTrace.Action = new ParityTraceAction();
-                rewardTrace.Action.RewardType = rewardType;
-                rewardTrace.Action.Value = rewardValue;
-                rewardTrace.Action.Author = author;
-                rewardTrace.Action.CallType = "reward";
-                rewardTrace.Action.TraceAddress = new int[] { };
-            }
+            ParityLikeTxTrace rewardTrace = TxTraces.Last();
+            rewardTrace.Action = new ParityTraceAction();
+            rewardTrace.Action.RewardType = rewardType;
+            rewardTrace.Action.Value = rewardValue;
+            rewardTrace.Action.Author = author;
+            rewardTrace.Action.CallType = "reward";
+            rewardTrace.Action.TraceAddress = new int[] { };
         }
 
         public override void StartNewBlockTrace(Block block)

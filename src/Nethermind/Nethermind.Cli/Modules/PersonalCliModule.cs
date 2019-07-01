@@ -16,34 +16,35 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Jint.Native;
+
 namespace Nethermind.Cli.Modules
 {
     [CliModule("personal")]
     public class PersonalCliModule : CliModuleBase
     {
         [CliProperty("personal", "listAccounts")]
-        public string[] ListAccounts()
+        public JsValue ListAccounts()
         {
-            var result = NodeManager.Post<string[]>($"personal_listAccounts").Result;
-            return result;
+            return NodeManager.PostJint($"personal_listAccounts").Result;
         }
 
         [CliFunction("personal", "newAccount")]
-        public string NewAccount(string password)
+        public JsValue NewAccount(string password)
         {
-            return NodeManager.Post<string>($"personal_newAccount", password).Result;
+            return NodeManager.PostJint($"personal_newAccount", password).Result;
         }
         
         [CliFunction("personal", "lockAccount")]
-        public bool LockAccount(string addressHex)
+        public JsValue LockAccount(string addressHex)
         {
-            return NodeManager.Post<bool>($"personal_lockAccount", addressHex).Result;
+            return NodeManager.PostJint($"personal_lockAccount", addressHex).Result;
         }
         
         [CliFunction("personal", "unlockAccount")]
-        public bool UnlockAccount(string addressHex, string password)
+        public JsValue UnlockAccount(string addressHex, string password)
         {
-            return NodeManager.Post<bool>($"personal_unlockAccount", addressHex, password).Result;
+            return NodeManager.PostJint($"personal_unlockAccount", addressHex, password).Result;
         }
 
         public PersonalCliModule(ICliEngine engine, INodeManager nodeManager) : base(engine, nodeManager)

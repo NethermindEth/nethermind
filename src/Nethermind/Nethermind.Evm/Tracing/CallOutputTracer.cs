@@ -28,10 +28,11 @@ namespace Nethermind.Evm.Tracing
     public class CallOutputTracer : ITxTracer
     {
         public bool IsTracingReceipt => true;
-        public bool IsTracingCalls => false;
+        public bool IsTracingActions => false;
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
+        public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
 
@@ -65,17 +66,22 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void SetOperationError(string error)
+        public void ReportOperationError(EvmExceptionType error)
         {
             throw new NotSupportedException();
         }
 
-        public void SetOperationRemainingGas(long gas)
+        public void ReportOperationRemainingGas(long gas)
         {
             throw new NotSupportedException();
         }
 
         public void SetOperationStack(List<string> stackTrace)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportStackPush(Span<byte> stackItem)
         {
             throw new NotSupportedException();
         }
@@ -90,7 +96,22 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
+        public void ReportMemoryChange(long offset, Span<byte> data)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        {
+            throw new NotSupportedException();
+        }
+
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
             throw new NotSupportedException();
         }
@@ -115,17 +136,27 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportCall(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportCallEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, byte[] output)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportCreateEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionError(EvmExceptionType exceptionType)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportByteCode(byte[] byteCode)
         {
             throw new NotSupportedException();
         }

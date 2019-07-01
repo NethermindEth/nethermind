@@ -25,6 +25,7 @@ using Jint.Native;
 using Nethermind.Cli.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Json;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Console = Colorful.Console;
@@ -114,6 +115,24 @@ namespace Nethermind.Cli
 
         private const string _removedString = "*removed*";
 
+        private static string CleanStatement(string statement)
+        {
+            List<char> cleaned = new List<char>();
+            for (int i = 0; i < statement.Length; i++)
+            {
+                if (statement[i] == 8)
+                {
+                    cleaned.RemoveAt(cleaned.Count - 1);
+                }
+                else
+                {
+                    cleaned.Add(statement[i]);    
+                }
+            }
+            
+            return statement;
+        }
+        
         private static void RunEvalLoop()
         {
             try
@@ -151,7 +170,8 @@ namespace Nethermind.Cli
                         Console.SetIn(new StreamReader(inStream, Console.InputEncoding, false, bufferSize));
                         CliConsole.WriteLessImportant("nethermind> ");
                         statement = _terminal == Terminal.Cygwin ? Console.ReadLine() : ReadLine.Read();
-
+                        CleanStatement(statement);
+                        
                         if (!SecuredCommands.Any(sc => statement.Contains(sc)))
                         {
                             ReadLine.AddHistory(statement);
@@ -179,7 +199,9 @@ namespace Nethermind.Cli
                     }
                     else if (!result.IsNull())
                     {
-                        CliConsole.WriteGood(Serializer.Serialize(result.ToObject(), true));
+                        string text = Serializer.Serialize(result.ToObject(), true);
+//                        File.AppendAllText("C:\\temp\\cli.txt", text);
+                        CliConsole.WriteGood(text);
                     }
                     else
                     {
@@ -244,12 +266,20 @@ namespace Nethermind.Cli
             Serializer.RegisterConverter(new ParityAccountStateChangeConverter());
             Serializer.RegisterConverter(new ParityTraceActionConverter());
             Serializer.RegisterConverter(new ParityTraceResultConverter());
+            Serializer.RegisterConverter(new ParityVmOperationTraceConverter());
+            Serializer.RegisterConverter(new ParityVmTraceConverter());
 
+            _engine = new CliEngine();
+            _engine.JintEngine.SetValue("serialize", new Action<JsValue>(v =>
+            {
+                string text = Serializer.Serialize(v.ToObject(), true);
+//                File.AppendAllText("C:\\temp\\cli.txt", text);
+                CliConsole.WriteGood(text);
+            }));
             
             _logManager = new OneLoggerLogManager(new CliLogger());
-            _nodeManager = new NodeManager(Serializer, _logManager);
+            _nodeManager = new NodeManager(_engine, Serializer, _logManager);
             _nodeManager.SwitchUri(new Uri("http://localhost:8545"));
-            _engine = new CliEngine();
         }
 
         private static void LoadModules()

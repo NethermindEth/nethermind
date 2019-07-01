@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             Assert.AreEqual(trace.Failed, true);
-            Assert.AreEqual("EvmStackUnderflowException", trace.Entries[0].Error);
+            Assert.AreEqual("StackUnderflow", trace.Entries[0].Error);
         }
 
         [Test]
@@ -78,7 +78,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             Assert.AreEqual(trace.Failed, true);
-            Assert.AreEqual("EvmStackOverflowException", trace.Entries.Last().Error);
+            Assert.AreEqual("StackOverflow", trace.Entries.Last().Error);
         }
         
         [Test]
@@ -92,7 +92,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             Assert.AreEqual(trace.Failed, true);
-            Assert.AreEqual("InvalidJumpDestinationException", trace.Entries.Last().Error);
+            Assert.AreEqual("BadJumpDestination", trace.Entries.Last().Error);
         }
         
         [Test]

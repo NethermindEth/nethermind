@@ -16,10 +16,27 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.Tracing
 {
-    public class InvalidJumpDestinationException : EvmException
+    //        {
+//            "cost": 0.0,
+//            "ex": {
+//                "mem": null,
+//                "push": [],
+//                "store": null,
+//                "used": 16961.0
+//            },
+//            "pc": 526.0,
+//            "sub": null
+//        }
+    public class ParityVmOperationTrace
     {
-        public override EvmExceptionType ExceptionType => EvmExceptionType.InvalidJumpDestination;
+        public long Cost { get; set; }
+        public ParityMemoryChangeTrace Memory { get; set; }
+        public byte[][] Push { get; set; }
+        public ParityStorageChangeTrace Store { get; set; }
+        public long Used { get; set; }
+        public int Pc { get; set; }
+        public ParityVmTrace Sub { get; set; }
     }
 }

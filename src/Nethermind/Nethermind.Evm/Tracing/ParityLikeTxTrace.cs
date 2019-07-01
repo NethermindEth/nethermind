@@ -26,9 +26,7 @@ namespace Nethermind.Evm.Tracing
     public class ParityLikeTxTrace
     {
         public byte[] Output { get; set; }
-        
-        public ParityTraceAction Action { get; set; }
-        
+
         public Keccak BlockHash { get; set; }
         
         public long BlockNumber { get; set; }
@@ -36,6 +34,10 @@ namespace Nethermind.Evm.Tracing
         public int? TransactionPosition { get; set; }
         
         public Keccak TransactionHash { get; set; }
+        
+        public ParityVmTrace VmTrace { get; set; }
+        
+        public ParityTraceAction Action { get; set; }
 
         public Dictionary<Address, ParityAccountStateChange> StateChanges { get; set; }
     }

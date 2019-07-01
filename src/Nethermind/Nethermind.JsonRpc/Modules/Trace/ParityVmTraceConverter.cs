@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,41 +16,28 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using NUnit.Framework;
+using System;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing;
+using Newtonsoft.Json;
 
-namespace Nethermind.Evm.Test
+namespace Nethermind.JsonRpc.Modules.Trace
 {
-    [TestFixture]
-    public class CodeInfoTests
+    public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
     {
-        [TestCase(-1, false)]
-        [TestCase(0, true)]
-        [TestCase(1, false)]
-        public void Validates_when_only_jump_dest_present(int destination, bool isValid)
+        public override void WriteJson(JsonWriter writer, ParityVmTrace value, JsonSerializer serializer)
         {
-            byte[] code =
-            {
-                (byte)Instruction.JUMPDEST
-            };
+            writer.WriteStartObject();
 
-            CodeInfo codeInfo = new CodeInfo(code);
-
+            writer.WriteProperty("code", value.Code ?? Bytes.Empty, serializer);
+            writer.WriteProperty("ops", value.Operations, serializer);
             
-            Assert.AreEqual(isValid, codeInfo.ValidateJump(destination));
+            writer.WriteEndObject();
         }
 
-        [Test]
-        public void Validates_when_push_with_data_like_jump_dest()
+        public override ParityVmTrace ReadJson(JsonReader reader, Type objectType, ParityVmTrace existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            byte[] code =
-            {
-                (byte)Instruction.PUSH1,
-                (byte)Instruction.JUMPDEST
-            };
-
-            CodeInfo codeInfo = new CodeInfo(code);
-
-            Assert.AreEqual(false, codeInfo.ValidateJump(1));
+            throw new NotImplementedException();
         }
     }
 }

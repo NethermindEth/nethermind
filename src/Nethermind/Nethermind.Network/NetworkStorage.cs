@@ -115,7 +115,7 @@ namespace Nethermind.Network
         private void LogDbContent(IEnumerable<byte[]> values)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"[{_fullDb.Description}] Node Storage DB");
+            sb.AppendLine($"[{_fullDb.Description}]");
             foreach (var value in values)
             {
                 var node = GetNode(value);

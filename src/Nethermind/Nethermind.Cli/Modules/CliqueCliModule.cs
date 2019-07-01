@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
+using Jint.Native;
 
 namespace Nethermind.Cli.Modules
 {
@@ -24,57 +24,57 @@ namespace Nethermind.Cli.Modules
     public class CliqueCliModule : CliModuleBase
     {
         [CliFunction("clique", "getSnapshot")]
-        public object GetSnapshot()
+        public JsValue GetSnapshot()
         {
-            return NodeManager.Post<object>("clique_getSnapshot").Result;
+            return NodeManager.PostJint("clique_getSnapshot").Result;
         }
 
         [CliFunction("clique", "getSnapshotAtHash")]
-        public object GetSnapshotAtHash(string hash)
+        public JsValue GetSnapshotAtHash(string hash)
         {
-            return NodeManager.Post<object>("clique_getSnapshotAtHash", CliParseHash(hash)).Result;
+            return NodeManager.PostJint("clique_getSnapshotAtHash", CliParseHash(hash)).Result;
         }
         
         [CliFunction("clique", "getSigners")]
-        public string[] GetSigners()
+        public JsValue GetSigners()
         {
-            return NodeManager.Post<string[]>("clique_getSigners").Result;
+            return NodeManager.PostJint("clique_getSigners").Result;
         }
 
         [CliFunction("clique", "getSignersAtNumber")]
-        public Address[] GetSignersAtNumber(long number)
+        public JsValue GetSignersAtNumber(long number)
         {
-            return NodeManager.Post<Address[]>("clique_getSignersAtNumber", number.ToString()).Result;
+            return NodeManager.PostJint("clique_getSignersAtNumber", number.ToString()).Result;
         }
         
         [CliFunction("clique", "getSignersAtHash")]
-        public string[] GetSignersAtHash(string hash)
+        public JsValue GetSignersAtHash(string hash)
         {
-            return NodeManager.Post<string[]>("clique_getSignersAtHash", CliParseHash(hash)).Result;
+            return NodeManager.PostJint("clique_getSignersAtHash", CliParseHash(hash)).Result;
         }
         
         [CliFunction("clique", "getSignersAnnotated")]
-        public string[] GetSignersAnnotated()
+        public JsValue GetSignersAnnotated()
         {
-            return NodeManager.Post<string[]>("clique_getSignersAnnotated").Result;
+            return NodeManager.PostJint("clique_getSignersAnnotated").Result;
         }
         
         [CliFunction("clique", "getSignersAtHashAnnotated")]
-        public string[] GetSignersAtHashAnnotated(string hash)
+        public JsValue GetSignersAtHashAnnotated(string hash)
         {
-            return NodeManager.Post<string[]>("clique_getSignersAtHashAnnotated", CliParseHash(hash)).Result;
+            return NodeManager.PostJint("clique_getSignersAtHashAnnotated", CliParseHash(hash)).Result;
         }
         
         [CliFunction("clique", "propose")]
-        public bool Propose(string address, bool vote)
+        public JsValue Propose(string address, bool vote)
         {
-            return NodeManager.Post<bool>("clique_propose", CliParseAddress(address), vote).Result;
+            return NodeManager.PostJint("clique_propose", CliParseAddress(address), vote).Result;
         }
         
         [CliFunction("clique", "discard")]
-        public bool Propose(string address)
+        public JsValue Propose(string address)
         {
-            return NodeManager.Post<bool>("clique_discard", CliParseAddress(address)).Result;
+            return NodeManager.PostJint("clique_discard", CliParseAddress(address)).Result;
         }
 
         public CliqueCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)

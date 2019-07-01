@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Jint.Native;
 using Nethermind.JsonRpc.Modules.DebugModule;
 
 namespace Nethermind.Cli.Modules
@@ -24,45 +25,45 @@ namespace Nethermind.Cli.Modules
     public class DebugCliModule : CliModuleBase
     {
         [CliFunction("debug", "traceBlock")]
-        public object TraceBlock(string hash)
+        public JsValue TraceBlock(string hash)
         {
-            return NodeManager.Post<object>("debug_traceBlock", hash).Result;
+            return NodeManager.PostJint("debug_traceBlock", hash).Result;
         }
 
         [CliFunction("debug", "traceBlockByNumber")]
-        public object TraceBlockByNumber(string number)
+        public JsValue TraceBlockByNumber(string number)
         {
-            return NodeManager.Post<object>("debug_traceBlockByNumber", number).Result;
+            return NodeManager.PostJint("debug_traceBlockByNumber", number).Result;
         }
 
         [CliFunction("debug", "traceBlockByHash")]
-        public object TraceBlockByHash(string hash)
+        public JsValue TraceBlockByHash(string hash)
         {
-            return NodeManager.Post<object>("debug_traceBlockByHash", hash).Result;
+            return NodeManager.PostJint("debug_traceBlockByHash", hash).Result;
         }
 
         [CliFunction("debug", "traceTransaction")]
-        public object TraceTransaction(string hash)
+        public JsValue TraceTransaction(string hash)
         {
-            return NodeManager.Post<object>("debug_traceTransaction", hash, new TraceOptions()).Result;
+            return NodeManager.PostJint("debug_traceTransaction", hash, new TraceOptions()).Result;
         }
         
         [CliFunction("debug", "traceTransactionByBlockAndIndex")]
-        public object TraceTransactionByBlockAndIndex(string hash)
+        public JsValue TraceTransactionByBlockAndIndex(string hash)
         {
-            return NodeManager.Post<object>("debug_traceTransactionByBlockAndIndex", hash).Result;
+            return NodeManager.PostJint("debug_traceTransactionByBlockAndIndex", hash).Result;
         }
 
         [CliFunction("debug", "traceTransactionByBlockhashAndIndex")]
-        public object TraceTransactionByBlockhashAndIndex(string hash)
+        public JsValue TraceTransactionByBlockhashAndIndex(string hash)
         {
-            return NodeManager.Post<object>("debug_traceTransactionByBlockhashAndIndex", hash).Result;
+            return NodeManager.PostJint("debug_traceTransactionByBlockhashAndIndex", hash).Result;
         }
 
         [CliFunction("debug", "config")]
-        public string GetConfigValue(string category, string name)
+        public JsValue GetConfigValue(string category, string name)
         {
-            return NodeManager.Post<string>("debug_getConfigValue", category, name).Result;
+            return NodeManager.PostJint("debug_getConfigValue", category, name).Result;
         }
 
         public DebugCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
