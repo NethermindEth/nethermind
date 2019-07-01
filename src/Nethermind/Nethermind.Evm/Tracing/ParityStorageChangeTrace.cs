@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,29 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-
 namespace Nethermind.Evm.Tracing
 {
-    public class ParityLikeTxTrace
+//    "store": {
+//"key": "0x0",
+//"val": "0x486974636861696e"
+//},
+    public class ParityStorageChangeTrace
     {
-        public byte[] Output { get; set; }
-
-        public Keccak BlockHash { get; set; }
-        
-        public long BlockNumber { get; set; }
-        
-        public int? TransactionPosition { get; set; }
-        
-        public Keccak TransactionHash { get; set; }
-        
-        public ParityVmTrace VmTrace { get; set; }
-        
-        public ParityTraceAction Action { get; set; }
-
-        public Dictionary<Address, ParityAccountStateChange> StateChanges { get; set; }
+        public byte[] Key { get; set; }
+        public byte[] Value { get; set; }
     }
 }

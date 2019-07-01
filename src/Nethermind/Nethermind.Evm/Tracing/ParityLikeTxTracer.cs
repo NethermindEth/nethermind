@@ -32,7 +32,9 @@ namespace Nethermind.Evm.Tracing
         private readonly Transaction _tx;
         private ParityLikeTxTrace _trace;
         private Stack<ParityTraceAction> _actionStack = new Stack<ParityTraceAction>();
+        private Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)>();
         private ParityTraceAction _currentAction;
+        private (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) _currentVmTrace;
 
         public ParityLikeTxTrace BuildResult()
         {
@@ -62,9 +64,15 @@ namespace Nethermind.Evm.Tracing
 
             if ((parityTraceTypes & ParityTraceTypes.VmTrace) != 0)
             {
-                throw new NotImplementedException();
+                IsTracingActions = true;
+                IsTracingInstructions = true;
+                IsTracingCode = true;
+                IsTracingReceipt = true;
             }
         }
+        
+        private ParityVmOperationTrace _currentOperation;
+        private List<byte[]> _currentPushList = new List<byte[]>();
 
         private void PushAction(ParityTraceAction action)
         {
@@ -87,10 +95,43 @@ namespace Nethermind.Evm.Tracing
 
             _actionStack.Push(action);
             _currentAction = action;
+
+            if (IsTracingInstructions)
+            {
+                (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) currentVmTrace = (new ParityVmTrace(), new List<ParityVmOperationTrace>());
+                if (_currentOperation != null)
+                {
+                    if (action.Type != "suicide")
+                    {
+                        _currentOperation.Sub = currentVmTrace.VmTrace;
+                    }
+                }
+
+                _vmTraceStack.Push(currentVmTrace);
+                _currentVmTrace = currentVmTrace;
+                if (_trace.VmTrace == null)
+                {
+                    _trace.VmTrace = _currentVmTrace.VmTrace;
+                }
+            }
         }
 
         private void PopAction()
         {
+            if (IsTracingInstructions)
+            {
+                _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops.ToArray();
+                _vmTraceStack.Pop();
+                _currentVmTrace = _vmTraceStack.Count == 0 ? (null, null) : _vmTraceStack.Peek();
+                _currentOperation = _currentVmTrace.Ops?.Last();
+                _gasAlreadySetForCurrentOp = false;
+
+                if (_actionStack.Peek().Type != "suicide")
+                {
+                    _treatGasParityStyle = true;
+                }
+            }
+            
             _actionStack.Pop();
             _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
         }
@@ -99,7 +140,8 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingActions { get; }
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
-        public bool IsTracingInstructions => false;
+        public bool IsTracingInstructions { get; }
+        public bool IsTracingCode { get; }
         public bool IsTracingStack => false;
         public bool IsTracingState { get; }
 
@@ -144,17 +186,74 @@ namespace Nethermind.Evm.Tracing
 //            _trace.Action.Result = new ParityTraceResult {Output = output ?? Bytes.Empty, GasUsed = (long) gasSpent};
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new NotSupportedException();
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        {
+//            Console.WriteLine($"{opcode} | {gas} | {pc}");
+            ParityVmOperationTrace operationTrace = new ParityVmOperationTrace();
+            _gasAlreadySetForCurrentOp = false;
+            operationTrace.Pc = pc;
+            operationTrace.Cost = gas;
+            _currentOperation = operationTrace;
+            _currentPushList.Clear();
+            _currentVmTrace.Ops.Add(operationTrace);
+        }
 
-        public void SetOperationError(string error) => throw new NotSupportedException();
+        private bool _treatGasParityStyle = false; // strange cost calculation from parity
+        private bool _gasAlreadySetForCurrentOp = false; // workaround for jump destination errors
+        
+        public void ReportOperationError(EvmExceptionType error)
+        {
+            if (error != EvmExceptionType.InvalidJumpDestination)
+            {
+                _currentVmTrace.Ops.Remove(_currentOperation);
+            }
+        }
 
-        public void SetOperationRemainingGas(long gas) => throw new NotSupportedException();
+        public void ReportOperationRemainingGas(long gas)
+        {
+            if (!_gasAlreadySetForCurrentOp)
+            {
+                _gasAlreadySetForCurrentOp = true;
+                
+                _currentOperation.Cost = _currentOperation.Cost - (_treatGasParityStyle ? 0 : gas);
+                
+                // I would say it is a Parity issue where stipend is added as a gas cost...
+                if (_currentOperation.Cost == 7400)
+                {
+                    _currentOperation.Cost = 9700;
+                }
+                
+                _currentOperation.Push = _currentPushList.ToArray();
+                _currentOperation.Used = gas;
+                
+                _treatGasParityStyle = false;
+            }
+        }
 
-        public void SetOperationStack(List<string> stackTrace) => throw new NotSupportedException();
+        public void ReportStackPush(Span<byte> stackItem)
+        {
+            _currentPushList.Add(stackItem.ToArray());
+        }
+
+        public void SetOperationStack(List<string> stackTrace)
+        {
+        }
 
         public void SetOperationMemory(List<string> memoryTrace) => throw new NotSupportedException();
 
         public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
+        public void ReportMemoryChange(long offset, Span<byte> data)
+        {
+            if (data.Length != 0)
+            {
+                _currentOperation.Memory = new ParityMemoryChangeTrace {Offset = offset, Data = data.ToArray()};
+            }
+        }
+
+        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        {
+            _currentOperation.Store = new ParityStorageChangeTrace{Key = key.ToArray(), Value = value.ToArray()};
+        }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new NotSupportedException();
 
@@ -234,6 +333,12 @@ namespace Nethermind.Evm.Tracing
             action.CallType = GetCallType(callType);
             action.Type = GetType(callType);
 
+            if (_currentOperation != null && callType == ExecutionType.Create)
+            {
+                // another Parity quirkiness
+                _currentOperation.Cost += gas;
+            }
+            
             PushAction(action);
         }
         
@@ -337,6 +442,11 @@ namespace Nethermind.Evm.Tracing
             _currentAction.Result.Code = deployedCode;
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;
             PopAction();
+        }
+
+        public void ReportByteCode(byte[] byteCode)
+        {
+            _currentVmTrace.VmTrace.Code = byteCode;
         }
     }
 }

@@ -38,11 +38,6 @@ namespace Nethermind.Evm
         public ulong Length { get; private set; }
         public ulong Size { get; private set; }
 
-        public void SaveWord(ref UInt256 location, byte[] word)
-        {
-            SaveWord(ref location, word.AsSpan());
-        }
-
         public void SaveWord(ref UInt256 location, Span<byte> word)
         {
             CheckMemoryAccessViolation(ref location, WordSize);
@@ -62,14 +57,6 @@ namespace Nethermind.Evm
             UpdateSize(ref location, 1);
 
             _memory[(long)location] = value;
-        }
-
-        public void SaveByte(ref UInt256 location, byte[] value)
-        {
-            CheckMemoryAccessViolation(ref location, WordSize);
-            UpdateSize(ref location, 1);
-
-            _memory[(long)location] = value[value.Length - 1];
         }
 
         public void Save(ref UInt256 location, Span<byte> value)

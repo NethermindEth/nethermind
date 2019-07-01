@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
@@ -30,6 +31,7 @@ namespace Nethermind.Evm.Tracing
         bool IsTracingOpLevelStorage { get; }
         bool IsTracingMemory { get; }
         bool IsTracingInstructions { get; }
+        bool IsTracingCode { get; }
         bool IsTracingStack { get; }
         bool IsTracingState { get; }
 
@@ -37,11 +39,14 @@ namespace Nethermind.Evm.Tracing
         void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error);
 
         void StartOperation(int depth, long gas, Instruction opcode, int pc);
-        void SetOperationError(string error);
-        void SetOperationRemainingGas(long gas);
+        void ReportOperationError(EvmExceptionType error);
+        void ReportOperationRemainingGas(long gas);
         void SetOperationStack(List<string> stackTrace);
+        void ReportStackPush(Span<byte> stackItem);
         void SetOperationMemory(List<string> memoryTrace);
         void SetOperationMemorySize(ulong newSize);
+        void ReportMemoryChange(long offset, Span<byte> data);
+        void ReportStorageChange(Span<byte> key, Span<byte> value);
         void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue);
         
         void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress);
@@ -50,5 +55,6 @@ namespace Nethermind.Evm.Tracing
         
         void ReportActionError(EvmExceptionType evmExceptionType);
         void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode);
+        void ReportByteCode(byte[] byteCode);
     }
 }

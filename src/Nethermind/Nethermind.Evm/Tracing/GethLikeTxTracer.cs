@@ -35,6 +35,7 @@ namespace Nethermind.Evm.Tracing
         bool ITxTracer.IsTracingOpLevelStorage => true;
         bool ITxTracer.IsTracingMemory => true;
         bool ITxTracer.IsTracingInstructions => true;
+        public bool IsTracingCode => false;
         bool ITxTracer.IsTracingStack => true;
         bool ITxTracer.IsTracingState => false;
         
@@ -85,12 +86,37 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void SetOperationError(string error)
+        public void ReportOperationError(EvmExceptionType error)
         {
-            _traceEntry.Error = error;
+            _traceEntry.Error = GetErrorDescription(error);
+        }
+        
+        private string GetErrorDescription(EvmExceptionType evmExceptionType)
+        {
+            switch (evmExceptionType)
+            {
+                case EvmExceptionType.None:
+                    return null;
+                case EvmExceptionType.BadInstruction:
+                    return "BadInstruction";
+                case EvmExceptionType.StackOverflow:
+                    return "StackOverflow";
+                case EvmExceptionType.StackUnderflow:
+                    return "StackUnderflow";
+                case EvmExceptionType.OutOfGas:
+                    return "OutOfGass";
+                case EvmExceptionType.InvalidJumpDestination:
+                    return "BadJumpDestination";
+                case EvmExceptionType.AccessViolation:
+                    return "AccessViolation";
+                case EvmExceptionType.StaticCallViolation:
+                    return "StaticCallViolation";
+                default:
+                    return "Error";
+            }
         }
 
-        public void SetOperationRemainingGas(long gas)
+        public void ReportOperationRemainingGas(long gas)
         {
             _traceEntry.GasCost = _traceEntry.Gas - gas;
         }
@@ -98,6 +124,14 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationMemorySize(ulong newSize)
         {
             _traceEntry.UpdateMemorySize(newSize);
+        }
+
+        public void ReportMemoryChange(long offset, Span<byte> data)
+        {
+        }
+
+        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        {
         }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
@@ -152,9 +186,18 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
+        public void ReportByteCode(byte[] byteCode)
+        {
+            throw new NotSupportedException();
+        }
+
         public void SetOperationStack(List<string> stackTrace)
         {
             _traceEntry.Stack = stackTrace;
+        }
+
+        public void ReportStackPush(Span<byte> stackItem)
+        {
         }
 
         public void SetOperationMemory(List<string> memoryTrace)
