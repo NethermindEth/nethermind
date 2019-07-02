@@ -62,6 +62,7 @@ using Nethermind.JsonRpc.Modules.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
@@ -314,6 +315,9 @@ namespace Nethermind.Runner.Runners
 
             TraceModule traceModule = new TraceModule(blockchainBridge, _logManager, tracer);
             _rpcModuleProvider.Register<ITraceModule>(traceModule);
+
+            var parityModule = new ParityModule(_ethereumEcdsa, new TransactionDecoder(), _txPool, _logManager);
+            _rpcModuleProvider.Register<IParityModule>(parityModule);
         }
 
         private void UpdateDiscoveryConfig()

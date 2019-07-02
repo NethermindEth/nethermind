@@ -21,7 +21,7 @@ using Jint.Native;
 namespace Nethermind.Cli.Modules
 {
     [CliModule("trace")]
-    public class ParityCliModule : CliModuleBase
+    public class TraceCliModule : CliModuleBase
     {
         [CliFunction("trace", "replayTransaction", Description = "Replays a transaction, returning the traces.")]
         public JsValue ReplayTransaction(string txHash, string[] traceTypes)
@@ -47,7 +47,7 @@ namespace Nethermind.Cli.Modules
             return NodeManager.PostJint("trace_block", blockNumber).Result;
         }
 
-        public ParityCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
+        public TraceCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {
         }
     }

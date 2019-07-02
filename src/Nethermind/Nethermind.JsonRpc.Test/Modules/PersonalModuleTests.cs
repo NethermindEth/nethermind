@@ -17,16 +17,12 @@
  */
 
 using System.Linq;
-using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.Logging;
 using Nethermind.Wallet;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules

@@ -32,6 +32,7 @@ namespace Nethermind.JsonRpc.Modules
         NdmProvider,
         NdmConsumer,
         Net,
+        Parity,
         Personal,
         Trace,
         TxPool,
