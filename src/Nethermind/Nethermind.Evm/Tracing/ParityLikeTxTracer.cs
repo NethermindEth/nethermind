@@ -425,6 +425,8 @@ namespace Nethermind.Evm.Tracing
                     return "Access violation";
                 case EvmExceptionType.StaticCallViolation:
                     return "Static call violation";
+                case EvmExceptionType.Revert:
+                    return "Reverted";
                 default:
                     return "Error";
             }

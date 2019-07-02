@@ -38,6 +38,7 @@ namespace Nethermind.Evm
         PrecompileFailure,
         TransactionCollision,
         NotEnoughBalance,
-        Other
+        Other,
+        Revert
     }
 }

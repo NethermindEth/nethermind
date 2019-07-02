@@ -19,6 +19,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -171,21 +172,35 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
-                            if (currentState.ExecutionType == ExecutionType.Create)
+                            if (_txTracer.IsTracingActions)
                             {
-                                long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                                if (currentState.GasAvailable >= codeDepositGasCost)
+                                if (callResult.IsException)
                                 {
-                                    _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);    
+                                    _txTracer.ReportActionError(callResult.ExceptionType);    
+                                }
+                                else if (callResult.ShouldRevert)
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.Revert);
                                 }
                                 else
                                 {
-                                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                    long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                                    if (currentState.ExecutionType == ExecutionType.Create && currentState.GasAvailable < codeDepositGasCost)
+                                    {
+                                        _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                    }
+                                    else
+                                    {
+                                        if (currentState.ExecutionType == ExecutionType.Create)
+                                        {
+                                            _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
+                                        }
+                                        else
+                                        {
+                                            _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
+                                        }
+                                    }
                                 }
-                            }
-                            else
-                            {
-                                _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);   
                             }
                         }
                         
@@ -278,7 +293,7 @@ namespace Nethermind.Evm
                         
                         if (_txTracer.IsTracingActions)
                         {
-                            _txTracer.ReportActionEnd(previousState.GasAvailable, _returnDataBuffer);
+                            _txTracer.ReportActionError(EvmExceptionType.Revert);
                         }
                     }
 
