@@ -16,9 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Json;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.Logging;
 using NSubstitute;

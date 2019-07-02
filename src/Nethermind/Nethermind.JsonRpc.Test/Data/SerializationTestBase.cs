@@ -21,8 +21,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Nethermind.Blockchain;
-using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Json;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Trace;
