@@ -36,7 +36,8 @@ namespace Nethermind.Core.Json
             new UInt256Converter(),
             new NullableUInt256Converter(),
             new BigIntegerConverter(),
-            new NullableBigIntegerConverter()
+            new NullableBigIntegerConverter(),
+            new PublicKeyConverter()
         };
         
         private static IList<JsonConverter> ReadableConverters { get; } = new List<JsonConverter>
@@ -50,7 +51,8 @@ namespace Nethermind.Core.Json
             new UInt256Converter(NumberConversion.Decimal),
             new NullableUInt256Converter(NumberConversion.Decimal),
             new BigIntegerConverter(NumberConversion.Decimal),
-            new NullableBigIntegerConverter(NumberConversion.Decimal)
+            new NullableBigIntegerConverter(NumberConversion.Decimal),
+            new PublicKeyConverter()
         };
         
         private static JsonSerializerSettings _settings = new JsonSerializerSettings

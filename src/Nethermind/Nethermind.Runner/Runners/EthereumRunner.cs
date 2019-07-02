@@ -316,7 +316,7 @@ namespace Nethermind.Runner.Runners
             TraceModule traceModule = new TraceModule(blockchainBridge, _logManager, tracer);
             _rpcModuleProvider.Register<ITraceModule>(traceModule);
 
-            var parityModule = new ParityModule(_ethereumEcdsa, new TransactionDecoder(), _txPool, _logManager);
+            var parityModule = new ParityModule(_ethereumEcdsa, _txPool, _logManager);
             _rpcModuleProvider.Register<IParityModule>(parityModule);
         }
 

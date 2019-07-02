@@ -16,22 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Json;
+using Newtonsoft.Json;
+using NUnit.Framework;
 
-using Jint.Native;
-
-namespace Nethermind.Cli.Modules
+namespace Nethermind.Core.Test.Json
 {
-    [CliModule("parity")]
-    public class ParityCliModule : CliModuleBase
+    public class PublicKeyConverterTests
     {
-        public ParityCliModule(ICliEngine engine, INodeManager nodeManager) : base(engine, nodeManager)
+        [Test]
+        public void Can_read_null()
         {
-        }
-        
-        [CliFunction("parity", "pendingTransactions", Description = "Returns the pending transactions using Parity format")]
-        public JsValue ReplayTransaction()
-        {
-            return NodeManager.PostJint("parity_pendingTransactions").Result;
+            PublicKeyConverter converter = new PublicKeyConverter();
+            JsonReader reader = new JsonTextReader(new StringReader(""));
+            reader.ReadAsString();
+            PublicKey result = converter.ReadJson(reader, typeof(PublicKey), null, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(null, result);
         }
     }
 }
