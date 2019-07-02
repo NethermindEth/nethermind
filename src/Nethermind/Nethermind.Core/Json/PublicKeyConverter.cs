@@ -17,21 +17,23 @@
  */
 
 
-using Jint.Native;
+using System;
+using Nethermind.Core.Crypto;
+using Newtonsoft.Json;
 
-namespace Nethermind.Cli.Modules
+namespace Nethermind.Core.Json
 {
-    [CliModule("parity")]
-    public class ParityCliModule : CliModuleBase
+    public class PublicKeyConverter : JsonConverter<PublicKey>
     {
-        public ParityCliModule(ICliEngine engine, INodeManager nodeManager) : base(engine, nodeManager)
+        public override void WriteJson(JsonWriter writer, PublicKey value, JsonSerializer serializer)
         {
+            writer.WriteValue(value.ToString());
         }
-        
-        [CliFunction("parity", "pendingTransactions", Description = "Returns the pending transactions using Parity format")]
-        public JsValue ReplayTransaction()
+
+        public override PublicKey ReadJson(JsonReader reader, Type objectType, PublicKey existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            return NodeManager.PostJint("parity_pendingTransactions").Result;
+            string s = (string)reader.Value;
+            return s == null ? null : new PublicKey(s);
         }
     }
 }

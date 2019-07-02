@@ -1,8 +1,26 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Parity;
@@ -11,6 +29,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
+    [TestFixture]
     public class ParityModuleTests
     {
         private IParityModule _parityModule;
@@ -18,13 +37,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         [SetUp]
         public void Initialize()
         {
+            var logger = LimboLogs.Instance;
             var specProvider = MainNetSpecProvider.Instance;
-            var ethereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
+            var ethereumEcdsa = new EthereumEcdsa(specProvider, logger);
             var txStorage = new InMemoryTxStorage();
             var txPool = new TxPool(txStorage, Timestamp.Default, ethereumEcdsa, specProvider, new TxPoolConfig(),
                 LimboLogs.Instance);
-            _parityModule = new ParityModule(new EthereumEcdsa(specProvider, LimboLogs.Instance),
-                new TransactionDecoder(), txPool, LimboLogs.Instance);
+            _parityModule = new ParityModule(new EthereumEcdsa(specProvider,logger), txPool, logger);
             var blockNumber = 1;
             var transaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, blockNumber)
                 .WithSenderAddress(Address.FromNumber(blockNumber)).TestObject;
