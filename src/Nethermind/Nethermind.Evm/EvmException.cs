@@ -37,6 +37,8 @@ namespace Nethermind.Evm
         StaticCallViolation,
         PrecompileFailure,
         TransactionCollision,
-        Other
+        NotEnoughBalance,
+        Other,
+        Revert
     }
 }

@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Reflection.Metadata.Ecma335;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 
@@ -27,7 +28,8 @@ namespace Nethermind.Evm.Tracing
     {
         public int[] TraceAddress { get; set; }
         public string CallType { get; set; }
-        
+
+        public bool IncludeInTrace => !IsPrecompiled || Error != null;
         public bool IsPrecompiled { get; set; }
         public string Type { get; set; }
         public Address From { get; set; }

@@ -178,6 +178,11 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportByteCode(byteCode);
         }
 
+        public void ReportRefund(long gasAvailable)
+        {
+            _currentTxTracer.ReportRefund(gasAvailable);
+        }
+
         public void SetOperationStack(List<string> stackTrace)
         {
             _currentTxTracer.SetOperationStack(stackTrace);

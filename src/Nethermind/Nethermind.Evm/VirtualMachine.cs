@@ -19,6 +19,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -171,24 +172,35 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
-                            if (currentState.ExecutionType == ExecutionType.Create)
+                            if (callResult.IsException)
                             {
-                                long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                                if (currentState.GasAvailable >= codeDepositGasCost)
-                                {
-                                    _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);    
-                                }
-                                else
-                                {
-                                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
-                                }
+                                _txTracer.ReportActionError(callResult.ExceptionType);    
+                            }
+                            else if (callResult.ShouldRevert)
+                            {
+                                _txTracer.ReportActionError(EvmExceptionType.Revert);
                             }
                             else
                             {
-                                _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);   
+                                long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                                if (currentState.ExecutionType == ExecutionType.Create && currentState.GasAvailable < codeDepositGasCost)
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                }
+                                else
+                                {
+                                    if (currentState.ExecutionType == ExecutionType.Create)
+                                    {
+                                        _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
+                                    }
+                                    else
+                                    {
+                                        _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
+                                    }
+                                }
                             }
                         }
-                        
+                         
                         return new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert);
                     }
 
@@ -244,6 +256,14 @@ namespace Nethermind.Evm
                             previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
                             previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                             previousCallOutputDestination = (ulong)previousState.OutputDestination;
+                            if(previousState.IsPrecompile)
+                            {
+                                // parity induced if else for vmtrace
+                                if (_txTracer.IsTracingInstructions)
+                                {
+                                    _txTracer.ReportMemoryChange((long)previousCallOutputDestination, previousCallOutput);
+                                }
+                            }
                             
                             if (_txTracer.IsTracingActions)
                             {
@@ -276,9 +296,10 @@ namespace Nethermind.Evm
                         previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
                         
+                        
                         if (_txTracer.IsTracingActions)
                         {
-                            _txTracer.ReportActionEnd(previousState.GasAvailable, _returnDataBuffer);
+                            _txTracer.ReportActionError(EvmExceptionType.Revert);
                         }
                     }
 
@@ -821,6 +842,7 @@ namespace Nethermind.Evm
                 UInt256 localPreviousDest = previousCallOutputDestination;
                 UpdateMemoryCost(ref localPreviousDest, (ulong)previousCallOutput.Length);
                 evmState.Memory.Save(ref localPreviousDest, previousCallOutput);
+//                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
 
             while (programCounter < code.Length)
@@ -2358,14 +2380,27 @@ namespace Nethermind.Evm
 
                         if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
                         {
-                            RefundGas(gasLimitUl, ref gasAvailable);
                             _returnDataBuffer = new byte[0];
                             PushZero(bytesOnStack);
+                            
+                            if (_txTracer.IsTracingInstructions)
+                            {
+                                // very specific for Parity trace, need to find generalization - very peculiar 32 length...
+                                byte[] memoryTrace = evmState.Memory.Load(ref dataOffset, 32);
+                                _txTracer.ReportMemoryChange((long)dataOffset, memoryTrace);
+                            }
+                            
                             if (isTrace) _logger.Trace("FAIL - call depth");
+                            if(_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(gasAvailable);
+                            if(_txTracer.IsTracingInstructions) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+                            
+                            RefundGas(gasLimitUl, ref gasAvailable);
+                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(gasAvailable);
                             break;
                         }
 
                         byte[] callData = evmState.Memory.Load(ref dataOffset, dataLength);
+                        
                         int stateSnapshot = _state.TakeSnapshot();
                         int storageSnapshot = _storage.TakeSnapshot();
                         _state.SubtractFromBalance(sender, transferValue, spec);
