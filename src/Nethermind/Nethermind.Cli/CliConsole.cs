@@ -29,7 +29,6 @@ namespace Nethermind.Cli
     public static class CliConsole
     {
         private static ColorScheme _colorScheme;
-        private static Terminal _terminal  = GetTerminal();
         private static readonly Dictionary<string, Terminal> Terminals = new Dictionary<string, Terminal>
         {
             ["cmd.exe"] = Terminal.Cmd,
@@ -37,19 +36,19 @@ namespace Nethermind.Cli
             ["powershell"] = Terminal.Powershell,
             ["cygwin"] = Terminal.Cygwin
         };
+        private static readonly Terminal Terminal = GetTerminal();
 
         public static Terminal Init(ColorScheme colorScheme)
         {
             _colorScheme = colorScheme;
             Console.BackgroundColor = colorScheme.BackgroundColor;
             Console.ForegroundColor = colorScheme.Text;
-            _terminal = GetTerminal();
-            if (_terminal != Terminal.Powershell)
+            if (Terminal != Terminal.Powershell)
             {
                 Console.ResetColor();
             }
 
-            if (_terminal != Terminal.Cygwin)
+            if (Terminal != Terminal.Cygwin)
             {
                 Console.Clear();
             }
@@ -68,7 +67,7 @@ namespace Nethermind.Cli
             Console.WriteLine("**********************************************", _colorScheme.Comment);
             Console.WriteLine();
 
-            return _terminal;
+            return Terminal;
         }
 
         private static Terminal GetTerminal()
@@ -93,7 +92,7 @@ namespace Nethermind.Cli
 
         private static Color GetColor(Color defaultColor)
         {
-            return _terminal == Terminal.LinuxBash ? _colorScheme.Text : defaultColor;
+            return Terminal == Terminal.LinuxBash ? _colorScheme.Text : defaultColor;
         }
         
         public static void WriteException(Exception e)
