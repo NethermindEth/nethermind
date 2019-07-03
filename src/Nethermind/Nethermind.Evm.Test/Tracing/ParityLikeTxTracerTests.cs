@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -343,6 +344,185 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.AreEqual("callcode", trace.Action.Subtraces[0].CallType, "[0] type");
         }
+        
+        [Test]
+        public void Can_trace_a_failing_static_call()
+        {
+            byte[] deployedCode = new byte[3];
+
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode)
+                .Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .Create(initCode, 0)
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .CallWithValue(TestItem.AddressC, 50000, 1000000.Ether())
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+
+            Assert.AreEqual(0, trace.Action.Subtraces.Count, "subtraces count");
+            Assert.AreEqual(59700, trace.VmTrace.Operations.Last().Cost);
+            Assert.AreEqual(71579, trace.VmTrace.Operations.Last().Used);
+        }
+        
+        [Test]
+        public void Can_trace_memory_in_vm_trace()
+        {
+            string dataHex = "0x0102";
+            string offsetHex = "0x01";
+            
+            byte[] code = Prepare.EvmCode
+                .PushData(dataHex)
+                .PushData(offsetHex)
+                .Op(Instruction.MSTORE)
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+            var memory = trace.VmTrace.Operations[2].Memory;
+            Assert.AreEqual(dataHex, memory.Data.WithoutLeadingZeros().ToArray().ToHexString(true));
+            Assert.AreEqual(1, memory.Offset);
+        }
+        
+        [Test]
+        public void Action_is_cleared_when_vm_trace_only()
+        {
+            byte[] code = Prepare.EvmCode
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(ParityTraceTypes.VmTrace, code);
+            Assert.Null(trace.Action);
+        }
+        
+        [Test]
+        public void Can_trace_push_in_vm_trace()
+        {
+            string push1Hex = "0x01";
+            string push2Hex = "0x0102";
+            
+            byte[] code = Prepare.EvmCode
+                .PushData(push1Hex)
+                .PushData(push2Hex)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+            var push1 = trace.VmTrace.Operations[0].Push;
+            var push2 = trace.VmTrace.Operations[1].Push;
+            Assert.AreEqual(push1Hex, push1[0].WithoutLeadingZeros().ToArray().ToHexString(true));
+            Assert.AreEqual(push2Hex, push2[0].WithoutLeadingZeros().ToArray().ToHexString(true));
+        }
+        
+        [Test]
+        public void Can_trace_dup_push_in_vm_trace()
+        {
+            string push1Hex = "0x01";
+            string push2Hex = "0x0102";
+
+            byte[] code = Prepare.EvmCode
+                .PushData(push1Hex)
+                .PushData(push2Hex)
+                .Op(Instruction.DUP2)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+            var dup = trace.VmTrace.Operations[2].Push;
+            Assert.AreEqual(push1Hex, dup[0].WithoutLeadingZeros().ToArray().ToHexString(true));
+            Assert.AreEqual(push2Hex, dup[1].WithoutLeadingZeros().ToArray().ToHexString(true));
+        }
+        
+        [Test]
+        public void Can_trace_swap_push_in_vm_trace()
+        {
+            string push1Hex = "0x01";
+            string push2Hex = "0x0102";
+
+            byte[] code = Prepare.EvmCode
+                .PushData(push1Hex)
+                .PushData(push2Hex)
+                .Op(Instruction.SWAP1)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+            var swap = trace.VmTrace.Operations[2].Push;
+            Assert.AreEqual(push2Hex, swap[0].WithoutLeadingZeros().ToArray().ToHexString(true));
+            Assert.AreEqual(push1Hex, swap[1].WithoutLeadingZeros().ToArray().ToHexString(true));
+        }
+        
+        [Test]
+        public void Can_trace_sstore_in_vm_trace()
+        {
+            string push1Hex = "0x01";
+            string push2Hex = "0x0102";
+
+            byte[] code = Prepare.EvmCode
+                .PushData(push1Hex)
+                .PushData(push2Hex)
+                .Op(Instruction.SSTORE)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+            var sstore = trace.VmTrace.Operations[2].Store;
+            Assert.AreEqual(push2Hex, sstore.Key.WithoutLeadingZeros().ToArray().ToHexString(true));
+            Assert.AreEqual(push1Hex, sstore.Value.WithoutLeadingZeros().ToArray().ToHexString(true));
+        }
+        
+        [Test]
+        public void Can_trace_double_sstore()
+        {
+            string push1Hex = "0x01";
+            string push2Hex = "0x0102";
+            string push3Hex = "0x010203";
+
+            byte[] code = Prepare.EvmCode
+                .PushData(push2Hex)
+                .PushData(push1Hex)
+                .Op(Instruction.SSTORE)
+                .PushData(push3Hex)
+                .PushData(push1Hex)
+                .Op(Instruction.SSTORE)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+            Assert.AreEqual(1, trace.StateChanges[TestItem.AddressB].Storage.Count);
+        }
+        
+        [Test]
+        public void Can_trace_self_destruct()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.SELFDESTRUCT)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+            Assert.AreEqual("suicide", trace.Action.Subtraces[0].Type);
+        }
+        
+        [Test]
+        public void Can_trace_failed_action()
+        {
+            string push1Hex = "0x01";
+            string push2Hex = "0x0102";
+
+            byte[] code = Prepare.EvmCode
+                .PushData(push1Hex)
+                .PushData(push2Hex)
+                .Done;
+
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code, 1000000.Ether());
+            Assert.Null(trace.VmTrace);
+            Assert.AreEqual(1000000.Ether(), trace.Action.Value);
+        }
 
         [Test]
         public void Can_trace_static_calls()
@@ -569,6 +749,22 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.True(trace.StateChanges.ContainsKey(Miner), "miner");
             Assert.AreEqual(UInt256.Zero, trace.StateChanges[Sender].Nonce.Before, "sender before");
             Assert.AreEqual(UInt256.One, trace.StateChanges[Sender].Nonce.After, "sender after");
+        }
+        
+        [Test]
+        public void Cannot_mark_as_failed_when_actions_stacked()
+        {
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
+            tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Bytes.Empty, ExecutionType.Call, false);
+            Assert.Throws<InvalidOperationException>(() => tracer.MarkAsFailed(TestItem.AddressA, 21000, Bytes.Empty, "Error"));
+        }
+        
+        [Test]
+        public void Cannot_mark_as_success_when_actions_stacked()
+        {
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
+            tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Bytes.Empty, ExecutionType.Call, false);
+            Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, Bytes.Empty, new LogEntry[] {}));
         }
     }
 }

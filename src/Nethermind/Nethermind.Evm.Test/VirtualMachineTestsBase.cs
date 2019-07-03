@@ -104,7 +104,15 @@ namespace Nethermind.Evm.Test
         protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
+            _processor.Execute(transaction, block.Header, tracer);
+            return (tracer.BuildResult(), block, transaction);
+        }
+        
+        protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ParityTraceTypes traceTypes, params byte[] code)
+        {
+            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, traceTypes);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
@@ -292,6 +300,19 @@ namespace Nethermind.Evm.Test
                 return this;
             }
             
+            public Prepare CallWithValue(Address address, long gasLimit, UInt256 value)
+            {
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(value);
+                PushData(address);
+                PushData(gasLimit);
+                Op(Instruction.CALL);
+                return this;
+            }
+            
             public Prepare DelegateCall(Address address, long gasLimit)
             {
                 PushData(0);
@@ -316,7 +337,7 @@ namespace Nethermind.Evm.Test
                 Op(Instruction.CALLCODE);
                 return this;
             }
-            
+
             public Prepare StaticCall(Address address, long gasLimit)
             {                
                 PushData(0);

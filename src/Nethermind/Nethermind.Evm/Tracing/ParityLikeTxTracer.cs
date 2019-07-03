@@ -310,9 +310,7 @@ namespace Nethermind.Evm.Tracing
             _currentPushList.Add(stackItem.ToArray());
         }
 
-        public void SetOperationStack(List<string> stackTrace)
-        {
-        }
+        public void SetOperationStack(List<string> stackTrace) => throw new NotSupportedException();
 
         public void SetOperationMemory(List<string> memoryTrace) => throw new NotSupportedException();
 
@@ -383,11 +381,7 @@ namespace Nethermind.Evm.Tracing
                 _trace.StateChanges[storageAddress.Address] = new ParityAccountStateChange();
             }
 
-            storage = _trace.StateChanges[storageAddress.Address].Storage;
-            if (storage == null)
-            {
-                storage = _trace.StateChanges[storageAddress.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>();
-            }
+            storage = _trace.StateChanges[storageAddress.Address].Storage ?? (_trace.StateChanges[storageAddress.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
 
             if (storage.ContainsKey(storageAddress.Index))
             {
