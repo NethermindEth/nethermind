@@ -172,38 +172,35 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
-                            if (_txTracer.IsTracingActions)
+                            if (callResult.IsException)
                             {
-                                if (callResult.IsException)
+                                _txTracer.ReportActionError(callResult.ExceptionType);    
+                            }
+                            else if (callResult.ShouldRevert)
+                            {
+                                _txTracer.ReportActionError(EvmExceptionType.Revert);
+                            }
+                            else
+                            {
+                                long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                                if (currentState.ExecutionType == ExecutionType.Create && currentState.GasAvailable < codeDepositGasCost)
                                 {
-                                    _txTracer.ReportActionError(callResult.ExceptionType);    
-                                }
-                                else if (callResult.ShouldRevert)
-                                {
-                                    _txTracer.ReportActionError(EvmExceptionType.Revert);
+                                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
                                 else
                                 {
-                                    long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                                    if (currentState.ExecutionType == ExecutionType.Create && currentState.GasAvailable < codeDepositGasCost)
+                                    if (currentState.ExecutionType == ExecutionType.Create)
                                     {
-                                        _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                        _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
                                     }
                                     else
                                     {
-                                        if (currentState.ExecutionType == ExecutionType.Create)
-                                        {
-                                            _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
-                                        }
-                                        else
-                                        {
-                                            _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
-                                        }
+                                        _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
                                     }
                                 }
                             }
                         }
-                        
+                         
                         return new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert);
                     }
 

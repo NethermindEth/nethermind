@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.VisualBasic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
@@ -30,19 +29,25 @@ namespace Nethermind.Evm.Tracing
     public class ParityLikeTxTracer : ITxTracer
     {
         private readonly Transaction _tx;
+        private readonly ParityTraceTypes _parityTraceTypes;
         private ParityLikeTxTrace _trace;
+        
         private Stack<ParityTraceAction> _actionStack = new Stack<ParityTraceAction>();
-        private Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)>();
         private ParityTraceAction _currentAction;
+        
+        private ParityVmOperationTrace _currentOperation;
+        private List<byte[]> _currentPushList = new List<byte[]>();
+        
+        private Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)>();
         private (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) _currentVmTrace;
-
-        public ParityLikeTxTrace BuildResult()
-        {
-            return _trace;
-        }
+        
+        private bool _treatGasParityStyle; // strange cost calculation from parity
+        private bool _gasAlreadySetForCurrentOp; // workaround for jump destination errors
 
         public ParityLikeTxTracer(Block block, Transaction tx, ParityTraceTypes parityTraceTypes)
         {
+            _parityTraceTypes = parityTraceTypes;
+            
             _tx = tx;
             _trace = new ParityLikeTxTrace();
             _trace.TransactionHash = tx?.Hash;
@@ -50,19 +55,19 @@ namespace Nethermind.Evm.Tracing
             _trace.BlockNumber = block.Number;
             _trace.BlockHash = block.Hash;
 
-            if ((parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
+            if ((_parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
             {
                 IsTracingState = true;
                 _trace.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
             }
 
-            if ((parityTraceTypes & ParityTraceTypes.Trace) != 0)
+            if ((_parityTraceTypes & ParityTraceTypes.Trace) != 0)
             {
                 IsTracingActions = true;
                 IsTracingReceipt = true;
             }
 
-            if ((parityTraceTypes & ParityTraceTypes.VmTrace) != 0)
+            if ((_parityTraceTypes & ParityTraceTypes.VmTrace) != 0)
             {
                 IsTracingActions = true;
                 IsTracingInstructions = true;
@@ -71,9 +76,94 @@ namespace Nethermind.Evm.Tracing
             }
         }
         
-        private ParityVmOperationTrace _currentOperation;
-        private List<byte[]> _currentPushList = new List<byte[]>();
+        public bool IsTracingReceipt { get; }
+        public bool IsTracingActions { get; }
+        public bool IsTracingOpLevelStorage => false;
+        public bool IsTracingMemory => false;
+        public bool IsTracingInstructions { get; }
+        public bool IsTracingCode { get; }
+        public bool IsTracingStack => false;
+        public bool IsTracingState { get; }
+        
+        private static string GetCallType(ExecutionType executionType)
+        {
+            switch (executionType)
+            {
+                case ExecutionType.Transaction:
+                    return "call";
+                case ExecutionType.Create:
+                    return "create";
+                case ExecutionType.Call:
+                    return "call";
+                case ExecutionType.DelegateCall:
+                    return "delegatecall";
+                case ExecutionType.StaticCall:
+                    return "staticcall";
+                case ExecutionType.CallCode:
+                    return "callcode";
+                default:
+                    throw new NotImplementedException($"Parity trace call type is undefined for {Enum.GetName(typeof(ExecutionType), executionType)}");
+            }
+        }
+        
+        private string GetActionType(ExecutionType executionType)
+        {
+            switch (executionType)
+            {
+                case ExecutionType.Transaction:
+                    return "call";
+                case ExecutionType.Create:
+                    return "create";
+                case ExecutionType.Call:
+                    return "call";
+                case ExecutionType.DelegateCall:
+                    return "call";
+                case ExecutionType.StaticCall:
+                    return "call";
+                case ExecutionType.CallCode:
+                    return "call";
+                default:
+                    return "call";
+            }
+        }
+        
+        private static string GetErrorDescription(EvmExceptionType evmExceptionType)
+        {
+            switch (evmExceptionType)
+            {
+                case EvmExceptionType.None:
+                    return null;
+                case EvmExceptionType.BadInstruction:
+                    return "Bad instruction";
+                case EvmExceptionType.StackOverflow:
+                    return "Stack overflow";
+                case EvmExceptionType.StackUnderflow:
+                    return "Stack underflow";
+                case EvmExceptionType.OutOfGas:
+                    return "Out of gas";
+                case EvmExceptionType.InvalidJumpDestination:
+                    return "Bad jump destination";
+                case EvmExceptionType.AccessViolation:
+                    return "Access violation";
+                case EvmExceptionType.StaticCallViolation:
+                    return "Static call violation";
+                case EvmExceptionType.Revert:
+                    return "Reverted";
+                default:
+                    return "Error";
+            }
+        }
 
+        public ParityLikeTxTrace BuildResult()
+        {
+            if ((_parityTraceTypes & ParityTraceTypes.Trace) == ParityTraceTypes.None)
+            {
+                _trace.Action = null;
+            }
+            
+            return _trace;
+        }
+        
         private void PushAction(ParityTraceAction action)
         {
             if (_currentAction != null)
@@ -136,15 +226,6 @@ namespace Nethermind.Evm.Tracing
             _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
         }
 
-        public bool IsTracingReceipt { get; }
-        public bool IsTracingActions { get; }
-        public bool IsTracingOpLevelStorage => false;
-        public bool IsTracingMemory => false;
-        public bool IsTracingInstructions { get; }
-        public bool IsTracingCode { get; }
-        public bool IsTracingStack => false;
-        public bool IsTracingState { get; }
-
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
             if (_currentAction != null)
@@ -157,7 +238,6 @@ namespace Nethermind.Evm.Tracing
                 _trace.Output = output;
             }
 
-//            _trace.Action.To = recipient;
             _trace.Action.Result.Output = output;
         }
 
@@ -181,9 +261,6 @@ namespace Nethermind.Evm.Tracing
                 _trace.Action.Gas = (long)_tx.GasLimit;
                 _trace.Action.CallType = _tx.IsMessageCall ? "call" : "init";
             }
-            
-//            _trace.Action.To = recipient;
-//            _trace.Action.Result = new ParityTraceResult {Output = output ?? Bytes.Empty, GasUsed = (long) gasSpent};
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
@@ -198,9 +275,6 @@ namespace Nethermind.Evm.Tracing
             _currentVmTrace.Ops.Add(operationTrace);
         }
 
-        private bool _treatGasParityStyle; // strange cost calculation from parity
-        private bool _gasAlreadySetForCurrentOp; // workaround for jump destination errors
-        
         public void ReportOperationError(EvmExceptionType error)
         {
             if (error != EvmExceptionType.InvalidJumpDestination &&
@@ -218,7 +292,7 @@ namespace Nethermind.Evm.Tracing
                 
                 _currentOperation.Cost = _currentOperation.Cost - (_treatGasParityStyle ? 0 : gas);
                 
-                // I would say it is a Parity issue where stipend is added as a gas cost...
+                // based on Parity behaviour - adding stipend to the gas cost
                 if (_currentOperation.Cost == 7400)
                 {
                     _currentOperation.Cost = 9700;
@@ -243,6 +317,7 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationMemory(List<string> memoryTrace) => throw new NotSupportedException();
 
         public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
+        
         public void ReportMemoryChange(long offset, Span<byte> data)
         {
             if (data.Length != 0)
@@ -332,7 +407,7 @@ namespace Nethermind.Evm.Tracing
             action.Input = input;
             action.Gas = gas;
             action.CallType = GetCallType(callType);
-            action.Type = GetType(callType);
+            action.Type = GetActionType(callType);
 
             if (_currentOperation != null && callType == ExecutionType.Create)
             {
@@ -356,48 +431,6 @@ namespace Nethermind.Evm.Tracing
             PopAction();
         }
 
-        private string GetCallType(ExecutionType executionType)
-        {
-            switch (executionType)
-            {
-                case ExecutionType.Transaction:
-                    return "call";
-                case ExecutionType.Create:
-                    return "create";
-                case ExecutionType.Call:
-                    return "call";
-                case ExecutionType.DelegateCall:
-                    return "delegatecall";
-                case ExecutionType.StaticCall:
-                    return "staticcall";
-                case ExecutionType.CallCode:
-                    return "callcode";
-                default:
-                    throw new NotImplementedException($"Parity trace call type is undefined for {Enum.GetName(typeof(ExecutionType), executionType)}");
-            }
-        }
-        
-        private string GetType(ExecutionType executionType)
-        {
-            switch (executionType)
-            {
-                case ExecutionType.Transaction:
-                    return "call";
-                case ExecutionType.Create:
-                    return "create";
-                case ExecutionType.Call:
-                    return "call";
-                case ExecutionType.DelegateCall:
-                    return "call";
-                case ExecutionType.StaticCall:
-                    return "call";
-                case ExecutionType.CallCode:
-                    return "call";
-                default:
-                    throw new NotImplementedException($"Parity trace call type is undefined for {Enum.GetName(typeof(ExecutionType), executionType)}");
-            }
-        }
-
         public void ReportActionEnd(long gas, byte[] output)
         {
             _currentAction.Result.Output = output ?? Bytes.Empty;
@@ -405,33 +438,6 @@ namespace Nethermind.Evm.Tracing
             PopAction();
         }
 
-        private string GetErrorDescription(EvmExceptionType evmExceptionType)
-        {
-            switch (evmExceptionType)
-            {
-                case EvmExceptionType.None:
-                    return null;
-                case EvmExceptionType.BadInstruction:
-                    return "Bad instruction";
-                case EvmExceptionType.StackOverflow:
-                    return "Stack overflow";
-                case EvmExceptionType.StackUnderflow:
-                    return "Stack underflow";
-                case EvmExceptionType.OutOfGas:
-                    return "Out of gas";
-                case EvmExceptionType.InvalidJumpDestination:
-                    return "Bad jump destination";
-                case EvmExceptionType.AccessViolation:
-                    return "Access violation";
-                case EvmExceptionType.StaticCallViolation:
-                    return "Static call violation";
-                case EvmExceptionType.Revert:
-                    return "Reverted";
-                default:
-                    return "Error";
-            }
-        }
-        
         public void ReportActionError(EvmExceptionType evmExceptionType)
         {
             _currentAction.Result = null;
