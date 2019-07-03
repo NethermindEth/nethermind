@@ -256,6 +256,14 @@ namespace Nethermind.Evm
                             previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
                             previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                             previousCallOutputDestination = (ulong)previousState.OutputDestination;
+                            if(previousState.IsPrecompile)
+                            {
+                                // parity induced if else for vmtrace
+                                if (_txTracer.IsTracingInstructions)
+                                {
+                                    _txTracer.ReportMemoryChange((long)previousCallOutputDestination, previousCallOutput);
+                                }
+                            }
                             
                             if (_txTracer.IsTracingActions)
                             {
@@ -287,6 +295,7 @@ namespace Nethermind.Evm
                         previousCallResult = StatusCode.FailureBytes;
                         previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
+                        
                         
                         if (_txTracer.IsTracingActions)
                         {
@@ -498,11 +507,6 @@ namespace Nethermind.Evm
 
             void StartInstructionTrace(Instruction instruction, Span<byte> stack)
             {
-                if (programCounter == 5269)
-                {
-                    
-                }
-                
                 if (!traceOpcodes)
                 {
                     return;
@@ -838,6 +842,7 @@ namespace Nethermind.Evm
                 UInt256 localPreviousDest = previousCallOutputDestination;
                 UpdateMemoryCost(ref localPreviousDest, (ulong)previousCallOutput.Length);
                 evmState.Memory.Save(ref localPreviousDest, previousCallOutput);
+//                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
 
             while (programCounter < code.Length)
@@ -2395,6 +2400,7 @@ namespace Nethermind.Evm
                         }
 
                         byte[] callData = evmState.Memory.Load(ref dataOffset, dataLength);
+                        
                         int stateSnapshot = _state.TakeSnapshot();
                         int storageSnapshot = _storage.TakeSnapshot();
                         _state.SubtractFromBalance(sender, transferValue, spec);
