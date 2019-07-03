@@ -29,7 +29,7 @@ namespace Nethermind.Cli
     public static class CliConsole
     {
         private static ColorScheme _colorScheme;
-        private static Terminal _terminal  = GetTerminal();
+        private static Terminal _terminal;
         private static readonly Dictionary<string, Terminal> Terminals = new Dictionary<string, Terminal>
         {
             ["cmd.exe"] = Terminal.Cmd,

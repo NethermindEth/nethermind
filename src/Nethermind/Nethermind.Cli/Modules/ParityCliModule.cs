@@ -29,7 +29,7 @@ namespace Nethermind.Cli.Modules
         }
         
         [CliFunction("parity", "pendingTransactions", Description = "Returns the pending transactions using Parity format")]
-        public JsValue ReplayTransaction()
+        public JsValue PendingTransactions()
         {
             return NodeManager.PostJint("parity_pendingTransactions").Result;
         }

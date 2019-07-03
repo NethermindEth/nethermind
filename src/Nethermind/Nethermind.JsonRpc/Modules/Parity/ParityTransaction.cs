@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
             Raw = raw;
-            Input = Raw = transaction.Data ?? transaction.Init;
+            Input = transaction.Data ?? transaction.Init;
             PublicKey = publicKey;
             ChainId = transaction.Signature.GetChainId;
             R = transaction.Signature.R;
