@@ -29,6 +29,7 @@ namespace Nethermind.Cli
     public static class CliConsole
     {
         private static ColorScheme _colorScheme;
+        private static Terminal _terminal  = GetTerminal();
         private static readonly Dictionary<string, Terminal> Terminals = new Dictionary<string, Terminal>
         {
             ["cmd.exe"] = Terminal.Cmd,
@@ -42,32 +43,32 @@ namespace Nethermind.Cli
             _colorScheme = colorScheme;
             Console.BackgroundColor = colorScheme.BackgroundColor;
             Console.ForegroundColor = colorScheme.Text;
-            var terminal = GetTerminal();
-            if (terminal != Terminal.Powershell)
+            _terminal = GetTerminal();
+            if (_terminal != Terminal.Powershell)
             {
                 Console.ResetColor();
             }
 
-            if (terminal != Terminal.Cygwin)
+            if (_terminal != Terminal.Cygwin)
             {
                 Console.Clear();
             }
 
             Console.WriteLine("**********************************************", _colorScheme.Comment);
             Console.WriteLine();
-            Console.WriteLine("Nethermind CLI", _colorScheme.Good);
-            Console.WriteLine("  https://github.com/NethermindEth/nethermind", _colorScheme.Interesting);
-            Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/", _colorScheme.Interesting);
+            Console.WriteLine("Nethermind CLI", GetColor(_colorScheme.Good));
+            Console.WriteLine("  https://github.com/NethermindEth/nethermind", GetColor(_colorScheme.Interesting));
+            Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/", GetColor( _colorScheme.Interesting));
             Console.WriteLine();
             Console.WriteLine("powered by:", _colorScheme.Text);
-            Console.WriteLine("  https://github.com/sebastienros/jint", _colorScheme.Interesting);
-            Console.WriteLine("  https://github.com/tomakita/Colorful.Console", _colorScheme.Interesting);
-            Console.WriteLine("  https://github.com/tonerdo/readline", _colorScheme.Interesting);
+            Console.WriteLine("  https://github.com/sebastienros/jint", GetColor( _colorScheme.Interesting));
+            Console.WriteLine("  https://github.com/tomakita/Colorful.Console", GetColor( _colorScheme.Interesting));
+            Console.WriteLine("  https://github.com/tonerdo/readline", GetColor( _colorScheme.Interesting));
             Console.WriteLine();
             Console.WriteLine("**********************************************", _colorScheme.Comment);
             Console.WriteLine();
 
-            return terminal;
+            return _terminal;
         }
 
         private static Terminal GetTerminal()
@@ -89,15 +90,20 @@ namespace Nethermind.Cli
 
             return Terminal.Unknown;
         }
+
+        private static Color GetColor(Color defaultColor)
+        {
+            return _terminal == Terminal.LinuxBash ? _colorScheme.Text : defaultColor;
+        }
         
         public static void WriteException(Exception e)
         {
-            Console.WriteLine(e.ToString(), _colorScheme.ErrorColor);
+            Console.WriteLine(e.ToString(), GetColor(_colorScheme.ErrorColor));
         }
         
         public static void WriteErrorLine(string errorMessage)
         {
-            Console.WriteLine(errorMessage, _colorScheme.ErrorColor);
+            Console.WriteLine(errorMessage, GetColor(_colorScheme.ErrorColor));
         }
         
         public static void WriteLine(object objectToWrite)
@@ -112,17 +118,17 @@ namespace Nethermind.Cli
         
         public static void WriteLessImportant(object objectToWrite)
         {
-            Console.Write(objectToWrite.ToString(), _colorScheme.LessImportant);
+            Console.Write(objectToWrite.ToString(), GetColor(_colorScheme.LessImportant));
         }
         
         public static void WriteKeyword(string keyword)
         {
-            Console.Write(keyword, _colorScheme.Keyword);
+            Console.Write(keyword, GetColor(_colorScheme.Keyword));
         }
         
         public static void WriteInteresting(string interesting)
         {
-            Console.Write(interesting, _colorScheme.Interesting);
+            Console.Write(interesting, GetColor(_colorScheme.Interesting));
         }
 
         public static void WriteLine()
@@ -132,12 +138,12 @@ namespace Nethermind.Cli
 
         public static void WriteGood(string goodText)
         {
-            Console.WriteLine(goodText, _colorScheme.Good);
+            Console.WriteLine(goodText, GetColor(_colorScheme.Good));
         }
 
         public static void WriteString(object result)
         {
-            Console.WriteLine(result, _colorScheme.String);
+            Console.WriteLine(result, GetColor(_colorScheme.String));
         }
     }
 }
