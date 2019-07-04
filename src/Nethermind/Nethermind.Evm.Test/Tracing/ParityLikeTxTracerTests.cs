@@ -766,5 +766,15 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Bytes.Empty, ExecutionType.Call, false);
             Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, Bytes.Empty, new LogEntry[] {}));
         }
+        
+        [Test]
+        public void Is_tracing_rewards_only_when_rewards_trace_type_selected()
+        {
+            ParityLikeBlockTracer tracer = new ParityLikeBlockTracer(ParityTraceTypes.All ^ ParityTraceTypes.Rewards);
+            Assert.False(tracer.IsTracingRewards);
+            
+            ParityLikeBlockTracer tracer2 = new ParityLikeBlockTracer(ParityTraceTypes.Rewards);
+            Assert.True(tracer2.IsTracingRewards);
+        }
     }
 }

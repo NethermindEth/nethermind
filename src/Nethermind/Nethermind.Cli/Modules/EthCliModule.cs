@@ -119,9 +119,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getBalance")]
-        public JsValue GetBalance(string address, string blockParameter)
+        public BigInteger GetBalance(string address, string blockParameter)
         {
-            return NodeManager.PostJint("eth_getBalance", CliParseAddress(address), blockParameter).Result;
+            return NodeManager.Post<BigInteger>("eth_getBalance", CliParseAddress(address), blockParameter).Result;
         }
 
         [CliProperty("eth", "protocolVersion")]

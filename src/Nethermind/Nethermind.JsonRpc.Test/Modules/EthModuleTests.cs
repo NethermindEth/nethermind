@@ -128,7 +128,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(_ethModule, "eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), blockParameter);
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"{expectedResult}\"}}", serialized);
         }
-        
+
         [TestCase("earliest", "0x0")]
         [TestCase("latest", "0x0")]
         [TestCase("pending", "0x0")]
@@ -138,7 +138,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(_ethModule, "eth_getTransactionCount", TestItem.AddressA.Bytes.ToHexString(true), blockParameter);
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"{expectedResult}\"}}", serialized);
         }
-        
+
         [TestCase("earliest", "0xabcdef")]
         [TestCase("latest", "0xabcdef")]
         [TestCase("pending", "0xabcdef")]
@@ -166,21 +166,21 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
 
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32603,\"message\":\"Incorrect head block\",\"data\":null}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Incorrect head block\",\"data\":null}}", serialized);
         }
 
         [Test]
         public void Eth_get_balance_incorrect_number_of_params()
         {
             string serialized = RpcTest.TestSerializedRequest(_ethModule, "eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true));
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters count, expected: 2, actual: 1\",\"data\":null}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters count, expected: 2, actual: 1\",\"data\":null}}", serialized);
         }
 
         [Test]
         public void Eth_get_balance_incorrect_parameters()
         {
             string serialized = RpcTest.TestSerializedRequest(_ethModule, "eth_getBalance", TestItem.KeccakA.Bytes.ToHexString(true), "0x01");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters\",\"data\":null}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters\",\"data\":null}}", serialized);
         }
 
         [Test]
@@ -234,7 +234,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(_ethModule, "eth_getBlockTransactionCountByHash", _blockTree.Genesis.Hash.ToString());
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x0\"}", serialized);
         }
-        
+
         [Test]
         public void Eth_uncle_count_by_hash()
         {
@@ -251,7 +251,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(_ethModule, "eth_getUncleCountByBlockNumber", blockParameter);
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{expectedResult}}}", serialized);
         }
-        
+
         [TestCase("earliest", "\"0x0\"")]
         [TestCase("latest", "\"0x0\"")]
         [TestCase("pending", "\"0x0\"")]
@@ -273,7 +273,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_hash_null()
         {
             string serialized = RpcTest.TestSerializedRequest(_ethModule, "eth_getBlockByHash", Keccak.Zero.ToString(), "true");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\"}", serialized);
         }
 
         [TestCase("earliest", "{\"number\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"totalDifficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"size\":\"0x0\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"uncles\":[]}")]
@@ -284,7 +284,15 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number(string blockParameter, string expectedResult)
         {
             string serialized = RpcTest.TestSerializedRequest(_ethModule, "eth_getBlockByNumber", blockParameter, "true");
-            Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{expectedResult}}}", serialized);
+
+            if (expectedResult == "null")
+            {
+                Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\"}}", serialized);
+            }
+            else
+            {
+                Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{expectedResult}}}", serialized);
+            }
         }
 
         [TestCase("earliest", "{\"number\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"totalDifficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"size\":\"0x0\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"uncles\":[]}")]
@@ -295,7 +303,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number_no_details(string blockParameter, string expectedResult)
         {
             string serialized = RpcTest.TestSerializedRequest(_ethModule, "eth_getBlockByNumber", blockParameter, "false");
-            Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{expectedResult}}}", serialized);
+            if (expectedResult == "null")
+            {
+                Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\"}}", serialized);
+            }
+            else
+            {
+                Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{expectedResult}}}", serialized);
+            }
         }
 
         [Test]
@@ -309,14 +324,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number_with_number_bad_number()
         {
             string serialized = RpcTest.TestSerializedRequest(_ethModule, "eth_getBlockByNumber", "'0x1234567890123456789012345678901234567890123456789012345678901234567890'", "true");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters\",\"data\":null}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters\",\"data\":null}}", serialized);
         }
 
         [Test]
         public void Eth_get_block_by_number_empty_param()
         {
             string serialized = RpcTest.TestSerializedRequest(_ethModule, "eth_getBlockByNumber", "", "true");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null,\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters count, expected: 2, actual: 1\",\"data\":null}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters count, expected: 2, actual: 1\",\"data\":null}}", serialized);
         }
 
         [Test]
@@ -348,7 +363,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(module, "eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":null}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\"}", serialized);
         }
 
 

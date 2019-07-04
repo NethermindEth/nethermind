@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc
         [JsonProperty(PropertyName = "jsonrpc", Order = 1)]
         public string JsonRpc { get; set; }
 
-        [JsonProperty(PropertyName = "result", Order = 2)]
+        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Ignore, Order = 2)]
         public object Result { get; set; }
 
         [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc
         [JsonProperty(PropertyName = "jsonrpc", Order = 1)]
         public string JsonRpc { get; set; }
 
-        [JsonProperty(PropertyName = "result", Order = 2)]
+        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Ignore, Order = 2)]
         public T Result { get; set; }
 
         [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]

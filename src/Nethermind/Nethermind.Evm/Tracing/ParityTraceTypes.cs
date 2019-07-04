@@ -27,6 +27,7 @@ namespace Nethermind.Evm.Tracing
         VmTrace = 1,
         StateDiff = 2,
         Trace = 4,
-        All = 7,
+        Rewards = 8,
+        All = 15,
     }
 }
