@@ -52,9 +52,9 @@ using Nethermind.Facade;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
-    public static class NdmConsumersModule
+    public class NdmConsumersModule : INdmConsumersModule
     {
-        public static IServices AddConsumersModule(this NdmModule.IServices services)
+        public INdmConsumerServices Init(INdmServices services)
         {
             AddDecoders();
             var ndmConfig = services.RequiredServices.NdmConfig;
@@ -119,7 +119,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     services.CreatedServices.JsonRpcNdmConsumerChannel, services.RequiredServices.EthRequestService,
                     personalBridge, logManager));
 
-            return new Services(consumerService);
+            return new NdmConsumerServices(consumerService);
         }
 
         private static void AddDecoders()
@@ -128,16 +128,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             DepositDetailsDecoder.Init();
         }
 
-        public interface IServices
-        {
-            IConsumerService ConsumerService { get; }
-        }
-
-        private class Services : IServices
+        private class NdmConsumerServices : INdmConsumerServices
         {
             public IConsumerService ConsumerService { get; }
 
-            public Services(IConsumerService consumerService)
+            public NdmConsumerServices(IConsumerService consumerService)
             {
                 ConsumerService = consumerService;
             }

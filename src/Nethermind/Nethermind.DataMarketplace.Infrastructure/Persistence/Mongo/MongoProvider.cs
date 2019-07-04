@@ -36,12 +36,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
         private static bool _initialized;
         private static IMongoClient _client;
         private readonly INdmMongoConfig _config;
-        private readonly ILogger _logger;
 
         public MongoProvider(INdmMongoConfig config, ILogManager logManager)
         {
             _config = config;
-            _logger = logManager.GetClassLogger();
+            var logger = logManager.GetClassLogger();
             if (_initialized)
             {
                 return;
@@ -56,15 +55,15 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
                 {
                     cb.Subscribe<CommandStartedEvent>(e =>
                     {
-                        if (_logger.IsInfo) _logger.Info($"MongoDB command started '{e.CommandName}': {e.Command.ToJson()}");
+                        if (logger.IsInfo) logger.Info($"MongoDB command started '{e.CommandName}': {e.Command.ToJson()}");
                     });   
                     cb.Subscribe<CommandSucceededEvent>(e =>
                     {
-                        if (_logger.IsInfo) _logger.Info($"MongoDB command succeeded '{e.CommandName}': {e.Reply.ToJson()}");
+                        if (logger.IsInfo) logger.Info($"MongoDB command succeeded '{e.CommandName}': {e.Reply.ToJson()}");
                     }); 
                     cb.Subscribe<CommandFailedEvent>(e =>
                     {
-                        if (_logger.IsError) _logger.Error($"MongoDB command failed '{e.CommandName}': {e.Failure}");
+                        if (logger.IsError) logger.Error($"MongoDB command failed '{e.CommandName}': {e.Failure}");
                     }); 
                 };
             }

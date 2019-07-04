@@ -38,7 +38,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         [SetUp]
         public void Setup()
         {
-            _logManager = NullLogManager.Instance;
+            _logManager = LimboLogs.Instance;;
             _faucetPeer = Substitute.For<INdmPeer>();
             _ethRequestService = new EthRequestService(FaucetHost, _logManager);
         }

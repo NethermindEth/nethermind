@@ -93,9 +93,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<DataHeaderInfoForRpc[]>> ndm_getKnownDataHeaders()
         {
-            var providers = await _consumerService.GetKnownDataHeadersAsync();
+            var dataHeaders = await _consumerService.GetKnownDataHeadersAsync();
 
-            return ResultWrapper<DataHeaderInfoForRpc[]>.Success(providers
+            return ResultWrapper<DataHeaderInfoForRpc[]>.Success(dataHeaders
                 .Select(d => new DataHeaderInfoForRpc(d)).ToArray());
         }
 

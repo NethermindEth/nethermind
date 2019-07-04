@@ -30,6 +30,7 @@ using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Channels.Grpc;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
+using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Initializers;
 using Nethermind.DataMarketplace.WebSockets;
 using Nethermind.Grpc;

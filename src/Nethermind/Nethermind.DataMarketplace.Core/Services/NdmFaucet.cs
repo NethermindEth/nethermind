@@ -136,9 +136,9 @@ namespace Nethermind.DataMarketplace.Core.Services
                 if (_logger.IsInfo) _logger.Info($"ETH request was successfully processed for: {host}, address: {address}, value: {value} wei");
                 return true;
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error(e.Message, e);
+                if (_logger.IsError) _logger.Error(ex.Message, ex);
                 return false;
             }
             finally

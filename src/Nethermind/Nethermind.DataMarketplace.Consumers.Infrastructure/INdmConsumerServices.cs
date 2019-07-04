@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,17 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.DataMarketplace.Consumers.Services;
 
-namespace Nethermind.Network.P2P
+namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
-    public class ProtocolInitializedEventArgs : EventArgs
+    public interface INdmConsumerServices
     {
-        public IProtocolHandler Subprotocol { get; }
-
-        public ProtocolInitializedEventArgs(IProtocolHandler handler)
-        {
-            Subprotocol = handler;
-        }
+        IConsumerService ConsumerService { get; }
     }
 }

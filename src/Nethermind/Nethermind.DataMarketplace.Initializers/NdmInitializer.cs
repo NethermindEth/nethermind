@@ -52,6 +52,15 @@ namespace Nethermind.DataMarketplace.Initializers
     [NdmInitializer("ndm")]
     public class NdmInitializer : INdmInitializer
     {
+        private readonly INdmModule _ndmModule;
+        private readonly INdmConsumersModule _ndmConsumersModule;
+
+        public NdmInitializer(INdmModule ndmModule, INdmConsumersModule ndmConsumersModule)
+        {
+            _ndmModule = ndmModule;
+            _ndmConsumersModule = ndmConsumersModule;
+        }
+
         public virtual async Task<INdmCapabilityConnector> InitAsync(IConfigProvider configProvider,
             IDbProvider dbProvider, string baseDbPath, IBlockProcessor blockProcessor, IBlockTree blockTree,
             ITxPool txPool, ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider,
@@ -77,14 +86,16 @@ namespace Nethermind.DataMarketplace.Initializers
             var subprotocolFactory = new NdmSubprotocolFactory(messageSerializationService, nodeStatsManager,
                 logManager, consumerService, consumerChannelManager, ecdsa, wallet, faucet, enode.PublicKey,
                 providerAddress, consumerAddress, config.VerifyP2PSignature);
-            var capabilityConnector = new NdmCapabilityConnector(protocolsManager, subprotocolFactory,
-                consumerService, protocolValidator, ethRequestService, logManager);
+            var protocolHandlerFactory = new ProtocolHandlerFactory(subprotocolFactory, protocolValidator,
+                ethRequestService, logManager);
+            var capabilityConnector = new NdmCapabilityConnector(protocolsManager, protocolHandlerFactory,
+                consumerService, logManager);
 
             return capabilityConnector;
         }
 
-        protected async Task<(NdmConfig config, NdmModule.IServices services,
-            IEthRequestService ethRequestService, INdmFaucet faucet, IConsumerService consumerService,
+        protected async Task<(NdmConfig config, INdmServices services, IEthRequestService ethRequestService,
+            INdmFaucet faucet, IConsumerService consumerService,
             Address consumerAddress, Address providerAddress)> PreInitAsync(
             IConfigProvider configProvider, IDbProvider dbProvider, string baseDbPath, IBlockProcessor blockProcessor,
             IBlockTree blockTree, ITxPool txPool, ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider,
@@ -139,7 +150,9 @@ namespace Nethermind.DataMarketplace.Initializers
             }
 
             var ethRequestService = new EthRequestService(ndmConfig.FaucetHost, logManager);
-            var services = NdmModule.Init(new NdmModule.RequiredServices(configProvider, configManager, ndmConfig,
+
+
+            var services = _ndmModule.Init(new NdmRequiredServices(configProvider, configManager, ndmConfig,
                 baseDbPath, dbProvider, mongoProvider, logManager, blockProcessor, blockTree, txPool,
                 txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamp, ecdsa, keyStore,
                 rpcModuleProvider, jsonSerializer, cryptoRandom, enode, consumerChannelManager,
@@ -157,7 +170,7 @@ namespace Nethermind.DataMarketplace.Initializers
             var providerAddress = string.IsNullOrWhiteSpace(ndmConfig.ProviderAddress)
                 ? Address.Zero
                 : new Address(ndmConfig.ProviderAddress);
-            var consumers = services.AddConsumersModule();
+            var consumers = _ndmConsumersModule.Init(services);
 
             return (ndmConfig, services, ethRequestService, faucet, consumers.ConsumerService, consumerAddress,
                 providerAddress);

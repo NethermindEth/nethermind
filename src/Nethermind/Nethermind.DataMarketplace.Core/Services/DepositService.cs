@@ -47,11 +47,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            if (ndmConfig is null)
-            {
-                throw new ArgumentNullException(nameof(ndmConfig));
-            }
-
+            ndmConfig = ndmConfig ?? throw new ArgumentNullException(nameof(ndmConfig));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _consumerAddress = string.IsNullOrWhiteSpace(ndmConfig.ConsumerAddress)
                 ? Address.Zero

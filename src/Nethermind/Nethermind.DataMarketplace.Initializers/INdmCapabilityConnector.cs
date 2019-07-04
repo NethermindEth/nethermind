@@ -16,14 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Core;
-
 namespace Nethermind.DataMarketplace.Initializers
 {
     public interface INdmCapabilityConnector
     {
         void Init();
         void AddCapability();
+        bool CapabilityAdded { get; }
     }
 }

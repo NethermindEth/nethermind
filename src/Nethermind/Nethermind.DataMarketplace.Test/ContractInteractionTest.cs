@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Test
             _bridge = new BlockchainBridge(processor, _releaseSpec);
 
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
-            _ndmConfig.ContractAddress = receipt.ContractAddress.ToString();
+            ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
         }
 
         protected TxReceipt DeployContract(byte[] initCode)
@@ -237,11 +237,6 @@ namespace Nethermind.DataMarketplace.Test
             public Keccak GetBlockHash(Keccak transactionHash)
             {
                 throw new System.NotImplementedException();
-            }
-
-            public Keccak SendTransaction(Transaction transaction)
-            {
-                throw new NotImplementedException();
             }
 
             private BlockReceiptsTracer _receiptsTracer;

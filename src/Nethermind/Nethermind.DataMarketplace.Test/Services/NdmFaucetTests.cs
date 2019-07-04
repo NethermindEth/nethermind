@@ -59,7 +59,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _maxValue = 1.GWei();
             _enabled = true;
             _timestamp = new Timestamp();
-            _logManager = NullLogManager.Instance;
+            _logManager = LimboLogs.Instance;
             _host = "127.0.0.1";
             _address = Address.FromNumber(2);
             _value = 1.GWei();
