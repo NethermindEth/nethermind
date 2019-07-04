@@ -22,6 +22,5 @@ namespace Nethermind.Evm
     {
         public static long EvmExceptions { get; set; }
         public static long SelfDestructs { get; set; }
-        public static long EmptyAccountSaves { get; set; }
     }
 }

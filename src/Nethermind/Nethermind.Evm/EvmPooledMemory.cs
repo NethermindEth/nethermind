@@ -95,16 +95,6 @@ namespace Nethermind.Evm
             Array.Copy(value, 0, _memory, (long)location, value.Length);
         }
 
-        public byte[] Load(ref UInt256 location)
-        {
-            CheckMemoryAccessViolation(ref location, (UInt256)WordSize);
-            UpdateSize(ref location, WordSize);
-
-            byte[] buffer = new byte[WordSize];
-            Array.Copy(_memory, (long)location, buffer, 0, buffer.Length);
-            return buffer;
-        }
-        
         public Span<byte> LoadSpan(ref UInt256 location)
         {
             CheckMemoryAccessViolation(ref location, WordSize);
