@@ -33,11 +33,13 @@ namespace Nethermind.Evm.Tracing
             : base(txHash)
         {
             _types = types;
+            IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
 
         public ParityLikeBlockTracer(ParityTraceTypes types)
         {
             _types = types;
+            IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
 
         protected override ParityLikeTxTracer OnStart(Keccak txHash)
@@ -50,7 +52,7 @@ namespace Nethermind.Evm.Tracing
             return txTracer.BuildResult();
         }
 
-        public override bool IsTracingRewards => (_types & ParityTraceTypes.Trace) != ParityTraceTypes.None;
+        public override bool IsTracingRewards { get; }
 
         public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
