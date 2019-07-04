@@ -26,16 +26,16 @@ namespace Nethermind.Blockchain
 {
     public interface ITracer
     {
-        GethLikeTxTrace Trace(Keccak txHash);
-        GethLikeTxTrace Trace(long blockNumber, Transaction transaction);
-        GethLikeTxTrace Trace(long blockNumber, int txIndex);
-        GethLikeTxTrace Trace(Keccak blockHash, int txIndex);
-        GethLikeTxTrace[] TraceBlock(Keccak blockHash);
-        GethLikeTxTrace[] TraceBlock(long blockNumber);
+        GethLikeTxTrace Trace(Keccak txHash, GethTraceOptions options);
+        GethLikeTxTrace Trace(long blockNumber, Transaction transaction, GethTraceOptions options);
+        GethLikeTxTrace Trace(long blockNumber, int txIndex, GethTraceOptions options);
+        GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options);
+        GethLikeTxTrace[] TraceBlock(Keccak blockHash, GethTraceOptions options);
+        GethLikeTxTrace[] TraceBlock(long blockNumber, GethTraceOptions options);
         
-        GethLikeTxTrace[] TraceBlock(Rlp blockRlp);
-        ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes parityTraceTypes);
-        ParityLikeTxTrace[] ParityTraceBlock(Keccak blockHash, ParityTraceTypes parityTraceTypes);
-        ParityLikeTxTrace[] ParityTraceBlock(long blockNumber, ParityTraceTypes parityTraceTypes);
+        GethLikeTxTrace[] TraceBlock(Rlp blockRlp, GethTraceOptions options);
+        ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes traceTypes);
+        ParityLikeTxTrace[] ParityTraceBlock(Keccak blockHash, ParityTraceTypes traceTypes);
+        ParityLikeTxTrace[] ParityTraceBlock(long blockNumber, ParityTraceTypes traceTypes);
     }
 }

@@ -19,9 +19,9 @@
 
 using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc.Modules.DebugModule
+namespace Nethermind.Evm.Tracing
 {
-    public class TraceOptions
+    public class GethTraceOptions
     {
         [JsonProperty("disableStorage")]
         public bool DisableStorage { get; set; }
@@ -37,5 +37,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         
         [JsonProperty("timeout")]
         public string Timeout { get; set; }
+        
+        public static GethTraceOptions Default = new GethTraceOptions();
     }
 }

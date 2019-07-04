@@ -26,15 +26,15 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     public interface IDebugModule : IModule
     {
-        ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, TraceOptions traceOptions);
-        ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex);
-        ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockHash, int txIndex);
-        ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp);
-        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BigInteger number);
-        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash);
+        ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null);
+        ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex, GethTraceOptions options = null);
+        ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockHash, int txIndex, GethTraceOptions options = null);
+        ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null);
+        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BigInteger number, GethTraceOptions options = null);
+        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash, GethTraceOptions options = null);
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
-        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName);
+        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null);
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<State> debug_dumpBlock(BlockParameter blockParameter);

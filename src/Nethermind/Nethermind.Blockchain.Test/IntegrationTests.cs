@@ -150,7 +150,7 @@ namespace Nethermind.Blockchain.Test
 
                 if (block.Transactions.Length > 0)
                 {
-                    GethLikeTxTrace trace = tracer.Trace(block.Transactions[0].Hash);
+                    GethLikeTxTrace trace = tracer.Trace(block.Transactions[0].Hash, GethTraceOptions.Default);
                     Assert.AreSame(GethLikeTxTrace.QuickFail, trace);
                     Assert.AreNotEqual(previousCount, currentCount, $"receipts at block {i}");
                     totalTx += block.Transactions.Length;
