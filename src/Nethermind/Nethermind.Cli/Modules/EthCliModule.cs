@@ -52,6 +52,12 @@ namespace Nethermind.Cli.Modules
             return NodeManager.Post<object>("eth_getBlockByHash", CliParseHash(hash), returnFullTransactionObjects).Result;
         }
         
+        [CliFunction("eth", "getStorageAt")]
+        public object GetStorageAt(string address, string positionIndex, string blockParameter)
+        {
+            return NodeManager.Post<object>("eth_getStorageAt", CliParseAddress(address), positionIndex, blockParameter).Result;
+        }
+        
         [CliFunction("eth", "getBlockByNumber")]
         public JsValue GetBlockByNumber(string blockParameter, bool returnFullTransactionObjects)
         {
