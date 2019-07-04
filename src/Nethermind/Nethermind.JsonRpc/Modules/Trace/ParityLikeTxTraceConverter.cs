@@ -95,8 +95,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             
             writer.WriteStartObject();
             writer.WriteProperty("action", traceAction, serializer);
-//            writer.WriteProperty("blockHash", value.BlockHash, serializer);
-//            writer.WriteProperty("blockNumber", value.BlockNumber, serializer);
             if (traceAction.Error == null)
             {
                 writer.WriteProperty("result", traceAction.Result, serializer);
@@ -110,7 +108,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("traceAddress");
             _traceAddressConverter.WriteJson(writer, traceAction.TraceAddress, serializer);
 
-//            writer.WriteProperty("transactionPosition", value.TransactionPosition);
             writer.WriteProperty("type", traceAction.Type);
             writer.WriteEndObject();
             foreach (ParityTraceAction subtrace in traceAction.Subtraces) WriteJson(writer, subtrace, serializer);
