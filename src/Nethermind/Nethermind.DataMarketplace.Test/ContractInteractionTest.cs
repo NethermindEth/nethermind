@@ -167,7 +167,7 @@ namespace Nethermind.DataMarketplace.Test
                 return 99;
             }
 
-            public GethLikeBlockTracer GethTracer { get; set; } = new GethLikeBlockTracer();
+            public GethLikeBlockTracer GethTracer { get; set; } = new GethLikeBlockTracer(GethTraceOptions.Default);
 
             public BlockchainBridge(TransactionProcessor processor, IReleaseSpec spec)
             {

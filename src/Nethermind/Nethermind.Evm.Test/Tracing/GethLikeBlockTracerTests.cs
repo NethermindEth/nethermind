@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,7 +34,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Starts_with_trace_set_to_null()
         {
             Keccak txHash = TestItem.KeccakA;
-            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(txHash);
+            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(txHash, GethTraceOptions.Default);
             Assert.IsNull(blockTracer.BuildResult().SingleOrDefault(), $"starts with trace set to null");
         }
 
@@ -43,7 +44,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.TestObject;
             block.Body.Transactions = new Transaction[3];
 
-            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer();
+            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(GethTraceOptions.Default);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
@@ -60,7 +61,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.TestObject;
             block.Body.Transactions = new Transaction[3];
 
-            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer();
+            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(GethTraceOptions.Default);
             ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakA);
             ((IBlockTracer) blockTracer).EndTxTrace();
 
@@ -85,10 +86,10 @@ namespace Nethermind.Evm.Test.Tracing
             block.Transactions[1] = Build.A.Transaction.TestObject;
             block.Transactions[2] = Build.A.Transaction.TestObject;
 
-            GethLikeBlockTracer blockTracer1 = new GethLikeBlockTracer();
+            GethLikeBlockTracer blockTracer1 = new GethLikeBlockTracer(GethTraceOptions.Default);
             Assert.Throws<InvalidOperationException>(() => ((IBlockTracer)blockTracer1).EndTxTrace());
             
-            GethLikeBlockTracer blockTracer2 = new GethLikeBlockTracer();
+            GethLikeBlockTracer blockTracer2 = new GethLikeBlockTracer(GethTraceOptions.Default);
             ((IBlockTracer)blockTracer2).StartNewTxTrace(block.Transactions[0].Hash);
             Assert.DoesNotThrow(() => ((IBlockTracer)blockTracer2).EndTxTrace());
             Assert.Throws<InvalidOperationException>(() => ((IBlockTracer)blockTracer2).EndTxTrace());

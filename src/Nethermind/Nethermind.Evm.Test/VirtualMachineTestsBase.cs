@@ -87,7 +87,7 @@ namespace Nethermind.Evm.Test
 
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
         {
-            GethLikeTxTracer tracer = new GethLikeTxTracer();
+            GethLikeTxTracer tracer = new GethLikeTxTracer(GethTraceOptions.Default);
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
@@ -127,7 +127,7 @@ namespace Nethermind.Evm.Test
 
         protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
         {
-            GethLikeTxTracer tracer = new GethLikeTxTracer();
+            GethLikeTxTracer tracer = new GethLikeTxTracer(GethTraceOptions.Default);
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();

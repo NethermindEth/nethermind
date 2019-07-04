@@ -27,16 +27,25 @@ namespace Nethermind.Evm.Tracing
 {
     public class GethLikeTxTracer : ITxTracer
     {
+        private readonly GethTraceOptions _options;
         private GethTxTraceEntry _traceEntry;
         private GethLikeTxTrace _trace = new GethLikeTxTrace();
+
+        public GethLikeTxTracer(GethTraceOptions options)
+        {
+            _options = options;
+            IsTracingStack = !_options.DisableStack;
+            IsTracingMemory = !_options.DisableMemory;
+            IsTracingOpLevelStorage = !_options.DisableStorage;
+        }
         
         public bool IsTracingReceipt => true;
         bool ITxTracer.IsTracingActions => false;
-        bool ITxTracer.IsTracingOpLevelStorage => true;
-        bool ITxTracer.IsTracingMemory => true;
+        public bool IsTracingOpLevelStorage { get; }
+        public bool IsTracingMemory { get; }
         bool ITxTracer.IsTracingInstructions => true;
         public bool IsTracingCode => false;
-        bool ITxTracer.IsTracingStack => true;
+        public bool IsTracingStack { get; }
         bool ITxTracer.IsTracingState => false;
         
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)

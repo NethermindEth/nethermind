@@ -70,34 +70,34 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _dbMappings[dbName][key];
         }
         
-        public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash)
+        public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.Trace(transactionHash);
+            return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default);
         }
 
-        public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index)
+        public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.Trace(blockNumber, index);
+            return _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default);
         }
 
-        public GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index)
+        public GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.Trace(blockHash, index);
+            return _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default);
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash)
+        public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockHash);
+            return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default);
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(long blockNumber)
+        public GethLikeTxTrace[] GetBlockTrace(long blockNumber, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockNumber);
+            return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default);
         }
         
-        public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp)
+        public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockRlp);
+            return _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default);
         }
         
         public string GetConfigValue(string category, string name)

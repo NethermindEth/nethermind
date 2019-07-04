@@ -46,9 +46,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return new[] {new GethLikeTxTraceConverter()};
         }
 
-        public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, TraceOptions traceOptions)
+        public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null)
         {
-            GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(transactionHash);
+            GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, options);
             if (transactionTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorType.NotFound);
@@ -58,9 +58,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
-        public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockhash, int index)
+        public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockhash, int index, GethTraceOptions options = null)
         {
-            var transactionTrace = _debugBridge.GetTransactionTrace(blockhash, index);
+            var transactionTrace = _debugBridge.GetTransactionTrace(blockhash, index, options);
             if (transactionTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockhash}", ErrorType.NotFound);
@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
-        public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index)
+        public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
         {
             long? blockNo = blockParameter.BlockId;
             if (!blockNo.HasValue)
@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 throw new InvalidDataException("Block number value incorrect");
             }
 
-            var transactionTrace = _debugBridge.GetTransactionTrace(blockNo.Value, index);
+            var transactionTrace = _debugBridge.GetTransactionTrace(blockNo.Value, index, options);
             if (transactionTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorType.NotFound);
@@ -88,9 +88,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
-        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp)
+        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
         {
-            var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp));
+            var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), options);
             if (blockTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for RLP {blockRlp.ToHexString()}", ErrorType.NotFound);
@@ -99,9 +99,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<GethLikeTxTrace[]>.Success(blockTrace);
         }
 
-        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BigInteger blockNumber)
+        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BigInteger blockNumber, GethTraceOptions options = null)
         {
-            var blockTrace = _debugBridge.GetBlockTrace((long)blockNumber);
+            var blockTrace = _debugBridge.GetBlockTrace((long)blockNumber, options);
             if (blockTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockNumber}", ErrorType.NotFound);
@@ -111,9 +111,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<GethLikeTxTrace[]>.Success(blockTrace);
         }
 
-        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash)
+        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash, GethTraceOptions options = null)
         {
-            GethLikeTxTrace[] gethLikeBlockTrace = _debugBridge.GetBlockTrace(blockHash);
+            GethLikeTxTrace[] gethLikeBlockTrace = _debugBridge.GetBlockTrace(blockHash, options);
             if (gethLikeBlockTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockHash}", ErrorType.NotFound);
@@ -123,7 +123,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<GethLikeTxTrace[]>.Success(gethLikeBlockTrace);
         }
 
-        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName)
+        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null)
         {
             throw new NotImplementedException();
         }
