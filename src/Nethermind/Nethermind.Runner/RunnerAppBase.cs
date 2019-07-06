@@ -28,9 +28,11 @@ using Nethermind.Core;
 using Nethermind.Core.Json;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Channels.Grpc;
+using Nethermind.DataMarketplace.Consumers.Infrastructure;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
+using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Initializers;
 using Nethermind.DataMarketplace.WebSockets;
 using Nethermind.Grpc;
@@ -147,8 +149,16 @@ namespace Nethermind.Runner
             {
                 ndmDataPublisher = new NdmDataPublisher();
                 ndmConsumerChannelManager = new NdmConsumerChannelManager();
-                ndmInitializer = new NdmInitializerFactory(logManager)
-                    .CreateOrFail(ndmConfig.InitializerName, ndmConfig.PluginsPath);
+                var initializerName = ndmConfig.InitializerName;
+                if (Logger.IsInfo) Logger.Info($"NDM initializer: {initializerName}");
+                var ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a => a.GetTypes())
+                    .FirstOrDefault(t =>
+                        t.GetCustomAttribute<NdmInitializerAttribute>()?.Name == initializerName);
+                var ndmModule = new NdmModule();
+                var ndmConsumersModule = new NdmConsumersModule();
+                ndmInitializer = new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule,
+                    logManager).CreateOrFail();
             }
 
             var grpcConfig = configProvider.GetConfig<IGrpcConfig>();
