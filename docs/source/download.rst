@@ -135,8 +135,7 @@ enable autorun **(optional)**
 MacOS (10.12+)
 ^^^^^^^^^^^^^^
 
- * brew install gmp
- * brew install snappy
+ * brew install gmp && brew install snappy && brew install lz4
  * download MacOS package
  * unzip
  * cd into the folder
