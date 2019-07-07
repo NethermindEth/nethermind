@@ -4,6 +4,7 @@
         <TargetFramework>netcoreapp2.2</TargetFramework>
         <AssemblyName>Nethermind.PubSub.Kafka</AssemblyName>
         <RootNamespace>Nethermind.PubSub.Kafka</RootNamespace>
+        <LangVersion>7.2</LangVersion>
     </PropertyGroup>
 
     <ItemGroup>
