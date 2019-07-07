@@ -9,9 +9,9 @@ done
 
 if [ -n "$branch" ]; then
   echo "Branch is $branch"
+  git checkout $branch
 else
-  echo "Branch is master."
-  branch=master
+  echo "Exeuting on the current branch."
 fi
 
 if [ -n "$dbdir" ]; then
@@ -21,15 +21,14 @@ else
   dbdir="D:\\chains\\perftest_ropsten"
 fi
 
-git checkout $branch
-
 srcdir="../src/Nethermind/Nethermind.PerfTest"
 bindir="$srcdir/bin/Release/netcoreapp2.2" 
 echo "Source   $srcdir"
 echo "Binaries $bindir"
 pushd $srcdir
-sed -i -e "s/D\:\\chains\\perftest_ropsten/$dbdir/g" Program.cs
+sed -i -e 's|D\:\\chains\\perftest_ropsten|'$dbdir'|g' Program.cs
 dotnet build -c Release
+#git checkout -- Program.cs
 popd
 pushd $bindir
 dotnet Nethermind.PerfTest.dll
