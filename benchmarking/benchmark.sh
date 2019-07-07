@@ -31,7 +31,7 @@ pushd $srcdir
 sed -i -e 's|D\:\\chains\\perftest_ropsten|'$dbdir'|g' Program.cs
 dotnet build -c Release
 git checkout -- Program.cs
-echo "Trying to chckout branch $startbranch"
+echo "Trying to checkout branch $startbranch"
 git checkout $startbranch
 popd
 pushd $bindir
