@@ -23,7 +23,7 @@ else
   dbdir="D:\\chains\\perftest_ropsten"
 fi
 
-srcdir="src/Nethermind/Nethermind.PerfTest"
+srcdir="../src/Nethermind/Nethermind.PerfTest"
 bindir="$srcdir/bin/Release/netcoreapp2.2" 
 echo "Source   $srcdir"
 echo "Binaries $bindir"
