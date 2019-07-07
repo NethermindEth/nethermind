@@ -7,6 +7,8 @@ d) dbdir=${OPTARG};;
 esac
 done
 
+startbranch=`git branch | grep \* | cut -d ' ' -f2`
+
 if [ -n "$branch" ]; then
   echo "Branch is $branch"
   git checkout $branch
@@ -33,3 +35,4 @@ popd
 pushd $bindir
 dotnet Nethermind.PerfTest.dll
 popd
+git checkout $startbranch
