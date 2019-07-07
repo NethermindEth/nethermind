@@ -24,9 +24,7 @@ namespace Nethermind.Evm.Tracing
     {
         public long GasUsed { get; set; }
         public byte[] Output { get; set; }
-        
         public Address Address { get; set; }
-        
         public byte[] Code { get; set; }
     }
 }

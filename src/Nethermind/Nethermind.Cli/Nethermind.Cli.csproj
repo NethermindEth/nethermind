@@ -7,6 +7,7 @@
         <PackageId>Nethermind CLI</PackageId>
         <Authors>Nethermind</Authors>
         <PackageVersion>1.0.0</PackageVersion>
+        <LangVersion>7.2</LangVersion>
     </PropertyGroup>
     
     <ItemGroup>

@@ -261,8 +261,8 @@ namespace Nethermind.Evm.Tracing
                 actionElements[3] = Rlp.Encode(action.Value);
                 actionElements[4] = Rlp.Encode(action.Gas);
                 actionElements[5] = Rlp.Encode(action.Input);
-                actionElements[6] = Rlp.Encode(action.Result.Output);
-                actionElements[7] = Rlp.Encode(action.Result.GasUsed);
+                actionElements[6] = Rlp.Encode(action.Result?.Output ?? Bytes.Empty);
+                actionElements[7] = Rlp.Encode(action.Result?.GasUsed ?? 0L);
                 actionElements[8] = Rlp.Encode(action.TraceAddress);
                 actionElements[9] = Rlp.Encode(action.Subtraces.Count);
             }
