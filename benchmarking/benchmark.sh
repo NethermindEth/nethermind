@@ -30,9 +30,10 @@ echo "Binaries $bindir"
 pushd $srcdir
 sed -i -e 's|D\:\\chains\\perftest_ropsten|'$dbdir'|g' Program.cs
 dotnet build -c Release
-#git checkout -- Program.cs
+git checkout -- Program.cs
+git checkout -- $startbranch
 popd
 pushd $bindir
-dotnet Nethermind.PerfTest.dll
+otnet Nethermind.PerfTest.dll
 popd
-git checkout $startbranch
+
