@@ -24,6 +24,7 @@ using System.Reflection;
 using Nethermind.Db.Config;
 using Nethermind.Logging;
 using Nethermind.Store;
+using NLog.Filters;
 using RocksDbSharp;
 
 namespace Nethermind.Db
@@ -50,8 +51,16 @@ namespace Nethermind.Db
                 if (logger.IsInfo) logger.Info($"Using database directory {fullPath}");
             }
 
-            var options = BuildOptions(dbConfig);
-            _db = DbsByPath.GetOrAdd(fullPath, path => RocksDb.Open(options, path));
+            try
+            {
+                var options = BuildOptions(dbConfig);
+                _db = DbsByPath.GetOrAdd(fullPath, path => RocksDb.Open(options, path));
+            }
+            catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
+            {
+                throw new ApplicationException($"Unable to load 'libdl' necessary to init the RocksDB database. Please run{Environment.NewLine}" +
+                                               "sudo apt update && sudo apt install libsnappy-dev libc6-dev libc6");
+            }
         }
         
         protected abstract void UpdateReadMetrics();
