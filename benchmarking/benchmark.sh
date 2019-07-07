@@ -10,7 +10,7 @@ done
 startbranch=`git branch | grep \* | cut -d ' ' -f2`
 
 if [ -n "$branch" ]; then
-  echo "Branch is $branch"
+  echo "Trying to checkout branch $branch"
   git checkout $branch
 else
   echo "Exeuting on the current branch."
@@ -31,9 +31,10 @@ pushd $srcdir
 sed -i -e 's|D\:\\chains\\perftest_ropsten|'$dbdir'|g' Program.cs
 dotnet build -c Release
 git checkout -- Program.cs
+echo "Trying to chckout branch $startbranch"
 git checkout $startbranch
 popd
 pushd $bindir
-otnet Nethermind.PerfTest.dll
+dotnet Nethermind.PerfTest.dll
 popd
 
