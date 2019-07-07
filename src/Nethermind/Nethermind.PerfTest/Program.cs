@@ -376,6 +376,7 @@ namespace Nethermind.PerfTest
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "ropsten.json"));
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
+            _logger.Info($"ChainSpec loaded");
             foreach (KeyValuePair<Address, (UInt256 Balance, byte[] Code)> allocation in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(allocation.Key, allocation.Value.Balance);
@@ -385,8 +386,12 @@ namespace Nethermind.PerfTest
                     stateProvider.UpdateCodeHash(allocation.Key, codeHash, specProvider.GenesisSpec);
                 }
             }
+            
+            _logger.Info($"Allocations configured, committing...");
 
             stateProvider.Commit(specProvider.GenesisSpec);
+            
+            _logger.Info($"Finalizing genesis...");
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
             chainSpec.Genesis.Header.Hash = BlockHeader.CalculateHash(chainSpec.Genesis.Header);
             if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"))
@@ -399,6 +404,7 @@ namespace Nethermind.PerfTest
                 throw new Exception("Unexpected genesis hash");
             }
 
+            _logger.Info($"Starting benchmark processor...");
             /* start processing */
             BigInteger totalGas = BigInteger.Zero;
             Stopwatch stopwatch = new Stopwatch();
