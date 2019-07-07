@@ -7,7 +7,7 @@ d) dbdir=${OPTARG};;
 esac
 done
 
-#startbranch=`git branch | grep \* | cut -d ' ' -f2`
+startbranch=`git branch | grep \* | cut -d ' ' -f2`
 
 if [ -n "$branch" ]; then
   echo "Trying to checkout branch $branch"
@@ -23,7 +23,7 @@ else
   dbdir="D:\\chains\\perftest_ropsten"
 fi
 
-srcdir="../src/Nethermind/Nethermind.PerfTest"
+srcdir="src/Nethermind/Nethermind.PerfTest"
 bindir="$srcdir/bin/Release/netcoreapp2.2" 
 echo "Source   $srcdir"
 echo "Binaries $bindir"
@@ -32,7 +32,7 @@ sed -i -e 's|D\:\\chains\\perftest_ropsten|'$dbdir'|g' Program.cs
 dotnet build -c Release
 git checkout -- Program.cs
 echo "Trying to checkout branch $startbranch"
-git checkout -
+git checkout $startbranch
 popd
 pushd $bindir
 dotnet Nethermind.PerfTest.dll
