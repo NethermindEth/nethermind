@@ -66,15 +66,15 @@ namespace Nethermind.Cli.Modules
         }
         
         [CliFunction("clique", "propose")]
-        public JsValue Propose(string address, bool vote)
+        public bool Propose(string address, bool vote)
         {
-            return NodeManager.PostJint("clique_propose", CliParseAddress(address), vote).Result;
+            return NodeManager.Post<bool>("clique_propose", CliParseAddress(address), vote).Result;
         }
         
         [CliFunction("clique", "discard")]
-        public JsValue Propose(string address)
+        public bool Discard(string address)
         {
-            return NodeManager.PostJint("clique_discard", CliParseAddress(address)).Result;
+            return NodeManager.Post<bool>("clique_discard", CliParseAddress(address)).Result;
         }
 
         public CliqueCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
