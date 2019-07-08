@@ -16,12 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Consumers.Services;
+using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Subprotocols;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
@@ -99,18 +104,30 @@ namespace Nethermind.DataMarketplace.Test.Subprotocols
         {
             _verifySignature = true;
             InitSubprotocol();
-            var message = new HiMessage(1, TestItem.AddressC, TestItem.AddressD, TestItem.PublicKeyA,
+            var hiMessage = new HiMessage(1, TestItem.AddressC, TestItem.AddressD, TestItem.PublicKeyA,
                 new Signature(1, 1, 27));
-            var packet = new Packet(message.Protocol, message.PacketType,
-                _messageSerializationService.Serialize(message));
-            _messageSerializationService.Deserialize<HiMessage>(packet.Data).Returns(message);
-            var hash = Keccak.Compute(message.NodeId.Bytes);
-            _ecdsa.RecoverPublicKey(message.Signature, hash).Returns(TestItem.PublicKeyA);
-            _subprotocol.HandleMessage(packet);
-            _ecdsa.Received().RecoverPublicKey(message.Signature, hash);
-            _subprotocol.ProviderAddress.Should().Be(message.ProviderAddress);
-            _subprotocol.ConsumerAddress.Should().Be(message.ConsumerAddress);
+            var hiPacket = new Packet(hiMessage.Protocol, hiMessage.PacketType,
+                _messageSerializationService.Serialize(hiMessage));
+            _messageSerializationService.Deserialize<HiMessage>(hiPacket.Data).Returns(hiMessage);
+            var hash = Keccak.Compute(hiMessage.NodeId.Bytes);
+            _ecdsa.RecoverPublicKey(hiMessage.Signature, hash).Returns(TestItem.PublicKeyA);
+            _subprotocol.HandleMessage(hiPacket);
+            _ecdsa.Received().RecoverPublicKey(hiMessage.Signature, hash);
+            _subprotocol.ProviderAddress.Should().Be(hiMessage.ProviderAddress);
+            _subprotocol.ConsumerAddress.Should().Be(hiMessage.ConsumerAddress);
             _consumerService.Received().AddProviderPeer(_subprotocol);
+            var getDataHeadersMessage = new GetDataHeadersMessage();
+            _messageSerializationService.Serialize(getDataHeadersMessage).Returns(Array.Empty<byte>());
+            var getDataHeadersPacket = new Packet(getDataHeadersMessage.Protocol, getDataHeadersMessage.PacketType,
+                _messageSerializationService.Serialize(getDataHeadersMessage));
+            _messageSerializationService.Deserialize<GetDataHeadersMessage>(getDataHeadersPacket.Data)
+                .Returns(getDataHeadersMessage);
+            
+            Received.InOrder(() =>
+            {
+                _session.DeliverMessage(Arg.Is<Packet>(p => p.PacketType == NdmMessageCode.GetDataHeaders));
+                _session.DeliverMessage(Arg.Is<Packet>(p => p.PacketType == NdmMessageCode.GetDepositApprovals));
+            });
         }
     }
 }

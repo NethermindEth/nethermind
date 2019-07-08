@@ -73,7 +73,7 @@ namespace Nethermind.DataMarketplace.Test.Subprotocols
         }
 
         [Test]
-        public void foo()
+        public void given_valid_session_ndm_subprotocol_should_be_created()
         {
             var newConsumerAddress = TestItem.AddressC;
             var session = Substitute.For<ISession>();
