@@ -4,6 +4,7 @@ cp benchmark.sh copyof.benchmark.sh
 cp commits.list copyof.commits.list
 
 while read commit; do
+  echo "Commit $commit"
   COUNTER=0
   while [  $COUNTER -lt $times ];
   do
