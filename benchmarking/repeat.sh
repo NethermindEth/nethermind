@@ -5,6 +5,8 @@ cp commits.list copyof.commits.list
 
 while read commit
 do
+  commit=${commit:0:40}
+  echo "Commit $commit"
   COUNTER=0
   while [ $COUNTER -lt $times ]
   do
