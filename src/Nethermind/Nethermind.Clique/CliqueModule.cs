@@ -80,9 +80,9 @@ namespace Nethermind.Clique
             {
                 _cliqueBridge.CastVote(signer, vote);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return ResultWrapper<bool>.Fail("Unable to cast vote", ErrorType.InternalError);
+                return ResultWrapper<bool>.Fail($"Unable to cast vote: {ex}", ErrorType.InternalError);
             }
 
             return ResultWrapper<bool>.Success(true);
