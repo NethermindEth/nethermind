@@ -100,7 +100,7 @@ namespace Nethermind.Clique
             bool success = _proposals.TryAdd(signer, vote);
             if (!success)
             {
-                throw new InvalidOperationException("Cannot cast vote");
+                throw new InvalidOperationException($"A vote for {signer} has already been cast.");
             }
 
             if (_logger.IsWarn) _logger.Warn($"Added Clique vote for {signer} - {vote}");
