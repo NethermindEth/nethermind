@@ -9,9 +9,9 @@ while read commit; do
   while [  $COUNTER -lt $times ];
   do
     echo "Running $commit.$COUNTER.bench"
-    ./copyof.benchmark.sh -d "C:/perf_db" -b $commit > result.bench
-    grep "TOTAL after 100000" result.bench > $commit.$COUNTER.bench
-    grep Mgas/s $commit.$COUNTER.bench
+    #./copyof.benchmark.sh -d "C:/perf_db" -b $commit > result.bench
+    #grep "TOTAL after 100000" result.bench > $commit.$COUNTER.bench
+    #grep Mgas/s $commit.$COUNTER.bench
     let COUNTER=$COUNTER+1
   done
 done <copyof.commits.list
