@@ -7,7 +7,7 @@ while read commit; do
   while [  $COUNTER -lt $times ];
   do
     echo "Running $commit.$COUNTER.bench"
-    ./perf.sh -d "C:/perf_db" > result.bench
+    ./perf.sh -d "C:/perf_db" -b $commit > result.bench
     grep "TOTAL after 100000" result.bench > $commit.$COUNTER.bench
     grep Mgas/s $commit.$COUNTER.bench
     let COUNTER=$COUNTER+1
