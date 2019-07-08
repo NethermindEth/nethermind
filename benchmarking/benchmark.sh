@@ -13,6 +13,7 @@ if [ -n "$branch" ]; then
   echo "Trying to checkout branch $branch"
   git checkout $branch
 else
+  branch=$startbranch
   echo "Exeuting on the current branch."
 fi
 
@@ -29,6 +30,8 @@ else
   echo "Using default DB dir."
 fi
 
+sed -i -e 's|Console.ReadLine();||g' Program.cs
+
 dotnet build -c Release
 git checkout -- Program.cs
 echo "Trying to checkout branch $startbranch"
@@ -38,3 +41,4 @@ pushd $bindir
 dotnet Nethermind.PerfTest.dll
 popd
 
+echo "Benchmark for $branch complete"
