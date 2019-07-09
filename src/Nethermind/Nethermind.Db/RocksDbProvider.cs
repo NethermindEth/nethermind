@@ -33,7 +33,6 @@ namespace Nethermind.Db
             StateDb = new StateDb(new StateRocksDb(basePath, dbConfig, logManager));
             CodeDb = new StateDb(new CodeRocksDb(basePath, dbConfig, logManager));
             PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, logManager);
-            TraceDb = new TraceRocksDb(basePath, dbConfig, logManager);
             ConfigsDb = new ConfigsRocksDb(basePath, dbConfig, logManager);
             EthRequestsDb = new EthRequestsRocksDb(basePath, dbConfig, logManager);
             
@@ -46,9 +45,11 @@ namespace Nethermind.Db
                 ReceiptsDb = new ReadOnlyDb(new MemDb(), false);
             }
             
+            TraceDb = new TraceRocksDb(basePath, dbConfig, logManager);
+            
             if (useTraceDb)
             {
-                TraceDb = new HeadersRocksDb(basePath, dbConfig, logManager);
+                TraceDb = new TraceRocksDb(basePath, dbConfig, logManager);
             }
             else
             {
