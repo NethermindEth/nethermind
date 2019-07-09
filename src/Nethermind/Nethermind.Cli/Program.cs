@@ -172,9 +172,15 @@ namespace Nethermind.Cli
                         statement = _terminal == Terminal.Cygwin ? Console.ReadLine() : ReadLine.Read();
                         CleanStatement(statement);
                         
+                        if (!File.Exists(HistoryFilePath))
+                        {
+                            File.Create(HistoryFilePath);
+                        }
+                        
                         if (!SecuredCommands.Any(sc => statement.Contains(sc)))
                         {
                             ReadLine.AddHistory(statement);
+                            
                             using (var fileStream = File.AppendText(HistoryFilePath))
                             {
                                 fileStream.WriteLine(statement);
