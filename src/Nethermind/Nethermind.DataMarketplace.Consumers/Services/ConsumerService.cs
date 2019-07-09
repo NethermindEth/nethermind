@@ -317,7 +317,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
             
-            dataHeader.ChangeState(state);
+            dataHeader.SetState(state);
             if (_logger.IsInfo) _logger.Info($"Changed discovered data header: '{dataHeaderId}' state to: '{state}'.");
         }
 

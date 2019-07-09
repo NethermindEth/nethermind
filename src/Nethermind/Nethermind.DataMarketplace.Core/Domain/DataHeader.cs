@@ -65,7 +65,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             {
                 throw new ArgumentException("Invalid data header description.", nameof(description));
             }
-            
+
             if (termsAndConditions?.Length > 10000)
             {
                 throw new ArgumentException("Invalid terms and conditions (over 10000 chars).", nameof(description));
@@ -103,10 +103,11 @@ namespace Nethermind.DataMarketplace.Core.Domain
             State = state;
             TermsAndConditions = termsAndConditions;
             KycRequired = kycRequired;
-            Plugin = plugin?.ToLowerInvariant();
+            SetState(state);
+            SetPlugin(plugin);
         }
 
-        public void ChangeState(DataHeaderState state)
+        public void SetState(DataHeaderState state)
         {
             if (State == state || State == DataHeaderState.Archived)
             {
@@ -116,6 +117,17 @@ namespace Nethermind.DataMarketplace.Core.Domain
             State = state;
         }
 
-        public void ClearPlugin() => Plugin = string.Empty;
+        public void ClearPlugin() => SetPlugin(string.Empty);
+
+        public void SetPlugin(string plugin)
+        {
+            var pluginName = plugin?.ToLowerInvariant();
+            if (Plugin == pluginName)
+            {
+                return;
+            }
+
+            Plugin = pluginName;
+        }
     }
 }
