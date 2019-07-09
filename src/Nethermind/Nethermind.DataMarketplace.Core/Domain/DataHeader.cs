@@ -38,12 +38,13 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public DataHeaderState State { get; private set; }
         public string TermsAndConditions { get; private set; }
         public bool KycRequired { get; private set; }
+        public string Plugin { get; private set; }
 
         public DataHeader(Keccak id, string name, string description, UInt256 unitPrice,
             DataHeaderUnitType unitType, uint minUnits, uint maxUnits, DataHeaderRules rules,
             DataHeaderProvider provider, string file = null, QueryType queryType = QueryType.Stream,
             DataHeaderState state = DataHeaderState.Unpublished, string termsAndConditions = null,
-            bool kycRequired = false)
+            bool kycRequired = false, string plugin = null)
         {
             if (provider == null || string.IsNullOrWhiteSpace(provider.Name) || provider.Address == null)
             {
@@ -102,6 +103,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             State = state;
             TermsAndConditions = termsAndConditions;
             KycRequired = kycRequired;
+            Plugin = plugin?.ToLowerInvariant();
         }
 
         public void ChangeState(DataHeaderState state)
@@ -113,5 +115,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
 
             State = state;
         }
+
+        public void ClearPlugin() => Plugin = string.Empty;
     }
 }
