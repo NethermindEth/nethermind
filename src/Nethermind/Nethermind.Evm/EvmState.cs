@@ -66,7 +66,7 @@ namespace Nethermind.Evm
             }
         }
 
-        private readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
+        private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
 
         public byte[] BytesOnStack;
 
