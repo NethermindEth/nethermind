@@ -32,7 +32,7 @@ namespace Nethermind.Store
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
-        private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(64 * 1024);
+        private static readonly ThreadLocal<LruCache<Keccak, Rlp>> NodeCache = new ThreadLocal<LruCache<Keccak, Rlp>>(() => new LruCache<Keccak, Rlp>(64 * 1024));
 //        private static readonly LruCache<byte[], byte[]> ValueCache = new LruCache<byte[], byte[]>(128 * 1024);
 
         /// <summary>
@@ -176,7 +176,7 @@ namespace Nethermind.Store
             node.ResolveKey(isRoot);
             if (node.FullRlp != null && node.FullRlp.Length >= 32)
             {
-                NodeCache.Set(node.Keccak, node.FullRlp);
+                NodeCache.Value.Set(node.Keccak, node.FullRlp);
                 CurrentCommit.Enqueue(node);
             }
         }
@@ -239,7 +239,7 @@ namespace Nethermind.Store
 
         internal Rlp GetNode(Keccak keccak)
         {
-            return NodeCache.Get(keccak) ?? new Rlp(_db[keccak.Bytes]);
+            return NodeCache.Value.Get(keccak) ?? new Rlp(_db[keccak.Bytes]);
         }
 
         public byte[] Run(byte[] updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
