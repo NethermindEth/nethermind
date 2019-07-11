@@ -66,6 +66,18 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.PostJint("debug_getConfigValue", category, name).Result;
         }
+        
+        [CliFunction("debug", "getBlockRlpByHash")]
+        public string GetBlockRlpByHash(string hash)
+        {
+            return NodeManager.Post<string>("debug_getBlockRlpByHash", CliParseHash(hash)).Result;
+        }
+        
+        [CliFunction("debug", "getBlockRlp")]
+        public string GetBlockRlp(long number)
+        {
+            return NodeManager.Post<string>("debug_getBlockRlp", number).Result;
+        }
 
         public DebugCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {

@@ -283,7 +283,7 @@ namespace Nethermind.Runner.Runners
 
             AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, NullTxPool.Instance, NullReceiptStorage.Instance);
             IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            var debugBridge = new DebugBridge(_configProvider, debugDbProvider, tracer, debugChain.Processor);
+            var debugBridge = new DebugBridge(_configProvider, debugDbProvider, tracer, debugChain.Processor, _blockTree);
 
             EthModule module = new EthModule(_logManager, blockchainBridge);
             _rpcModuleProvider.Register<IEthModule>(module);

@@ -52,11 +52,13 @@ debug
 
  - [NOT IMPLEMENTED]debug_gcStats()
 
- - debug_getBlockRlp(blockParameter)
+ - debug_getBlockRlp(number)
+
+ - debug_getBlockRlpByHash(hash)
 
  - debug_getConfigValue(category, name)
 
- - debug_getFromDb(dbName, key)
+ - [NOT IMPLEMENTED]debug_getFromDb(dbName, key)
 
  - [NOT IMPLEMENTED]debug_memStats(blockParameter)
 
@@ -64,19 +66,19 @@ debug
 
  - [NOT IMPLEMENTED]debug_setHead(blockParameter)
 
- - debug_traceBlock(blockRlp)
+ - debug_traceBlock(blockRlp, options)
 
- - debug_traceBlockByHash(blockHash)
+ - debug_traceBlockByHash(blockHash, options)
 
- - debug_traceBlockByNumber(number)
+ - debug_traceBlockByNumber(number, options)
 
- - [NOT IMPLEMENTED]debug_traceBlockFromFile(fileName)
+ - [NOT IMPLEMENTED]debug_traceBlockFromFile(fileName, options)
 
- - debug_traceTransaction(transactionHash, traceOptions)
+ - debug_traceTransaction(transactionHash, options)
 
- - debug_traceTransactionByBlockAndIndex(blockParameter, txIndex)
+ - debug_traceTransactionByBlockAndIndex(blockParameter, txIndex, options)
 
- - debug_traceTransactionByBlockhashAndIndex(blockHash, txIndex)
+ - debug_traceTransactionByBlockhashAndIndex(blockHash, txIndex, options)
 
 eth
 ^^^
@@ -173,6 +175,11 @@ net
  - net_peerCount()
 
  - net_version()
+
+parity
+^^^^^^
+
+ - parity_pendingTransactions()
 
 personal
 ^^^^^^^^

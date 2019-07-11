@@ -31,6 +31,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         GethLikeTxTrace[] GetBlockTrace(Keccak blockHash, GethTraceOptions gethTraceOptions = null);
         GethLikeTxTrace[] GetBlockTrace(long blockNumber, GethTraceOptions gethTraceOptions = null);
         GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, GethTraceOptions gethTraceOptions = null);
+        byte[] GetBlockRlp(Keccak blockHash);
+        byte[] GetBlockRlp(long number);
         byte[] GetDbValue(string dbName, byte[] key);
         string GetConfigValue(string category, string name);
     }
