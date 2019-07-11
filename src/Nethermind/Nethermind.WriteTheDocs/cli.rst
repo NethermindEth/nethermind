@@ -6,6 +6,8 @@ CLI access is not currently included in the Nethermind launcher but will be adde
 clique
 ^^^^^^
 
+ - clique.discard(address) - 
+
  - clique.getSigners() - 
 
  - clique.getSignersAnnotated() - 
@@ -22,22 +24,26 @@ clique
 
  - clique.propose(address, vote) - 
 
- - clique.discard(address) - 
-
 debug
 ^^^^^
 
+ - debug.getBlockRlp(number) - 
+
+ - debug.getBlockRlpByHash(hash) - 
+
  - debug.config(category, name) - 
 
- - debug.traceBlock(hash) - 
+ - debug.traceBlock(hash, options) - 
 
- - debug.traceBlockByHash(hash) - 
+ - debug.traceBlockByHash(hash, options) - 
 
- - debug.traceBlockByNumber(number) - 
+ - debug.traceBlockByNumber(number, options) - 
 
- - debug.traceTransactionByBlockAndIndex(hash) - 
+ - debug.traceTransaction(hash, options) - 
 
- - debug.traceTransactionByBlockhashAndIndex(hash) - 
+ - debug.traceTransactionByBlockAndIndex(hash, options) - 
+
+ - debug.traceTransactionByBlockhashAndIndex(hash, options) - 
 
 diag
 ^^^^
@@ -60,6 +66,8 @@ eth
  - eth.getBlockTransactionCountByNumber(blockParameter) - 
 
  - eth.getCode(address, blockParameter) - 
+
+ - eth.getStorageAt(address, positionIndex, blockParameter) - 
 
  - eth.getTransactionByBlockNumberAndIndex(blockParameter, index) - 
 
@@ -97,12 +105,10 @@ node
 
  - node.uri - 
 
-trace
-^^^^^
+parity
+^^^^^^
 
- - trace.replayBlockTransactions(blockNumber, traceTypes) - 
-
- - trace.replayTransaction(txHash, traceTypes) - 
+ - parity.pendingTransactions() - Returns the pending transactions using Parity format
 
 personal
 ^^^^^^^^
@@ -121,6 +127,17 @@ system
  - system.getVariable(name, defaultValue) - 
 
  - system.memory - 
+
+trace
+^^^^^
+
+ - trace.replayBlockTransactions(blockNumber, traceTypes) - Replays all transactions in a block returning the requested traces for each transaction.
+
+ - trace.replayTransaction(txHash, traceTypes) - Replays a transaction, returning the traces.
+
+ - trace.block(blockNumber) - Returns traces created at given block.
+
+ - trace.transaction(txHash) - Returns all traces of given transaction
 
 web3
 ^^^^

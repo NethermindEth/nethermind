@@ -26,11 +26,22 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     public interface IDebugModule : IModule
     {
+        [JsonRpcMethod(Description = "")]
         ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null);
+        
+        [JsonRpcMethod(Description = "")]
         ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex, GethTraceOptions options = null);
+        
+        [JsonRpcMethod(Description = "")]
         ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockHash, int txIndex, GethTraceOptions options = null);
+        
+        [JsonRpcMethod(Description = "")]
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null);
+        
+        [JsonRpcMethod(Description = "")]
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BigInteger number, GethTraceOptions options = null);
+        
+        [JsonRpcMethod(Description = "")]
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash, GethTraceOptions options = null);
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
@@ -41,20 +52,26 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<GcStats> debug_gcStats();
+        
+        [JsonRpcMethod(Description = "Retrieves a block in the RLP-serialized form.")]
         ResultWrapper<byte[]> debug_getBlockRlp(long number);
+        
+        [JsonRpcMethod(Description = "Retrieves a block in the RLP-serialized form.")]
         ResultWrapper<byte[]> debug_getBlockRlpByHash(Keccak hash);
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
-
         ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
+
+        [JsonRpcMethod(Description = "", IsImplemented = false)]
+        ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
-
-        ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
         ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key);
+        
+        [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. InitConfig.JsonRpcEnabled")]
         ResultWrapper<string> debug_getConfigValue(string category, string name);
     }
 }

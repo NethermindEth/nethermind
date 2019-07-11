@@ -229,6 +229,8 @@ InitConfig
    UDP port number for incoming discovery connections.
    default value: 30303
 
+ EnableRc7Fix
+
  EnableUnsecuredDevWallet
    If 'true' then it enables the wallet / key store in the application.
    default value: false
@@ -579,6 +581,7 @@ Sample configuration (mainnet)
           "ChainSpecPath" : null,
           "DiscoveryEnabled" : true,
           "DiscoveryPort" : 30303,
+          "EnableRc7Fix" : [MISSING_DOCS],
           "EnableUnsecuredDevWallet" : false,
           "GenesisHash" : null,
           "HttpHost" : "127.0.0.1",
