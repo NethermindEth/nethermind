@@ -138,9 +138,26 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<byte[]> debug_getBlockRlp(BlockParameter blockParameter)
+        public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber)
         {
-            throw new NotImplementedException();
+            byte[] rlp = _debugBridge.GetBlockRlp(blockNumber);
+            if (rlp == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorType.NotFound);    
+            }
+            
+            return ResultWrapper<byte[]>.Success(rlp);
+        }
+        
+        public ResultWrapper<byte[]> debug_getBlockRlpByHash(Keccak hash)
+        {
+            byte[] rlp = _debugBridge.GetBlockRlp(hash);
+            if (rlp == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Block {hash} was not found", ErrorType.NotFound);    
+            }
+            
+            return ResultWrapper<byte[]>.Success(rlp);
         }
 
         public ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter)

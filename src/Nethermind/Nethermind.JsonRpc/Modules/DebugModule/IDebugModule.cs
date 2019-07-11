@@ -41,7 +41,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<GcStats> debug_gcStats();
-        ResultWrapper<byte[]> debug_getBlockRlp(BlockParameter blockParameter);
+        ResultWrapper<byte[]> debug_getBlockRlp(long number);
+        ResultWrapper<byte[]> debug_getBlockRlpByHash(Keccak hash);
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);

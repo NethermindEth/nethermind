@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Dirichlet.Numerics;
@@ -34,14 +35,15 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
     {
         private readonly IConfigProvider _configProvider;
         private readonly ITracer _tracer;
+        private readonly IBlockTree _blockTree;
         private Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockchainProcessor receiptsProcessor)
+        public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockchainProcessor receiptsProcessor, IBlockTree blockTree)
         {
-            IBlockchainProcessor receiptsProcessor1 = receiptsProcessor ?? throw new ArgumentNullException(nameof(receiptsProcessor));
-            receiptsProcessor1.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
-            _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider)); 
+            receiptsProcessor.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
+            _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -50,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IDb codeDb = dbProvider.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
             IDb pendingTxsDb = dbProvider.PendingTxsDb ?? throw new ArgumentNullException(nameof(dbProvider.PendingTxsDb));
             IDb traceDb = dbProvider.TraceDb ?? throw new ArgumentNullException(nameof(dbProvider.TraceDb));
-            
+
             _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
             {
                 {DbNames.State, dbProvider.StateDb},
@@ -62,14 +64,14 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 {DbNames.Receipts, receiptsDb},
                 {DbNames.PendingTxs, pendingTxsDb},
                 {DbNames.Trace, traceDb}
-            };    
+            };
         }
-        
+
         public byte[] GetDbValue(string dbName, byte[] key)
         {
             return _dbMappings[dbName][key];
         }
-        
+
         public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default);
@@ -94,18 +96,33 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default);
         }
-        
+
         public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default);
         }
-        
+
+        public byte[] GetBlockRlp(Keccak blockHash)
+        {
+            return _dbMappings[DbNames.Blocks].Get(blockHash);
+        }
+
+        public byte[] GetBlockRlp(long number)
+        {
+            BlockHeader header = _blockTree.FindHeader(number);
+            if (header == null)
+            {
+                return null;
+            }
+
+            return _dbMappings[DbNames.Blocks].Get(header.Hash);
+        }
+
         public string GetConfigValue(string category, string name)
         {
             return _configProvider.GetRawValue(category, name);
         }
-        
+
         private AutoResetEvent _receiptProcessedEvent = new AutoResetEvent(false);
-       
     }
 }
