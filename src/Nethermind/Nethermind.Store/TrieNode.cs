@@ -177,7 +177,7 @@ namespace Nethermind.Store
             return keccak == null ? null : new TrieNode(NodeType.Unknown, keccak);
         }
 
-        public void ResolveNode(PatriciaTree tree)
+        private void ResolveNode(PatriciaTree tree, bool allowCaching)
         {
             try
             {
@@ -185,7 +185,7 @@ namespace Nethermind.Store
                 {
                     if (FullRlp == null)
                     {
-                        FullRlp = tree.GetNode(Keccak);
+                        FullRlp = tree.GetNode(Keccak, allowCaching);
                         DecoderContext = FullRlp.Bytes.AsRlpContext();
                     }
                 }
@@ -229,6 +229,11 @@ namespace Nethermind.Store
             {
                 throw new StateException($"Unable to resolve node {Keccak.ToString(true)}", e);
             }
+        }
+        
+        public void ResolveNode(PatriciaTree tree)
+        {
+            ResolveNode(tree, true);
         }
 
         public void ResolveKey(bool isRoot)
@@ -533,7 +538,7 @@ namespace Nethermind.Store
         {
             try
             {
-                ResolveNode(tree);
+                ResolveNode(tree, false);
             }
             catch (StateException)
             {
