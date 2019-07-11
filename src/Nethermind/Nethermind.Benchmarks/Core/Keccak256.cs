@@ -72,5 +72,11 @@ namespace Nethermind.Benchmarks.Core
         {
             return _hash.ComputeBytes(_a).GetBytes();
         }
+
+        [Benchmark]
+        public Span<byte> Improved()
+        {
+            return ValueKeccak.Compute(_a).BytesAsSpan;
+        }
     }
 }

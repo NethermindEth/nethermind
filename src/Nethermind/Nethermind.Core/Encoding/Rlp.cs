@@ -534,6 +534,39 @@ namespace Nethermind.Core.Encoding
 
             return position;
         }
+        
+        public static int Encode(Span<byte> buffer, int position, Span<byte> input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                buffer[position++] = OfEmptyByteArray.Bytes[0];
+                return position;
+            }
+
+            if (input.Length == 1 && input[0] < 128)
+            {
+                buffer[position++] = input[0];
+                return position;
+            }
+
+            if (input.Length < 56)
+            {
+                byte smallPrefix = (byte) (input.Length + 128);
+                buffer[position++] = smallPrefix;
+            }
+            else
+            {
+                int lengthOfLength = LengthOfLength(input.Length);
+                byte prefix = (byte) (183 + lengthOfLength);
+                buffer[position++] = prefix;
+                SerializeLength(buffer, position, input.Length);
+            }
+
+            input.CopyTo(buffer.Slice(position, input.Length));
+            position += input.Length;
+
+            return position;
+        }
 
         public static Rlp Encode(Span<byte> input)
         {

@@ -25,9 +25,68 @@ using Nethermind.HashLib;
 
 namespace Nethermind.Core.Crypto
 {
+    public unsafe struct ValueKeccak
+    {
+        private const int Size = 32;
+        public fixed byte Bytes[Size];
+
+        public Span<byte> BytesAsSpan
+        {
+            get
+            {
+                fixed (byte* bytes = Bytes) return new Span<byte>(bytes, Size);       
+            }
+        }
+        
+        /// <returns>
+        ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
+        /// </returns>
+        public static readonly ValueKeccak OfAnEmptyString = InternalCompute(new byte[] { });
+        
+        public static ValueKeccak Compute(byte[] input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                return OfAnEmptyString;
+            }
+
+            var result = new ValueKeccak();
+            byte* ptr = result.Bytes;
+            var output = new Span<byte>(ptr, KeccakHash.HASH_SIZE);
+            KeccakHash.ComputeHashBytes2(input, output);
+            return result;
+        }
+        
+        private static ValueKeccak InternalCompute(byte[] input)
+        {
+            var result = new ValueKeccak();
+            byte* ptr = result.Bytes;
+            var output = new Span<byte>(ptr, KeccakHash.HASH_SIZE);
+            KeccakHash.ComputeHashBytes2(input, output);
+            return result;
+        }
+
+        public static ValueKeccak From(Keccak keccak)
+        {
+            ValueKeccak result = new ValueKeccak();
+            new Span<byte>(keccak.Bytes).CopyTo(result.BytesAsSpan);
+            return result;
+        }
+        
+        public string ToString(bool withZeroX)
+        {
+            throw new NotImplementedException();
+        }        
+    }
+    
     [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>
     {
+        public static Keccak From(ValueKeccak keccak)
+        {
+            return new Keccak(keccak.BytesAsSpan.ToArray());
+        }
+        
         private const int Size = 32;
 
         public Keccak(string hexString)

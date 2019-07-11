@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Store
@@ -31,15 +32,15 @@ namespace Nethermind.Store
     
     public interface ITreeVisitor
     {
-        void VisitTree(Keccak rootHash, VisitContext context);
+        void VisitTree(ValueKeccak rootHash, VisitContext context);
         
-        void VisitMissingNode(Keccak nodeHash, VisitContext context);
+        void VisitMissingNode(ValueKeccak nodeHash, VisitContext context);
         
-        void VisitBranch(byte[] hashOrRlp, VisitContext context);
+        void VisitBranch(Span<byte> hashOrRlp, VisitContext context);
         
-        void VisitExtension(byte[] hashOrRlp, VisitContext context);
+        void VisitExtension(Span<byte> hashOrRlp, VisitContext context);
         
-        void VisitLeaf(byte[] hashOrRlp, VisitContext context);
+        void VisitLeaf(Span<byte> hashOrRlp, VisitContext context);
         
         void VisitCode(Keccak codeHash, byte[] code, VisitContext context);
     }

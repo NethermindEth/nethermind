@@ -423,6 +423,11 @@ namespace Nethermind.Core.Crypto
             ComputeHash(input, output);
             return output;
         }
+        
+        public static void ComputeHashBytes2(Span<byte> input, Span<byte> output, int size = HASH_SIZE)
+        {
+            ComputeHash(input, output);
+        }
 
         // compute a keccak hash (md) of given byte length from "in"
         public static void ComputeHash(Span<byte> input, Span<byte> output)

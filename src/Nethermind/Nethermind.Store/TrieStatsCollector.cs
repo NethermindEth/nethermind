@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -34,11 +35,11 @@ namespace Nethermind.Store
         
         public TrieStats Stats { get; } = new TrieStats();
         
-        public void VisitTree(Keccak rootHash, VisitContext context)
+        public void VisitTree(ValueKeccak rootHash, VisitContext context)
         {
         }
 
-        public void VisitMissingNode(Keccak nodeHash, VisitContext context)
+        public void VisitMissingNode(ValueKeccak nodeHash, VisitContext context)
         {
             if (context.IsStorage)
             {
@@ -50,7 +51,7 @@ namespace Nethermind.Store
             }
         }
 
-        public void VisitBranch(byte[] hashOrRlp, VisitContext context)
+        public void VisitBranch(Span<byte> hashOrRlp, VisitContext context)
         {
             if (context.IsStorage)
             {
@@ -62,7 +63,7 @@ namespace Nethermind.Store
             }
         }
 
-        public void VisitExtension(byte[] hashOrRlp, VisitContext context)
+        public void VisitExtension(Span<byte> hashOrRlp, VisitContext context)
         {
             if (context.IsStorage)
             {
@@ -74,7 +75,7 @@ namespace Nethermind.Store
             }
         }
         
-        public void VisitLeaf(byte[] hashOrRlp, VisitContext context)
+        public void VisitLeaf(Span<byte> hashOrRlp, VisitContext context)
         {
             if (Stats.NodesCount - _lastAccountNodeCount > 100000)
             {

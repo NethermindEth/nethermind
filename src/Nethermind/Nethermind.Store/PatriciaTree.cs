@@ -98,12 +98,12 @@ namespace Nethermind.Store
                         throw new ArgumentNullException($"Threading issue at {nameof(CurrentCommit)} - should not happen unless we use static objects somewhere here.");
                     }
 
-                    _db.Set(node.Keccak, node.FullRlp.Bytes);
+                    _db.Set(Keccak.From(node.Keccak.Value), node.FullRlp.Bytes);
                 }
 
                 // reset objects
                 RootRef.ResolveKey(true);
-                SetRootHash(RootRef.Keccak, true);
+                SetRootHash(Keccak.From(RootRef.Keccak.Value), true);
             }
         }
 
@@ -176,7 +176,7 @@ namespace Nethermind.Store
             node.ResolveKey(isRoot);
             if (node.FullRlp != null && node.FullRlp.Length >= 32)
             {
-                NodeCache.Value.Set(node.Keccak, node.FullRlp);
+                NodeCache.Value.Set(Keccak.From(node.Keccak.Value), node.FullRlp);
                 CurrentCommit.Enqueue(node);
             }
         }
@@ -184,7 +184,10 @@ namespace Nethermind.Store
         public void UpdateRootHash()
         {
             RootRef?.ResolveKey(true);
-            SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
+            if (RootRef != null && RootRef.Keccak != null)
+                SetRootHash(Keccak.From(RootRef.Keccak.Value), false);
+            else
+                SetRootHash(EmptyTreeHash, false);
         }
 
         private void SetRootHash(Keccak value, bool resetObjects)
@@ -683,7 +686,7 @@ namespace Nethermind.Store
         public void Accept(ITreeVisitor visitor, IDb codeDb)
         {
             VisitContext context = new VisitContext();
-            visitor.VisitTree(RootHash, context);
+            visitor.VisitTree(ValueKeccak.From(RootHash), context);
             RootRef?.Accept(visitor, this, codeDb, context);
         }
     }
