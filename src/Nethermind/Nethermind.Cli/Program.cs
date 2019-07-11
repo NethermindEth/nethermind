@@ -174,7 +174,7 @@ namespace Nethermind.Cli
                         
                         if (!File.Exists(HistoryFilePath))
                         {
-                            File.Create(HistoryFilePath);
+                            File.Create(HistoryFilePath).Dispose();
                         }
                         
                         if (!SecuredCommands.Any(sc => statement.Contains(sc)))
