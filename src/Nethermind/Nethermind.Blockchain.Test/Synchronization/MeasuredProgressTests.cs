@@ -31,21 +31,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
             MeasuredProgress measuredProgress = new MeasuredProgress();
             Assert.AreEqual(decimal.Zero, measuredProgress.CurrentPerSecond);
         }
-        
+
         [Test]
         public void Total_per_second_uninitialized()
         {
             MeasuredProgress measuredProgress = new MeasuredProgress();
             Assert.AreEqual(decimal.Zero, measuredProgress.TotalPerSecond);
         }
-        
+
         [Test]
         public void Current_value_uninitialized()
         {
             MeasuredProgress measuredProgress = new MeasuredProgress();
             Assert.AreEqual(0L, measuredProgress.CurrentValue);
         }
-        
+
         [Test]
         public void Update_0L()
         {
@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             measuredProgress.Update(0L);
             Assert.AreEqual(0L, measuredProgress.CurrentValue);
         }
-        
+
         [Test]
         public void Update_0L_total_per_second()
         {
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             measuredProgress.Update(0L);
             Assert.AreEqual(0L, measuredProgress.TotalPerSecond);
         }
-        
+
         [Test]
         public void Update_0L_current_per_second()
         {
@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             measuredProgress.Update(0L);
             Assert.AreEqual(0L, measuredProgress.CurrentPerSecond);
         }
-        
+
         [Test]
         public void Update_twice_total_per_second()
         {
@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             measuredProgress.Update(1L);
             Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 9M);
         }
-        
+
         [Test]
         public void Update_twice_current_per_second()
         {
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             measuredProgress.Update(1L);
             Assert.GreaterOrEqual(measuredProgress.CurrentPerSecond, 9M);
         }
-        
+
         [Test]
         public void Current_starting_from_non_zero()
         {
@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             measuredProgress.Update(20L);
             Assert.LessOrEqual(measuredProgress.CurrentPerSecond, 105M);
         }
-        
+
         [Test]
         public void Update_thrice_result_per_second()
         {
@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 14M);
             Assert.GreaterOrEqual(measuredProgress.CurrentPerSecond, 18M);
         }
-        
+
         [Test]
         public void After_ending_does_not_update_total_or_current()
         {
@@ -138,6 +138,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
             measuredProgress.SetMeasuringPoint();
             Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 14M);
             Assert.AreEqual(0M, measuredProgress.CurrentPerSecond);
+        }
+
+        [Test]
+        public void Has_ended_returns_true_when_ended()
+        {
+            MeasuredProgress measuredProgress = new MeasuredProgress();
+            measuredProgress.MarkEnd();
+            Assert.True(measuredProgress.HasEnded);
+        }
+        
+        [Test]
+        public void Has_ended_returns_false_when_ended()
+        {
+            MeasuredProgress measuredProgress = new MeasuredProgress();
+            Assert.False(measuredProgress.HasEnded);
         }
     }
 }
