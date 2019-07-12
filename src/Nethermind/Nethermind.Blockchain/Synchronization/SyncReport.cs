@@ -134,10 +134,10 @@ namespace Nethermind.Blockchain.Synchronization
                     WriteNotStartedReport();
                     break;
                 case SyncMode.Full:
-                    WriteFullSyncReport();
+                    WriteFullSyncReport("Full Sync");
                     break;
                 case SyncMode.Headers:
-                    WriteFullSyncReport();
+                    WriteFullSyncReport("Fast Blocks Recent");
                     break;
                 case SyncMode.FastBlocks:
                     WriteFastBlocksReport();
@@ -150,14 +150,14 @@ namespace Nethermind.Blockchain.Synchronization
             _logger.Info($"Sync not started yet... {(DateTime.UtcNow - StartTime).Seconds}s");
         }
 
-        private void WriteFullSyncReport()
+        private void WriteFullSyncReport(string prefix)
         {
             if (FullSyncBlocksKnown - FullSyncBlocksDownloaded.CurrentValue < 32)
             {
                 return;
             }
             
-            _logger.Info($"Full Sync | Blocks Downloaded {FullSyncBlocksDownloaded.CurrentValue} | current {FullSyncBlocksDownloaded.CurrentPerSecond:F2}bps | total {FullSyncBlocksDownloaded.TotalPerSecond:F2}bps");
+            _logger.Info($"{prefix} | Downloaded {FullSyncBlocksDownloaded.CurrentValue,9} | current {FullSyncBlocksDownloaded.CurrentPerSecond:F2}bps | total {FullSyncBlocksDownloaded.TotalPerSecond:F2}bps");
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
 
