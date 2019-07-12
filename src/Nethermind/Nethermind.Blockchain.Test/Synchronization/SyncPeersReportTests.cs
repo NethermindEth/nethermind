@@ -33,8 +33,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
             SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.Write();
-            report.Write();
+            report.WriteShortReport();
+            report.WriteFullReport();
         }
 
         [Test]
@@ -49,8 +49,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.Write();
-            report.Write();
+            report.WriteShortReport();
+            report.WriteFullReport();
         }
         
         [Test]
@@ -68,8 +68,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.Write();
-            report.Write();
+            report.WriteShortReport();
+            report.WriteFullReport();
         }
         
         [Test]
@@ -89,10 +89,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncPeerPool.AllPeers.Returns(peers);
 
             SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.Write();
+            report.WriteShortReport();
+            report.WriteFullReport();
 
             peer1.IsInitialized = true;
-            report.Write();
+            report.WriteShortReport();
+            report.WriteFullReport();
         }
         
         [Test]
@@ -113,10 +115,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncPeerPool.Allocations.Returns(peers.Select(p => new SyncPeerAllocation(p, "desc")));
 
             SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.Write();
+            report.WriteShortReport();
+            report.WriteFullReport();
 
             peer1.IsInitialized = true;
-            report.Write();
+            report.WriteShortReport();
+            report.WriteFullReport();
         }
     }
 }

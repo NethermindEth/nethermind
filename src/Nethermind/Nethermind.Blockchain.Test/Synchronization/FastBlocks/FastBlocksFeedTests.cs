@@ -162,7 +162,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _syncConfig.DownloadBodiesInFastSync = syncBodies;
             _syncConfig.DownloadReceiptsInFastSync = syncReceipts;
 
-            _feed = new FastBlocksFeed(_specProvider, _localBlockTree, _localReceiptStorage, _syncPeerPool, _syncConfig, LimboLogs.Instance);
+            _feed = new FastBlocksFeed(_specProvider, _localBlockTree, _localReceiptStorage, _syncPeerPool, _syncConfig, NullSyncReport.Instance, LimboLogs.Instance);
         }
 
         [Test]

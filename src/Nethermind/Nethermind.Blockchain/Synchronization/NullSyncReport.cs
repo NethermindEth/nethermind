@@ -16,23 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Logging;
-using NUnit.Framework;
-
-namespace Nethermind.Blockchain.Test.Synchronization
+namespace Nethermind.Blockchain.Synchronization
 {
-    [TestFixture]
-    public class SyncStatsTests
+    public class NullSyncReport : ISyncReport
     {
-        [Test]
-        public void Can_keep_going()
+        public void Dispose()
         {
-            SyncStats stats = new SyncStats("Test", NoErrorLimboLogs.Instance);
-            stats.Update(0, 1024, 1);
-            stats.Update(256, 1024, 1);
-            stats.Update(512, 1024, 1);
-            stats.Update(1024, 1024, 1);
         }
+        
+        public static NullSyncReport Instance = new NullSyncReport(); 
+
+        public MeasuredProgress FullSyncBlocksDownloaded { get; } = new MeasuredProgress();
+        public long FullSyncBlocksKnown { get; set; }
+        public SyncMode CurrentSyncMode { get; set; }
+        public long FastBlocksPivotNumber { get; set; }
+        public MeasuredProgress FastBlocksHeaders { get; } = new MeasuredProgress();
+        public MeasuredProgress FastBlocksBodies { get; } = new MeasuredProgress();
+        public MeasuredProgress FastBlocksReceipts { get; } = new MeasuredProgress();
     }
 }

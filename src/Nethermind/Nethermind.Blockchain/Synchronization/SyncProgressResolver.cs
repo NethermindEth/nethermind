@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Synchronization
             BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             BlockHeader head = _blockTree.Head;
             long bestFullState = head?.Number ?? 0;
-            long maxLookup = Math.Min(_maxLookup * 2, bestSuggested?.Number ?? 0L - bestFullState);
+            long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - bestFullState);
 
             for (int i = 0; i < maxLookup; i++)
             {
@@ -97,7 +97,6 @@ namespace Nethermind.Blockchain.Synchronization
             }
             
             return (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1
-                   && (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1
                    && (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1)
                    && (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1);
         }

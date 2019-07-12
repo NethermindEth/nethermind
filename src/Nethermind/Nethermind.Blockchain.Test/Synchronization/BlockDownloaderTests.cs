@@ -170,7 +170,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [TestCase(SyncBatchSize.Max * 8)]
         public async Task Happy_path(long headNumber)
         {
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -194,7 +194,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public async Task Can_sync_with_peer_when_it_times_out_on_full_batch()
         {
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -220,7 +220,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public async Task Headers_already_known()
         {
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -245,7 +245,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [TestCase(65L)]
         public async Task Peer_sends_just_one_item_when_advertising_more_blocks(long headNumber)
         {
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -267,7 +267,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public async Task Throws_on_null_best_peer()
         {
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, LimboLogs.Instance);
             Task task1 = blockDownloader.DownloadHeaders(null, SyncModeSelector.FullSyncThreshold, CancellationToken.None);
             await task1.ContinueWith(t => Assert.True(t.IsFaulted));
 
@@ -286,7 +286,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             peerInfo.TotalDifficulty = UInt256.MaxValue;
             peerInfo.HeadNumber = 1024;
 
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, LimboLogs.Instance);
             Task task = blockDownloader.DownloadHeaders(peerInfo, SyncModeSelector.FullSyncThreshold, CancellationToken.None);
             await task.ContinueWith(t => Assert.True(t.IsFaulted));
         }
@@ -294,7 +294,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public async Task Throws_on_invalid_seal()
         {
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.NeverValid, LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.NeverValid, NullSyncReport.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -311,7 +311,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public async Task Throws_on_invalid_header()
         {
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.NeverValid, TestSealValidator.AlwaysValid, LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.NeverValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -376,7 +376,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test, MaxTime(7000)]
         public async Task Can_cancel_seal_validation()
         {
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, new SlowSealValidator(), LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, new SlowSealValidator(), NullSyncReport.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -404,7 +404,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test, MaxTime(7000)]
         public async Task Can_cancel_adding_headers()
         {
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, new SlowHeaderValidator(), TestSealValidator.AlwaysValid, LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, new SlowHeaderValidator(), TestSealValidator.AlwaysValid, NullSyncReport.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -486,7 +486,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public async Task Faults_on_get_headers_faulting()
         {
-            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, LimboLogs.Instance);
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = new ThrowingPeer();
             PeerInfo peerInfo = new PeerInfo(syncPeer);
