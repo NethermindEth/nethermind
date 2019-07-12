@@ -36,7 +36,13 @@ namespace Nethermind.Blockchain.Synchronization
         private int _syncShortPeersReportFrequency = 60;
         private int _syncFullPeersReportFrequency = 120;
 
-        public SyncReport(IEthSyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ILogManager logManager)
+        public double TickTime
+        {
+            get => _timer.Interval;
+            set => _timer.Interval = value;
+        }
+
+        public SyncReport(IEthSyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ILogManager logManager, double tickTime = 1000)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -48,7 +54,8 @@ namespace Nethermind.Blockchain.Synchronization
             StartTime = DateTime.UtcNow;
             CurrentSyncMode = SyncMode.NotStarted;
 
-            _timer.Interval = 1000;
+            TickTime = tickTime;
+            _timer.Interval = TickTime;
             _timer.Elapsed += TimerOnElapsed;
             _timer.Start();
         }
@@ -145,6 +152,11 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void WriteFullSyncReport()
         {
+            if (FullSyncBlocksKnown - FullSyncBlocksDownloaded.CurrentValue < 32)
+            {
+                return;
+            }
+            
             _logger.Info($"Full Sync | Blocks Downloaded {FullSyncBlocksDownloaded.CurrentValue} | current {FullSyncBlocksDownloaded.CurrentPerSecond:F2}bps | total {FullSyncBlocksDownloaded.TotalPerSecond:F2}bps");
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
