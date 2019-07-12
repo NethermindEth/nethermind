@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.Receipts
                 _database.Set(txReceipt.TxHash, Rlp.Encode(txReceipt, behaviors).Bytes);
             }
             
-            LowestInsertedReceiptBlock = blockNumber;
+            LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
             _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
         }
 
