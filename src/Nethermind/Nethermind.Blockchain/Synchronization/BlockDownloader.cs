@@ -38,21 +38,21 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
+        private readonly ISyncReport _syncReport;
         private readonly ILogger _logger;
-
-        private SyncStats _syncStats;
+        
         private SyncBatchSize _syncBatchSize;
         private int _sinceLastTimeout;
 
-        public BlockDownloader(IBlockTree blockTree, IBlockValidator blockValidator, ISealValidator sealValidator, ILogManager logManager)
+        public BlockDownloader(IBlockTree blockTree, IBlockValidator blockValidator, ISealValidator sealValidator, ISyncReport syncReport, ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
+            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _syncBatchSize = new SyncBatchSize(logManager);
-            _syncStats = new SyncStats("Blocks", logManager);
         }
 
         public async Task<long> DownloadHeaders(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation)
@@ -137,7 +137,8 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (headersSynced > 0)
                 {
-                    _syncStats.Update(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber, 1);
+                    _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
+                    _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
                 }
             }
 
@@ -278,7 +279,8 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (blocksSynced > 0)
                 {
-                    _syncStats.Update(_blockTree.BestSuggestedHeader?.Number ?? 0, bestPeer.HeadNumber, 1);
+                    _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
+                    _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
                 }
             }
 

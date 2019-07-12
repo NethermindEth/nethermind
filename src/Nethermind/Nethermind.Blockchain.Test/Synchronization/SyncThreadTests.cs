@@ -297,7 +297,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 NullReceiptStorage.Instance,
                 blockValidator,
                 sealValidator,
-                syncPeerPool, syncConfig, downloader, logManager);
+                syncPeerPool, syncConfig, downloader, NullSyncReport.Instance, logManager);
             var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, syncConfig, logManager);
 
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();

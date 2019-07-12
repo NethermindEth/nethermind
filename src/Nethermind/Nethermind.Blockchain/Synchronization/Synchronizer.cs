@@ -47,7 +47,8 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISyncConfig _syncConfig;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly INodeDataDownloader _nodeDataDownloader;
-        
+        private readonly ISyncReport _syncReport;
+
         private readonly BlockDownloader _blockDownloader;
         private readonly FastBlocksDownloader _fastBlockDownloader;
         
@@ -72,6 +73,7 @@ namespace Nethermind.Blockchain.Synchronization
             IEthSyncPeerPool peerPool,
             ISyncConfig syncConfig,
             INodeDataDownloader nodeDataDownloader,
+            ISyncReport syncReport,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -81,15 +83,16 @@ namespace Nethermind.Blockchain.Synchronization
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
+            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, receiptStorage, _nodeDataDownloader, syncConfig, logManager);
             _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
 
-            _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, logManager);
+            _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, syncReport, logManager);
 
             if (syncConfig.FastBlocks)
             {
-                FastBlocksFeed feed = new FastBlocksFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, syncConfig, logManager);
+                FastBlocksFeed feed = new FastBlocksFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, syncConfig, _syncReport, logManager);
                 _fastBlockDownloader = new FastBlocksDownloader(_syncPeerPool, feed, blockValidator, sealValidator, logManager);
             }
         }
@@ -226,6 +229,8 @@ namespace Nethermind.Blockchain.Synchronization
                 if (!_blockTree.CanAcceptNewBlocks) continue;
 
                 _syncMode.Update();
+                _syncReport.CurrentSyncMode = _syncMode.Current;
+                
                 if (_blocksSyncAllocation == null)
                 {
                     AllocateBlocksSync();

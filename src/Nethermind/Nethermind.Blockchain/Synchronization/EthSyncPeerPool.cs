@@ -37,11 +37,10 @@ namespace Nethermind.Blockchain.Synchronization
         private const decimal _minDiffPercentageForLatencySwitch = 0.10m;
         private const int _minDiffForLatencySwitch = 5;
         
+        private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
         private readonly INodeStatsManager _stats;
         private readonly ISyncConfig _syncConfig;
-        private readonly SyncPeersReport _syncPeersReport;
-        private readonly ILogger _logger;
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
         private ConcurrentDictionary<SyncPeerAllocation, object> _allocations = new ConcurrentDictionary<SyncPeerAllocation, object>();
@@ -85,15 +84,18 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        public EthSyncPeerPool(IBlockTree blockTree, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig,
-            int peersMaxCount, ILogManager logManager)
+        public EthSyncPeerPool(
+            IBlockTree blockTree,
+            INodeStatsManager nodeStatsManager,
+            ISyncConfig syncConfig,
+            int peersMaxCount,
+            ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             PeerMaxCount = peersMaxCount;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _syncPeersReport = new SyncPeersReport(this, _stats, logManager);
         }
 
         private async Task RunRefreshPeerLoop()
@@ -209,7 +211,6 @@ namespace Nethermind.Blockchain.Synchronization
                     _upgradeTimer.Enabled = false;
                     UpdateAllocations("TIMER");
                     DropUselessPeers();
-                    DisplayPeersReport();
                 }
                 catch (Exception exception)
                 {
@@ -222,11 +223,6 @@ namespace Nethermind.Blockchain.Synchronization
             };
 
             _upgradeTimer.Start();
-        }
-
-        private void DisplayPeersReport()
-        {
-            _syncPeersReport.Write();
         }
 
         private DateTime _lastUselessDrop = DateTime.UtcNow;
