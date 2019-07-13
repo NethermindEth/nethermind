@@ -271,10 +271,8 @@ namespace Nethermind.PerfTest
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
-            
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true, false);
-            
-            foreach (KeyValuePair<Address, (UInt256 Balance, byte[] Code)> allocation in chainSpec.Allocations)
+            foreach (KeyValuePair<Address, ChainSpecAllocation> allocation in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(allocation.Key, allocation.Value.Balance);
                 if (allocation.Value.Code != null)

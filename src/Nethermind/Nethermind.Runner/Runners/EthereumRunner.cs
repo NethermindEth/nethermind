@@ -24,6 +24,8 @@ using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Grpc.Core;
+using Nethermind.AuRa;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
@@ -47,7 +49,6 @@ using Nethermind.DataMarketplace.Initializers;
 using Nethermind.DataMarketplace.Subprotocols.Serializers;
 using Nethermind.Db;
 using Nethermind.Db.Config;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.EthStats;
 using Nethermind.EthStats.Clients;
 using Nethermind.EthStats.Integrations;
@@ -157,7 +158,8 @@ namespace Nethermind.Runner.Runners
         private ISyncConfig _syncConfig;
         public IEnode Enode => _enode;
         private IStaticNodesManager _staticNodesManager;
-        private TxPoolInfoProvider _txPoolInfoProvider;
+        private ITransactionProcessor _transactionProcessor;
+        private ITxPoolInfoProvider _txPoolInfoProvider;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
@@ -465,6 +467,11 @@ namespace Nethermind.Runner.Runners
 
                     _sealValidator = new EthashSealValidator(_logManager, difficultyCalculator, new Ethash(_logManager));
                     break;
+                case SealEngineType.AuRa:
+                    _sealer = new AuRaSealer();
+                    _sealValidator = new AuRaSealValidator(_logManager);
+                    _rewardCalculator = NoBlockRewards.Instance;
+                    break;
                 default:
                     throw new NotSupportedException($"Seal engine type {_chainSpec.SealEngineType} is not supported in Nethermind");
             }
@@ -513,7 +520,7 @@ namespace Nethermind.Runner.Runners
                 _specProvider,
                 _logManager);
 
-            var transactionProcessor = new TransactionProcessor(
+            _transactionProcessor = new TransactionProcessor(
                 _specProvider,
                 stateProvider,
                 storageProvider,
@@ -524,7 +531,7 @@ namespace Nethermind.Runner.Runners
                 _specProvider,
                 _blockValidator,
                 _rewardCalculator,
-                transactionProcessor,
+                _transactionProcessor,
                 _dbProvider.StateDb,
                 _dbProvider.CodeDb,
                 _dbProvider.TraceDb,
@@ -714,7 +721,7 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsInfo) _logger.Info($"Node address : {_enode.Address} (do not use as an account)");
         }
 
-        private static void LoadGenesisBlock(
+        private void LoadGenesisBlock(
             ChainSpec chainSpec,
             Keccak expectedGenesisHash,
             IBlockTree blockTree,
@@ -724,8 +731,11 @@ namespace Nethermind.Runner.Runners
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (blockTree.Genesis != null)
             {
+                ValidateGenesisHash(expectedGenesisHash);
                 return;
             }
+
+            Block genesis = chainSpec.Genesis;
 
             foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations)
             {
@@ -735,11 +745,20 @@ namespace Nethermind.Runner.Runners
                     Keccak codeHash = stateProvider.UpdateCode(allocation.Code);
                     stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
                 }
+
+                if (allocation.Constructor != null)
+                {
+                    // shall we increment nonce?
+                    Transaction constructorTransaction = new Transaction();
+                    constructorTransaction.IsConstructorTransaction = true;
+                    constructorTransaction.SenderAddress = address;
+                    constructorTransaction.Init = allocation.Constructor;
+                    constructorTransaction.GasLimit = genesis.GasLimit;
+                    _transactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
+                }
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);
-
-            Block genesis = chainSpec.Genesis;
             genesis.StateRoot = stateProvider.StateRoot;
             genesis.Hash = BlockHeader.CalculateHash(genesis.Header);
 
@@ -763,9 +782,14 @@ namespace Nethermind.Runner.Runners
             }
 
             // if expectedGenesisHash is null here then it means that we do not care about the exact value in advance (e.g. in test scenarios)
-            if (expectedGenesisHash != null && blockTree.Genesis.Hash != expectedGenesisHash)
+            ValidateGenesisHash(expectedGenesisHash);
+        }
+
+        private void ValidateGenesisHash(Keccak expectedGenesisHash)
+        {
+            if (expectedGenesisHash != null && _blockTree.Genesis.Hash != expectedGenesisHash)
             {
-                throw new Exception($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {blockTree.Genesis.Hash}");
+                throw new Exception($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {_blockTree.Genesis.Hash}");
             }
         }
 

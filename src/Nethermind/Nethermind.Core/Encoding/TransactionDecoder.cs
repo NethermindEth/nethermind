@@ -21,6 +21,7 @@ using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Encoding
 {
@@ -35,7 +36,8 @@ namespace Nethermind.Core.Encoding
             Transaction transaction = new Transaction();
             transaction.Nonce = context.DecodeUInt256();
             transaction.GasPrice = context.DecodeUInt256();
-            transaction.GasLimit = context.DecodeUInt256();
+            UInt256 gasLimit = context.DecodeUInt256();
+            transaction.GasLimit = gasLimit > new UInt256(long.MaxValue) ? long.MaxValue : (long)gasLimit;
             transaction.To = context.DecodeAddress();
             transaction.Value = context.DecodeUInt256();
             if (transaction.To == null)

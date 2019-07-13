@@ -71,7 +71,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder WithGasLimit(UInt256 gasLimit)
+        public TransactionBuilder WithGasLimit(long gasLimit)
         {
             TestObjectInternal.GasLimit = gasLimit;
             return this;

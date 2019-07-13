@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Test
             UInt256 gasPrice, Address to, byte[] data, PrivateKey privateKey)
             => Build.A.Transaction
                 .WithNonce(nonce)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((long)gasLimit)
                 .WithGasPrice(gasPrice)
                 .WithData(data)
                 .To(to)
