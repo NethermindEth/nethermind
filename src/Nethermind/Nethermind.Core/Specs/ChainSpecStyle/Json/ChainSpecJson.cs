@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Specs.GenesisFileStyle.Json;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpecStyle.Json

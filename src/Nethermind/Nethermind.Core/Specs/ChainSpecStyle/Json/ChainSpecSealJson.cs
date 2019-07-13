@@ -21,6 +21,6 @@ namespace Nethermind.Core.Specs.ChainSpecStyle.Json
     internal class ChainSpecSealJson
     {
         public ChainSpecEthereumSealJson Ethereum { get; set; }
-        public ChainSpecEthereumSealJson AuthorityRound { get; set; }
+        public ChainSpecAuRaSealJson AuthorityRound { get; set; }
     }
 }

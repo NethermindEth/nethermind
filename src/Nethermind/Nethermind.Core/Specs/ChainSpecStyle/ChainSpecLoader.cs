@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs.ChainSpecStyle.Json;
+using Nethermind.Core.Specs.GenesisFileStyle.Json;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpecStyle
@@ -56,8 +57,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 LoadEngine(chainSpecJson, chainSpec);
                 LoadAllocations(chainSpecJson, chainSpec);
                 LoadBootnodes(chainSpecJson, chainSpec);
-                LoadTransitions(chainSpecJson, chainSpec);
                 LoadParameters(chainSpecJson, chainSpec);
+                LoadTransitions(chainSpecJson, chainSpec);
 
                 return chainSpec;
             }
@@ -71,19 +72,19 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         {
             chainSpec.Parameters = new ChainParameters();
             chainSpec.Parameters.AccountStartNonce = chainSpecJson.Params.AccountStartNonce ?? UInt256.Zero;
-            chainSpec.Parameters.GasLimitBoundDivisor= chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400;
+            chainSpec.Parameters.GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400;
             chainSpec.Parameters.MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32;
             chainSpec.Parameters.MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000;
-            chainSpec.Parameters.MaxCodeSize = chainSpecJson.Params.MaxCodeSize ?? 24576;
+            chainSpec.Parameters.MaxCodeSize = chainSpecJson.Params.MaxCodeSize ?? long.MaxValue;
             chainSpec.Parameters.MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition ?? 0;
             chainSpec.Parameters.Registrar = chainSpecJson.Params.EnsRegistrar;
             chainSpec.Parameters.ForkBlock = chainSpecJson.Params.ForkBlock;
             chainSpec.Parameters.ForkCanonHash = chainSpecJson.Params.ForkCanonHash;
-            chainSpec.Parameters.Eip150Transition = chainSpecJson.Params.Eip150Transition;
-            chainSpec.Parameters.Eip160Transition = chainSpecJson.Params.Eip160Transition;
-            chainSpec.Parameters.Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition;
-            chainSpec.Parameters.Eip161dTransition = chainSpecJson.Params.Eip161dTransition;
-            chainSpec.Parameters.Eip155Transition = chainSpecJson.Params.Eip155Transition;
+            chainSpec.Parameters.Eip150Transition = chainSpecJson.Params.Eip150Transition ?? 0;
+            chainSpec.Parameters.Eip160Transition = chainSpecJson.Params.Eip160Transition ?? 0;
+            chainSpec.Parameters.Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition ?? 0;
+            chainSpec.Parameters.Eip161dTransition = chainSpecJson.Params.Eip161dTransition ?? 0;
+            chainSpec.Parameters.Eip155Transition = chainSpecJson.Params.Eip155Transition ?? 0;
             chainSpec.Parameters.Eip140Transition = chainSpecJson.Params.Eip140Transition;
             chainSpec.Parameters.Eip211Transition = chainSpecJson.Params.Eip211Transition;
             chainSpec.Parameters.Eip214Transition = chainSpecJson.Params.Eip214Transition;
@@ -103,10 +104,10 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 chainSpec.DaoForkBlockNumber = chainSpecJson.Engine.Ethash.DaoHardForkTransition;
             }
 
-            chainSpec.TangerineWhistleBlockNumber = chainSpecJson.Params.Eip150Transition;
-            chainSpec.SpuriousDragonBlockNumber = chainSpecJson.Params.Eip160Transition;
-            chainSpec.ByzantiumBlockNumber = chainSpecJson.Params.Eip140Transition;
-            chainSpec.ConstantinopleBlockNumber = chainSpecJson.Params.Eip145Transition;
+            chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
+            chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
+            chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
+            chainSpec.ConstantinopleBlockNumber = chainSpec.Parameters.Eip145Transition;
         }
 
         private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
@@ -124,7 +125,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 chainSpec.AuRa.Validators = new Dictionary<long, Address>();
                 foreach ((long blockNumber, ChainSpecJson.AuRaValidatorJson validator) in chainSpecJson.Engine.AuthorityRound.Validators.Multi)
                 {
-                    chainSpec.AuRa.Validators.Add(blockNumber, validator.SafeContract);    
+                    chainSpec.AuRa.Validators.Add(blockNumber, validator.SafeContract);
                 }
             }
             else if (chainSpecJson.Engine?.Clique != null)
@@ -179,6 +180,10 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
 
             var nonce = chainSpecJson.Genesis.Seal.Ethereum?.Nonce ?? 0;
             var mixHash = chainSpecJson.Genesis.Seal.Ethereum?.MixHash ?? Keccak.Zero;
+
+            var signature = chainSpecJson.Genesis.Seal.AuthorityRound?.Signature;
+            var step = chainSpecJson.Genesis.Seal.AuthorityRound?.Step;
+
             var parentHash = chainSpecJson.Genesis.ParentHash;
             var timestamp = chainSpecJson.Genesis.Timestamp;
             var difficulty = chainSpecJson.Genesis.Difficulty;
@@ -216,34 +221,18 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 return;
             }
 
-            chainSpec.Allocations = new Dictionary<Address, (UInt256 Balance, byte[] Code)>();
+            chainSpec.Allocations = new Dictionary<Address, ChainSpecAllocation>();
             foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
             {
-                byte[] codeValue = null;
-                UInt256 allocationValue = UInt256.Zero;
-                if (account.Value.Balance != null)
+                if (account.Value.BuiltIn != null && account.Value.Balance == UInt256.Zero)
                 {
-                    bool balanceParsingResult = UInt256.TryParse(account.Value.Balance, out allocationValue);
-                    if (!balanceParsingResult)
-                    {
-                        balanceParsingResult = UInt256.TryParse(account.Value.Balance.Replace("0x", string.Empty), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out allocationValue);
-                    }
-
-                    if (!balanceParsingResult)
-                    {
-                        throw new InvalidDataException($"Cannot recognize allocation value format in {account.Value.Balance}");
-                    }
+                    continue;
                 }
 
-                if (account.Value.Code != null)
-                {
-                    codeValue = Bytes.FromHexString(account.Value.Code);
-                }
-
-                if (account.Value.Balance != null || account.Value.Code != null)
-                {
-                    chainSpec.Allocations[new Address(account.Key)] = (allocationValue, codeValue);
-                }
+                chainSpec.Allocations[new Address(account.Key)] = new ChainSpecAllocation(
+                    account.Value.Balance,
+                    account.Value.Code,
+                    account.Value.Constructor);
             }
         }
 

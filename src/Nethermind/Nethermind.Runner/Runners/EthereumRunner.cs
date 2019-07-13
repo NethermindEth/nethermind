@@ -40,6 +40,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Core.Specs.GenesisFileStyle;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Initializers;
