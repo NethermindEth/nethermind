@@ -91,6 +91,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             foreach (long releaseStartBlock in transitionBlocks)
             {
                 ReleaseSpec releaseSpec = new ReleaseSpec();
+                releaseSpec.MaximumUncleCount = (_chainSpec.AuRa?.MaximumUncleCountTransition ?? long.MaxValue) >= releaseStartBlock ? _chainSpec.AuRa?.MaximumUncleCount ?? 2 : 2; 
                 releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
                 releaseSpec.Registrar = _chainSpec.Parameters.Registrar;
                 releaseSpec.MaximumExtraDataSize = _chainSpec.Parameters.MaximumExtraDataSize;

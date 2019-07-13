@@ -44,6 +44,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         
         public SealEngineType SealEngineType { get; set; }
         
+        public AuRaParameters AuRa { get; set; }
+        
         public CliqueParameters Clique { get; set; }
         
         public EthashParameters Ethash { get; set; }

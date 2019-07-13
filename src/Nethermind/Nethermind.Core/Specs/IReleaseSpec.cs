@@ -33,6 +33,7 @@ namespace Nethermind.Core.Specs
         UInt256 BlockReward { get; }
         long DifficultyBombDelay { get; }
         long DifficultyBoundDivisor { get; }
+        int MaximumUncleCount { get; }
         
         /// <summary>
         /// ---

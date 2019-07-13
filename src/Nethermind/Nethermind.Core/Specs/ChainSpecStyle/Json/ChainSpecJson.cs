@@ -80,9 +80,50 @@ namespace Nethermind.Core.Specs.ChainSpecStyle.Json
             public UInt256? BlockReward { get; set; }
         }
         
+        internal class AuraEngineParamsJson
+        {
+            public int StepDuration { get; set; }
+
+            public UInt256 BlockReward { get; set; }
+
+            public long MaximumUncleCountTransition { get; set; }
+        
+            public int MaximumUncleCount { get; set; }
+            
+            public Address BlockRewardContractAddress { get; set; }
+            
+            public long BlockRewardContractTransition { get; set; }
+            
+            public AuRaValidatorsJson Validators { get; set; }
+        }
+
+        internal class AuRaValidatorsJson
+        {
+            public Dictionary<long, AuRaValidatorJson> Multi { get; set; }
+        }
+        
+        internal class AuRaValidatorJson
+        {
+            public Address SafeContract { get; set; }
+        }
+
         internal class AuraEngineJson
         {
-            public Dictionary<string, object> Params { get; set; }
+            public int StepDuration  => Params.StepDuration;
+
+            public UInt256 BlockReward  => Params.BlockReward;
+
+            public long MaximumUncleCountTransition => Params.MaximumUncleCountTransition;
+
+            public int MaximumUncleCount => Params.MaximumUncleCount;
+            
+            public Address BlockRewardContractAddress => Params.BlockRewardContractAddress;
+            
+            public long BlockRewardContractTransition => Params.BlockRewardContractTransition;
+            
+            public AuRaValidatorsJson Validators => Params.Validators;
+            
+            public AuraEngineParamsJson Params { get; set; }
         }
         
         internal class NethDevJson

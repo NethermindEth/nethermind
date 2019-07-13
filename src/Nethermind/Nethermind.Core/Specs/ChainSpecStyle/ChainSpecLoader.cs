@@ -114,6 +114,18 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             if (chainSpecJson.Engine?.AuthorityRound != null)
             {
                 chainSpec.SealEngineType = SealEngineType.AuRa;
+                chainSpec.AuRa = new AuRaParameters();
+                chainSpec.AuRa.MaximumUncleCount = chainSpecJson.Engine.AuthorityRound.MaximumUncleCount;
+                chainSpec.AuRa.MaximumUncleCountTransition = chainSpecJson.Engine.AuthorityRound.MaximumUncleCountTransition;
+                chainSpec.AuRa.StepDuration = chainSpecJson.Engine.AuthorityRound.StepDuration;
+                chainSpec.AuRa.BlockReward = chainSpecJson.Engine.AuthorityRound.BlockReward;
+                chainSpec.AuRa.BlockRewardContractAddress = chainSpecJson.Engine.AuthorityRound.BlockRewardContractAddress;
+                chainSpec.AuRa.BlockRewardContractTransition = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransition;
+                chainSpec.AuRa.Validators = new Dictionary<long, Address>();
+                foreach ((long blockNumber, ChainSpecJson.AuRaValidatorJson validator) in chainSpecJson.Engine.AuthorityRound.Validators.Multi)
+                {
+                    chainSpec.AuRa.Validators.Add(blockNumber, validator.SafeContract);    
+                }
             }
             else if (chainSpecJson.Engine?.Clique != null)
             {

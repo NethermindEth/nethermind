@@ -38,11 +38,19 @@ jobs:
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
-          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Blockchain.Test;
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.AuRa.Test
+        else 
+          dotnet test src/Nethermind/Nethermind.AuRa.Test; 
+        fi
+      name: "Nethermind.AuRa.Test"
+    - script: 
+      - git -c submodule."src/tests".update=none submodule update --init
+      - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Blockchain.Test
         else 
           dotnet test src/Nethermind/Nethermind.Blockchain.Test; 
         fi
-      name: "Nethermind.Blockchain.Test"
+      name: "Nethermind.Blockchain.Test"    
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
