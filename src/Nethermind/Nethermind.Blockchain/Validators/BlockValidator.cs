@@ -65,24 +65,32 @@ namespace Nethermind.Blockchain.Validators
         public bool ValidateSuggestedBlock(Block block)
         {
             Transaction[] txs = block.Transactions;
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
+            
             for (int i = 0; i < txs.Length; i++)
             {
-                if (!_txValidator.IsWellFormed(txs[i], _specProvider.GetSpec(block.Number)))
+                if (!_txValidator.IsWellFormed(txs[i], releaseSpec))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid transaction ({txs[i].Hash})");
                     return false;
                 }
             }
 
+            if (releaseSpec.MaximumUncleCount < block.Ommers.Length)
+            {
+                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - uncle count is {block.Ommers.Length} (MAX: {releaseSpec.MaximumUncleCount})");
+                return false;
+            }
+
             if (block.Header.OmmersHash != block.CalculateOmmersHash())
             {
-                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid ommers hash");
+                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles hash");
                 return false;
             }
             
             if (!_ommersValidator.Validate(block.Header, block.Ommers))
             {
-                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid ommers");
+                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles");
                 return false;
             }
             
