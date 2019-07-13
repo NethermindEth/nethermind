@@ -19,6 +19,7 @@
 using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Encoding
@@ -149,7 +150,7 @@ namespace Nethermind.Core.Encoding
             elements[5] = Rlp.Encode(item.ReceiptsRoot);
             elements[6] = Rlp.Encode(item.Bloom);
             elements[7] = Rlp.Encode(item.Difficulty);
-            elements[8] = Rlp.Encode((UInt256)item.Number);
+            elements[8] = Rlp.Encode((UInt256) item.Number);
             elements[9] = Rlp.Encode(item.GasLimit);
             elements[10] = Rlp.Encode(item.GasUsed);
             elements[11] = Rlp.Encode(item.Timestamp);
@@ -158,6 +159,13 @@ namespace Nethermind.Core.Encoding
             {
                 elements[13] = Rlp.Encode(item.MixHash);
                 elements[14] = Rlp.Encode(item.Nonce);
+            }
+
+            Rlp rlp = Rlp.Encode(elements);
+            if (item.AuRaSignature != null)
+            {
+                // do not care about performance here for now since we do not know yet how exactly this works
+                return new Rlp(Bytes.Concat(rlp.Bytes, item.AuRaSignature));
             }
 
             return Rlp.Encode(elements);
@@ -170,7 +178,7 @@ namespace Nethermind.Core.Encoding
                 stream.Write(Rlp.OfEmptySequence.Bytes);
                 return;
             }
-            
+
             bool forSealing = (rlpBehaviors & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
             Rlp.StartSequence(stream, GetContentLength(item, rlpBehaviors));
             Rlp.Encode(stream, item.ParentHash);
@@ -187,7 +195,11 @@ namespace Nethermind.Core.Encoding
             Rlp.Encode(stream, item.Timestamp);
             Rlp.Encode(stream, item.ExtraData);
             
-            if (!forSealing)
+            if (item.AuRaSignature != null)
+            {
+                stream.Write(item.AuRaSignature); // is AuRa signature appended in a non-RLP form as in spec?
+            }
+            else if (!forSealing)
             {
                 Rlp.Encode(stream, item.MixHash);
                 Rlp.Encode(stream, item.Nonce);
@@ -200,7 +212,7 @@ namespace Nethermind.Core.Encoding
             {
                 return 0;
             }
-            
+
             bool forSealing = (rlpBehaviors & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
             int contentLength = 0
                                 + Rlp.LengthOf(item.ParentHash)
@@ -213,11 +225,13 @@ namespace Nethermind.Core.Encoding
                                 + Rlp.LengthOf(item.Difficulty)
                                 + Rlp.LengthOf(item.Number)
                                 + Rlp.LengthOf(item.GasLimit)
-                                + Rlp.LengthOf(item.GasUsed)
-                                + Rlp.LengthOf(item.Timestamp)
-                                + Rlp.LengthOf(item.ExtraData);
-
-            if (!forSealing)
+                                + Rlp.LengthOf(item.GasUsed);
+            
+            if (item.AuRaSignature != null)
+            {
+//                contentLength += item.AuRaSignature.Length;
+            }
+            else if (!forSealing)
             {
                 contentLength += Rlp.LengthOf(item.MixHash) + Rlp.LengthOf(item.Nonce);
             }
@@ -227,7 +241,6 @@ namespace Nethermind.Core.Encoding
 
         public int GetLength(BlockHeader item, RlpBehaviors rlpBehaviors)
         {
-          
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
     }

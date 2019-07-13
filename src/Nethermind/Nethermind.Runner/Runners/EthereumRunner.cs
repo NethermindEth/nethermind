@@ -24,7 +24,6 @@ using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Grpc.Core;
 using Nethermind.AuRa;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;

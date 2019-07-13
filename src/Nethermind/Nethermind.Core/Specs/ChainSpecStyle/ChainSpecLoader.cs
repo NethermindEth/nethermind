@@ -181,7 +181,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             var nonce = chainSpecJson.Genesis.Seal.Ethereum?.Nonce ?? 0;
             var mixHash = chainSpecJson.Genesis.Seal.Ethereum?.MixHash ?? Keccak.Zero;
 
-            var signature = chainSpecJson.Genesis.Seal.AuthorityRound?.Signature;
+            var auRaSignature = chainSpecJson.Genesis.Seal.AuthorityRound?.Signature;
             var step = chainSpecJson.Genesis.Seal.AuthorityRound?.Step;
 
             var parentHash = chainSpecJson.Genesis.ParentHash;
@@ -210,6 +210,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesisHeader.StateRoot = Keccak.EmptyTreeHash;
             genesisHeader.TxRoot = Keccak.EmptyTreeHash;
+            genesisHeader.AuRaSignature = auRaSignature;
 
             chainSpec.Genesis = new Block(genesisHeader);
         }
