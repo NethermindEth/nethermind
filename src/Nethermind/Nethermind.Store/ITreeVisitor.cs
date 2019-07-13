@@ -39,7 +39,7 @@ namespace Nethermind.Store
         
         void VisitExtension(byte[] hashOrRlp, VisitContext context);
         
-        void VisitLeaf(byte[] hashOrRlp, VisitContext context);
+        void VisitLeaf(byte[] hashOrRlp, VisitContext context, byte[] value = null);
         
         void VisitCode(Keccak codeHash, byte[] code, VisitContext context);
     }

@@ -73,8 +73,8 @@ namespace Nethermind.Store
                 Stats.StateExtensionCount++;
             }
         }
-        
-        public void VisitLeaf(byte[] hashOrRlp, VisitContext context)
+
+        public void VisitLeaf(byte[] hashOrRlp, VisitContext context, byte[] value = null)
         {
             if (Stats.NodesCount - _lastAccountNodeCount > 100000)
             {

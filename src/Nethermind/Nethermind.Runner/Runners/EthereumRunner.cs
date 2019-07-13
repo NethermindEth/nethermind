@@ -48,6 +48,7 @@ using Nethermind.DataMarketplace.Initializers;
 using Nethermind.DataMarketplace.Subprotocols.Serializers;
 using Nethermind.Db;
 using Nethermind.Db.Config;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.EthStats;
 using Nethermind.EthStats.Clients;
 using Nethermind.EthStats.Integrations;
@@ -754,11 +755,16 @@ namespace Nethermind.Runner.Runners
                     constructorTransaction.Init = allocation.Constructor;
                     constructorTransaction.GasLimit = genesis.GasLimit;
                     _transactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
+                    _stateProvider.SubtractFromBalance(address, UInt256.One, specProvider.GenesisSpec);
+                    _stateProvider.DecrementNonce(address);
                 }
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);
             genesis.StateRoot = stateProvider.StateRoot;
+            
+            _logger.Warn(stateProvider.DumpState());
+            
             genesis.Hash = BlockHeader.CalculateHash(genesis.Header);
 
             ManualResetEventSlim genesisProcessedEvent = new ManualResetEventSlim(false);
