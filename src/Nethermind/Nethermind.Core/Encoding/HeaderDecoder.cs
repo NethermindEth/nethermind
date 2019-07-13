@@ -225,7 +225,9 @@ namespace Nethermind.Core.Encoding
                                 + Rlp.LengthOf(item.Difficulty)
                                 + Rlp.LengthOf(item.Number)
                                 + Rlp.LengthOf(item.GasLimit)
-                                + Rlp.LengthOf(item.GasUsed);
+                                + Rlp.LengthOf(item.GasUsed)
+                                + Rlp.LengthOf(item.Timestamp)
+                                + Rlp.LengthOf(item.ExtraData);
             
             if (item.AuRaSignature != null)
             {

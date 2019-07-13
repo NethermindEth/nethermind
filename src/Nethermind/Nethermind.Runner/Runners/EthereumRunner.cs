@@ -748,15 +748,15 @@ namespace Nethermind.Runner.Runners
 
                 if (allocation.Constructor != null)
                 {
-                    // shall we increment nonce?
                     Transaction constructorTransaction = new Transaction();
                     constructorTransaction.IsConstructorTransaction = true;
                     constructorTransaction.SenderAddress = address;
                     constructorTransaction.Init = allocation.Constructor;
                     constructorTransaction.GasLimit = genesis.GasLimit;
                     _transactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
-                    _stateProvider.SubtractFromBalance(address, UInt256.One, specProvider.GenesisSpec);
-                    _stateProvider.DecrementNonce(address);
+                    // shall we increment nonce?
+//                    _stateProvider.SubtractFromBalance(address, UInt256.One, specProvider.GenesisSpec);
+//                    _stateProvider.DecrementNonce(address);
                 }
             }
 
