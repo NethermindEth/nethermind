@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,11 +16,32 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Specs.ChainSpecStyle.Json
+using Nethermind.Dirichlet.Numerics;
+
+namespace Nethermind.Core.Specs.ChainSpecStyle
 {
-    internal class ChainSpecAuRaSealJson
+    public class ChainSpecAllocation
     {
-        public long Step { get; set; }
-        public byte[] Signature { get; set; }
+        public ChainSpecAllocation()
+        {
+        }
+        
+        public ChainSpecAllocation(UInt256 allocationValue)
+        {
+            Balance = allocationValue;
+        }
+        
+        public ChainSpecAllocation(UInt256 allocationValue, byte[] code, byte[] constructor)
+        {
+            Balance = allocationValue;
+            Code = code;
+            Constructor = constructor;
+        }
+        
+        public UInt256 Balance { get; set; }
+        
+        public byte[] Code { get; set; }
+        
+        public byte[] Constructor { get; set; }
     }
 }

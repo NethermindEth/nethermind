@@ -16,12 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Specs.ChainSpecStyle.Json
+using Nethermind.Dirichlet.Numerics;
+
+namespace Nethermind.Core.Specs.GenesisFileStyle.Json
 {
     internal class AllocationJson
     {
-        public string Balance { get; set; }
+        public object BuiltIn { get; set; }
         
-        public string Code { get; set; }
+        public UInt256 Balance { get; set; }
+        
+        public byte[] Code { get; set; }
+        
+        public byte[] Constructor { get; set; }
     }
 }

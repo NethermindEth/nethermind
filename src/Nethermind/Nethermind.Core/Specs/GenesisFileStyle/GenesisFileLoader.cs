@@ -18,15 +18,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
-using System.Numerics;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs.ChainSpecStyle.Json;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Core.Specs.GenesisFileStyle.Json;
 
-namespace Nethermind.Core.Specs.ChainSpecStyle
+namespace Nethermind.Core.Specs.GenesisFileStyle
 {
     /// <summary>
     /// This class can load a Geth-style genesis file and build a <see cref="ChainSpec"/> out of it. 
@@ -48,7 +45,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 var genesisJson = _serializer.Deserialize<GenesisFileJson>(jsonData);
                 var chainSpec = new ChainSpec();
 
-                chainSpec.ChainId = (int)genesisJson.Config.ChainId;
+                chainSpec.ChainId = (int) genesisJson.Config.ChainId;
                 LoadGenesis(genesisJson, chainSpec);
                 LoadEngine(genesisJson, chainSpec);
                 LoadAllocations(genesisJson, chainSpec);
@@ -100,7 +97,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 beneficiary,
                 difficulty,
                 0,
-                (long)gasLimit,
+                (long) gasLimit,
                 timestamp,
                 extraData);
 
@@ -109,7 +106,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             genesisHeader.Bloom = new Bloom();
             genesisHeader.GasUsed = 0;
             genesisHeader.MixHash = mixHash;
-            genesisHeader.Nonce = (ulong)nonce;
+            genesisHeader.Nonce = (ulong) nonce;
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesisHeader.StateRoot = Keccak.EmptyTreeHash;
             genesisHeader.TxRoot = Keccak.EmptyTreeHash;
@@ -124,25 +121,15 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 return;
             }
 
-            chainSpec.Allocations = new Dictionary<Address, (UInt256 Balance, byte[] Code)>();
-            foreach (KeyValuePair<string, AllocationJson> account in genesisJson.Alloc)
+            chainSpec.Allocations = new Dictionary<Address, ChainSpecAllocation>();
+            foreach ((string addressString, AllocationJson allocation) in genesisJson.Alloc)
             {
-                if (account.Value.Balance != null)
+                if (allocation.BuiltIn != null)
                 {
-                    bool result = UInt256.TryParse(account.Value.Balance, out UInt256 allocationValue);
-                    if (!result)
-                    {
-                        result = UInt256.TryParse(account.Value.Balance.Replace("0x", string.Empty), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out allocationValue);
-                    }
-
-                    if (!result)
-                    {
-                        throw new InvalidDataException($"Cannot recognize allocation value format in {account.Value.Balance}");
-                    }
-                    
-                    // todo: handle code like in chainspec
-                    chainSpec.Allocations[new Address(account.Key)] = (allocationValue, null);
+                    continue;
                 }
+
+                chainSpec.Allocations[new Address(addressString)] = new ChainSpecAllocation(allocation.Balance);
             }
         }
     }

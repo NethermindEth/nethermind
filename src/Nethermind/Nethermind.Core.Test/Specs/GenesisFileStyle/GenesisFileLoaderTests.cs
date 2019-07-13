@@ -22,10 +22,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Core.Specs.GenesisFileStyle;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Specs
+namespace Nethermind.Core.Test.Specs.GenesisFileStyle
 {
     [TestFixture]
     public class GenesisFileLoaderTests
@@ -55,8 +56,8 @@ namespace Nethermind.Core.Test.Specs
             Assert.NotNull(chainSpec.Allocations, $"{nameof(Core.Specs.ChainSpecStyle.ChainSpec.Allocations)}");
             Assert.AreEqual(16, chainSpec.Allocations.Count, $"allocations count");
             Assert.AreEqual(
-                (UInt256.Parse("200000000000000000000000000000000000000000000000000000000000000", NumberStyles.HexNumber), (byte[])null),
-                chainSpec.Allocations[new Address("20b2e4bb8688a44729780d15dc64adb42f9f5a0a")],
+                UInt256.Parse("200000000000000000000000000000000000000000000000000000000000000", NumberStyles.HexNumber),
+                chainSpec.Allocations[new Address("20b2e4bb8688a44729780d15dc64adb42f9f5a0a")].Balance,
                 "account 20b2e4bb8688a44729780d15dc64adb42f9f5a0a");
             
             Assert.AreEqual(SealEngineType.Clique, chainSpec.SealEngineType, "engine");
