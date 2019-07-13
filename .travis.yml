@@ -38,6 +38,10 @@ jobs:
       name: "Nethermind.Abi.Test"
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
+      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.AuRa.Test
+      name: "Nethermind.AuRa.Test"
+    - script: 
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Blockchain.Test
       name: "Nethermind.Blockchain.Test"
     - script: 
