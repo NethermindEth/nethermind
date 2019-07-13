@@ -28,9 +28,14 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
+        /// <summary>
+        /// <value>True</value> if this is a transaction used for ctor based genesis allocations 
+        /// </summary>
+        public bool IsConstructorTransaction { get; set; }
+
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
-        public UInt256 GasLimit { get; set; }
+        public long GasLimit { get; set; }
         public Address To { get; set; }
         public UInt256 Value { get; set; }
         public byte[] Data { get; set; }
@@ -62,7 +67,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Hash: {Hash}");
             return builder.ToString();
         }
-        
+
         public override string ToString()
         {
             return ToString(string.Empty);

@@ -278,7 +278,7 @@ namespace Nethermind.Blockchain.Test
             PrivateKey privateKey)
             => Build.A.Transaction
                 .WithNonce(nonce)
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((long)gasLimit)
                 .WithGasPrice(gasPrice)
                 .WithData(data)
                 .To(to)

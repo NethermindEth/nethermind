@@ -45,6 +45,7 @@ namespace Nethermind.Evm
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
+            _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _ecdsa = new EthereumEcdsa(specProvider, logManager);
@@ -145,7 +146,11 @@ namespace Nethermind.Evm
                 return;
             }
 
-            _stateProvider.IncrementNonce(sender);
+            if (!transaction.IsConstructorTransaction)
+            {
+                _stateProvider.IncrementNonce(sender);
+            }
+
             _stateProvider.SubtractFromBalance(sender, (ulong) gasLimit * gasPrice, spec);
 
             // TODO: I think we can skip this commit and decrease the tree operations this way
@@ -166,6 +171,11 @@ namespace Nethermind.Evm
                 if (transaction.IsContractCreation)
                 {
                     recipient = Address.OfContract(sender, _stateProvider.GetNonce(sender) - 1);
+                    if (transaction.IsConstructorTransaction)
+                    {
+                        recipient = transaction.SenderAddress;
+                    }
+                    
                     if (_stateProvider.AccountExists(recipient))
                     {
                         if ((_virtualMachine.GetCachedCodeInfo(recipient)?.MachineCode?.Length ?? 0) != 0 || _stateProvider.GetNonce(recipient) != 0)
@@ -252,13 +262,16 @@ namespace Nethermind.Evm
             Address gasBeneficiary = block.GasBeneficiary;
             if (statusCode == StatusCode.Failure || !(substate?.DestroyList.Contains(gasBeneficiary) ?? false))
             {
-                if (!_stateProvider.AccountExists(gasBeneficiary))
+                if (!transaction.IsConstructorTransaction)
                 {
-                    _stateProvider.CreateAccount(gasBeneficiary, (ulong) spentGas * gasPrice);
-                }
-                else
-                {
-                    _stateProvider.AddToBalance(gasBeneficiary, (ulong) spentGas * gasPrice, spec);
+                    if (!_stateProvider.AccountExists(gasBeneficiary))
+                    {
+                        _stateProvider.CreateAccount(gasBeneficiary, (ulong) spentGas * gasPrice);
+                    }
+                    else
+                    {
+                        _stateProvider.AddToBalance(gasBeneficiary, (ulong) spentGas * gasPrice, spec);
+                    }
                 }
             }
 
@@ -273,7 +286,7 @@ namespace Nethermind.Evm
                 _stateProvider.Reset();
             }
 
-            if (!readOnly)
+            if (!readOnly && !transaction.IsConstructorTransaction)
             {
                 block.GasUsed += spentGas;
             }

@@ -377,7 +377,7 @@ namespace Nethermind.PerfTest
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
             _logger.Info($"ChainSpec loaded");
-            foreach (KeyValuePair<Address, (UInt256 Balance, byte[] Code)> allocation in chainSpec.Allocations)
+            foreach (KeyValuePair<Address, ChainSpecAllocation> allocation in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(allocation.Key, allocation.Value.Balance);
                 if (allocation.Value.Code != null)

@@ -18,6 +18,7 @@
     <PackageReference Include="Seq.Api" Version="5.1.0" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.AuRa\Nethermind.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Clique\Nethermind.Clique.csproj" />
     <ProjectReference Include="..\Nethermind.Cli\Nethermind.Cli.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">
