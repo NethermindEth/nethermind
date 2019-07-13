@@ -617,6 +617,13 @@ namespace Nethermind.DataMarketplace.Subprotocols
 
             DepositApprovalsRequests?.CompleteAdding();
             DepositApprovalsRequests?.Dispose();
+            ConsumerService.FinishSessionsAsync(this).ContinueWith(t =>
+            {
+                if (t.IsFaulted && Logger.IsError)
+                {
+                    Logger.Error("There was an error within NDM subprotocol.", t.Exception);
+                }
+            });
         }
 
         protected class Request<TMsg, TResult>

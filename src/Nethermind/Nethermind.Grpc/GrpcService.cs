@@ -13,6 +13,9 @@ namespace Nethermind.Grpc
 {
     public class GrpcService : NethermindService.NethermindServiceBase, IGrpcService
     {
+        private readonly ConcurrentDictionary<Keccak, string> _plugins =
+            new ConcurrentDictionary<Keccak, string>();
+        
         private readonly ConcurrentDictionary<string, NdmExtensionDetails> _ndmExtensions =
             new ConcurrentDictionary<string, NdmExtensionDetails>();
 
@@ -25,7 +28,12 @@ namespace Nethermind.Grpc
 
         private static readonly Empty Empty = new Empty();
         private readonly ILogger _logger;
-        
+
+        public void SetPlugin(string name, Keccak headerId)
+        {
+            _plugins.TryAdd(headerId, name);
+        }
+
         public event EventHandler<NdmQueryDataEventArgs> NdmQueryDataReceived;
 
         public GrpcService(ILogManager logManager)
@@ -142,10 +150,13 @@ namespace Nethermind.Grpc
 
         public Task SendNdmQueryAsync(Keccak headerId, Keccak depositId, IEnumerable<string> args, uint iterations = 1)
         {
-            if (!_dataHeadersExtensions.TryGetValue(headerId, out var extension))
+            if (!_plugins.TryGetValue(headerId, out var plugin))
             {
-                extension = _ndmExtensions.FirstOrDefault(e => e.Value.Extension.AcceptAllHeaders).Value;
+                return Task.CompletedTask;
             }
+
+            var extension = _ndmExtensions.FirstOrDefault(e =>
+                e.Value.Extension.Name.Equals(plugin, StringComparison.InvariantCultureIgnoreCase)).Value;
             
             if (extension is null)
             {
