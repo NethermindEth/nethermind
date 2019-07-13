@@ -759,12 +759,12 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            foreach ((Address address, (UInt256 balance, byte[] code)) in chainSpec.Allocations)
+            foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations)
             {
-                stateProvider.CreateAccount(address, balance);
-                if (code != null)
+                stateProvider.CreateAccount(address, allocation.Balance);
+                if (allocation.Code != null)
                 {
-                    Keccak codeHash = stateProvider.UpdateCode(code);
+                    Keccak codeHash = stateProvider.UpdateCode(allocation.Code);
                     stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
                 }
             }
