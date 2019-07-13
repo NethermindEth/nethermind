@@ -214,6 +214,14 @@ namespace Nethermind.Store
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
         }
+        
+        public void DecrementNonce(Address address)
+        {
+            Account account = GetThroughCache(address);
+            Account changedAccount = account.WithChangedNonce(account.Nonce - 1);
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+            PushUpdate(address, changedAccount);
+        }
 
         public Keccak UpdateCode(byte[] code)
         {

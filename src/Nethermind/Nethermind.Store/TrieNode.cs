@@ -577,9 +577,9 @@ namespace Nethermind.Store
                 }
                 case NodeType.Leaf:
                 {
-                    visitor.VisitLeaf(Keccak?.Bytes ?? FullRlp?.Bytes, context);
                     if (!context.IsStorage)
                     {
+                        visitor.VisitLeaf(Keccak?.Bytes ?? FullRlp?.Bytes, context, Value);
                         Account account = _decoder.Decode(Value.AsRlpContext());
                         if (account.HasCode)
                         {
@@ -599,6 +599,10 @@ namespace Nethermind.Store
                             context.Level--;
                             context.IsStorage = false;
                         }
+                    }
+                    else
+                    {
+                        visitor.VisitLeaf(Keccak?.Bytes ?? FullRlp?.Bytes, context);
                     }
 
                     break;

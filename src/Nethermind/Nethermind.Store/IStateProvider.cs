@@ -78,5 +78,6 @@ namespace Nethermind.Store
         string DumpState();
         
         TrieStats CollectStats();
+        void DecrementNonce(Address address);
     }
 }
