@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -31,47 +32,51 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public BlockForRpc(Block block, bool includeFullTransactionData)
         {
-            Number = block.Number;
-            Hash = block.Hash;
-            ParentHash = block.ParentHash;
-            Nonce = block.Nonce.ToBigEndianByteArray().PadLeft(8);
-            MixHash = block.MixHash;
-            Sha3Uncles = block.OmmersHash;
-            LogsBloom = block.Bloom;
-            TransactionsRoot = block.TransactionsRoot;
-            StateRoot = block.StateRoot;
-            ReceiptsRoot = block.ReceiptsRoot;
-            Miner = block.Beneficiary;
+            Author = block.Author;
             Difficulty = block.Difficulty;
-            TotalDifficulty = block.TotalDifficulty ?? 0;
             ExtraData = block.ExtraData;
-            Size = BigInteger.Zero;
             GasLimit = block.GasLimit;
             GasUsed = block.GasUsed;
+            Hash = block.Hash;
+            LogsBloom = block.Bloom;
+            Miner = block.Beneficiary;
+            MixHash = block.MixHash;
+            Nonce = block.Nonce.ToBigEndianByteArray().PadLeft(8);
+            Number = block.Number;
+            ParentHash = block.ParentHash;
+            ReceiptsRoot = block.ReceiptsRoot;
+            Sha3Uncles = block.OmmersHash;
+            Signature = block.Header.AuRaSignature;
+            Size = 0L;
+            StateRoot = block.StateRoot;
             Timestamp = block.Timestamp;
+            TotalDifficulty = block.TotalDifficulty ?? 0;
             Transactions = includeFullTransactionData ? block.Transactions.Select((t, idx) => new TransactionForRpc(block.Hash, block.Number, idx, t)).ToArray() : (object[])block.Transactions.Select(t => t.Hash).ToArray();
+            TransactionsRoot = block.TransactionsRoot;
             Uncles = block.Ommers.Select(o => o.Hash);
         }
         
-        public BigInteger Number { get; set; }
-        public Keccak Hash { get; set; }
-        public Keccak ParentHash { get; set; }
-        public byte[] Nonce { get; set; }
-        public Keccak MixHash { get; set; }
-        public Keccak Sha3Uncles { get; set; }
-        public Bloom LogsBloom { get; set; }
-        public Keccak TransactionsRoot { get; set; }
-        public Keccak StateRoot { get; set; }
-        public Keccak ReceiptsRoot { get; set; }
-        public Address Miner { get; set; }
-        public BigInteger Difficulty { get; set; }
-        public BigInteger TotalDifficulty { get; set; }
+        public Address Author { get; set; }
+        public UInt256 Difficulty { get; set; }
         public byte[] ExtraData { get; set; }
-        public BigInteger Size { get; set; }
-        public BigInteger GasLimit { get; set; }
-        public BigInteger GasUsed { get; set; }
-        public BigInteger Timestamp { get; set; }
+        public long GasLimit { get; set; }
+        public long GasUsed { get; set; }
+        public Keccak Hash { get; set; }
+        public Bloom LogsBloom { get; set; }
+        public Address Miner { get; set; }
+        public Keccak MixHash { get; set; }
+        public byte[] Nonce { get; set; }
+        public long Number { get; set; }
+        public Keccak ParentHash { get; set; }
+        public Keccak ReceiptsRoot { get; set; }
+        public Keccak Sha3Uncles { get; set; }
+        public byte[] Signature { get; set; }
+        public long Size { get; set; }
+        public Keccak StateRoot { get; set; }
+        public UInt256 Timestamp { get; set; }
+        public UInt256 TotalDifficulty { get; set; }
         public IEnumerable<object> Transactions { get; set; }
+        public Keccak TransactionsRoot { get; set; }
         public IEnumerable<Keccak> Uncles { get; set; }
     }
 }

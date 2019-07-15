@@ -602,7 +602,7 @@ namespace Nethermind.Store
                     }
                     else
                     {
-                        visitor.VisitLeaf(Keccak?.Bytes ?? FullRlp?.Bytes, context);
+                        visitor.VisitLeaf(Keccak?.Bytes ?? FullRlp?.Bytes, context, Value);
                     }
 
                     break;

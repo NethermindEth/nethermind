@@ -48,7 +48,6 @@ using Nethermind.DataMarketplace.Initializers;
 using Nethermind.DataMarketplace.Subprotocols.Serializers;
 using Nethermind.Db;
 using Nethermind.Db.Config;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.EthStats;
 using Nethermind.EthStats.Clients;
 using Nethermind.EthStats.Integrations;
@@ -100,6 +99,7 @@ namespace Nethermind.Runner.Runners
     public class EthereumRunner : IRunner
     {
         private readonly Stack<IDisposable> _disposeStack = new Stack<IDisposable>();
+
         private static readonly bool HiveEnabled =
             Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
 
@@ -379,15 +379,15 @@ namespace Nethermind.Runner.Runners
             while (_disposeStack.Count != 0)
             {
                 var disposable = _disposeStack.Pop();
-                if(_logger.IsDebug) _logger.Debug($"Disposing {disposable.GetType().Name}");
+                if (_logger.IsDebug) _logger.Debug($"Disposing {disposable.GetType().Name}");
             }
-            
+
             if (_logger.IsInfo) _logger.Info("Ethereum shutdown complete... please wait for all components to close");
         }
 
         private void LoadChainSpec()
         {
-            if(_logger.IsInfo) _logger.Info($"Loading chain spec from {_initConfig.ChainSpecPath}");
+            if (_logger.IsInfo) _logger.Info($"Loading chain spec from {_initConfig.ChainSpecPath}");
 
             IChainSpecLoader loader = string.Equals(_initConfig.ChainSpecFormat, "ChainSpec", StringComparison.InvariantCultureIgnoreCase)
                 ? (IChainSpecLoader) new ChainSpecLoader(_ethereumJsonSerializer)
@@ -395,9 +395,9 @@ namespace Nethermind.Runner.Runners
 
             if (HiveEnabled)
             {
-                if(_logger.IsInfo) _logger.Info($"HIVE chainspec:{Environment.NewLine}{File.ReadAllText(_initConfig.ChainSpecPath)}");
+                if (_logger.IsInfo) _logger.Info($"HIVE chainspec:{Environment.NewLine}{File.ReadAllText(_initConfig.ChainSpecPath)}");
             }
-            
+
             _chainSpec = loader.LoadFromFile(_initConfig.ChainSpecPath);
             _chainSpec.Bootnodes = _chainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_nodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
         }
@@ -429,7 +429,7 @@ namespace Nethermind.Runner.Runners
                 _ethereumEcdsa,
                 _specProvider,
                 _txPoolConfig, _logManager);
-            var _rc7FixDb = _initConfig.EnableRc7Fix ? _dbProvider.HeadersDb : NullDb.Instance; 
+            var _rc7FixDb = _initConfig.EnableRc7Fix ? _dbProvider.HeadersDb : NullDb.Instance;
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _rc7FixDb, _specProvider, _logManager);
 
 //            IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig);
@@ -538,7 +538,7 @@ namespace Nethermind.Runner.Runners
                 _logManager);
 
             _txPoolInfoProvider = new TxPoolInfoProvider(stateProvider);
-            
+
             _transactionPoolInfoProvider = new TxPoolInfoProvider(stateProvider);
 
             /* blockchain processing */
@@ -616,7 +616,7 @@ namespace Nethermind.Runner.Runners
             }
 
             _blockchainProcessor.Start();
-            LoadGenesisBlock(_chainSpec, string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash), _blockTree, stateProvider, _specProvider);
+            LoadGenesisBlock(_chainSpec, string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash), _blockTree, storageProvider, stateProvider, _specProvider);
             if (_initConfig.ProcessingEnabled)
             {
 #pragma warning disable 4014
@@ -633,7 +633,7 @@ namespace Nethermind.Runner.Runners
             {
                 await InitHive();
             }
-            
+
             if (HiveEnabled)
             {
                 await InitHive();
@@ -645,14 +645,14 @@ namespace Nethermind.Runner.Runners
                 var kafkaProducer = await PrepareKafkaProducer(_blockTree, _configProvider.GetConfig<IKafkaConfig>());
                 producers.Add(kafkaProducer);
             }
-            
+
             var grpcClientConfig = _configProvider.GetConfig<IGrpcClientConfig>();
             if (grpcClientConfig.Enabled)
             {
                 var grpcProducer = new GrpcProducer(_grpcClient, _logManager);
                 producers.Add(grpcProducer);
             }
-            
+
             ISubscription subscription;
             if (producers.Any())
             {
@@ -757,6 +757,7 @@ namespace Nethermind.Runner.Runners
             ChainSpec chainSpec,
             Keccak expectedGenesisHash,
             IBlockTree blockTree,
+            IStorageProvider storageProvider,
             IStateProvider stateProvider,
             ISpecProvider specProvider)
         {
@@ -786,17 +787,22 @@ namespace Nethermind.Runner.Runners
                     constructorTransaction.Init = allocation.Constructor;
                     constructorTransaction.GasLimit = genesis.GasLimit;
                     _transactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
-                    // shall we increment nonce?
-//                    _stateProvider.SubtractFromBalance(address, UInt256.One, specProvider.GenesisSpec);
-//                    _stateProvider.DecrementNonce(address);
                 }
             }
 
+            storageProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
+            
+            storageProvider.CommitTrees();
+            stateProvider.CommitTree();
+            
+            _dbProvider.StateDb.Commit();
+            _dbProvider.CodeDb.Commit();
+
             genesis.StateRoot = stateProvider.StateRoot;
-            
+
             _logger.Warn(stateProvider.DumpState());
-            
+
             genesis.Hash = BlockHeader.CalculateHash(genesis.Header);
 
             ManualResetEventSlim genesisProcessedEvent = new ManualResetEventSlim(false);
@@ -856,7 +862,7 @@ namespace Nethermind.Runner.Runners
 
             var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher,
                 _cryptoRandom, new Ecdsa(), _nodeKey, _logManager);
-            
+
             _messageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
 
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
@@ -999,7 +1005,7 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsDebug) _logger.Debug("Discovery process started.");
             return Task.CompletedTask;
         }
-        
+
         private async Task<IProducer> PrepareKafkaProducer(IBlockTree blockTree, IKafkaConfig kafkaConfig)
         {
             var pubSubModelMapper = new PubSubModelMapper();
@@ -1009,7 +1015,7 @@ namespace Nethermind.Runner.Runners
             {
                 if (x.IsFaulted && _logger.IsError) _logger.Error("Error during Kafka initialization", x.Exception);
             });
-            
+
             return kafkaProducer;
         }
 
