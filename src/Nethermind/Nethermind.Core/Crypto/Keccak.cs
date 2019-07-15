@@ -18,6 +18,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
@@ -31,11 +32,11 @@ namespace Nethermind.Core.Crypto
         public fixed byte Bytes[Size];
 
         public Span<byte> BytesAsSpan
+            => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
+        
+        public ValueKeccak(Keccak keccak)
         {
-            get
-            {
-                fixed (byte* bytes = Bytes) return new Span<byte>(bytes, Size);       
-            }
+            new Span<byte>(keccak.Bytes).CopyTo(BytesAsSpan);
         }
         
         /// <returns>
@@ -65,14 +66,43 @@ namespace Nethermind.Core.Crypto
             KeccakHash.ComputeHashBytes2(input, output);
             return result;
         }
-
-        public static ValueKeccak From(Keccak keccak)
-        {
-            ValueKeccak result = new ValueKeccak();
-            new Span<byte>(keccak.Bytes).CopyTo(result.BytesAsSpan);
-            return result;
-        }
         
+        public bool Equals(ValueKeccak other)
+        {
+            return BytesAsSpan.SequenceEqual(other.BytesAsSpan);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj?.GetType() == typeof(ValueKeccak) && Equals((ValueKeccak) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                const int p = 16777619;
+                int hash = (int) 2166136261;
+                fixed (byte* bytes = Bytes)
+                {
+                    hash = hash ^ bytes[0] * p;
+                    hash = hash ^ bytes[Size / 2] * p;
+                    hash = hash ^ bytes[Size - 1] * p;
+                }
+                return hash;
+            }
+        }
+
+        public static bool operator ==(ValueKeccak a, ValueKeccak b)
+        {
+            return a.BytesAsSpan.SequenceEqual(b.BytesAsSpan);
+        }
+
+        public static bool operator !=(ValueKeccak a, ValueKeccak b)
+        {
+            return !(a == b);
+        }        
+       
         public string ToString(bool withZeroX)
         {
             throw new NotImplementedException();
@@ -82,7 +112,7 @@ namespace Nethermind.Core.Crypto
     [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>
     {
-        public static Keccak From(ValueKeccak keccak)
+        public static Keccak From(ref ValueKeccak keccak)
         {
             return new Keccak(keccak.BytesAsSpan.ToArray());
         }

@@ -588,7 +588,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
                     break;
                 case NodeType.Extension:
-                    Keccak next = Keccak.From(trieNode[0].Keccak.Value);
+                    Keccak next = Keccak.From(ref trieNode[0].Keccak);
                     if (next != null)
                     {
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);

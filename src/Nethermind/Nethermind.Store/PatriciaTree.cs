@@ -32,7 +32,7 @@ namespace Nethermind.Store
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
-        private static readonly ThreadLocal<LruCache<Keccak, Rlp>> NodeCache = new ThreadLocal<LruCache<Keccak, Rlp>>(() => new LruCache<Keccak, Rlp>(64 * 1024));
+        private static readonly ThreadLocal<LruCache<ValueKeccak, Rlp>> NodeCache = new ThreadLocal<LruCache<ValueKeccak, Rlp>>(() => new LruCache<ValueKeccak, Rlp>(64 * 1024));
 //        private static readonly LruCache<byte[], byte[]> ValueCache = new LruCache<byte[], byte[]>(128 * 1024);
 
         /// <summary>
@@ -98,12 +98,12 @@ namespace Nethermind.Store
                         throw new ArgumentNullException($"Threading issue at {nameof(CurrentCommit)} - should not happen unless we use static objects somewhere here.");
                     }
 
-                    _db.Set(Keccak.From(node.Keccak.Value), node.FullRlp.Bytes);
+                    _db.Set(Keccak.From(ref node.Keccak), node.FullRlp.Bytes);
                 }
 
                 // reset objects
                 RootRef.ResolveKey(true);
-                SetRootHash(Keccak.From(RootRef.Keccak.Value), true);
+                SetRootHash(ref RootRef.Keccak, true);
             }
         }
 
@@ -176,7 +176,7 @@ namespace Nethermind.Store
             node.ResolveKey(isRoot);
             if (node.FullRlp != null && node.FullRlp.Length >= 32)
             {
-                NodeCache.Value.Set(Keccak.From(node.Keccak.Value), node.FullRlp);
+                NodeCache.Value.Set(node.Keccak, node.FullRlp);
                 CurrentCommit.Enqueue(node);
             }
         }
@@ -184,8 +184,8 @@ namespace Nethermind.Store
         public void UpdateRootHash()
         {
             RootRef?.ResolveKey(true);
-            if (RootRef != null && RootRef.Keccak != null)
-                SetRootHash(Keccak.From(RootRef.Keccak.Value), false);
+            if (RootRef != null && RootRef.HasKeccak)
+                SetRootHash(ref RootRef.Keccak, false);
             else
                 SetRootHash(EmptyTreeHash, false);
         }
@@ -201,6 +201,19 @@ namespace Nethermind.Store
             {
                 RootRef = new TrieNode(NodeType.Unknown, _rootHash);
             }
+        }
+
+        private void SetRootHash(ref ValueKeccak value, bool resetObjects)
+        {
+            _rootHash = Keccak.From(ref value);
+            if (_rootHash == Keccak.EmptyTreeHash)
+            {
+                RootRef = null;
+            }
+            else if (resetObjects)
+            {
+                RootRef = new TrieNode(NodeType.Unknown, _rootHash);
+            }            
         }
 
         [DebuggerStepThrough]
@@ -240,9 +253,9 @@ namespace Nethermind.Store
             Run(Nibbles.BytesToNibbleBytes(rawKey), value == null ? new byte[0] : value.Bytes, true);
         }
 
-        internal Rlp GetNode(Keccak keccak)
+        internal Rlp GetNode(ref ValueKeccak keccak)
         {
-            return NodeCache.Value.Get(keccak) ?? new Rlp(_db[keccak.Bytes]);
+            return NodeCache.Value.Get(keccak) ?? new Rlp(_db[keccak.BytesAsSpan.ToArray()]);
         }
 
         public byte[] Run(byte[] updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
@@ -686,7 +699,7 @@ namespace Nethermind.Store
         public void Accept(ITreeVisitor visitor, IDb codeDb)
         {
             VisitContext context = new VisitContext();
-            visitor.VisitTree(ValueKeccak.From(RootHash), context);
+            visitor.VisitTree(new ValueKeccak(RootHash), context);
             RootRef?.Accept(visitor, this, codeDb, context);
         }
     }

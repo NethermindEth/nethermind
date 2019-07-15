@@ -785,6 +785,21 @@ namespace Nethermind.Core.Encoding
             return new Rlp(result);
         }
 
+        public static Rlp Encode(ref ValueKeccak keccak)
+        {
+//            if (keccak == null)
+//            {
+//                return OfEmptyByteArray;
+//            }
+            byte[] result = new byte[LengthOfKeccakRlp];
+            result[0] = 160;
+            var dst = new Span<byte>(result, 1, 32);
+            keccak.BytesAsSpan.CopyTo(dst);
+            //instead of using Keccak:
+            //Buffer.BlockCopy(keccak.Bytes, 0, result, 1, 32);
+            return new Rlp(result);            
+        }
+
         public static Rlp Encode(Address address)
         {
             if (address == null)
