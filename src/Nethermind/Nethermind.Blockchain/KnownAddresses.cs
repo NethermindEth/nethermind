@@ -63,5 +63,7 @@ namespace Nethermind.Blockchain
             {new Address("0xfc18cbc391de84dbd87db83b20935d3e89f5dd91"), "?"},
             {new Address("0xdA35deE8EDDeAA556e4c26268463e26FB91ff74f"), "Provable (Oraclize)"},
         };
+
+        public static Address AuRaSystemAddress = new Address("fffffffffffffffffffffffffffffffffffffffe");
     }
 }
