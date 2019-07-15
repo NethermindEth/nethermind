@@ -42,40 +42,52 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             }
 
             var enabled = context.DecodeBool();
-            var storeConfigInDatabase = context.DecodeBool();
             var id = context.DecodeString();
-            var filesPath = context.DecodeString();
-            var fileMaxSize = context.DecodeUlong();
-            var providerName = context.DecodeString();
-            var persistence = context.DecodeString();
+            var initializerName = context.DecodeString();
+            var storeConfigInDatabase = context.DecodeBool();
             var verifyP2PSignature = context.DecodeBool();
-            var providerAddress = context.DecodeString();
-            var providerColdWalletAddress = context.DecodeString();
+            var persistence = context.DecodeString();
+            var faucetEnabled = context.DecodeBool();
+            var faucetAddress = context.DecodeString();
+            var faucetHost = context.DecodeString();
+            var faucetWeiRequestMaxValue = context.DecodeUInt256();
             var consumerAddress = context.DecodeString();
             var contractAddress = context.DecodeString();
+            var providerName = context.DecodeString();
+            var providerAddress = context.DecodeString();
+            var providerColdWalletAddress = context.DecodeString();
             var receiptRequestThreshold = context.DecodeUInt256();
             var receiptsMergeThreshold = context.DecodeUInt256();
             var paymentClaimThreshold = context.DecodeUInt256();
             var blockConfirmations = context.DecodeUInt();
+            var filesPath = context.DecodeString();
+            var fileMaxSize = context.DecodeUlong();
+            var pluginsPath = context.DecodeString();
 
             return new NdmConfig
             {
                 Enabled = enabled,
-                StoreConfigInDatabase = storeConfigInDatabase,
                 Id = id,
-                FilesPath = filesPath,
-                FileMaxSize = fileMaxSize,
-                ProviderName = providerName,
-                Persistence = persistence,
+                InitializerName =  initializerName,
+                StoreConfigInDatabase = storeConfigInDatabase,
                 VerifyP2PSignature = verifyP2PSignature,
-                ProviderAddress = providerAddress,
-                ProviderColdWalletAddress = providerColdWalletAddress,
+                Persistence = persistence,
+                FaucetEnabled = faucetEnabled,
+                FaucetAddress = faucetAddress,
+                FaucetHost = faucetHost,
+                FaucetWeiRequestMaxValue = faucetWeiRequestMaxValue,
                 ConsumerAddress = consumerAddress,
                 ContractAddress = contractAddress,
+                ProviderName = providerName,
+                ProviderAddress = providerAddress,
+                ProviderColdWalletAddress = providerColdWalletAddress,
                 ReceiptRequestThreshold = receiptRequestThreshold,
                 ReceiptsMergeThreshold = receiptsMergeThreshold,
                 PaymentClaimThreshold = paymentClaimThreshold,
-                BlockConfirmations = blockConfirmations
+                BlockConfirmations = blockConfirmations,
+                FilesPath = filesPath,
+                FileMaxSize = fileMaxSize,
+                PluginsPath = pluginsPath
             };
         }
 
@@ -88,21 +100,27 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
             return Nethermind.Core.Encoding.Rlp.Encode(
                 Nethermind.Core.Encoding.Rlp.Encode(item.Enabled),
-                Nethermind.Core.Encoding.Rlp.Encode(item.StoreConfigInDatabase),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Id),
-                Nethermind.Core.Encoding.Rlp.Encode(item.FilesPath),
-                Nethermind.Core.Encoding.Rlp.Encode(item.FileMaxSize),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ProviderName),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Persistence),
+                Nethermind.Core.Encoding.Rlp.Encode(item.InitializerName),
+                Nethermind.Core.Encoding.Rlp.Encode(item.StoreConfigInDatabase),
                 Nethermind.Core.Encoding.Rlp.Encode(item.VerifyP2PSignature),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ProviderAddress),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ProviderColdWalletAddress),
+                Nethermind.Core.Encoding.Rlp.Encode(item.Persistence),
+                Nethermind.Core.Encoding.Rlp.Encode(item.FaucetEnabled),
+                Nethermind.Core.Encoding.Rlp.Encode(item.FaucetAddress),
+                Nethermind.Core.Encoding.Rlp.Encode(item.FaucetHost),
+                Nethermind.Core.Encoding.Rlp.Encode(item.FaucetWeiRequestMaxValue),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ConsumerAddress),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ContractAddress),
+                Nethermind.Core.Encoding.Rlp.Encode(item.ProviderName),
+                Nethermind.Core.Encoding.Rlp.Encode(item.ProviderAddress),
+                Nethermind.Core.Encoding.Rlp.Encode(item.ProviderColdWalletAddress),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ReceiptRequestThreshold),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ReceiptsMergeThreshold),
                 Nethermind.Core.Encoding.Rlp.Encode(item.PaymentClaimThreshold),
-                Nethermind.Core.Encoding.Rlp.Encode(item.BlockConfirmations));
+                Nethermind.Core.Encoding.Rlp.Encode(item.BlockConfirmations),
+                Nethermind.Core.Encoding.Rlp.Encode(item.FilesPath),
+                Nethermind.Core.Encoding.Rlp.Encode(item.FileMaxSize),
+                Nethermind.Core.Encoding.Rlp.Encode(item.PluginsPath));
         }
 
         public void Encode(MemoryStream stream, NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
