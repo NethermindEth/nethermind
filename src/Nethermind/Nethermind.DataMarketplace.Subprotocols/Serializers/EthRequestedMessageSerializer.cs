@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Extensions;
+using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
 
@@ -27,7 +28,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
         public byte[] Serialize(EthRequestedMessage message)
             => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.Address),
                 Nethermind.Core.Encoding.Rlp.Encode(message.Value),
-                Nethermind.Core.Encoding.Rlp.Encode(message.IsSuccessful)).Bytes;
+                Nethermind.Core.Encoding.Rlp.Encode((int) message.Status)).Bytes;
 
         public EthRequestedMessage Deserialize(byte[] bytes)
         {
@@ -35,9 +36,9 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
             context.ReadSequenceLength();
             var address = context.DecodeAddress();
             var value = context.DecodeUInt256();
-            var isSuccessful = context.DecodeBool();
+            var status = (FaucetRequestStatus) context.DecodeInt();
 
-            return new EthRequestedMessage(address, value, isSuccessful);
+            return new EthRequestedMessage(address, value, status);
         }
     }
 }

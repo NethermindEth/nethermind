@@ -190,10 +190,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
                 ? ResultWrapper<Keccak>.Fail($"Deposit approval for data header: '{headerId}' couldn't be requested")
                 : ResultWrapper<Keccak>.Success(headerId);
 
-        public async Task<ResultWrapper<bool>> ndm_requestEth(Address address)
-            => await _ethRequestService.TryRequestEthAsync(address, 1.Ether())
-                ? ResultWrapper<bool>.Success(true)
-                : ResultWrapper<bool>.Fail($"ETH couldn't be requested for an address: {address}");
+        public async Task<ResultWrapper<string>> ndm_requestEth(Address address)
+        {
+            var status = await _ethRequestService.TryRequestEthAsync(address, 1.Ether());
+
+            return ResultWrapper<string>.Success(status.ToString());
+        }
 
         public ResultWrapper<string> ndm_pullData(Keccak depositId)
         {

@@ -53,7 +53,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task request_eth_should_fail_for_missing_faucet_peer()
         {
             var ethRequested = await _ethRequestService.TryRequestEthAsync(Address.Zero, 1);
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetRequestStatus.FaucetNotSet);
         }
         
         [Test]
@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             _ethRequestService.UpdateFaucet(_faucetPeer);
             var ethRequested = await _ethRequestService.TryRequestEthAsync(null, 1);
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetRequestStatus.InvalidNodeAddress);
         }
         
         [Test]
@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             _ethRequestService.UpdateFaucet(_faucetPeer);
             var ethRequested = await _ethRequestService.TryRequestEthAsync(Address.Zero, 1);
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetRequestStatus.InvalidNodeAddress);
         }
         
         [Test]
@@ -77,7 +77,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             _ethRequestService.UpdateFaucet(_faucetPeer);
             var ethRequested = await _ethRequestService.TryRequestEthAsync(Address.FromNumber(1), 0);
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetRequestStatus.InvalidNodeAddress);
         }
         
         [Test]
@@ -86,9 +86,9 @@ namespace Nethermind.DataMarketplace.Test.Services
             var address = Address.FromNumber(1);
             UInt256 value = 1;
             _ethRequestService.UpdateFaucet(_faucetPeer);
-            _faucetPeer.SendRequestEth(address, value).Returns(true);
+            _faucetPeer.SendRequestEth(address, value).Returns(FaucetRequestStatus.RequestCompleted);
             var ethRequested = await _ethRequestService.TryRequestEthAsync(Address.FromNumber(1), 1);
-            ethRequested.Should().BeTrue();
+            ethRequested.Should().Be(FaucetRequestStatus.RequestCompleted);
         }
     }
 }
