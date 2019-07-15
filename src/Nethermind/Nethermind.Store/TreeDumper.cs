@@ -78,6 +78,10 @@ namespace Nethermind.Store
                 _builder.AppendLine($"{GetPrefix(context)}  BALANCE: {account.Balance}");
                 _builder.AppendLine($"{GetPrefix(context)}  IS_CONTRACT: {account.IsContract}");
             }
+            else
+            {
+                _builder.AppendLine($"{GetPrefix(context)}  VALUE: {new Rlp.DecoderContext(value).DecodeByteArray().ToHexString()}");
+            }
         }
 
         public void VisitCode(Keccak codeHash, byte[] code, VisitContext context)

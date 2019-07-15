@@ -184,10 +184,10 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             var auRaSignature = chainSpecJson.Genesis.Seal.AuthorityRound?.Signature;
             var step = chainSpecJson.Genesis.Seal.AuthorityRound?.Step;
 
-            var parentHash = chainSpecJson.Genesis.ParentHash;
+            var parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
             var timestamp = chainSpecJson.Genesis.Timestamp;
             var difficulty = chainSpecJson.Genesis.Difficulty;
-            var extraData = chainSpecJson.Genesis.ExtraData;
+            var extraData = chainSpecJson.Genesis.ExtraData ?? new byte[0];
             var gasLimit = chainSpecJson.Genesis.GasLimit;
             var beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
 

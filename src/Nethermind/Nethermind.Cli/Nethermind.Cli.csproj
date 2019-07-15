@@ -24,5 +24,9 @@
       <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc.Client\Nethermind.JsonRpc.Client.csproj" />
     </ItemGroup>
-
+    <ItemGroup>
+        <Content Include="Scripts\sokol.js">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
 </Project>
