@@ -14,13 +14,13 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _notifier = notifier;
         }
 
-        public Task SendDepositConfirmationsStatusAsync(Keccak depositId, int confirmations, bool confirmed)
+        public Task SendDepositConfirmationsStatusAsync(Keccak depositId, int confirmations, int requiredConfirmations)
             => _notifier.NotifyAsync(new Notification("deposit_confirmations",
                 new
                 {
                     depositId,
                     confirmations,
-                    confirmed
+                    requiredConfirmations
                 }));
     }
 }

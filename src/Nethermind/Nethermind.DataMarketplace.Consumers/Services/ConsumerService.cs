@@ -224,7 +224,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
 
             await _consumerNotifier.SendDepositConfirmationsStatusAsync(depositDetails.Id, (int) confirmations,
-                confirmed);
+                (int) _blockConfirmations);
         }
 
         private async Task TryClaimRefundAsync(DepositDetails depositDetails)
