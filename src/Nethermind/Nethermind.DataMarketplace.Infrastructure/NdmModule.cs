@@ -108,6 +108,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
             DepositApprovalDecoder.Init();
             EarlyRefundTicketDecoder.Init();
             EthRequestDecoder.Init();
+            FaucetRequestDetailsDecoder.Init();
+            FaucetResponseDecoder.Init();
             SessionDecoder.Init();
             UnitsRangeDecoder.Init();
         }

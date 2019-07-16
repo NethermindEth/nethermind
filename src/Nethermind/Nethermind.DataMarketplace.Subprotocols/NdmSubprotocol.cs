@@ -49,8 +49,8 @@ namespace Nethermind.DataMarketplace.Subprotocols
         protected readonly BlockingCollection<Request<GetDepositApprovalsMessage, DepositApproval[]>>
             DepositApprovalsRequests = new BlockingCollection<Request<GetDepositApprovalsMessage, DepositApproval[]>>();
 
-        protected readonly BlockingCollection<Request<RequestEthMessage, FaucetRequestStatus>> RequestEthRequests =
-            new BlockingCollection<Request<RequestEthMessage, FaucetRequestStatus>>();
+        protected readonly BlockingCollection<Request<RequestEthMessage, FaucetResponse>> RequestEthRequests =
+            new BlockingCollection<Request<RequestEthMessage, FaucetResponse>>();
         
         protected readonly IEcdsa Ecdsa;
         protected readonly IWallet Wallet;
@@ -526,7 +526,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: ethrequested");
             var request = RequestEthRequests.Take();
-            request.CompletionSource.SetResult(message.Status);
+            request.CompletionSource.SetResult(message.Response);
         }
 
         private void Handle(DataHeaderDataMessage message)
@@ -566,12 +566,12 @@ namespace Nethermind.DataMarketplace.Subprotocols
             });
         }
 
-        public async Task<FaucetRequestStatus> SendRequestEth(Address address, UInt256 value, CancellationToken? token = null)
+        public async Task<FaucetResponse> SendRequestEth(Address address, UInt256 value, CancellationToken? token = null)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: requesteth");
             var cancellationToken = token ?? CancellationToken.None;
             var message = new RequestEthMessage(address, value);
-            var request = new Request<RequestEthMessage, FaucetRequestStatus>(message);
+            var request = new Request<RequestEthMessage, FaucetResponse>(message);
             RequestEthRequests.Add(request, cancellationToken);
             Send(request.Message);
             var task = request.CompletionSource.Task;

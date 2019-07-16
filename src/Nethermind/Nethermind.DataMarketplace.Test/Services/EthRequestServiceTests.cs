@@ -42,53 +42,54 @@ namespace Nethermind.DataMarketplace.Test.Services
             _faucetPeer = Substitute.For<INdmPeer>();
             _ethRequestService = new EthRequestService(FaucetHost, _logManager);
         }
-        
+
         [Test]
         public void faucet_host_should_return_valid_address()
         {
             _ethRequestService.FaucetHost.Should().Be(FaucetHost);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_missing_faucet_peer()
         {
             var ethRequested = await _ethRequestService.TryRequestEthAsync(Address.Zero, 1);
-            ethRequested.Should().Be(FaucetRequestStatus.FaucetNotSet);
+            ethRequested.Should().Be(FaucetResponse.FaucetNotSet);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_null_address()
         {
             _ethRequestService.UpdateFaucet(_faucetPeer);
             var ethRequested = await _ethRequestService.TryRequestEthAsync(null, 1);
-            ethRequested.Should().Be(FaucetRequestStatus.InvalidNodeAddress);
+            ethRequested.Should().Be(FaucetResponse.InvalidNodeAddress);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_zero_address()
         {
             _ethRequestService.UpdateFaucet(_faucetPeer);
             var ethRequested = await _ethRequestService.TryRequestEthAsync(Address.Zero, 1);
-            ethRequested.Should().Be(FaucetRequestStatus.InvalidNodeAddress);
+            ethRequested.Should().Be(FaucetResponse.InvalidNodeAddress);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_zero_value()
         {
             _ethRequestService.UpdateFaucet(_faucetPeer);
             var ethRequested = await _ethRequestService.TryRequestEthAsync(Address.FromNumber(1), 0);
-            ethRequested.Should().Be(FaucetRequestStatus.InvalidNodeAddress);
+            ethRequested.Should().Be(FaucetResponse.InvalidNodeAddress);
         }
-        
+
         [Test]
         public async Task request_eth_should_succeed_for_valid_address_and_non_zero_value()
         {
             var address = Address.FromNumber(1);
             UInt256 value = 1;
             _ethRequestService.UpdateFaucet(_faucetPeer);
-            _faucetPeer.SendRequestEth(address, value).Returns(FaucetRequestStatus.RequestCompleted);
+            _faucetPeer.SendRequestEth(address, value)
+                .Returns(FaucetResponse.RequestCompleted(FaucetRequestDetails.Empty));
             var ethRequested = await _ethRequestService.TryRequestEthAsync(Address.FromNumber(1), 1);
-            ethRequested.Should().Be(FaucetRequestStatus.RequestCompleted);
+            ethRequested.Should().Be(FaucetResponse.RequestCompleted(FaucetRequestDetails.Empty));
         }
     }
 }

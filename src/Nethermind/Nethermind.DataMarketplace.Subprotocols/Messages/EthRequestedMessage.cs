@@ -27,15 +27,11 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.EthRequested;
         public override string Protocol => "ndm";
-        public Address Address { get; set; }
-        public UInt256 Value { get; set; }
-        public FaucetRequestStatus Status { get; set; }
+        public FaucetResponse Response { get; set; }
 
-        public EthRequestedMessage(Address address, UInt256 value, FaucetRequestStatus status)
+        public EthRequestedMessage(FaucetResponse response)
         {
-            Address = address;
-            Value = value;
-            Status = status;
+            Response = response;
         }
     }
 }

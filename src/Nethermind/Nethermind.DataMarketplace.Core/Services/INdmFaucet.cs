@@ -25,6 +25,6 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public interface INdmFaucet
     {
-        Task<FaucetRequestStatus> TryRequestEthAsync(string node, Address address, UInt256 value);
+        Task<FaucetResponse> TryRequestEthAsync(string node, Address address, UInt256 value);
     }
 }

@@ -27,6 +27,6 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         string FaucetHost { get; }
         void UpdateFaucet(INdmPeer peer);
-        Task<FaucetRequestStatus> TryRequestEthAsync(Address address, UInt256 value);
+        Task<FaucetResponse> TryRequestEthAsync(Address address, UInt256 value);
     }
 }

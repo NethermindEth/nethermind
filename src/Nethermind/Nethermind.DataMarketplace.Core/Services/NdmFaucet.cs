@@ -58,48 +58,48 @@ namespace Nethermind.DataMarketplace.Core.Services
             }
         }
 
-        public async Task<FaucetRequestStatus> TryRequestEthAsync(string node, Address address, UInt256 value)
+        public async Task<FaucetResponse> TryRequestEthAsync(string node, Address address, UInt256 value)
         {
             if (!_enabled)
             {
                 if (_logger.IsInfo) _logger.Info("NDM Faucet is disabled");
-                return FaucetRequestStatus.FaucetDisabled;
+                return FaucetResponse.FaucetDisabled;
             }
             
             if (_faucetAddress is null || _faucetAddress == Address.Zero)
             {
                 if (_logger.IsWarn) _logger.Warn("NDM Faucet address is not set");
-                return FaucetRequestStatus.FaucetAddressNotSet;
+                return FaucetResponse.FaucetAddressNotSet;
             }
 
             if (string.IsNullOrWhiteSpace(node) || address is null || address == Address.Zero)
             {
                 if (_logger.IsInfo) _logger.Info("Invalid NDM Faucet ETH request");
-                return FaucetRequestStatus.InvalidNodeAddress;
+                return FaucetResponse.InvalidNodeAddress;
             }
 
             if (_faucetAddress == address)
             {
                 if (_logger.IsInfo) _logger.Info("ETH request cannot be processed for the same address as faucet");
-                return FaucetRequestStatus.SameAddressAsFaucet;
+                return FaucetResponse.SameAddressAsFaucet;
             }
             
             if (value == 0)
             {
                 if (_logger.IsInfo) _logger.Info("ETH request cannot be processed for the zero value");
-                return FaucetRequestStatus.ZeroValue;
+                return FaucetResponse.ZeroValue;
             }
             
             if (value > _maxValue)
             {
                 if (_logger.IsInfo) _logger.Info($"ETH request from: {node} has too big value: {value} wei > {_maxValue} wei");
-                return FaucetRequestStatus.TooBigValue;
+                return FaucetResponse.TooBigValue;
             }
 
             if (_pendingRequests.TryGetValue(node, out _))
             {
                 if (_logger.IsInfo) _logger.Info($"ETH request from: {node} is already being processed.");
-                return FaucetRequestStatus.RequestAlreadyProcessing;
+                return FaucetResponse.RequestAlreadyProcessing;
             }
 
             if (_logger.IsInfo) _logger.Info($"Received ETH request from: {node}, address: {address}, value: {value} wei");
@@ -108,13 +108,13 @@ namespace Nethermind.DataMarketplace.Core.Services
             if (!(latestRequest is null) && latestRequest.RequestedAt.Date >= requestedAt.Date)
             {
                 if (_logger.IsInfo) _logger.Info($"ETH request from: {node} was already processed today at: {latestRequest.RequestedAt}");
-                return FaucetRequestStatus.RequestAlreadyProcessedToday;
+                return FaucetResponse.RequestAlreadyProcessedToday(FaucetRequestDetails.From(latestRequest));
             }
 
             if (!_pendingRequests.TryAdd(node, true))
             {
                 if (_logger.IsWarn) _logger.Warn($"Couldn't start processing ETH request from: {node}");
-                return FaucetRequestStatus.RequestError;
+                return FaucetResponse.RequestError;
             }
             
             if (_logger.IsInfo) _logger.Info($"Processing ETH request for: {node}, address: {address}, value: {value} wei");
@@ -135,8 +135,8 @@ namespace Nethermind.DataMarketplace.Core.Services
                 if (latestRequest is null)
                 {
                     var requestId = Keccak.Compute(Rlp.Encode(Rlp.Encode(node)));
-                    await _requestRepository.AddAsync(new EthRequest(requestId, node, address, value, requestedAt,
-                        transactionHash));
+                    latestRequest = new EthRequest(requestId, node, address, value, requestedAt, transactionHash);
+                    await _requestRepository.AddAsync(latestRequest);
                 }
                 else
                 {
@@ -145,12 +145,12 @@ namespace Nethermind.DataMarketplace.Core.Services
                 }
 
                 if (_logger.IsInfo) _logger.Info($"ETH request was successfully processed for: {node}, address: {address}, value: {value} wei");
-                return FaucetRequestStatus.RequestCompleted;
+                return FaucetResponse.RequestCompleted(FaucetRequestDetails.From(latestRequest));
             }
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error(e.Message, e);
-                return FaucetRequestStatus.ProcessingRequestError;
+                return FaucetResponse.ProcessingRequestError;
             }
             finally
             {

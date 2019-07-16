@@ -43,17 +43,17 @@ namespace Nethermind.DataMarketplace.Core.Services
             if (_logger.IsInfo) _logger.Info($"Updated NDM faucet peer: {peer.NodeId}");
         }
 
-        public async Task<FaucetRequestStatus> TryRequestEthAsync(Address address, UInt256 value)
+        public async Task<FaucetResponse> TryRequestEthAsync(Address address, UInt256 value)
         {
             if (_faucetPeer is null)
             {
                 if (_logger.IsWarn) _logger.Warn("ETH request to NDM faucet will not be send (no peer).");
-                return FaucetRequestStatus.FaucetNotSet;
+                return FaucetResponse.FaucetNotSet;
             }
 
             if (address is null || address == Address.Zero || value == 0)
             {
-                return FaucetRequestStatus.InvalidNodeAddress;
+                return FaucetResponse.InvalidNodeAddress;
             }
 
             if (_logger.IsInfo) _logger.Info($"Sending ETH request to NDM faucet, address: {address}, value {value} wei");
