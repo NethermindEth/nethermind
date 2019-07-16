@@ -121,5 +121,17 @@ namespace Nethermind.DataMarketplace.Test.Services
             bridge.GetCode(contractAddress).Returns(Bytes.FromHexString(ContractData.DeployedCode));
             depositService.ValidateContractAddress(contractAddress);
         }
+        
+        [Test]
+        public void Returns_a_valid_balance()
+        {
+            DepositService depositService = new DepositService(_bridge, _abiEncoder, _wallet, _ndmConfig, LimboLogs.Instance);
+            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamp().EpochSeconds + 86000, 1.Ether());
+            depositService.ChangeConsumerAddress(_consumerAccount);
+            Keccak depositTxHash = depositService.MakeDeposit(_consumerAccount, deposit);
+            TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
+            UInt256 balance = depositService.ReadDepositBalance(deposit.Id);
+            Assert.AreEqual(balance, 1.Ether());
+        }
     }
 }

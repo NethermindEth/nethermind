@@ -17,17 +17,17 @@
  */
 
 using System;
-using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Core.Domain;
 
-namespace Nethermind.DataMarketplace.Core.Services.Models
+namespace Nethermind.DataMarketplace.Core.Services
 {
-    public class DepositEventArgs : EventArgs
+    public class NdmDataPublisher : INdmDataPublisher
     {
-        private readonly Keccak _depositId;
+        public EventHandler<NdmDataEventArgs> DataPublished { get; set; }
 
-        public DepositEventArgs(Keccak depositId)
+        public void Publish(DataHeaderData dataHeaderData)
         {
-            _depositId = depositId;
+            DataPublished?.Invoke(this, new NdmDataEventArgs(dataHeaderData));
         }
     }
 }

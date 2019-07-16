@@ -51,7 +51,7 @@ namespace Nethermind.DataMarketplace.Core.Configs
 
         [DoNotUseInSecuredContext("Hardcode so cannot be overwritten to redirect to another contract")]
         [ConfigItem(Description = "An address of the smart contract used by NDM", DefaultValue = "0x82c839fa4a41e158f613ec8a1a84be3c816d370f")]
-        string ContractAddress { get; set; }
+        string ContractAddress { get; }
 
         [ConfigItem(Description = "Data provider's threshold (Wei) that once reached will send a receipt request to the data consumer", DefaultValue = "10000000000000000")]
         UInt256 ReceiptRequestThreshold { get; }

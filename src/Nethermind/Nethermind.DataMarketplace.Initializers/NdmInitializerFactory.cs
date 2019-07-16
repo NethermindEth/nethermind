@@ -1,40 +1,62 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 using System;
-using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.Loader;
+using Nethermind.DataMarketplace.Consumers.Infrastructure;
+using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.Logging;
 
 namespace Nethermind.DataMarketplace.Initializers
 {
-    public class NdmInitializerFactory
+    public class NdmInitializerFactory : INdmInitializerFactory
     {
+        private readonly Type _initializerType;
+        private readonly INdmModule _module;
+        private readonly INdmConsumersModule _consumersModule;
         private readonly ILogger _logger;
 
-        public NdmInitializerFactory(ILogManager logManager)
+        public NdmInitializerFactory(Type initializerType, INdmModule module, INdmConsumersModule consumersModule,
+            ILogManager logManager)
         {
+            _initializerType = initializerType;
+            _module = module;
+            _consumersModule = consumersModule;
             _logger = logManager.GetClassLogger();
         }
 
-        public INdmInitializer CreateOrFail(string initializer, string pluginsPath)
+        public INdmInitializer CreateOrFail()
         {
-            if (_logger.IsInfo) _logger.Info($"Loading NDM using the initializer: {initializer}");
-            var ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
-                .SelectMany(a => a.GetTypes())
-                .FirstOrDefault(t => t.GetCustomAttribute<NdmInitializerAttribute>()?.Name == initializer);
-            if (ndmInitializerType is null)
+            if (_initializerType is null)
             {
-                throw new ArgumentException($"NDM initializer type: {initializer} was not found.",
-                    nameof(ndmInitializerType));
+                throw new ArgumentNullException(nameof(_initializerType), $"NDM initializer type cannot be null.");
             }
 
-            if (!(Activator.CreateInstance(ndmInitializerType) is INdmInitializer ndmInitializer))
+            var name = _initializerType.Name;
+            if (_logger.IsInfo) _logger.Info($"Loading NDM using the initializer: {name}");
+            var instance = Activator.CreateInstance(_initializerType, _module, _consumersModule);
+            if (instance is INdmInitializer initializer)
             {
-                throw new ArgumentException($"NDM initializer type: {initializer} is not valid.",
-                    nameof(ndmInitializer));
+                return initializer;
             }
 
-            return ndmInitializer;
+            throw new ArgumentException($"NDM initializer type: {name} is not valid.", nameof(initializer));
         }
     }
 }

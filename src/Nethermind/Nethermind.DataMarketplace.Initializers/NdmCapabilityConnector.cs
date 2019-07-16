@@ -19,9 +19,6 @@
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Consumers.Services;
-using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.DataMarketplace.Subprotocols;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
@@ -32,31 +29,33 @@ namespace Nethermind.DataMarketplace.Initializers
     {
         private static readonly Capability Capability = new Capability(Protocol.Ndm, 1);
         private readonly IProtocolsManager _protocolsManager;
-        private readonly INdmSubprotocolFactory _subprotocolFactory;
+        private readonly IProtocolHandlerFactory _protocolHandlerFactory;
         private readonly IConsumerService _consumerService;
-        private readonly IProtocolValidator _protocolValidator;
-        private readonly IEthRequestService _ethRequestService;
-        private readonly ILogManager _logManager;
         private readonly Address _providerAddress;
-        private bool _capabilityAdded;
+        private readonly ILogger _logger;
+        public bool CapabilityAdded { get; private set; }
 
-        public NdmCapabilityConnector(IProtocolsManager protocolsManager, INdmSubprotocolFactory subprotocolFactory,
-            IConsumerService consumerService, IProtocolValidator protocolValidator,
-            IEthRequestService ethRequestService, ILogManager logManager, Address providerAddress = null)
+        public NdmCapabilityConnector(IProtocolsManager protocolsManager,
+            IProtocolHandlerFactory protocolHandlerFactory,
+            IConsumerService consumerService, ILogManager logManager, Address providerAddress = null)
         {
             _protocolsManager = protocolsManager;
-            _subprotocolFactory = subprotocolFactory;
+            _protocolHandlerFactory = protocolHandlerFactory;
             _consumerService = consumerService;
-            _protocolValidator = protocolValidator;
-            _ethRequestService = ethRequestService;
-            _logManager = logManager;
+            _logger = logManager.GetClassLogger();
             _providerAddress = providerAddress;
         }
 
         public void Init()
         {
+            if (_logger.IsTrace) _logger.Trace("Initializing NDM capability connector.");
             _consumerService.AddressChanged += (_, e) =>
             {
+                if (e.OldAddress == e.NewAddress)
+                {
+                    return;
+                }
+                
                 if (!(e.OldAddress is null) && e.OldAddress != Address.Zero)
                 {
                     return;
@@ -64,28 +63,7 @@ namespace Nethermind.DataMarketplace.Initializers
 
                 AddCapability();
             };
-            _protocolsManager.AddProtocol(Protocol.Ndm, session =>
-            {
-                var logger = _logManager.GetClassLogger<ProtocolsManager>();
-                var handler = _subprotocolFactory.Create(session);
-                handler.ProtocolInitialized += (sender, args) =>
-                {
-                    var ndmEventArgs = (NdmProtocolInitializedEventArgs) args;
-
-                    _protocolValidator.DisconnectOnInvalid(Protocol.Ndm, session, ndmEventArgs);
-                    if (logger.IsTrace) logger.Trace($"NDM version {handler.ProtocolVersion}: {session.RemoteNodeId}, host: {session.Node.Host}");
-                    if (string.IsNullOrWhiteSpace(_ethRequestService.FaucetHost) ||
-                        !session.Node.Host.Contains(_ethRequestService.FaucetHost))
-                    {
-                        return;
-                    }
-
-                    _ethRequestService.UpdateFaucet(handler as INdmPeer);
-                };
-
-                return handler;
-            });
-
+            _protocolsManager.AddProtocol(Protocol.Ndm, session => _protocolHandlerFactory.Create(session));
             var consumerAddress = _consumerService.GetAddress();
             if ((consumerAddress is null || consumerAddress == Address.Zero) &&
                 (_providerAddress is null || _providerAddress == Address.Zero))
@@ -95,6 +73,7 @@ namespace Nethermind.DataMarketplace.Initializers
 
             _protocolsManager.AddSupportedCapability(Capability);
             _protocolsManager.P2PProtocolInitialized += (sender, args) => { TryAddCapability(); };
+            if (_logger.IsTrace) _logger.Trace("Initialized NDM capability connector.");
         }
 
         public void AddCapability()
@@ -105,13 +84,13 @@ namespace Nethermind.DataMarketplace.Initializers
 
         private void TryAddCapability()
         {
-            if (_capabilityAdded)
+            if (CapabilityAdded)
             {
                 return;
             }
 
             _protocolsManager.SendNewCapability(Capability);
-            _capabilityAdded = true;
+            CapabilityAdded = true;
         }
     }
 }

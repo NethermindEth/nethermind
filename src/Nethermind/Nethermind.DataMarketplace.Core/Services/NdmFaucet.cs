@@ -147,9 +147,9 @@ namespace Nethermind.DataMarketplace.Core.Services
                 if (_logger.IsInfo) _logger.Info($"ETH request was successfully processed for: {node}, address: {address}, value: {value} wei");
                 return FaucetResponse.RequestCompleted(FaucetRequestDetails.From(latestRequest));
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error(e.Message, e);
+                if (_logger.IsError) _logger.Error(ex.Message, ex);
                 return FaucetResponse.ProcessingRequestError;
             }
             finally

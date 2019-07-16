@@ -27,7 +27,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public Keccak Id { get; set; }
         public uint Number { get; set; }
         public Keccak SessionId { get; set; }
-        public string NodeId { get; set; }
+        public PublicKey NodeId { get; set; }
         public DataDeliveryReceiptRequestForRpc Request { get; set; }
         public DataDeliveryReceiptForRpc Receipt { get; set; }
         public ulong Timestamp { get; set; }
@@ -43,7 +43,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
             Id = receipt.Id;
             Number = receipt.Number;
             SessionId = receipt.SessionId;
-            NodeId = receipt.NodeId.ToString();
+            NodeId = receipt.NodeId;
             Request = new DataDeliveryReceiptRequestForRpc(receipt.Request);
             Receipt = new DataDeliveryReceiptForRpc(receipt.Receipt);
             Timestamp = receipt.Timestamp;
