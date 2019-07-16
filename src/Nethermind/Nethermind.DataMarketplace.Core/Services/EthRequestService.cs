@@ -57,10 +57,10 @@ namespace Nethermind.DataMarketplace.Core.Services
             }
 
             if (_logger.IsInfo) _logger.Info($"Sending ETH request to NDM faucet, address: {address}, value {value} wei");
-            var status = await _faucetPeer.SendRequestEth(address, value);
-            if (_logger.IsInfo) _logger.Info($"Received response to ETH request from NDM faucet (address: {address}, value {value} wei) -> status: {status}.");
+            var response = await _faucetPeer.SendRequestEth(address, value);
+            if (_logger.IsInfo) _logger.Info($"Received response to ETH request from NDM faucet (address: {address}, value {value} wei) -> status: {response.Status}.");
 
-            return status;
+            return response;
         }
     }
 }

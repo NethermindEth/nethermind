@@ -42,11 +42,18 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public FaucetRequestDetails Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            var sequenceLength = context.ReadSequenceLength();
+            if (sequenceLength == 0)
+            {
+                return null;
+            }
+
             var host = context.DecodeString();
             var address = context.DecodeAddress();
             var value = context.DecodeUInt256();
             var date = DateTimeOffset.FromUnixTimeSeconds(context.DecodeLong()).UtcDateTime;
             var transactionHash = context.DecodeKeccak();
+            Console.WriteLine(transactionHash);
 
             return new FaucetRequestDetails(host, address, value, date, transactionHash);
         }
@@ -59,11 +66,13 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
             }
 
+            var date = item.Date == DateTime.MinValue ? 0 : new DateTimeOffset(item.Date).ToUnixTimeSeconds();
+
             return Nethermind.Core.Encoding.Rlp.Encode(
                 Nethermind.Core.Encoding.Rlp.Encode(item.Host),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Address),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Value),
-                Nethermind.Core.Encoding.Rlp.Encode(new DateTimeOffset(item.Date).ToUnixTimeSeconds()),
+                Nethermind.Core.Encoding.Rlp.Encode(date),
                 Nethermind.Core.Encoding.Rlp.Encode(item.TransactionHash));
         }
 
