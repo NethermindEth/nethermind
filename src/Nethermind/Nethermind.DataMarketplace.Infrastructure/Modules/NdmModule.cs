@@ -94,6 +94,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             DepositApprovalDecoder.Init();
             EarlyRefundTicketDecoder.Init();
             EthRequestDecoder.Init();
+            FaucetResponseDecoder.Init();
+            FaucetRequestDetailsDecoder.Init();
             SessionDecoder.Init();
             UnitsRangeDecoder.Init();
         }
