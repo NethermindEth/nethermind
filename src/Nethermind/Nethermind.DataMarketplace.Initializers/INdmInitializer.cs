@@ -34,6 +34,7 @@ using Nethermind.Network;
 using Nethermind.Stats;
 using Nethermind.Store;
 using Nethermind.Wallet;
+using Nethermind.WebSockets;
 
 namespace Nethermind.DataMarketplace.Initializers
 {
@@ -47,6 +48,6 @@ namespace Nethermind.DataMarketplace.Initializers
             INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
             IGrpcService grpcService, INodeStatsManager nodeStatsManager, IProtocolsManager protocolsManager,
             IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
-            bool enableUnsecuredDevWallet, ILogManager logManager);
+            bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager);
     }
 }

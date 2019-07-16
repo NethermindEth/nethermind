@@ -90,6 +90,7 @@ using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
 using Nethermind.Wallet;
+using Nethermind.WebSockets;
 using Block = Nethermind.Core.Block;
 using ISyncConfig = Nethermind.Blockchain.ISyncConfig;
 
@@ -107,6 +108,7 @@ namespace Nethermind.Runner.Runners
         private readonly INdmConsumerChannelManager _ndmConsumerChannelManager;
         private readonly INdmDataPublisher _ndmDataPublisher;
         private readonly INdmInitializer _ndmInitializer;
+        private readonly IWebSocketsManager _webSocketsManager;
         private static ILogger _logger;
 
         private IRpcModuleProvider _rpcModuleProvider;
@@ -164,9 +166,10 @@ namespace Nethermind.Runner.Runners
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
-        public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider, ILogManager logManager,
-            IGrpcService grpcService, IGrpcClient grpcClient, INdmConsumerChannelManager ndmConsumerChannelManager,
-            INdmDataPublisher ndmDataPublisher, INdmInitializer ndmInitializer)
+        public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider,
+            ILogManager logManager, IGrpcService grpcService, IGrpcClient grpcClient,
+            INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
+            INdmInitializer ndmInitializer, IWebSocketsManager webSocketsManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _grpcService = grpcService;
@@ -174,6 +177,7 @@ namespace Nethermind.Runner.Runners
             _ndmConsumerChannelManager = ndmConsumerChannelManager;
             _ndmDataPublisher = ndmDataPublisher;
             _ndmInitializer = ndmInitializer;
+            _webSocketsManager = webSocketsManager;
             _logger = _logManager.GetClassLogger();
 
             InitRlp();
@@ -859,7 +863,7 @@ namespace Nethermind.Runner.Runners
                     _receiptStorage, _wallet, _timestamp, _ethereumEcdsa, _rpcModuleProvider, _keyStore, _jsonSerializer,
                     _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcService,
                     _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
-                    _initConfig.EnableUnsecuredDevWallet, _logManager);
+                    _initConfig.EnableUnsecuredDevWallet, _webSocketsManager, _logManager);
                 capabilityConnector.Init();
                 if (_logger.IsInfo) _logger.Info($"NDM initialized.");
             }

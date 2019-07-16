@@ -180,7 +180,7 @@ namespace Nethermind.Runner
             }
             
             _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager, grpcService, grpcClient,
-                ndmConsumerChannelManager, ndmDataPublisher, ndmInitializer);
+                ndmConsumerChannelManager, ndmDataPublisher, ndmInitializer, webSocketsManager);
             await _ethereumRunner.Start().ContinueWith(x =>
             {
                 if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
