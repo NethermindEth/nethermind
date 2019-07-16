@@ -193,11 +193,12 @@ namespace Nethermind.Core.Encoding
             Rlp.Encode(stream, item.GasLimit);
             Rlp.Encode(stream, item.GasUsed);
             Rlp.Encode(stream, item.Timestamp);
-            Rlp.Encode(stream, item.ExtraData);
+            Rlp.Encode(stream, (byte[])null);
             
             if (item.AuRaSignature != null)
             {
-                stream.Write(item.AuRaSignature); // is AuRa signature appended in a non-RLP form as in spec?
+                Rlp.Encode(stream, item.AuRaStep.Value);
+                Rlp.Encode(stream, item.AuRaSignature);
             }
             else if (!forSealing)
             {
@@ -231,7 +232,8 @@ namespace Nethermind.Core.Encoding
             
             if (item.AuRaSignature != null)
             {
-//                contentLength += item.AuRaSignature.Length;
+                contentLength += Rlp.LengthOf(item.AuRaStep.Value);
+                contentLength += Rlp.LengthOf(item.AuRaSignature);
             }
             else if (!forSealing)
             {

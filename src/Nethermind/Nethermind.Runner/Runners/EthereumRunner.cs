@@ -819,14 +819,17 @@ namespace Nethermind.Runner.Runners
         /// If <paramref name="expectedGenesisHash"/> is <value>null</value> then it means that we do not care about the genesis hash (e.g. in some quick testing of private chains)/>
         /// </summary>
         /// <param name="expectedGenesisHash"></param>
-        /// <exception cref="Exception">Thrown when genesis hash is not as expected.</exception>
         private void ValidateGenesisHash(Keccak expectedGenesisHash)
         {
             if (expectedGenesisHash != null && _blockTree.Genesis.Hash != expectedGenesisHash)
             {
                 if(_logger.IsWarn) _logger.Warn(_stateProvider.DumpState());
                 if(_logger.IsWarn) _logger.Warn(_blockTree.Genesis.ToString(BlockHeader.Format.Full));
-                throw new Exception($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {_blockTree.Genesis.Hash}");
+                if(_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {_blockTree.Genesis.Hash}");
+            }
+            else
+            {
+                if(_logger.IsInfo) _logger.Info($"Genesis hash :  {_blockTree.Genesis.Hash}");
             }
         }
 
