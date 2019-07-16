@@ -32,6 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public BlockForRpc(Block block, bool includeFullTransactionData)
         {
+            bool isAuRaBlock = block.Header.AuRaSignature != null;
             Author = block.Author;
             Difficulty = block.Difficulty;
             ExtraData = block.ExtraData;
@@ -40,8 +41,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Hash = block.Hash;
             LogsBloom = block.Bloom;
             Miner = block.Beneficiary;
-            MixHash = block.MixHash;
-            Nonce = block.Nonce.ToBigEndianByteArray().PadLeft(8);
+            if (!isAuRaBlock)
+            {
+                MixHash = block.MixHash;
+                Nonce = block.Nonce.ToBigEndianByteArray().PadLeft(8);
+            }
+
             Number = block.Number;
             ParentHash = block.ParentHash;
             ReceiptsRoot = block.ReceiptsRoot;
@@ -49,6 +54,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Signature = block.Header.AuRaSignature;
             Size = 0L;
             StateRoot = block.StateRoot;
+            if (isAuRaBlock)
+            {
+                Step = block.Header.AuRaStep;    
+            }
+            
             Timestamp = block.Timestamp;
             TotalDifficulty = block.TotalDifficulty ?? 0;
             Transactions = includeFullTransactionData ? block.Transactions.Select((t, idx) => new TransactionForRpc(block.Hash, block.Number, idx, t)).ToArray() : (object[])block.Transactions.Select(t => t.Hash).ToArray();
@@ -73,6 +83,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public byte[] Signature { get; set; }
         public long Size { get; set; }
         public Keccak StateRoot { get; set; }
+        public long? Step { get; set; }
         public UInt256 Timestamp { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public IEnumerable<object> Transactions { get; set; }

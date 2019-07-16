@@ -210,6 +210,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesisHeader.StateRoot = Keccak.EmptyTreeHash;
             genesisHeader.TxRoot = Keccak.EmptyTreeHash;
+            
+            genesisHeader.AuRaStep = step;
             genesisHeader.AuRaSignature = auRaSignature;
 
             chainSpec.Genesis = new Block(genesisHeader);

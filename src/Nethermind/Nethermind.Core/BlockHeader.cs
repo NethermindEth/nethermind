@@ -69,6 +69,7 @@ namespace Nethermind.Core
         public Keccak Hash { get; set; }
         public UInt256? TotalDifficulty { get; set; }
         public byte[] AuRaSignature { get; set; }
+        public long? AuRaStep { get; set; }
         
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
@@ -88,10 +89,7 @@ namespace Nethermind.Core
             }
         }
 
-        public static Keccak CalculateHash(Block block)
-        {
-            return CalculateHash(block.Header);
-        }
+        public static Keccak CalculateHash(Block block) => CalculateHash(block.Header);
 
         public string ToString(string indent)
         {
