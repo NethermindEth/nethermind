@@ -17,11 +17,13 @@
  */
 
 using System.Numerics;
+using Nethermind.Core;
 
 namespace Nethermind.JsonRpc.Modules.Net
 {
     public interface INetModule : IModule
     {
+        ResultWrapper<Address> net_localAddress();
         ResultWrapper<string> net_localEnode();
         ResultWrapper<string> net_version();
         ResultWrapper<bool> net_listening();

@@ -99,14 +99,12 @@ namespace Nethermind.DataMarketplace.Initializers
         protected async Task<(NdmConfig config, INdmServices services, INdmFaucet faucet,
                 IConsumerService consumerService, Address consumerAddress, Address providerAddress)>
             PreInitAsync(IConfigProvider configProvider, IDbProvider dbProvider, string baseDbPath,
-                IBlockProcessor blockProcessor,
-                IBlockTree blockTree, ITxPool txPool, ITxPoolInfoProvider txPoolInfoProvider,
-                ISpecProvider specProvider,
-                IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEthereumEcdsa ecdsa,
-                IRpcModuleProvider rpcModuleProvider, IKeyStore keyStore, IJsonSerializer jsonSerializer,
-                ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager consumerChannelManager,
-                INdmDataPublisher dataPublisher, IGrpcService grpcService, bool enableUnsecuredDevWallet,
-                IWebSocketsManager webSocketsManager,
+                IBlockProcessor blockProcessor, IBlockTree blockTree, ITxPool txPool,
+                ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider, IReceiptStorage receiptStorage,
+                IWallet wallet, ITimestamp timestamp, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider,
+                IKeyStore keyStore, IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
+                INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
+                IGrpcService grpcService, bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager,
                 ILogManager logManager)
         {
             if (!(configProvider.GetConfig<INdmConfig>() is NdmConfig defaultConfig))

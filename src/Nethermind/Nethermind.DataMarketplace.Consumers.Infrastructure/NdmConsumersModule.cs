@@ -101,13 +101,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
             var depositService = new DepositService(services.CreatedServices.BlockchainBridge,
                 services.CreatedServices.AbiEncoder, services.RequiredServices.Wallet, ndmConfig, logManager);
+            var consumerNotifier = new ConsumerNotifier(services.RequiredServices.Notifier);
             var consumerService = new ConsumerService(services.RequiredServices.ConfigManager, ndmConfig.Id,
                 depositRepository, depositApprovalRepository, providerRepository, receiptRepository, sessionRepository,
                 services.RequiredServices.Wallet, services.CreatedServices.AbiEncoder,
                 services.RequiredServices.CryptoRandom, depositService, receiptRequestValidator, refundService,
                 services.CreatedServices.BlockchainBridge, services.CreatedServices.ConsumerAddress,
                 services.RequiredServices.Enode.PublicKey, services.RequiredServices.Timestamp,
-                ndmConfig.BlockConfirmations, logManager);
+                consumerNotifier, ndmConfig.BlockConfirmations, logManager);
             var reportService = new ReportService(depositRepository, receiptRepository, sessionRepository,
                 services.RequiredServices.Timestamp);
 

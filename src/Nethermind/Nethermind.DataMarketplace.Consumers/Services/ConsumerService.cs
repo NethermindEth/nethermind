@@ -90,6 +90,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private Address _consumerAddress;
         private readonly PublicKey _nodePublicKey;
         private readonly ITimestamp _timestamp;
+        private readonly IConsumerNotifier _consumerNotifier;
         private readonly uint _blockConfirmations;
         private readonly ILogger _logger;
         private readonly Timer _timer;
@@ -103,7 +104,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             ICryptoRandom cryptoRandom, IDepositService depositService,
             IReceiptRequestValidator receiptRequestValidator, IRefundService refundService,
             IBlockchainBridge blockchainBridge, Address consumerAddress, PublicKey nodePublicKey,
-            ITimestamp timestamp, uint blockConfirmations, ILogManager logManager)
+            ITimestamp timestamp, IConsumerNotifier consumerNotifier, uint blockConfirmations, ILogManager logManager)
         {
             _configManager = configManager;
             _configId = configId;
@@ -122,6 +123,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _consumerAddress = consumerAddress ?? Address.Zero;
             _nodePublicKey = nodePublicKey;
             _timestamp = timestamp;
+            _consumerNotifier = consumerNotifier;
             _blockConfirmations = blockConfirmations;
             _logger = logManager.GetClassLogger();
             _timer = new Timer {Interval = 5000};
@@ -213,14 +215,16 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             var confirmations = _blockchainBridge.Head.Number - receipt.BlockNumber;
             if (_logger.IsInfo) _logger.Info($"Deposit: '{depositDetails.Id}' has {confirmations} confirmations (required at least {_blockConfirmations}) for transaction hash: '{transactionHash}' to be verified.");
-            if (confirmations < _blockConfirmations)
+            var confirmed = confirmations >= _blockConfirmations;
+            if (confirmed)
             {
-                return;
+                depositDetails.Verify(verificationTimestamp);
+                await _depositRepository.UpdateAsync(depositDetails);
+                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Deposit.Id}' has been verified, timestamp: {verificationTimestamp}.");
             }
-            
-            depositDetails.Verify(verificationTimestamp);
-            await _depositRepository.UpdateAsync(depositDetails);
-            if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Deposit.Id}' has been verified, timestamp: {verificationTimestamp}.");
+
+            await _consumerNotifier.SendDepositConfirmationsStatusAsync(depositDetails.Id, (int) confirmations,
+                confirmed);
         }
 
         private async Task TryClaimRefundAsync(DepositDetails depositDetails)

@@ -176,8 +176,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         
         public void HandleMessage(Packet message)
         {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} {nameof(NdmSubprotocol)} " +
-                $"handling a message with code {message.PacketType}.");
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} {nameof(NdmSubprotocol)} handling a message with code {message.PacketType}.");
 
             if (message.PacketType == NdmMessageCode.Hi)
             {

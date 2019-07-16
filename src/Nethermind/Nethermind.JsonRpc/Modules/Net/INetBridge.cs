@@ -16,10 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
+
 namespace Nethermind.JsonRpc.Modules.Net
 {
     public interface INetBridge
     {
+        Address LocalAddress { get; }
         string LocalEnode { get; }
         int NetworkId { get; }
         int PeerCount { get; }

@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Core;
+using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.WebSockets;
 
 namespace Nethermind.DataMarketplace.WebSockets
@@ -34,8 +35,12 @@ namespace Nethermind.DataMarketplace.WebSockets
         {
         }
 
-        public Task NotifyAsync(object data)
+        public Task NotifyAsync(Notification notification)
             => _client is null ? Task.CompletedTask :
-                data is null ? Task.CompletedTask : _client.SendAsync(_jsonSerializer.Serialize(data));
+                notification is null ? Task.CompletedTask : _client.SendAsync(_jsonSerializer.Serialize(new
+                {
+                    type = notification.Type,
+                    data = notification.Data
+                }));
     }
 }

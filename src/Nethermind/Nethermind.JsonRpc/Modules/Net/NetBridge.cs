@@ -19,6 +19,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Net
@@ -36,6 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Net
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(syncServer));
         }
 
+        public Address LocalAddress => _localNode.Address;
         public string LocalEnode => _localNode.Info;
         public int NetworkId => _syncServer.ChainId;
         public int PeerCount => _syncServer.GetPeerCount();
