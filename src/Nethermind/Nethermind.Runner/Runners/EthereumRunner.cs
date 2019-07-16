@@ -41,6 +41,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Specs.GenesisFileStyle;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
@@ -48,6 +49,7 @@ using Nethermind.DataMarketplace.Initializers;
 using Nethermind.DataMarketplace.Subprotocols.Serializers;
 using Nethermind.Db;
 using Nethermind.Db.Config;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.EthStats;
 using Nethermind.EthStats.Clients;
 using Nethermind.EthStats.Integrations;
@@ -154,6 +156,7 @@ namespace Nethermind.Runner.Runners
         private IDbProvider _dbProvider;
         private readonly ITimestamp _timestamp = new Timestamp();
         private IStateProvider _stateProvider;
+        private IStorageProvider _storageProvider;
         private IWallet _wallet;
         private IEnode _enode;
         private HiveRunner _hiveRunner;
@@ -448,61 +451,10 @@ namespace Nethermind.Runner.Runners
                 _logManager);
 
             _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _txPool, _logManager);
-
-            CliqueConfig cliqueConfig = null;
+            
             _snapshotManager = null;
-            switch (_chainSpec.SealEngineType)
-            {
-                case SealEngineType.None:
-                    _sealer = NullSealEngine.Instance;
-                    _sealValidator = NullSealEngine.Instance;
-                    _rewardCalculator = NoBlockRewards.Instance;
-                    break;
-                case SealEngineType.Clique:
-                    _rewardCalculator = NoBlockRewards.Instance;
-                    cliqueConfig = new CliqueConfig();
-                    cliqueConfig.BlockPeriod = _chainSpec.Clique.Period;
-                    cliqueConfig.Epoch = _chainSpec.Clique.Epoch;
-                    _snapshotManager = new SnapshotManager(cliqueConfig, _dbProvider.BlocksDb, _blockTree, _ethereumEcdsa, _logManager);
-                    _sealValidator = new CliqueSealValidator(cliqueConfig, _snapshotManager, _logManager);
-                    _recoveryStep = new CompositeDataRecoveryStep(_recoveryStep, new AuthorRecoveryStep(_snapshotManager));
-                    if (_initConfig.IsMining)
-                    {
-                        _sealer = new CliqueSealer(new BasicWallet(_nodeKey), cliqueConfig, _snapshotManager, _nodeKey.Address, _logManager);
-                    }
-                    else
-                    {
-                        _sealer = NullSealEngine.Instance;
-                    }
-
-                    break;
-                case SealEngineType.NethDev:
-                    _sealer = NullSealEngine.Instance;
-                    _sealValidator = NullSealEngine.Instance;
-                    _rewardCalculator = NoBlockRewards.Instance;
-                    break;
-                case SealEngineType.Ethash:
-                    _rewardCalculator = new RewardCalculator(_specProvider);
-                    var difficultyCalculator = new DifficultyCalculator(_specProvider);
-                    if (_initConfig.IsMining)
-                    {
-                        _sealer = new EthashSealer(new Ethash(_logManager), _logManager);
-                    }
-                    else
-                    {
-                        _sealer = NullSealEngine.Instance;
-                    }
-
-                    _sealValidator = new EthashSealValidator(_logManager, difficultyCalculator, new Ethash(_logManager));
-                    break;
-                case SealEngineType.AuRa:
-                    _sealer = new AuRaSealer();
-                    _sealValidator = new AuRaSealValidator(_logManager);
-                    _rewardCalculator = NoBlockRewards.Instance;
-                    break;
-                default:
-                    throw new NotSupportedException($"Seal engine type {_chainSpec.SealEngineType} is not supported in Nethermind");
-            }
+            
+            InitSealEngine();
 
             /* validation */
             _headerValidator = new HeaderValidator(
@@ -525,36 +477,34 @@ namespace Nethermind.Runner.Runners
                 _specProvider,
                 _logManager);
 
-            var stateProvider = new StateProvider(
+            _stateProvider = new StateProvider(
                 _dbProvider.StateDb,
                 _dbProvider.CodeDb,
                 _logManager);
 
-            _stateProvider = stateProvider;
-
-            var storageProvider = new StorageProvider(
+            _storageProvider = new StorageProvider(
                 _dbProvider.StateDb,
-                stateProvider,
+                _stateProvider,
                 _logManager);
 
-            _txPoolInfoProvider = new TxPoolInfoProvider(stateProvider);
+            _txPoolInfoProvider = new TxPoolInfoProvider(_stateProvider);
 
-            _transactionPoolInfoProvider = new TxPoolInfoProvider(stateProvider);
+            _transactionPoolInfoProvider = new TxPoolInfoProvider(_stateProvider);
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(
                 _blockTree, _logManager);
 
             var virtualMachine = new VirtualMachine(
-                stateProvider,
-                storageProvider,
+                _stateProvider,
+                _storageProvider,
                 blockhashProvider,
                 _logManager);
 
             _transactionProcessor = new TransactionProcessor(
                 _specProvider,
-                stateProvider,
-                storageProvider,
+                _stateProvider,
+                _storageProvider,
                 virtualMachine,
                 _logManager);
 
@@ -566,8 +516,8 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.StateDb,
                 _dbProvider.CodeDb,
                 _dbProvider.TraceDb,
-                stateProvider,
-                storageProvider,
+                _stateProvider,
+                _storageProvider,
                 _txPool,
                 _receiptStorage,
                 _logManager);
@@ -584,39 +534,10 @@ namespace Nethermind.Runner.Runners
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
             _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager);
 
-            if (_initConfig.IsMining)
-            {
-                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-                AlternativeChain producerChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator,
-                    _specProvider, minerDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage);
-
-                switch (_chainSpec.SealEngineType)
-                {
-                    case SealEngineType.Clique:
-                    {
-                        if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
-                        _blockProducer = new CliqueBlockProducer(_txPool, producerChain.Processor,
-                            _blockTree, _timestamp, _cryptoRandom, producerChain.StateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
-                        break;
-                    }
-
-                    case SealEngineType.NethDev:
-                    {
-                        if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
-                        _blockProducer = new DevBlockProducer(_txPool, producerChain.Processor, _blockTree,
-                            _timestamp, _logManager);
-                        break;
-                    }
-
-                    default:
-                        throw new NotSupportedException($"Mining in {_chainSpec.SealEngineType} mode is not supported");
-                }
-
-                _blockProducer.Start();
-            }
+            InitBlockProducers();
 
             _blockchainProcessor.Start();
-            LoadGenesisBlock(_chainSpec, string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash), _blockTree, storageProvider, stateProvider, _specProvider);
+            LoadGenesisBlock(string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash));
             if (_initConfig.ProcessingEnabled)
             {
 #pragma warning disable 4014
@@ -668,6 +589,109 @@ namespace Nethermind.Runner.Runners
             _dataBridge.Start();
 
             await InitializeNetwork();
+        }
+
+        private void InitBlockProducers()
+        {
+            if (_initConfig.IsMining)
+            {
+                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
+                AlternativeChain producerChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator,
+                    _specProvider, minerDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage);
+
+                switch (_chainSpec.SealEngineType)
+                {
+                    case SealEngineType.Clique:
+                    {
+                        if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
+                        CliqueConfig cliqueConfig = new CliqueConfig();
+                        cliqueConfig.BlockPeriod = _chainSpec.Clique.Period;
+                        cliqueConfig.Epoch = _chainSpec.Clique.Epoch;
+                        _blockProducer = new CliqueBlockProducer(
+                            _txPool,
+                            producerChain.Processor,
+                            _blockTree,
+                            _timestamp,
+                            _cryptoRandom,
+                            producerChain.StateProvider,
+                            _snapshotManager,
+                            (CliqueSealer) _sealer,
+                            _nodeKey.Address,
+                            cliqueConfig,
+                            _logManager);
+                        break;
+                    }
+
+                    case SealEngineType.NethDev:
+                    {
+                        if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
+                        _blockProducer = new DevBlockProducer(_txPool, producerChain.Processor, _blockTree,
+                            _timestamp, _logManager);
+                        break;
+                    }
+
+                    default:
+                        throw new NotSupportedException($"Mining in {_chainSpec.SealEngineType} mode is not supported");
+                }
+
+                _blockProducer.Start();
+            }
+        }
+
+        private void InitSealEngine()
+        {
+            switch (_chainSpec.SealEngineType)
+            {
+                case SealEngineType.None:
+                    _sealer = NullSealEngine.Instance;
+                    _sealValidator = NullSealEngine.Instance;
+                    _rewardCalculator = NoBlockRewards.Instance;
+                    break;
+                case SealEngineType.Clique:
+                    _rewardCalculator = NoBlockRewards.Instance;
+                    CliqueConfig cliqueConfig = new CliqueConfig();
+                    cliqueConfig.BlockPeriod = _chainSpec.Clique.Period;
+                    cliqueConfig.Epoch = _chainSpec.Clique.Epoch;
+                    _snapshotManager = new SnapshotManager(cliqueConfig, _dbProvider.BlocksDb, _blockTree, _ethereumEcdsa, _logManager);
+                    _sealValidator = new CliqueSealValidator(cliqueConfig, _snapshotManager, _logManager);
+                    _recoveryStep = new CompositeDataRecoveryStep(_recoveryStep, new AuthorRecoveryStep(_snapshotManager));
+                    if (_initConfig.IsMining)
+                    {
+                        _sealer = new CliqueSealer(new BasicWallet(_nodeKey), cliqueConfig, _snapshotManager, _nodeKey.Address, _logManager);
+                    }
+                    else
+                    {
+                        _sealer = NullSealEngine.Instance;
+                    }
+
+                    break;
+                case SealEngineType.NethDev:
+                    _sealer = NullSealEngine.Instance;
+                    _sealValidator = NullSealEngine.Instance;
+                    _rewardCalculator = NoBlockRewards.Instance;
+                    break;
+                case SealEngineType.Ethash:
+                    _rewardCalculator = new RewardCalculator(_specProvider);
+                    var difficultyCalculator = new DifficultyCalculator(_specProvider);
+                    if (_initConfig.IsMining)
+                    {
+                        _sealer = new EthashSealer(new Ethash(_logManager), _logManager);
+                    }
+                    else
+                    {
+                        _sealer = NullSealEngine.Instance;
+                    }
+
+                    _sealValidator = new EthashSealValidator(_logManager, difficultyCalculator, new Ethash(_logManager));
+                    break;
+                case SealEngineType.AuRa:
+                    _sealer = new AuRaSealer();
+                    _sealValidator = new AuRaSealValidator(_logManager);
+                    _rewardCalculator = NoBlockRewards.Instance;
+                    break;
+                default:
+                    throw new NotSupportedException($"Seal engine type {_chainSpec.SealEngineType} is not supported in Nethermind");
+            }
         }
 
         private async Task LoadBlocksFromDb()
@@ -753,30 +777,25 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsInfo) _logger.Info($"Node address : {_enode.Address} (do not use as an account)");
         }
 
-        private void LoadGenesisBlock(
-            ChainSpec chainSpec,
-            Keccak expectedGenesisHash,
-            IBlockTree blockTree,
-            IStorageProvider storageProvider,
-            IStateProvider stateProvider,
-            ISpecProvider specProvider)
+        private void LoadGenesisBlock(Keccak expectedGenesisHash)
         {
             // if we already have a database with blocks then we do not need to load genesis from spec
-            if (blockTree.Genesis != null)
+            if (_blockTree.Genesis != null)
             {
                 ValidateGenesisHash(expectedGenesisHash);
                 return;
             }
 
-            Block genesis = chainSpec.Genesis;
-
-            foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations)
+            Block genesis = _chainSpec.Genesis;
+            CreateSystemAccounts();
+            
+            foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations)
             {
-                stateProvider.CreateAccount(address, allocation.Balance);
+                _stateProvider.CreateAccount(address, allocation.Balance);
                 if (allocation.Code != null)
                 {
-                    Keccak codeHash = stateProvider.UpdateCode(allocation.Code);
-                    stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
+                    Keccak codeHash = _stateProvider.UpdateCode(allocation.Code);
+                    _stateProvider.UpdateCodeHash(address, codeHash, _specProvider.GenesisSpec);
                 }
 
                 if (allocation.Constructor != null)
@@ -790,19 +809,16 @@ namespace Nethermind.Runner.Runners
                 }
             }
 
-            storageProvider.Commit();
-            stateProvider.Commit(specProvider.GenesisSpec);
-            
-            storageProvider.CommitTrees();
-            stateProvider.CommitTree();
+            _storageProvider.Commit();
+            _stateProvider.Commit(_specProvider.GenesisSpec);
+
+            _storageProvider.CommitTrees();
+            _stateProvider.CommitTree();
             
             _dbProvider.StateDb.Commit();
             _dbProvider.CodeDb.Commit();
 
-            genesis.StateRoot = stateProvider.StateRoot;
-
-            _logger.Warn(stateProvider.DumpState());
-
+            genesis.StateRoot = _stateProvider.StateRoot;
             genesis.Hash = BlockHeader.CalculateHash(genesis.Header);
 
             ManualResetEventSlim genesisProcessedEvent = new ManualResetEventSlim(false);
@@ -812,26 +828,42 @@ namespace Nethermind.Runner.Runners
             void GenesisProcessed(object sender, BlockEventArgs args)
             {
                 genesisLoaded = true;
-                blockTree.NewHeadBlock -= GenesisProcessed;
+                _blockTree.NewHeadBlock -= GenesisProcessed;
                 genesisProcessedEvent.Set();
             }
 
-            blockTree.NewHeadBlock += GenesisProcessed;
-            blockTree.SuggestBlock(genesis);
+            _blockTree.NewHeadBlock += GenesisProcessed;
+            _blockTree.SuggestBlock(genesis);
             genesisProcessedEvent.Wait(TimeSpan.FromSeconds(5));
             if (!genesisLoaded)
             {
                 throw new BlockchainException("Genesis block processing failure");
             }
-
-            // if expectedGenesisHash is null here then it means that we do not care about the exact value in advance (e.g. in test scenarios)
+            
             ValidateGenesisHash(expectedGenesisHash);
         }
 
+        private void CreateSystemAccounts()
+        {
+            if (_chainSpec.SealEngineType == SealEngineType.AuRa)
+            {
+                _stateProvider.CreateAccount(Address.Zero, UInt256.Zero);
+                _storageProvider.Commit();
+                _stateProvider.Commit(Homestead.Instance);
+            }
+        }
+
+        /// <summary>
+        /// If <paramref name="expectedGenesisHash"/> is <value>null</value> then it means that we do not care about the genesis hash (e.g. in some quick testing of private chains)/>
+        /// </summary>
+        /// <param name="expectedGenesisHash"></param>
+        /// <exception cref="Exception">Thrown when genesis hash is not as expected.</exception>
         private void ValidateGenesisHash(Keccak expectedGenesisHash)
         {
             if (expectedGenesisHash != null && _blockTree.Genesis.Hash != expectedGenesisHash)
             {
+                if(_logger.IsWarn) _logger.Warn(_stateProvider.DumpState());
+                if(_logger.IsWarn) _logger.Warn(_blockTree.Genesis.ToString(BlockHeader.Format.Full));
                 throw new Exception($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {_blockTree.Genesis.Hash}");
             }
         }
