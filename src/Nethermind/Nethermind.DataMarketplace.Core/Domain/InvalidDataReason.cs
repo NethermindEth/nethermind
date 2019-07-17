@@ -4,9 +4,11 @@ namespace Nethermind.DataMarketplace.Core.Domain
     {
         DataHeaderNotFound,
         DepositNotFound,
+        SessionNotFound,
         NoUnitsLeft,
         PluginNotFound,
         PluginDisabled,
-        InvalidResult
+        InvalidResult,
+        InternalError
     }
 }
