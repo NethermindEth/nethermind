@@ -1,7 +1,7 @@
 using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Core.Domain;
 
-namespace Nethermind.DataMarketplace.Core
+namespace Nethermind.DataMarketplace.Core.Services
 {
     public interface INdmNotifier
     {

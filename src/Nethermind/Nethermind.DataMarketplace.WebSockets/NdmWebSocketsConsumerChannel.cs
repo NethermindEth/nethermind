@@ -23,19 +23,21 @@ using Nethermind.WebSockets;
 
 namespace Nethermind.DataMarketplace.WebSockets
 {
-    public class WebSocketsNdmConsumerChannel : INdmConsumerChannel
+    public class NdmWebSocketsConsumerChannel : INdmConsumerChannel
     {
         private readonly IWebSocketsClient _client;
-        private readonly Keccak _depositId;
         public NdmConsumerChannelType Type => NdmConsumerChannelType.WebSockets;
 
-        public WebSocketsNdmConsumerChannel(IWebSocketsClient client, Keccak depositId)
+        public NdmWebSocketsConsumerChannel(IWebSocketsClient client)
         {
             _client = client;
-            _depositId = depositId;
         }
 
         public Task PublishAsync(Keccak depositId, string data)
-            => _depositId != depositId ? Task.CompletedTask : _client.SendAsync(data);
+            => _client.SendAsync(new WebSocketsMessage("data_received", new
+            {
+                depositId,
+                data
+            }));
     }
 }

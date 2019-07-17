@@ -23,6 +23,8 @@ namespace Nethermind.WebSockets
     public interface IWebSocketsClient
     {
         string Id { get; }
-        Task SendAsync(string data);
+        Task SendRawAsync(string data);
+        Task SendAsync(WebSocketsMessage message);
+        Task ReceiveAsync(byte[] data);
     }
 }

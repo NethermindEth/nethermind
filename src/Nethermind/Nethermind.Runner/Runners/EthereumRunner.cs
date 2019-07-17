@@ -121,7 +121,7 @@ namespace Nethermind.Runner.Runners
         private ChainSpec _chainSpec;
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
         private IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
-        private IJsonSerializer _ethereumJsonSerializer = new EthereumJsonSerializer();
+        private IJsonSerializer _ethereumJsonSerializer;
         private CancellationTokenSource _runnerCancellation;
 
         private IBlockchainProcessor _blockchainProcessor;
@@ -169,7 +169,8 @@ namespace Nethermind.Runner.Runners
         public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider,
             ILogManager logManager, IGrpcService grpcService, IGrpcClient grpcClient,
             INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
-            INdmInitializer ndmInitializer, IWebSocketsManager webSocketsManager)
+            INdmInitializer ndmInitializer, IWebSocketsManager webSocketsManager,
+            IJsonSerializer ethereumJsonSerializer)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _grpcService = grpcService;
@@ -178,6 +179,7 @@ namespace Nethermind.Runner.Runners
             _ndmDataPublisher = ndmDataPublisher;
             _ndmInitializer = ndmInitializer;
             _webSocketsManager = webSocketsManager;
+            _ethereumJsonSerializer = ethereumJsonSerializer;
             _logger = _logManager.GetClassLogger();
 
             InitRlp();

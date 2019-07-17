@@ -38,6 +38,7 @@ using Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositories;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.DataMarketplace.Core.Services;
+using Nethermind.DataMarketplace.Infrastructure.Notifiers;
 using Nethermind.DataMarketplace.Subprotocols.Factories;
 using Nethermind.DataMarketplace.WebSockets;
 using Nethermind.Grpc;
@@ -151,10 +152,9 @@ namespace Nethermind.DataMarketplace.Initializers
                 }
             }
 
-            var notifier = new NdmNotifierWebSocketsModule(jsonSerializer);
-            webSocketsManager.AddModule(notifier);
+            var webSocketsModule = webSocketsManager.GetModule("ndm");
+            var notifier = new NdmNotifier(webSocketsModule);
             var ethRequestService = new EthRequestService(ndmConfig.FaucetHost, logManager);
-
 
             var services = _ndmModule.Init(new NdmRequiredServices(configProvider, configManager, ndmConfig,
                 baseDbPath, dbProvider, mongoProvider, logManager, blockProcessor, blockTree, txPool,

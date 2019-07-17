@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 
@@ -25,8 +26,10 @@ namespace Nethermind.WebSockets
     {
         string Name { get; }
         bool TryInit(HttpRequest request);
-        void AddClient(IWebSocketsClient client);
-        Task ExecuteAsync(IWebSocketsClient client, byte[] data);
-        void Cleanup(IWebSocketsClient client);
+        IWebSocketsClient CreateClient(WebSocket webSocket);
+        Task SendAsync(WebSocketsMessage message);
+        Task SendRawAsync(string data);
+        void Cleanup(string clientId);
+        void RemoveClient(string clientId);
     }
 }

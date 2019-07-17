@@ -21,21 +21,42 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 
 namespace Nethermind.WebSockets
 {
     public class WebSocketsClient : IWebSocketsClient
     {
         private readonly WebSocket _webSocket;
-
-        public WebSocketsClient(WebSocket webSocket)
-        {
-            _webSocket = webSocket;
-        }
+        private readonly IJsonSerializer _jsonSerializer;
 
         public string Id { get; } = Guid.NewGuid().ToString("N");
 
-        public Task SendAsync(string data)
+        public WebSocketsClient(WebSocket webSocket, IJsonSerializer jsonSerializer)
+        {
+            _webSocket = webSocket;
+            _jsonSerializer = jsonSerializer;
+        }
+
+
+        public Task ReceiveAsync(byte[] data) => Task.CompletedTask;
+
+        public Task SendAsync(WebSocketsMessage message)
+        {
+            if (message is null)
+            {
+                return Task.CompletedTask;
+            }
+
+            return SendRawAsync(_jsonSerializer.Serialize(new
+            {
+                type = message.Type,
+                data = message.Data
+            }));
+        }
+
+
+        public Task SendRawAsync(string data)
         {
             if (_webSocket.State != WebSocketState.Open)
             {

@@ -16,51 +16,42 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Concurrent;
-using System.Net.WebSockets;
+using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
 using Nethermind.WebSockets;
 
 namespace Nethermind.JsonRpc.WebSockets
 {
-    public class JsonRpcWebSocketsModule : IWebSocketsModule
+    public class JsonRpcWebSocketsClient : IWebSocketsClient
     {
-        private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients =
-            new ConcurrentDictionary<string, IWebSocketsClient>();
-
+        private readonly IWebSocketsClient _client;
         private readonly JsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonSerializer _jsonSerializer;
+        public string Id => _client.Id;
 
-        public string Name { get; } = "json-rpc";
-
-        public JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor, IJsonSerializer jsonSerializer)
+        public JsonRpcWebSocketsClient(IWebSocketsClient client,
+            JsonRpcProcessor jsonRpcProcessor, IJsonSerializer jsonSerializer)
         {
+            _client = client;
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonSerializer = jsonSerializer;
         }
 
-        public IWebSocketsClient CreateClient(WebSocket webSocket)
+        public async Task ReceiveAsync(byte[] data)
         {
-            var client = new JsonRpcWebSocketsClient(new WebSocketsClient(webSocket, _jsonSerializer),
-                _jsonRpcProcessor, _jsonSerializer);
-            _clients.TryAdd(client.Id, client);
+            var result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data));
+            if (result.IsCollection)
+            {
+                await SendRawAsync(_jsonSerializer.Serialize(result.Responses));
+                return;
+            }
 
-            return client;
+            await SendRawAsync(_jsonSerializer.Serialize(result.Responses.SingleOrDefault()));
         }
 
-        public bool TryInit(HttpRequest request)
-        {
-            return true;
-        }
-
-        public Task SendRawAsync(string data) => Task.CompletedTask;
-
-        public Task SendAsync(WebSocketsMessage message) => Task.CompletedTask;
-
-        public void Cleanup(string clientId) => _clients.TryRemove(clientId, out _);
-
-        public void RemoveClient(string id) => _clients.TryRemove(id, out _);
+        public Task SendRawAsync(string data) => _client.SendRawAsync(data);
+        public Task SendAsync(WebSocketsMessage message) => _client.SendAsync(message);
     }
 }

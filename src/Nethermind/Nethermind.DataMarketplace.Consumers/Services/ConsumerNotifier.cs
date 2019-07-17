@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.DataMarketplace.Core.Services;
 
 namespace Nethermind.DataMarketplace.Consumers.Services
 {
