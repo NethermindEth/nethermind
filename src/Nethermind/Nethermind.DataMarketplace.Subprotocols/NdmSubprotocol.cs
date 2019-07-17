@@ -65,7 +65,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         protected override TimeSpan InitTimeout => Timeouts.NdmHi;
         public byte ProtocolVersion { get; } = 1;
         public string ProtocolCode { get; } = Protocol.Ndm;
-        public int MessageIdSpaceSize { get; } = 0x1C;
+        public int MessageIdSpaceSize { get; } = 0x1D;
 
         public bool HasAvailableCapability(Capability capability) => false;
         public bool HasAgreedCapability(Capability capability) => false;
@@ -115,6 +115,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 [NdmMessageCode.DataHeaderRemoved] =
                     message => Handle(Deserialize<DataHeaderRemovedMessage>(message.Data)),
                 [NdmMessageCode.DataHeaderData] = message => Handle(Deserialize<DataHeaderDataMessage>(message.Data)),
+                [NdmMessageCode.InvalidData] = message => Handle(Deserialize<InvalidDataMessage>(message.Data)),
                 [NdmMessageCode.SessionStarted] = message => Handle(Deserialize<SessionStartedMessage>(message.Data)),
                 [NdmMessageCode.SessionFinished] = message => Handle(Deserialize<SessionFinishedMessage>(message.Data)),
                 [NdmMessageCode.DataStreamEnabled] =
@@ -547,6 +548,21 @@ namespace Nethermind.DataMarketplace.Subprotocols
             });
         }
 
+        private void Handle(InvalidDataMessage message)
+        {
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: invaliddata");
+            ConsumerService.HandleInvalidDataAsync(message.DepositId, message.Reason).ContinueWith(t =>
+            {
+                if (t.IsFaulted && Logger.IsError)
+                {
+                    Logger.Error("There was an error within NDM subprotocol.", t.Exception);
+                    return;
+                }
+                
+                if (Logger.IsTrace) Logger.Trace($"Received invalid data for deposit: '{message.DepositId}', reason: {message.Reason}");
+            });
+        }
+
         private void Handle(DataHeadersMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataheaders");
@@ -582,8 +598,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
 
             if (firstTask != task)
             {
-                throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in " +
-                                           $"{nameof(RequestEthMessage)}");
+                throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(RequestEthMessage)}");
             }
 
             return task.Result;
