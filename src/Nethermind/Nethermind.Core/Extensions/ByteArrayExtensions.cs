@@ -17,15 +17,130 @@
  */
 
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Threading;
 using Extensions.Data;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 
 namespace Nethermind.Core.Extensions
 {
+    public static class SpanExtensions
+    {
+        public static Rlp.ValueDecoderContext AsRlpValueContext(this Span<byte> span)
+        {
+            return span.IsEmpty ? new Rlp.ValueDecoderContext(Bytes.Empty) : new Rlp.ValueDecoderContext(span);
+        }
+        
+        
+        public static string ToHexString(this Span<byte> span, bool withZeroX)
+        {
+            return ToHexString(span, withZeroX, false, false);
+        }
+        
+        public static string ToHexString(this Span<byte> span)
+        {
+            return ToHexString(span, false, false, false);
+        }
+        
+        public static string ToHexString(this Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
+        {
+            return ByteArrayToHexViaLookup32(span, withZeroX, noLeadingZeros, withEip55Checksum);
+        }
+        
+        [DebuggerStepThrough]
+        private static string ByteArrayToHexViaLookup32(Span<byte> span, bool withZeroX, bool skipLeadingZeros,
+            bool withEip55Checksum)
+        {
+            int leadingZeros = skipLeadingZeros ? CountLeadingZeros(span) : 0;
+            char[] result = new char[span.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
+            string hashHex = null;
+            if (withEip55Checksum)
+            {
+                hashHex = Keccak.Compute(span.ToHexString(false)).ToString(false);
+            }
+
+            if (withZeroX)
+            {
+                result[0] = '0';
+                result[1] = 'x';
+            }
+
+            for (int i = 0; i < span.Length; i++)
+            {
+                uint val = Lookup32[span[i]];
+                char char1 = (char) val;
+                char char2 = (char) (val >> 16);
+
+                if (leadingZeros <= i * 2)
+                {
+                    result[2 * i + (withZeroX ? 2 : 0) - leadingZeros] =
+                        withEip55Checksum && char.IsLetter(char1) && hashHex[2 * i] > '7'
+                            ? char.ToUpper(char1)
+                            : char1;
+                }
+
+                if (leadingZeros <= i * 2 + 1)
+                {
+                    result[2 * i + 1 + (withZeroX ? 2 : 0) - leadingZeros] =
+                        withEip55Checksum && char.IsLetter(char2) && hashHex[2 * i + 1] > '7'
+                            ? char.ToUpper(char2)
+                            : char2;
+                }
+            }
+
+            if (skipLeadingZeros && result.Length == (withZeroX ? 2 : 0))
+            {
+                return withZeroX ? "0x0" : "0";
+            }
+
+            return new string(result);
+        }
+        
+        private static readonly uint[] Lookup32 = CreateLookup32("x2");
+
+        private static uint[] CreateLookup32(string format)
+        {
+            uint[] result = new uint[256];
+            for (int i = 0; i < 256; i++)
+            {
+                string s = i.ToString(format);
+                result[i] = s[0] + ((uint) s[1] << 16);
+            }
+
+            return result;
+        }
+        
+        private static int CountLeadingZeros(Span<byte> span)
+        {
+            int leadingZeros = 0;
+            for (int i = 0; i < span.Length; i++)
+            {
+                if ((span[i] & 240) == 0)
+                {
+                    leadingZeros++;
+                    if ((span[i] & 15) == 0)
+                    {
+                        leadingZeros++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            return leadingZeros;
+        }        
+    }
+    
     public static class ByteArrayExtensions
     {
         [ThreadStatic] private static HashAlgorithm _xxHash;
@@ -49,6 +164,11 @@ namespace Nethermind.Core.Extensions
         public static Rlp.DecoderContext AsRlpContext(this byte[] bytes)
         {
             return bytes == null ? new Rlp.DecoderContext(Bytes.Empty) : new Rlp.DecoderContext(bytes);
+        }
+        
+        public static Rlp.ValueDecoderContext AsRlpValueContext(this byte[] bytes)
+        {
+            return bytes == null ? new Rlp.ValueDecoderContext(Bytes.Empty) : new Rlp.ValueDecoderContext(bytes);
         }
         
         public static byte[] Slice(this byte[] bytes, int startIndex)

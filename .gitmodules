@@ -7,4 +7,4 @@
 [submodule "src/rocksdb-sharp"]
 	path = src/rocksdb-sharp
 	url = https://github.com/NethermindEth/rocksdb-sharp.git
-	branch = master
+	branch = spanification

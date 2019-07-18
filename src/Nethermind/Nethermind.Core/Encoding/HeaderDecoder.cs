@@ -23,8 +23,61 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Encoding
 {
-    public class HeaderDecoder : IRlpDecoder<BlockHeader>
+    public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpDecoder<BlockHeader>
     {
+        public BlockHeader Decode(Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (context.IsNextItemNull())
+            {
+                return null;
+            }
+
+            var headerRlp = context.PeekNextItem();
+            int headerSequenceLength = context.ReadSequenceLength();
+            int headerCheck = context.Position + headerSequenceLength;
+
+            Keccak parentHash = context.DecodeKeccak();
+            Keccak ommersHash = context.DecodeKeccak();
+            Address beneficiary = context.DecodeAddress();
+            Keccak stateRoot = context.DecodeKeccak();
+            Keccak transactionsRoot = context.DecodeKeccak();
+            Keccak receiptsRoot = context.DecodeKeccak();
+            Bloom bloom = context.DecodeBloom();
+            UInt256 difficulty = context.DecodeUInt256();
+            UInt256 number = context.DecodeUInt256();
+            UInt256 gasLimit = context.DecodeUInt256();
+            UInt256 gasUsed = context.DecodeUInt256();
+            UInt256 timestamp = context.DecodeUInt256();
+            byte[] extraData = context.DecodeByteArray();
+            Keccak mixHash = context.DecodeKeccak();
+            BigInteger nonce = context.DecodeUBigInt();
+
+            if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            {
+                context.Check(headerCheck);
+            }
+
+            BlockHeader blockHeader = new BlockHeader(
+                parentHash,
+                ommersHash,
+                beneficiary,
+                difficulty,
+                (long) number,
+                (long) gasLimit,
+                timestamp,
+                extraData);
+
+            blockHeader.StateRoot = stateRoot;
+            blockHeader.TxRoot = transactionsRoot;
+            blockHeader.ReceiptsRoot = receiptsRoot;
+            blockHeader.Bloom = bloom;
+            blockHeader.GasUsed = (long) gasUsed;
+            blockHeader.MixHash = mixHash;
+            blockHeader.Nonce = (ulong) nonce;
+            blockHeader.Hash = Keccak.Compute(headerRlp);
+            return blockHeader;
+        }
+
         public BlockHeader Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (context.IsNextItemNull())
