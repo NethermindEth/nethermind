@@ -175,7 +175,7 @@ namespace Nethermind.Core.Extensions
             {
                 if (bytes[i] != 0)
                 {
-                    return bytes.Slice(i, bytes.Length - i);
+                    return bytes.AsSpan().Slice(i, bytes.Length - i);
                 }
             }
 

@@ -47,6 +47,17 @@ namespace Nethermind.Core.Crypto
             Buffer.BlockCopy(bytes, 0, Bytes, 0, 64);
             V = bytes[64];
         }
+        
+        public Signature(Span<byte> bytes)
+        {
+            if (bytes.Length != 65)
+            {
+                throw new ArgumentException();
+            }
+
+            bytes.Slice(0, 64).CopyTo(Bytes.AsSpan());
+            V = bytes[64];
+        }
 
         public Signature(Span<byte> r, Span<byte> s, int v)
         {
@@ -97,7 +108,9 @@ namespace Nethermind.Core.Crypto
         }
 
         public byte[] R => Bytes.Slice(0, 32);
+        public Span<byte> RAsSpan => Bytes.AsSpan().Slice(0, 32);
         public byte[] S => Bytes.Slice(32, 32);
+        public Span<byte> SAsSpan => Bytes.AsSpan().Slice(32, 32);
 
         public override string ToString()
         {

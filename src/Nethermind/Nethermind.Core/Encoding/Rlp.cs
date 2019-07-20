@@ -252,12 +252,12 @@ namespace Nethermind.Core.Encoding
                 sequence[7] =
                     Encode(transaction.Signature == null
                         ? null
-                        : transaction.Signature.R
+                        : transaction.Signature.RAsSpan
                             .WithoutLeadingZeros()); // TODO: consider storing R and S differently
                 sequence[8] =
                     Encode(transaction.Signature == null
                         ? null
-                        : transaction.Signature.S
+                        : transaction.Signature.SAsSpan
                             .WithoutLeadingZeros()); // TODO: consider storing R and S differently
             }
 

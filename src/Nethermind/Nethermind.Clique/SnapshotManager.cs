@@ -63,7 +63,7 @@ namespace Nethermind.Clique
             // Retrieve the signature from the header extra-data
             if (header.ExtraData.Length < extraSeal) return null;
 
-            var signatureBytes = header.ExtraData.Slice(header.ExtraData.Length - extraSeal, extraSeal);
+            var signatureBytes = header.ExtraData.AsSpan().Slice(header.ExtraData.Length - extraSeal, extraSeal);
             Signature signature = new Signature(signatureBytes);
             signature.V += 27;
             Keccak message = CalculateCliqueHeaderHash(header);
