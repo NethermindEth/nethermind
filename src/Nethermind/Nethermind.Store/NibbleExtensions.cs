@@ -67,16 +67,14 @@ namespace Nethermind.Store
         //    return new NibbleBytes(bytes);
         //}
 
-        public static byte[] BytesToNibbleBytes(params byte[] bytes)
+        public static void BytesToNibbleBytes(Span<byte> bytes, Span<byte> nibbles)
         {
-            byte[] nibbles = new byte[2 * bytes.Length];
+            Debug.Assert(nibbles.Length == 2 * bytes.Length);
             for (int i = 0; i < bytes.Length; i++)
             {
                 nibbles[i * 2] = (byte)((bytes[i] & 240) >> 4);
                 nibbles[i * 2 + 1] = (byte)(bytes[i] & 15);
             }
-
-            return nibbles;
         }
 
         public static Nibble[] FromBytes(byte @byte)

@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -209,7 +210,8 @@ namespace Nethermind.Store
         [DebuggerStepThrough]
         public virtual void Set(Nibble[] nibbles, byte[] value)
         {
-            Run(nibbles.ToLooseByteArray(), value, true);
+            var input = nibbles.ToLooseByteArray();
+            Run(input, input.Length, value, true);
         }
 
         public byte[] Get(byte[] rawKey)
@@ -219,22 +221,43 @@ namespace Nethermind.Store
 //            {
 //                return value;
 //            }
-
-            return Run(Nibbles.BytesToNibbleBytes(rawKey), null, false);
+            int nibblesCount = 2 * rawKey.Length;
+            byte[] array = null;
+            Span<byte> nibbles = rawKey.Length <= 64
+                ? stackalloc byte[nibblesCount]
+                : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+            Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+            var result = Run(nibbles, nibblesCount,null, false);
+            if (array != null) ArrayPool<byte>.Shared.Return(array);
+            return result;
         }
 
         [DebuggerStepThrough]
         public void Set(byte[] rawKey, byte[] value)
         {
 //            ValueCache.Delete(rawKey);
-            Run(Nibbles.BytesToNibbleBytes(rawKey), value, true);
+            int nibblesCount = 2 * rawKey.Length;
+            byte[] array = null;
+            Span<byte> nibbles = rawKey.Length <= 64
+                ? stackalloc byte[nibblesCount]
+                : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+            Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+            Run(nibbles, nibblesCount, value, true);
+            if (array != null) ArrayPool<byte>.Shared.Return(array);
         }
 
         [DebuggerStepThrough]
         public void Set(byte[] rawKey, Rlp value)
         {
 //            ValueCache.Delete(rawKey);
-            Run(Nibbles.BytesToNibbleBytes(rawKey), value == null ? new byte[0] : value.Bytes, true);
+            int nibblesCount = 2 * rawKey.Length;
+            byte[] array = null;
+            Span<byte> nibbles = rawKey.Length <= 64
+                ? stackalloc byte[nibblesCount]
+                : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+            Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+            Run(nibbles, nibblesCount, value == null ? new byte[0] : value.Bytes, true);
+            if (array != null) ArrayPool<byte>.Shared.Return(array);
         }
 
         internal Rlp GetNode(Keccak keccak, bool allowCaching)
@@ -247,7 +270,7 @@ namespace Nethermind.Store
             return NodeCache.Get(keccak) ?? new Rlp(_db[keccak.Bytes]);
         }
 
-        public byte[] Run(byte[] updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
+        public byte[] Run(Span<byte> updatePath, int nibblesCount, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
         {
             if (isUpdate)
             {
@@ -266,13 +289,13 @@ namespace Nethermind.Store
                     return null;
                 }
 
-                RootRef = TreeNodeFactory.CreateLeaf(new HexPrefix(true, updatePath), updateValue);
+                RootRef = TreeNodeFactory.CreateLeaf(new HexPrefix(true, updatePath.Slice(0, nibblesCount).ToArray()), updateValue);
                 RootRef.IsDirty = true;
                 return updateValue;
             }
 
             RootRef.ResolveNode(this);
-            TraverseContext context = new TraverseContext(updatePath, updateValue, isUpdate, ignoreMissingDelete);
+            TraverseContext context = new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
             return TraverseNode(RootRef, context);
         }
 
@@ -461,7 +484,7 @@ namespace Nethermind.Store
                     throw new InvalidOperationException($"Could not find the leaf node to delete: {context.UpdatePath.ToHexString(false)}");
                 }
 
-                byte[] leafPath = context.UpdatePath.Slice(context.CurrentIndex, context.UpdatePath.Length - context.CurrentIndex);
+                byte[] leafPath = context.UpdatePath.Slice(context.CurrentIndex, context.UpdatePath.Length - context.CurrentIndex).ToArray();
                 TrieNode leaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, leafPath), context.UpdateValue);
                 leaf.IsDirty = true;
                 ConnectNodes(leaf);
@@ -476,7 +499,7 @@ namespace Nethermind.Store
 
         private byte[] TraverseLeaf(TrieNode node, TraverseContext context)
         {
-            byte[] remaining = context.GetRemainingUpdatePath();
+            byte[] remaining = context.GetRemainingUpdatePath().ToArray();
             (byte[] shorterPath, byte[] longerPath) = context.RemainingUpdatePathLength - node.Path.Length < 0
                 ? (remaining, node.Path)
                 : (node.Path, remaining);
@@ -576,7 +599,7 @@ namespace Nethermind.Store
 
         private byte[] TraverseExtension(TrieNode node, TraverseContext context)
         {
-            byte[] remaining = context.GetRemainingUpdatePath();
+            Span<byte> remaining = context.GetRemainingUpdatePath();
             int extensionLength = 0;
             for (int i = 0; i < Math.Min(remaining.Length, node.Path.Length) && remaining[i] == node.Path[i]; i++, extensionLength++)
             {
@@ -627,7 +650,7 @@ namespace Nethermind.Store
             }
             else
             {
-                byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1);
+                byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1).ToArray();
                 TrieNode shortLeaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, path), context.UpdateValue);
                 shortLeaf.IsDirty = true;
                 branch.SetChild(remaining[extensionLength], shortLeaf);
@@ -649,21 +672,21 @@ namespace Nethermind.Store
             return context.UpdateValue;
         }
 
-        private struct TraverseContext
+        private ref struct TraverseContext
         {
-            public byte[] UpdatePath { get; }
+            public Span<byte> UpdatePath { get; }
             public byte[] UpdateValue { get; }
             public bool IsUpdate { get; }
             public bool IgnoreMissingDelete { get; }
             public int CurrentIndex { get; set; }
             public int RemainingUpdatePathLength => UpdatePath.Length - CurrentIndex;
 
-            public byte[] GetRemainingUpdatePath()
+            public Span<byte> GetRemainingUpdatePath()
             {
                 return UpdatePath.Slice(CurrentIndex, RemainingUpdatePathLength);
             }
 
-            public TraverseContext(byte[] updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
+            public TraverseContext(Span<byte> updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
             {
                 UpdatePath = updatePath;
                 UpdateValue = updateValue;
