@@ -50,7 +50,7 @@ namespace Nethermind.Network.Rlpx
                 _logger.Trace("Merging frames");
             }
 
-            Rlp.DecoderContext headerBodyItems = input.Slice(3, 13).AsRlpContext();
+            Rlp.ValueDecoderContext headerBodyItems = input.AsSpan().Slice(3, 13).AsRlpValueContext(); 
             int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
             int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
             headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
