@@ -56,6 +56,16 @@ cd Nethermind.Runner
 dotnet run -c Release --no-build -- --config mainnet
 ```
 
+
+if you want to run the Nethermind or Ethereum Foundation tests, then:
+```
+dotnet build Nethermind.sln -c Debug
+dotnet test Nethermind.sln
+
+dotnet build EthereumTests.sln -c Debug
+dotnet test EthereumTests.sln
+```
+
 ## Contributors welcome
 [![GitHub issues](https://img.shields.io/github/issues/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/issues)
 [![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind)
