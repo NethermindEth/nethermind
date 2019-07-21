@@ -22,6 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Overseer.Test
 {
+    [Explicit]
     public class GoerliTests : TestBuilder
     {
         [SetUp]

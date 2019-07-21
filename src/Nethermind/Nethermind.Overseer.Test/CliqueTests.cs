@@ -25,6 +25,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Overseer.Test
 {
+    [Explicit]
     public class CliqueTests : TestBuilder
     {
         [SetUp]
