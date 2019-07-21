@@ -103,7 +103,7 @@ namespace Nethermind.Evm.Precompiles
 
         private static BigInteger AdjustedExponentLength(BigInteger lengthOver32, byte[] exponent)
         {
-            int leadingZeros = exponent.LeadingZerosCount();
+            int leadingZeros = exponent.AsSpan().LeadingZerosCount();
             if (leadingZeros == exponent.Length)
             {
                 return lengthOver32 * 8;

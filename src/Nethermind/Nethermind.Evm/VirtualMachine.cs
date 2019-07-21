@@ -1053,21 +1053,38 @@ namespace Nethermind.Evm
                         Metrics.ModExpOpcode++;
 
                         PopUInt(out BigInteger baseInt, bytesOnStack);
-                        PopUInt(out BigInteger exp, bytesOnStack);
+                        Span<byte> exp = PopBytes(bytesOnStack);
+                        
+                        int leadingZeros = exp.LeadingZerosCount();
 
-                        if (exp > BigInteger.Zero)
+                        if (leadingZeros != 32)
                         {
-                            int expSize = (int)BigInteger.Log(exp, 256);
-                            BigInteger expSizeTest = BigInteger.Pow(BigInt256, expSize);
-                            BigInteger expSizeTestInc = expSizeTest * BigInt256;
-                            if (expSizeTest > exp)
+                            int expSize = 32 - leadingZeros;
+                            if (expSize > 0)
                             {
-                                expSize--;
+                                expSize -= 1;
                             }
-                            else if (expSizeTestInc <= exp)
-                            {
-                                expSize++;
-                            }
+                            
+//                            int expSize2 = (int)BigInteger.Log(exp.ToUnsignedBigInteger(), 256);
+//
+//               
+//                            
+//                            BigInteger expSizeTest = BigInteger.Pow(BigInt256, expSize2);
+//                            BigInteger expSizeTestInc = expSizeTest * BigInt256;
+//
+//                            if (expSizeTest > exp.ToUnsignedBigInteger())
+//                            {
+//                                expSize2--;
+//                            }
+//                            else if (expSizeTestInc <= exp.ToUnsignedBigInteger())
+//                            {
+//                                expSize2++;
+//                            }
+//                            
+//                            if (expSize != expSize2)
+//                            {
+//                                throw new Exception($"{expSize} != {expSize2} {exp.ToHexString()}");
+//                            }
 
                             if (!UpdateGas((spec.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (1L + expSize), ref gasAvailable))
                             {
@@ -1091,7 +1108,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            BigInteger res = BigInteger.ModPow(baseInt, exp, P256Int);
+                            BigInteger res = BigInteger.ModPow(baseInt, exp.ToUnsignedBigInteger(), P256Int);
                             PushUInt(ref res, bytesOnStack);
                         }
 

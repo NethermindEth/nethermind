@@ -143,7 +143,7 @@ namespace Nethermind.Core.Extensions
             return bytes.Length % 2 == 0 || bytes[bytes.Length / 2] == 0;
         }
 
-        public static int LeadingZerosCount(this byte[] bytes, int startIndex = 0)
+        public static int LeadingZerosCount(this Span<byte> bytes, int startIndex = 0)
         {
             for (int i = startIndex; i < bytes.Length; i++)
             {
