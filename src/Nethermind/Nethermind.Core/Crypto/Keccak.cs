@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -18,6 +18,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
@@ -25,6 +26,44 @@ using Nethermind.HashLib;
 
 namespace Nethermind.Core.Crypto
 {
+    public unsafe struct ValueKeccak
+    {
+        private const int Size = 32;
+        public fixed byte Bytes[Size];
+
+        public Span<byte> BytesAsSpan =>  MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
+        
+        /// <returns>
+        ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
+        /// </returns>
+        public static readonly ValueKeccak OfAnEmptyString = InternalCompute(new byte[] { });
+        
+        
+        [DebuggerStepThrough]
+        public static ValueKeccak Compute(Span<byte> input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                return OfAnEmptyString;
+            }
+
+            var result = new ValueKeccak();
+            byte* ptr = result.Bytes;
+            var output = new Span<byte>(ptr, KeccakHash.HASH_SIZE);
+            KeccakHash.ComputeHashBytesToSpan(input, output);
+            return result;
+        }
+        
+        private static ValueKeccak InternalCompute(byte[] input)
+        {
+            var result = new ValueKeccak();
+            byte* ptr = result.Bytes;
+            var output = new Span<byte>(ptr, KeccakHash.HASH_SIZE);
+            KeccakHash.ComputeHashBytesToSpan(input, output);
+            return result;
+        }
+    }
+    
     [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>
     {

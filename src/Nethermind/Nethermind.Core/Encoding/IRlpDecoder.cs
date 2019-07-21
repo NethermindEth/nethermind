@@ -31,4 +31,12 @@ namespace Nethermind.Core.Encoding
         void Encode(MemoryStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
         int GetLength(T item, RlpBehaviors rlpBehaviors);
     }
+    
+    public interface IRlpValueDecoder<T> : IRlpDecoder
+    {
+        T Decode(Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+        Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+        void Encode(MemoryStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+        int GetLength(T item, RlpBehaviors rlpBehaviors);
+    }
 }

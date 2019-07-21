@@ -22,5 +22,17 @@ namespace Nethermind.Evm
     {
         public static long EvmExceptions { get; set; }
         public static long SelfDestructs { get; set; }
+        public static long Calls { get; set; }
+        public static long SloadOpcode { get; set; }
+        public static long SstoreOpcode { get; set; }
+        public static long ModExpOpcode { get; set; }
+        public static long BlockhashOpcode { get; set; }
+        public static long Bn128MulPrecompile { get; set; }
+        public static long Bn128AddPrecompile { get; set; }
+        public static long Bn128PairingPrecompile { get; set; }
+        public static long EcRecoverPrecompile { get; set; }
+        public static long ModExpPrecompile { get; set; }
+        public static long Ripemd160Precompile { get; set; }
+        public static long Sha256Precompile { get; set; }
     }
 }

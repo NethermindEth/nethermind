@@ -66,8 +66,8 @@ namespace Nethermind.Blockchain.Validators
         
         private bool ValidateSignature(Signature signature, IReleaseSpec spec)
         {
-            BigInteger sValue = signature.S.ToUnsignedBigInteger();
-            BigInteger rValue = signature.R.ToUnsignedBigInteger();
+            BigInteger sValue = signature.SAsSpan.ToUnsignedBigInteger();
+            BigInteger rValue = signature.RAsSpan.ToUnsignedBigInteger();
             
             if (sValue.IsZero || sValue >= (spec.IsEip2Enabled ? Secp256K1Curve.HalfN + 1 : Secp256K1Curve.N))
             {

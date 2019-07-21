@@ -202,7 +202,7 @@ namespace Ethereum.VM.Test
 
             Assert.True(Bytes.AreEqual(test.Out, substate.Output),
                 $"Exp: {test.Out.ToHexString(true)} != Actual: {substate.Output.ToHexString(true)}");
-            Assert.AreEqual((long)test.Gas, state.GasAvailable);
+            Assert.AreEqual((long)test.Gas, state.GasAvailable, "gas available");
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {
                 bool accountExists = _stateProvider.AccountExists(accountState.Key);

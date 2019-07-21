@@ -30,4 +30,10 @@ namespace Nethermind.Store
         void Remove(byte[] key);
         bool KeyExists(byte[] key);
     }
+
+    public interface IDbWithSpan : IDisposable
+    {
+        Span<byte> GetSpan(byte[] key);
+        void DangerousReleaseMemory(in Span<byte> span);
+    }
 }

@@ -67,6 +67,8 @@ namespace Nethermind.Evm.Precompiles
 
         public (byte[], bool) Run(byte[] inputData)
         {
+            Metrics.ModExpPrecompile++;
+            
             int baseLength = (int)inputData.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger();
             BigInteger expLengthBig = inputData.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger();
             int expLength = expLengthBig > int.MaxValue ? int.MaxValue : (int)expLengthBig;
@@ -101,7 +103,7 @@ namespace Nethermind.Evm.Precompiles
 
         private static BigInteger AdjustedExponentLength(BigInteger lengthOver32, byte[] exponent)
         {
-            int leadingZeros = exponent.LeadingZerosCount();
+            int leadingZeros = exponent.AsSpan().LeadingZerosCount();
             if (leadingZeros == exponent.Length)
             {
                 return lengthOver32 * 8;

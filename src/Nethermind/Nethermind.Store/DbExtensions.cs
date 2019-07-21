@@ -42,6 +42,18 @@ namespace Nethermind.Store
             return db[key.Bytes];
         }
         
+        public static Span<byte> GetSpan(this IDbWithSpan db, Keccak key)
+        {
+#if DEBUG
+            if (key == Keccak.OfAnEmptyString)
+            {
+                throw new InvalidOperationException();
+            }
+#endif
+            
+            return db.GetSpan(key.Bytes);
+        }
+        
         public static bool KeyExists(this IDb db, Keccak key)
         {
 #if DEBUG

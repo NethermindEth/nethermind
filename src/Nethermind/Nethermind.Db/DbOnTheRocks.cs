@@ -29,7 +29,7 @@ using RocksDbSharp;
 
 namespace Nethermind.Db
 {
-    public abstract class DbOnTheRocks : IDb
+    public abstract class DbOnTheRocks : IDb, IDbWithSpan
     {
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
         private readonly RocksDb _db;
@@ -45,7 +45,7 @@ namespace Nethermind.Db
             {
                 Directory.CreateDirectory(fullPath);
             }
-
+            
             if (logger != null)
             {
                 if (logger.IsInfo) logger.Info($"Using database directory {fullPath}");
@@ -157,6 +157,17 @@ namespace Nethermind.Db
                     }
                 }
             }
+        }
+
+        public Span<byte> GetSpan(byte[] key)
+        {
+            UpdateReadMetrics();
+            return _db.GetSpan(key);
+        }
+
+        public void DangerousReleaseMemory(in Span<byte> span)
+        {
+            _db.DangerousReleaseMemory(in span);
         }
 
         public void Remove(byte[] key)

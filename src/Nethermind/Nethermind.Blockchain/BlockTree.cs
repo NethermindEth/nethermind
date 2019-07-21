@@ -629,7 +629,7 @@ namespace Nethermind.Blockchain
                     return null;
                 }
 
-                header = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                header = _headerDecoder.Decode(data.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
                 _headerCache.Set(blockHash, header);
             }
 
@@ -1174,7 +1174,7 @@ namespace Nethermind.Blockchain
                     $"Not able to retrieve block number for an unknown block {blockHash}");
             }
 
-            header = _headerDecoder.Decode(headerData.AsRlpContext(), RlpBehaviors.AllowExtraData);
+            header = _headerDecoder.Decode(headerData.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
             _headerCache.Set(blockHash, header);
             return header.Number;
         }
@@ -1199,13 +1199,28 @@ namespace Nethermind.Blockchain
             BlockHeader header = _headerCache.Get(blockHash);
             if (header == null)
             {
-                byte[] data = _headerDb.Get(blockHash);
-                if (data == null)
+                IDbWithSpan headerDb = _headerDb as IDbWithSpan;
+                if (headerDb != null)
                 {
-                    return null;
-                }
+                    Span<byte> data = headerDb.GetSpan(blockHash);
+                    if (data.IsEmpty)
+                    {
+                        return null;
+                    }
 
-                header = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                    header = _headerDecoder.Decode(data.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
+                    headerDb.DangerousReleaseMemory(in data);
+                }
+                else
+                {
+                    byte[] data = _headerDb.Get(blockHash);
+                    if (data == null)
+                    {
+                        return null;
+                    }
+
+                    header = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                }
             }
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;

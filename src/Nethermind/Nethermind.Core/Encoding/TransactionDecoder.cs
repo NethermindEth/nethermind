@@ -99,8 +99,8 @@ namespace Nethermind.Core.Encoding
             Rlp.Encode(stream, item.Value);
             Rlp.Encode(stream, item.To == null ? item.Init : item.Data);
             Rlp.Encode(stream, item.Signature?.V ?? 0);
-            Rlp.Encode(stream, item.Signature == null ? null : item.Signature.R.WithoutLeadingZeros());
-            Rlp.Encode(stream, item.Signature == null ? null : item.Signature.S.WithoutLeadingZeros());
+            Rlp.Encode(stream, item.Signature == null ? null : item.Signature.RAsSpan.WithoutLeadingZeros());
+            Rlp.Encode(stream, item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
         }
 
         private int GetContentLength(Transaction item, bool forSigning , bool isEip155Enabled = false, int chainId = 0)
@@ -124,8 +124,8 @@ namespace Nethermind.Core.Encoding
             else
             {
                 contentLength += item.Signature == null ? 1 : Rlp.LengthOf(item.Signature.V);
-                contentLength += Rlp.LengthOf(item.Signature == null ? null : item.Signature.R.WithoutLeadingZeros());
-                contentLength += Rlp.LengthOf(item.Signature == null ? null : item.Signature.S.WithoutLeadingZeros());
+                contentLength += Rlp.LengthOf(item.Signature == null ? null : item.Signature.RAsSpan.WithoutLeadingZeros());
+                contentLength += Rlp.LengthOf(item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
             }
 
             return contentLength;
