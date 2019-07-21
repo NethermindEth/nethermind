@@ -1056,37 +1056,10 @@ namespace Nethermind.Evm
                         Span<byte> exp = PopBytes(bytesOnStack);
                         
                         int leadingZeros = exp.LeadingZerosCount();
-
                         if (leadingZeros != 32)
                         {
                             int expSize = 32 - leadingZeros;
-                            if (expSize > 0)
-                            {
-                                expSize -= 1;
-                            }
-                            
-//                            int expSize2 = (int)BigInteger.Log(exp.ToUnsignedBigInteger(), 256);
-//
-//               
-//                            
-//                            BigInteger expSizeTest = BigInteger.Pow(BigInt256, expSize2);
-//                            BigInteger expSizeTestInc = expSizeTest * BigInt256;
-//
-//                            if (expSizeTest > exp.ToUnsignedBigInteger())
-//                            {
-//                                expSize2--;
-//                            }
-//                            else if (expSizeTestInc <= exp.ToUnsignedBigInteger())
-//                            {
-//                                expSize2++;
-//                            }
-//                            
-//                            if (expSize != expSize2)
-//                            {
-//                                throw new Exception($"{expSize} != {expSize2} {exp.ToHexString()}");
-//                            }
-
-                            if (!UpdateGas((spec.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (1L + expSize), ref gasAvailable))
+                            if (!UpdateGas((spec.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * expSize, ref gasAvailable))
                             {
                                 EndInstructionTraceError(OutOfGasErrorText);
                                 return CallResult.OutOfGasException;
