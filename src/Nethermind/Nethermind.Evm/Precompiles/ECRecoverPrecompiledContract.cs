@@ -48,6 +48,8 @@ namespace Nethermind.Evm.Precompiles
         
         public (byte[], bool) Run(byte[] inputData)
         {
+            Metrics.EcRecoverPrecompile++;
+            
             inputData = (inputData ?? Bytes.Empty).PadRight(128);
 
             Keccak hash = new Keccak(inputData.Slice(0, 32));
