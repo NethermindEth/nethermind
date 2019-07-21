@@ -1199,17 +1199,17 @@ namespace Nethermind.Blockchain
             BlockHeader header = _headerCache.Get(blockHash);
             if (header == null)
             {
-                IDbWithSpan spanificatedHeaderDb = _headerDb as IDbWithSpan;
-                if (spanificatedHeaderDb != null)
+                IDbWithSpan headerDb = _headerDb as IDbWithSpan;
+                if (headerDb != null)
                 {
-                    Span<byte> data = spanificatedHeaderDb.GetSpan(blockHash);
+                    Span<byte> data = headerDb.GetSpan(blockHash);
                     if (data.IsEmpty)
                     {
                         return null;
                     }
 
                     header = _headerDecoder.Decode(data.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
-                    spanificatedHeaderDb.DangerousReleaseMemory(in data);
+                    headerDb.DangerousReleaseMemory(in data);
                 }
                 else
                 {

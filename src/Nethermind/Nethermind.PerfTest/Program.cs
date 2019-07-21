@@ -453,6 +453,13 @@ namespace Nethermind.PerfTest
                     _logger.Warn($"TOTAL after {number} other DB reads       : {Store.Metrics.OtherDbReads}");
                     _logger.Warn($"TOTAL after {number} other DB writes      : {Store.Metrics.OtherDbWrites}");
                     _logger.Warn($"TOTAL after {number} EVM exceptions       : {Evm.Metrics.EvmExceptions}");
+                    _logger.Warn($"TOTAL after {number} SLOAD opcodes        : {Evm.Metrics.SloadOpcode}");
+                    _logger.Warn($"TOTAL after {number} SSTORE opcodes       : {Evm.Metrics.SstoreOpcode}");
+                    _logger.Warn($"TOTAL after {number} EXP opcodes          : {Evm.Metrics.ModExpOpcode}");
+                    _logger.Warn($"TOTAL after {number} BLOCKHASH opcodes    : {Evm.Metrics.ModExpOpcode}");
+                    _logger.Warn($"TOTAL after {number} EVM calls            : {Evm.Metrics.Calls}");
+                    _logger.Warn($"TOTAL after {number} RIPEMD Precompiles   : {Evm.Metrics.Ripemd160Precompile}");
+                    _logger.Warn($"TOTAL after {number} SHA256 Precompiles   : {Evm.Metrics.Sha256Precompile}");
                     // disk space
                     stopwatch.Start();
                 }

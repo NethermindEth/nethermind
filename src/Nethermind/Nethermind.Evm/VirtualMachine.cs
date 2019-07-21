@@ -1050,6 +1050,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
+                        Metrics.ModExpOpcode++;
+
                         PopUInt(out BigInteger baseInt, bytesOnStack);
                         PopUInt(out BigInteger exp, bytesOnStack);
 
@@ -1592,6 +1594,8 @@ namespace Nethermind.Evm
                     }
                     case Instruction.BLOCKHASH:
                     {
+                        Metrics.BlockhashOpcode++;
+                        
                         if (!UpdateGas(GasCostOf.BlockHash, ref gasAvailable))
                         {
                             EndInstructionTraceError(OutOfGasErrorText);
@@ -1724,6 +1728,8 @@ namespace Nethermind.Evm
                     }
                     case Instruction.SLOAD:
                     {
+                        Metrics.SloadOpcode++;
+                        
                         if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable))
                         {
                             EndInstructionTraceError(OutOfGasErrorText);
@@ -1737,6 +1743,8 @@ namespace Nethermind.Evm
                     }
                     case Instruction.SSTORE:
                     {
+                        Metrics.SstoreOpcode++;
+                        
                         if (evmState.IsStatic)
                         {
                             Metrics.EvmExceptions++;
@@ -2281,6 +2289,8 @@ namespace Nethermind.Evm
                     case Instruction.DELEGATECALL:
                     case Instruction.STATICCALL:
                     {
+                        Metrics.Calls++;
+                        
                         if (instruction == Instruction.DELEGATECALL && !spec.IsEip7Enabled ||
                             instruction == Instruction.STATICCALL && !spec.IsEip214Enabled)
                         {

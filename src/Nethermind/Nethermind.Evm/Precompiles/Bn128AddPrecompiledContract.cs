@@ -49,6 +49,8 @@ namespace Nethermind.Evm.Precompiles
 
         public (byte[], bool) Run(byte[] inputData)
         {  
+            Metrics.Bn128AddPrecompile++;
+            
             if (inputData == null)
             {
                 inputData = Bytes.Empty;
