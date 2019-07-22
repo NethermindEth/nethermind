@@ -139,7 +139,7 @@ namespace Nethermind.PerfTest
 
         private static async Task Main(string[] args)
         {
-            await RunRopstenBlocks().ContinueWith(t =>
+            await RunBenchmarkBlocks().ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -312,14 +312,14 @@ namespace Nethermind.PerfTest
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, "blocks");
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, "blockInfos");
 
-        private const int BlocksToLoad = 100_000;
+        private const int BlocksToLoad = 900_000;
 
-        private static async Task RunRopstenBlocks()
+        private static async Task RunBenchmarkBlocks()
         {
             Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
             
             /* logging & instrumentation */
-            _logManager = new NLogManager("perTest.logs.txt", null);
+            _logManager = new NLogManager("perfTest.logs.txt", null);
             _logger = _logManager.GetClassLogger();
 
             if (_logger.IsInfo) _logger.Info("Deleting state DBs");
@@ -330,9 +330,15 @@ namespace Nethermind.PerfTest
             DeleteDb(FullPendingTxsDbPath);
             if (_logger.IsInfo) _logger.Info("State DBs deleted");
 
-            /* spec */
-
-            var specProvider = RopstenSpecProvider.Instance;
+            /* load spec */
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "ropsten.json"));
+            _logger.Info($"Loading ChainSpec from {path}");
+            ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
+            _logger.Info($"ChainSpec loaded");
+            
+            var specProvider = new ChainSpecBasedSpecProvider(chainSpec);
+            
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var sealEngine = new EthashSealValidator(_logManager, difficultyCalculator, new Ethash(_logManager));
 
@@ -348,12 +354,12 @@ namespace Nethermind.PerfTest
             /* store & validation */
             var transactionPool = new TxPool(NullTxStorage.Instance,
                 Timestamp.Default,
-                NullEthereumEcdsa.Instance, RopstenSpecProvider.Instance, new TxPoolConfig(), _logManager);
+                NullEthereumEcdsa.Instance, specProvider, new TxPoolConfig(), _logManager);
             var receiptStorage = new InMemoryReceiptStorage();
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, specProvider, transactionPool, _logManager));
             var headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, _logManager);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
-            var transactionValidator = new TxValidator(ChainId.Ropsten);
+            var transactionValidator = new TxValidator(chainSpec.ChainId);
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
 
             /* state & storage */
@@ -365,18 +371,11 @@ namespace Nethermind.PerfTest
             var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _logManager);
-            //var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, new TransactionTracer("D:\\tx_traces\\perf_test", new UnforgivingJsonSerializer()), _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager), _logManager, true, true);
-
-            /* load ChainSpec and init */
-            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "ropsten.json"));
-            _logger.Info($"Loading ChainSpec from {path}");
-            ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
-            _logger.Info($"ChainSpec loaded");
+            
             foreach (KeyValuePair<Address, (UInt256 Balance, byte[] Code)> allocation in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(allocation.Key, allocation.Value.Balance);
