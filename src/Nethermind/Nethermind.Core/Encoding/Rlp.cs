@@ -1056,7 +1056,6 @@ namespace Nethermind.Core.Encoding
 
             public Span<byte> Read(int length)
             {
-                byte[] a;
                 Span<byte> data = Data.Slice(Position, length);
                 Position += length;
                 return data;
