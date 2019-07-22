@@ -10,5 +10,7 @@ namespace Nethermind.Grpc
         string Host { get; }
         [ConfigItem(Description = "Port of the host under which gRPC will be exposed", DefaultValue = "50000")]
         int Port { get; }
+        [ConfigItem(Description = "If 'true' then block and transaction data will be available to subscribe", DefaultValue = "false")]
+        bool ProducerEnabled { get; }
     }
 }

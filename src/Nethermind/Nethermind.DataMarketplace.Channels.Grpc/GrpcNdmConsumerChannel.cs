@@ -24,14 +24,14 @@ namespace Nethermind.DataMarketplace.Channels.Grpc
 {
     public class GrpcNdmConsumerChannel : INdmConsumerChannel
     {
-        private readonly IGrpcService _grpcService;
+        private readonly IGrpcServer _grpcServer;
         public NdmConsumerChannelType Type => NdmConsumerChannelType.Grpc;
 
-        public GrpcNdmConsumerChannel(IGrpcService grpcService)
+        public GrpcNdmConsumerChannel(IGrpcServer grpcServer)
         {
-            _grpcService = grpcService;
+            _grpcServer = grpcServer;
         }
 
-        public Task PublishAsync(Keccak depositId, string data) => _grpcService.SendNdmDataAsync(depositId, data);
+        public Task PublishAsync(Keccak depositId, string data) => _grpcServer.PublishAsync(new {depositId, data});
     }
 }

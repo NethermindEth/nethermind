@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 
 namespace Nethermind.Grpc.Clients
@@ -6,6 +7,7 @@ namespace Nethermind.Grpc.Clients
     {
         Task StartAsync();
         Task StopAsync();
-        Task PublishAsync<T>(T data);
+        Task<string> QueryAsync(params string[] args);
+        Task SubscribeAsync(Action<string> callback, params string[] args);
     }
 }

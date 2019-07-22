@@ -3,44 +3,22 @@ syntax = "proto3";
 package Nethermind.Grpc;
 
 service NethermindService {
-    rpc InitNdmExtension (NdmExtension) returns (stream NdmQuery) {}
-    rpc SendNdmData (NdmQueryData) returns (Empty) {}
-    rpc SubscribeNdmData(NdmDataSubscription) returns (stream NdmDataResponse) {}
+    rpc Query (QueryRequest) returns (QueryResponse) {}
+    rpc Subscribe(SubscriptionRequest) returns (stream SubscriptionResponse) {}
 }
 
-message Empty {
+message QueryRequest {
+    repeated string args = 1;
 }
 
-message NdmExtension {
-    string name = 1;
-    string type = 2;
-    bool acceptAllHeaders = 3;
-    repeated string acceptedHeaders = 4;
+message QueryResponse {
+    string data = 1;
 }
 
-message NdmQuery {
-    uint32 iterations = 1;
-    string headerId = 2;
-    string depositId = 3;
-    repeated string args = 4;
+message SubscriptionRequest {
+    repeated string args = 1;
 }
 
-message NdmQueryData {
-    NdmQuery query = 1;
-    bool isValid = 2;
-    repeated NdmData data = 3;
-}
-
-message NdmData {
-    string arg = 1;
-    string value = 2;
-}
-
-message NdmDataSubscription {
-    string depositId = 1;
-}
-
-message NdmDataResponse {
-    string depositId = 1;
-    string data = 2;
+message SubscriptionResponse {
+    string data = 1;
 }
