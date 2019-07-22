@@ -717,6 +717,14 @@ namespace Nethermind.Core.Encoding
             {
                 stream.WriteByte(OfEmptyByteArray.Bytes[0]);
             }
+            else if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
+            {
+                stream.Write(OfEmptyTreeHash.Bytes);
+            }
+            else if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
+            {
+                stream.Write(OfEmptyStringHash.Bytes);
+            }
             else
             {
                 stream.WriteByte(160);
@@ -764,11 +772,6 @@ namespace Nethermind.Core.Encoding
                 return OfEmptyTreeHash;
             }
 
-            if (ReferenceEquals(keccak, Keccak.OfAnEmptySequenceRlp))
-            {
-                return OfEmptySequenceRlpHash;
-            }
-            
             if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
             {
                 return OfEmptyStringHash;
