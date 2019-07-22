@@ -70,7 +70,7 @@ namespace Nethermind.Store
         public byte[] Get(UInt256 index)
         {
             Span<byte> key = GetKey(index);
-            byte[] value = Get(key.ToArray());
+            byte[] value = Get(key);
             if (value == null)
             {
                 return new byte[] {0};
@@ -84,11 +84,11 @@ namespace Nethermind.Store
         {
             if (value.IsZero())
             {
-                Set(GetKey(index).ToArray(), Bytes.Empty);
+                Set(GetKey(index), Bytes.Empty);
             }
             else
             {
-                Set(GetKey(index).ToArray(), Rlp.Encode(value));
+               Set(GetKey(index), Rlp.Encode(value));
             }
         }
     }
