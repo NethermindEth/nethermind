@@ -60,7 +60,7 @@ namespace Nethermind.Store
                 return Cache[index];
             }
 
-            Span<byte> span = new byte[32];
+            Span<byte> span = stackalloc byte[32];
             index.ToBigEndian(span);
             return ValueKeccak.Compute(span).BytesAsSpan.ToArray();
         }
