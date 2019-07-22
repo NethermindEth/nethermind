@@ -74,7 +74,7 @@ namespace Nethermind.Store
                 return new byte[] {0};
             }
 
-            Rlp.DecoderContext rlp = value.AsRlpContext();
+            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
         }
 
