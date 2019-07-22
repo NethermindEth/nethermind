@@ -50,6 +50,8 @@ namespace Nethermind.Core.Encoding
         
         private static readonly Rlp OfEmptySequenceRlpHash = Encode(Keccak.OfAnEmptySequenceRlp.Bytes); // use bytes to avoid stack overflow
         
+        private static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
+        
         private static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes); // use bytes to avoid stack overflow
 
         static Rlp()
@@ -765,6 +767,11 @@ namespace Nethermind.Core.Encoding
             if (ReferenceEquals(keccak, Keccak.OfAnEmptySequenceRlp))
             {
                 return OfEmptySequenceRlpHash;
+            }
+            
+            if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
+            {
+                return OfEmptyStringHash;
             }
 
             byte[] result = new byte[LengthOfKeccakRlp];
