@@ -272,7 +272,7 @@ namespace Nethermind.PerfTest
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
             
-            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true, true);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true, false);
             
             foreach (KeyValuePair<Address, (UInt256 Balance, byte[] Code)> allocation in chainSpec.Allocations)
             {
@@ -353,7 +353,7 @@ namespace Nethermind.PerfTest
                     _logger.Warn($"TOTAL after {number} SLOAD opcodes        : {Evm.Metrics.SloadOpcode}");
                     _logger.Warn($"TOTAL after {number} SSTORE opcodes       : {Evm.Metrics.SstoreOpcode}");
                     _logger.Warn($"TOTAL after {number} EXP opcodes          : {Evm.Metrics.ModExpOpcode}");
-                    _logger.Warn($"TOTAL after {number} BLOCKHASH opcodes    : {Evm.Metrics.ModExpOpcode}");
+                    _logger.Warn($"TOTAL after {number} BLOCKHASH opcodes    : {Evm.Metrics.BlockhashOpcode}");
                     _logger.Warn($"TOTAL after {number} EVM calls            : {Evm.Metrics.Calls}");
                     _logger.Warn($"TOTAL after {number} RIPEMD Precompiles   : {Evm.Metrics.Ripemd160Precompile}");
                     _logger.Warn($"TOTAL after {number} SHA256 Precompiles   : {Evm.Metrics.Sha256Precompile}");
