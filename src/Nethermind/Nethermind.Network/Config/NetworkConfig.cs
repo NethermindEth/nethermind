@@ -23,7 +23,7 @@ namespace Nethermind.Network.Config
         public string StaticPeers { get; set; }
         public string TrustedPeers { get; set; } = string.Empty;
         public bool IsPeersPersistenceOn { get; set; } = true;
-        public int ActivePeersMaxCount { get; set; } = 25;
+        public int ActivePeersMaxCount { get; set; } = 50;
         public int PeersPersistenceInterval { get; set; } = 1000 * 5;
         public int PeersUpdateInterval { get; set; } = 100;
         public int P2PPingInterval { get; set; } = 1000 * 10;

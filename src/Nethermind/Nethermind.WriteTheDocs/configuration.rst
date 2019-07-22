@@ -639,7 +639,7 @@ Sample configuration (mainnet)
       {
         "ConfigModule": "NetworkConfig"
         "ConfigItems": {
-          "ActivePeersMaxCount" : 25,
+          "ActivePeersMaxCount" : 50,
           "CandidatePeerCountCleanupThreshold" : 11000,
           "IsPeersPersistenceOn" : true,
           "MaxCandidatePeerCount" : 10000,
