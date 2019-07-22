@@ -40,6 +40,11 @@ namespace Nethermind.Core
             : this(keccak.Bytes.Slice(12, ByteLength))
         {
         }
+        
+        public Address(in ValueKeccak keccak)
+            : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray())
+        {
+        }
 
         public byte this[int index] => Bytes[index];
 
@@ -116,13 +121,13 @@ namespace Nethermind.Core
 
         public static Address OfContract(Address deployingAddress, UInt256 nonce)
         {
-            Keccak contractAddressKeccak =
-                Keccak.Compute(
+            ValueKeccak contractAddressKeccak =
+                ValueKeccak.Compute(
                     Rlp.Encode(
                         Rlp.Encode(deployingAddress),
-                        Rlp.Encode(nonce)));
+                        Rlp.Encode(nonce)).Bytes);
 
-            return new Address(contractAddressKeccak);
+            return new Address(in contractAddressKeccak);
         }
         
         public static Address OfContract(Address deployingAddress, Span<byte> salt, Span<byte> initCode)
@@ -132,10 +137,10 @@ namespace Nethermind.Core
             bytes[0] = 0xff;
             deployingAddress.Bytes.CopyTo(bytes.Slice(1, 20));
             salt.CopyTo(bytes.Slice(21, salt.Length));
-            Keccak.Compute(initCode).Bytes.CopyTo(bytes.Slice(21 + salt.Length, 32));
+            ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(21 + salt.Length, 32));
                 
-            Keccak contractAddressKeccak = Keccak.Compute(bytes);
-            return new Address(contractAddressKeccak);
+            ValueKeccak contractAddressKeccak = ValueKeccak.Compute(bytes);
+            return new Address(in contractAddressKeccak);
         }
 
         public override string ToString()
