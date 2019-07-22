@@ -16,9 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
-using System.Linq;
-using System.Text;
+using System.Collections.Concurrent;
+using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
@@ -28,8 +27,12 @@ namespace Nethermind.JsonRpc.WebSockets
 {
     public class JsonRpcWebSocketsModule : IWebSocketsModule
     {
+        private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients =
+            new ConcurrentDictionary<string, IWebSocketsClient>();
+
         private readonly JsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonSerializer _jsonSerializer;
+
         public string Name { get; } = "json-rpc";
 
         public JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor, IJsonSerializer jsonSerializer)
@@ -38,29 +41,26 @@ namespace Nethermind.JsonRpc.WebSockets
             _jsonSerializer = jsonSerializer;
         }
 
+        public IWebSocketsClient CreateClient(WebSocket webSocket)
+        {
+            var client = new JsonRpcWebSocketsClient(new WebSocketsClient(webSocket, _jsonSerializer),
+                _jsonRpcProcessor, _jsonSerializer);
+            _clients.TryAdd(client.Id, client);
+
+            return client;
+        }
+
         public bool TryInit(HttpRequest request)
         {
             return true;
         }
 
-        public void AddClient(IWebSocketsClient client)
-        {
-        }
+        public Task SendRawAsync(string data) => Task.CompletedTask;
 
-        public async Task ExecuteAsync(IWebSocketsClient client, byte[] data)
-        {
-            var result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data));
-            if (result.IsCollection)
-            {
-                await client.SendAsync(_jsonSerializer.Serialize(result.Responses));
-                return;
-            }
+        public Task SendAsync(WebSocketsMessage message) => Task.CompletedTask;
 
-            await client.SendAsync(_jsonSerializer.Serialize(result.Responses.SingleOrDefault()));
-        }
+        public void Cleanup(string clientId) => _clients.TryRemove(clientId, out _);
 
-        public void Cleanup(IWebSocketsClient client)
-        {
-        }
+        public void RemoveClient(string id) => _clients.TryRemove(id, out _);
     }
 }

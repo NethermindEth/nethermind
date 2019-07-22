@@ -28,9 +28,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
         public Keccak DepositId { get; set; }
         public Keccak DataHeaderId { get; set; }
         public Address ConsumerAddress { get; set; }
-        public string ConsumerNodeId { get; protected set; }
+        public PublicKey ConsumerNodeId { get; set; }
         public Address ProviderAddress { get; set; }
-        public string ProviderNodeId { get; protected set; }
+        public PublicKey ProviderNodeId { get; set; }
         public string State { get; set; }
         public uint StartUnitsFromConsumer { get; set; }
         public uint StartUnitsFromProvider { get; set; }
@@ -51,9 +51,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
             DepositId = session.DepositId;
             DataHeaderId = session.DataHeaderId;
             ConsumerAddress = session.ConsumerAddress;
-            ConsumerNodeId = session.ConsumerNodeId.ToString();
+            ConsumerNodeId = session.ConsumerNodeId;
             ProviderAddress = session.ProviderAddress;
-            ProviderNodeId = session.ProviderNodeId.ToString();
+            ProviderNodeId = session.ProviderNodeId;
             State = session.State.ToString().ToLowerInvariant();
             StartUnitsFromProvider = session.StartUnitsFromProvider;
             StartUnitsFromConsumer = session.StartUnitsFromConsumer;

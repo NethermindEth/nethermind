@@ -28,8 +28,11 @@ using Nethermind.Core;
 using Nethermind.Core.Json;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Channels.Grpc;
+using Nethermind.DataMarketplace.Consumers.Infrastructure;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
+using Nethermind.DataMarketplace.Core.Services;
+using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Initializers;
 using Nethermind.DataMarketplace.WebSockets;
 using Nethermind.Grpc;
@@ -135,6 +138,7 @@ namespace Nethermind.Runner
             IRpcModuleProvider rpcModuleProvider = initParams.JsonRpcEnabled
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>())
                 : (IRpcModuleProvider) NullModuleProvider.Instance;
+            var jsonSerializer = new EthereumJsonSerializer();
             var webSocketsManager = new WebSocketsManager();
 
             INdmDataPublisher ndmDataPublisher = null;
@@ -146,8 +150,16 @@ namespace Nethermind.Runner
             {
                 ndmDataPublisher = new NdmDataPublisher();
                 ndmConsumerChannelManager = new NdmConsumerChannelManager();
-                ndmInitializer = new NdmInitializerFactory(logManager)
-                    .CreateOrFail(ndmConfig.InitializerName, ndmConfig.PluginsPath);
+                var initializerName = ndmConfig.InitializerName;
+                if (Logger.IsInfo) Logger.Info($"NDM initializer: {initializerName}");
+                var ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a => a.GetTypes())
+                    .FirstOrDefault(t =>
+                        t.GetCustomAttribute<NdmInitializerAttribute>()?.Name == initializerName);
+                var ndmModule = new NdmModule();
+                var ndmConsumersModule = new NdmConsumersModule();
+                ndmInitializer = new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule,
+                    logManager).CreateOrFail();
             }
 
             var grpcConfig = configProvider.GetConfig<IGrpcConfig>();
@@ -171,7 +183,7 @@ namespace Nethermind.Runner
             var grpcClientConfig = configProvider.GetConfig<IGrpcClientConfig>();
             if (grpcClientConfig.Enabled)
             {
-                grpcClient = new GrpcClient(grpcClientConfig, new EthereumJsonSerializer(), logManager);
+                grpcClient = new GrpcClient(grpcClientConfig, jsonSerializer, logManager);
                 _grpcClientRunner = new GrpcClientRunner(grpcClient, grpcClientConfig, logManager);
                 await Task.Factory.StartNew(() => _grpcClientRunner.Start().ContinueWith(x =>
                 {
@@ -179,8 +191,17 @@ namespace Nethermind.Runner
                 }));
             }
             
+            if (initParams.WebSocketsEnabled)
+            {
+                if (ndmEnabled)
+                {
+                    webSocketsManager.AddModule(new NdmWebSocketsModule(ndmConsumerChannelManager, ndmDataPublisher,
+                        jsonSerializer));
+                }
+            }
+            
             _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager, grpcService, grpcClient,
-                ndmConsumerChannelManager, ndmDataPublisher, ndmInitializer);
+                ndmConsumerChannelManager, ndmDataPublisher, ndmInitializer, webSocketsManager, jsonSerializer);
             await _ethereumRunner.Start().ContinueWith(x =>
             {
                 if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
@@ -188,19 +209,17 @@ namespace Nethermind.Runner
 
             if (initParams.JsonRpcEnabled)
             {
-                var serializer = new EthereumJsonSerializer();
                 rpcModuleProvider.Register<IWeb3Module>(new Web3Module(logManager));
                 var jsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
-                var jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, serializer, logManager);
-                webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, serializer));
-                if (ndmEnabled)
+                var jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, jsonSerializer, logManager);
+                if (initParams.WebSocketsEnabled)
                 {
-                    webSocketsManager.AddModule(new NdmWebSocketsModule(ndmConsumerChannelManager, ndmDataPublisher));
+                    webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonSerializer));
                 }
                 
                 Bootstrap.Instance.JsonRpcService = jsonRpcService;
                 Bootstrap.Instance.LogManager = logManager;
-                Bootstrap.Instance.JsonSerializer = serializer;
+                Bootstrap.Instance.JsonSerializer = jsonSerializer;
                 _jsonRpcRunner = new JsonRpcRunner(configProvider, rpcModuleProvider, logManager, jsonRpcProcessor,
                     webSocketsManager);
                 await _jsonRpcRunner.Start().ContinueWith(x =>

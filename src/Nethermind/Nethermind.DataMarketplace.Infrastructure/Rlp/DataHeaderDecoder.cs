@@ -57,9 +57,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var state = (DataHeaderState) context.DecodeInt();
             var termsAndConditions = context.DecodeString();
             var kycRequired = context.DecodeBool();
+            var plugin = context.DecodeString();
 
             return new DataHeader(id, name, description, unitPrice, unitType, minUnits, maxUnits,
-                rules, provider, file, queryType, state, termsAndConditions, kycRequired);
+                rules, provider, file, queryType, state, termsAndConditions, kycRequired, plugin);
         }
 
         public Nethermind.Core.Encoding.Rlp Encode(DataHeader item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -83,7 +84,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Nethermind.Core.Encoding.Rlp.Encode((int) item.QueryType),
                 Nethermind.Core.Encoding.Rlp.Encode((int) item.State),
                 Nethermind.Core.Encoding.Rlp.Encode(item.TermsAndConditions),
-                Nethermind.Core.Encoding.Rlp.Encode(item.KycRequired));
+                Nethermind.Core.Encoding.Rlp.Encode(item.KycRequired),
+                Nethermind.Core.Encoding.Rlp.Encode(item.Plugin));
         }
 
         public void Encode(MemoryStream stream, DataHeader item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

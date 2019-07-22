@@ -21,6 +21,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Core.Extensions;
 using Nethermind.EthStats.Messages;
@@ -48,6 +49,7 @@ namespace Nethermind.EthStats.Integrations
         private readonly IBlockTree _blockTree;
         private readonly IPeerManager _peerManager;
         private readonly ILogger _logger;
+        private IWebsocketClient _websocketClient;
         private bool _connected;
         private long _lastBlockProcessedTimestamp;
         private const int ThrottlingThreshold = 25;
@@ -76,67 +78,76 @@ namespace Nethermind.EthStats.Integrations
 
         public async Task InitAsync()
         {
+            var timer = new System.Timers.Timer {Interval = SendStatsInterval};
+            timer.Elapsed += TimerOnElapsed;
+            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             var exitEvent = new ManualResetEvent(false);
-            using (var client = await _ethStatsClient.InitAsync())
+            using (_websocketClient = await _ethStatsClient.InitAsync())
             {
                 if (_logger.IsInfo) _logger.Info("Initial connection, sending 'hello' message...");
-                await SendHelloAsync(client);
+                await SendHelloAsync();
                 _connected = true;
-                client.ReconnectionHappened.Subscribe(async reason =>
+                _websocketClient.ReconnectionHappened.Subscribe(async reason =>
                 {
                     if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
-                    await SendHelloAsync(client);
+                    await SendHelloAsync();
                     _connected = true;
                 });
-                client.DisconnectionHappened.Subscribe(reason =>
+                _websocketClient.DisconnectionHappened.Subscribe(reason =>
                 {
                     _connected = false;
                     if (_logger.IsWarn) _logger.Warn($"ETH Stats disconnected, reason: {reason}");
                 });
-                
-                _blockTree.NewHeadBlock += async (s, e) =>
-                {
-                    if (!_connected)
-                    {
-                        return;
-                    }
 
-                    var timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
-                    if (timestamp - _lastBlockProcessedTimestamp < ThrottlingThreshold)
-                    {
-                        return;
-                    }
-
-                    if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'block', 'pending' messages...");
-                    _lastBlockProcessedTimestamp = timestamp;
-                    await SendBlockAsync(client, e.Block);
-                    await SendPendingAsync(client, e.Block.Transactions?.Length ?? 0);
-                };
-
-                var timer = new System.Timers.Timer {Interval = SendStatsInterval};
-                timer.Elapsed += async (sender, args) =>
-                {
-                    if (!_connected)
-                    {
-                        return;
-                    }
-
-                    if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
-                    await SendStatsAsync(client);
-                };
                 timer.Start();
-
                 exitEvent.WaitOne();
             }
+
+            _connected = false;
+            timer.Stop();
+            timer.Dispose();
+            _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
+            timer.Elapsed -= TimerOnElapsed;
         }
 
-        private Task SendHelloAsync(IWebsocketClient client)
-            => _sender.SendAsync(client, new HelloMessage(_secret, new Info(_name, _node, _port, _network, _protocol,
+        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            if (!_connected)
+            {
+                return;
+            }
+
+            if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
+            SendStatsAsync();
+        }
+
+        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        {
+            if (!_connected)
+            {
+                return;
+            }
+
+            var timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+            if (timestamp - _lastBlockProcessedTimestamp < ThrottlingThreshold)
+            {
+                return;
+            }
+
+            if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'block', 'pending' messages...");
+            _lastBlockProcessedTimestamp = timestamp;
+            SendBlockAsync(e.Block);
+            SendPendingAsync(e.Block.Transactions?.Length ?? 0);
+        }
+
+        private Task SendHelloAsync()
+            => _sender.SendAsync(_websocketClient, new HelloMessage(_secret, new Info(_name, _node, _port, _network,
+                _protocol,
                 _api, RuntimeInformation.OSDescription, RuntimeInformation.OSArchitecture.ToString(), _client,
                 _contact, _canUpdateHistory)));
 
-        private Task SendBlockAsync(IWebsocketClient client, Core.Block block)
-            => _sender.SendAsync(client, new BlockMessage(new Block(block.Number, block.Hash?.ToString(),
+        private Task SendBlockAsync(Core.Block block)
+            => _sender.SendAsync(_websocketClient, new BlockMessage(new Block(block.Number, block.Hash?.ToString(),
                 block.ParentHash?.ToString(),
                 (long) block.Timestamp, block.Author?.ToString(), block.GasUsed, block.GasLimit,
                 block.Difficulty.ToString(), block.TotalDifficulty?.ToString(),
@@ -144,11 +155,11 @@ namespace Nethermind.EthStats.Integrations
                 block.TransactionsRoot.ToString(), block.StateRoot.ToString(),
                 block.Ommers?.Select(o => new Uncle()) ?? Enumerable.Empty<Uncle>())));
 
-        private Task SendPendingAsync(IWebsocketClient client, int pending)
-            => _sender.SendAsync(client, new PendingMessage(new PendingStats(pending)));
+        private Task SendPendingAsync(int pending)
+            => _sender.SendAsync(_websocketClient, new PendingMessage(new PendingStats(pending)));
 
-        private Task SendStatsAsync(IWebsocketClient client)
-            => _sender.SendAsync(client, new StatsMessage(new Messages.Models.Stats(true, true, false, 0,
+        private Task SendStatsAsync()
+            => _sender.SendAsync(_websocketClient, new StatsMessage(new Messages.Models.Stats(true, true, false, 0,
                 _peerManager.ActivePeers.Count, (long) 20.GWei(), 100)));
     }
 }

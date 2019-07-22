@@ -16,18 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.DataMarketplace.Core.Domain;
-
-namespace Nethermind.DataMarketplace.Core
+namespace Nethermind.DataMarketplace.Infrastructure
 {
-    public class NdmDataPublisher : INdmDataPublisher
+    public interface INdmServices
     {
-        public EventHandler<NdmDataEventArgs> DataPublished { get; set; }
-
-        public void Publish(DataHeaderData dataHeaderData)
-        {
-            DataPublished?.Invoke(this, new NdmDataEventArgs(dataHeaderData));
-        }
+        NdmRequiredServices RequiredServices { get; }
+        NdmCreatedServices CreatedServices { get; }
     }
 }

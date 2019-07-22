@@ -52,9 +52,9 @@ using Nethermind.Facade;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
-    public static class NdmConsumersModule
+    public class NdmConsumersModule : INdmConsumersModule
     {
-        public static IServices AddConsumersModule(this NdmModule.IServices services)
+        public INdmConsumerServices Init(INdmServices services)
         {
             AddDecoders();
             var ndmConfig = services.RequiredServices.NdmConfig;
@@ -101,13 +101,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
             var depositService = new DepositService(services.CreatedServices.BlockchainBridge,
                 services.CreatedServices.AbiEncoder, services.RequiredServices.Wallet, ndmConfig, logManager);
+            var consumerNotifier = new ConsumerNotifier(services.RequiredServices.Notifier);
             var consumerService = new ConsumerService(services.RequiredServices.ConfigManager, ndmConfig.Id,
                 depositRepository, depositApprovalRepository, providerRepository, receiptRepository, sessionRepository,
                 services.RequiredServices.Wallet, services.CreatedServices.AbiEncoder,
                 services.RequiredServices.CryptoRandom, depositService, receiptRequestValidator, refundService,
                 services.CreatedServices.BlockchainBridge, services.CreatedServices.ConsumerAddress,
                 services.RequiredServices.Enode.PublicKey, services.RequiredServices.Timestamp,
-                ndmConfig.BlockConfirmations, logManager);
+                consumerNotifier, ndmConfig.BlockConfirmations, logManager);
             var reportService = new ReportService(depositRepository, receiptRepository, sessionRepository,
                 services.RequiredServices.Timestamp);
 
@@ -119,7 +120,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     services.CreatedServices.JsonRpcNdmConsumerChannel, services.RequiredServices.EthRequestService,
                     personalBridge, logManager));
 
-            return new Services(consumerService);
+            return new NdmConsumerServices(consumerService);
         }
 
         private static void AddDecoders()
@@ -128,16 +129,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             DepositDetailsDecoder.Init();
         }
 
-        public interface IServices
-        {
-            IConsumerService ConsumerService { get; }
-        }
-
-        private class Services : IServices
+        private class NdmConsumerServices : INdmConsumerServices
         {
             public IConsumerService ConsumerService { get; }
 
-            public Services(IConsumerService consumerService)
+            public NdmConsumerServices(IConsumerService consumerService)
             {
                 ConsumerService = consumerService;
             }

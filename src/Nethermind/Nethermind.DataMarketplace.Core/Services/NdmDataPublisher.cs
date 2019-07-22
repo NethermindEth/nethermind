@@ -16,26 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Channels;
-using Nethermind.WebSockets;
+using System;
+using Nethermind.DataMarketplace.Core.Domain;
 
-namespace Nethermind.DataMarketplace.WebSockets
+namespace Nethermind.DataMarketplace.Core.Services
 {
-    public class WebSocketsNdmConsumerChannel : INdmConsumerChannel
+    public class NdmDataPublisher : INdmDataPublisher
     {
-        private readonly IWebSocketsClient _client;
-        private readonly Keccak _depositId;
-        public NdmConsumerChannelType Type => NdmConsumerChannelType.WebSockets;
+        public EventHandler<NdmDataEventArgs> DataPublished { get; set; }
 
-        public WebSocketsNdmConsumerChannel(IWebSocketsClient client, Keccak depositId)
+        public void Publish(DataHeaderData dataHeaderData)
         {
-            _client = client;
-            _depositId = depositId;
+            DataPublished?.Invoke(this, new NdmDataEventArgs(dataHeaderData));
         }
-
-        public Task PublishAsync(Keccak depositId, string data)
-            => _depositId != depositId ? Task.CompletedTask : _client.SendAsync(data);
     }
 }

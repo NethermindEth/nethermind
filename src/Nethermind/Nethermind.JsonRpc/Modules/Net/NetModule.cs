@@ -33,6 +33,11 @@ namespace Nethermind.JsonRpc.Modules.Net
             _netBridge = netBridge ?? throw new ArgumentNullException(nameof(netBridge));
         }
 
+        public ResultWrapper<Address> net_localAddress()
+        {
+            return ResultWrapper<Address>.Success(_netBridge.LocalAddress);
+        }
+
         public ResultWrapper<string> net_localEnode()
         {
             return ResultWrapper<string>.Success(_netBridge.LocalEnode);

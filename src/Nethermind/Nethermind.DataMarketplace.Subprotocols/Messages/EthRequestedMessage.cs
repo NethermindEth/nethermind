@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core;
+using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Network.P2P;
 
@@ -26,15 +27,11 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.EthRequested;
         public override string Protocol => "ndm";
-        public Address Address { get; set; }
-        public UInt256 Value { get; set; }
-        public bool IsSuccessful { get; set; }
+        public FaucetResponse Response { get; set; }
 
-        public EthRequestedMessage(Address address, UInt256 value, bool isSuccessful)
+        public EthRequestedMessage(FaucetResponse response)
         {
-            Address = address;
-            Value = value;
-            IsSuccessful = isSuccessful;
+            Response = response;
         }
     }
 }

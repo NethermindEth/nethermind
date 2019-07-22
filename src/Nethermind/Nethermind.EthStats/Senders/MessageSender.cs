@@ -43,6 +43,11 @@ namespace Nethermind.EthStats.Senders
 
         public Task SendAsync<T>(IWebsocketClient client, T message, string type = null) where T : IMessage
         {
+            if (client is null)
+            {
+                return Task.CompletedTask;
+            }
+            
             var (emitMessage, messageType) = CreateMessage(message, type);
             var payload = JsonConvert.SerializeObject(emitMessage, SerializerSettings);
             if (_logger.IsTrace) _logger.Trace($"Sending ETH stats message '{messageType}': {payload}");

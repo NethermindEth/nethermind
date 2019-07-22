@@ -23,35 +23,24 @@ namespace Nethermind.WebSockets
 {
     public class WebSocketsManager : IWebSocketsManager
     {
-        private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients =
-            new ConcurrentDictionary<string, IWebSocketsClient>();
-        
         private readonly ConcurrentDictionary<string, IWebSocketsModule> _modules =
             new ConcurrentDictionary<string, IWebSocketsModule>();
 
         public void AddModule(IWebSocketsModule module)
         {
             _modules.TryAdd(module.Name, module);
+
         }
 
         public IWebSocketsModule GetModule(string name)
             => _modules.TryGetValue(name, out var module) ? module : null;
 
-        public IWebSocketsClient AddClient(WebSocket webSocket)
+        public IWebSocketsClient CreateClient(IWebSocketsModule module, WebSocket webSocket)
         {
-            var client = new WebSocketsClient(webSocket);
-            _clients.TryAdd(client.Id, client);
-            foreach (var (_, module) in _modules)
-            {
-                module.AddClient(client);
-            }
+            var client = module.CreateClient(webSocket);
+            _modules.TryAdd(module.Name, module);
 
             return client;
-        }
-
-        public void RemoveClient(string id)
-        {
-            _clients.TryRemove(id, out _);
         }
     }
 }

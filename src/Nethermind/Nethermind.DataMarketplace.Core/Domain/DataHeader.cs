@@ -38,12 +38,13 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public DataHeaderState State { get; private set; }
         public string TermsAndConditions { get; private set; }
         public bool KycRequired { get; private set; }
+        public string Plugin { get; private set; }
 
         public DataHeader(Keccak id, string name, string description, UInt256 unitPrice,
             DataHeaderUnitType unitType, uint minUnits, uint maxUnits, DataHeaderRules rules,
             DataHeaderProvider provider, string file = null, QueryType queryType = QueryType.Stream,
             DataHeaderState state = DataHeaderState.Unpublished, string termsAndConditions = null,
-            bool kycRequired = false)
+            bool kycRequired = false, string plugin = null)
         {
             if (provider == null || string.IsNullOrWhiteSpace(provider.Name) || provider.Address == null)
             {
@@ -64,7 +65,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             {
                 throw new ArgumentException("Invalid data header description.", nameof(description));
             }
-            
+
             if (termsAndConditions?.Length > 10000)
             {
                 throw new ArgumentException("Invalid terms and conditions (over 10000 chars).", nameof(description));
@@ -102,9 +103,11 @@ namespace Nethermind.DataMarketplace.Core.Domain
             State = state;
             TermsAndConditions = termsAndConditions;
             KycRequired = kycRequired;
+            SetState(state);
+            SetPlugin(plugin);
         }
 
-        public void ChangeState(DataHeaderState state)
+        public void SetState(DataHeaderState state)
         {
             if (State == state || State == DataHeaderState.Archived)
             {
@@ -112,6 +115,19 @@ namespace Nethermind.DataMarketplace.Core.Domain
             }
 
             State = state;
+        }
+
+        public void ClearPlugin() => SetPlugin(string.Empty);
+
+        public void SetPlugin(string plugin)
+        {
+            var pluginName = plugin?.ToLowerInvariant();
+            if (Plugin == pluginName)
+            {
+                return;
+            }
+
+            Plugin = pluginName;
         }
     }
 }

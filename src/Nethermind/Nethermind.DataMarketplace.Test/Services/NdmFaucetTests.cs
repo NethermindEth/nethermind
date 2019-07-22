@@ -56,13 +56,13 @@ namespace Nethermind.DataMarketplace.Test.Services
             _blockchainBridge = Substitute.For<IBlockchainBridge>();
             _repository = Substitute.For<IEthRequestRepository>();
             _faucetAddress = Address.FromNumber(1);
-            _maxValue = 1.GWei();
+            _maxValue = 1.Ether();
             _enabled = true;
             _timestamp = new Timestamp();
-            _logManager = NullLogManager.Instance;
+            _logManager = LimboLogs.Instance;
             _host = "127.0.0.1";
             _address = Address.FromNumber(2);
-            _value = 1.GWei();
+            _value = 1.Ether();
             _faucetAccount = Account.TotallyEmpty;
             _transactionHash = Keccak.Zero;
             _blockchainBridge.GetAccount(_faucetAddress).Returns(_faucetAccount);
@@ -75,81 +75,81 @@ namespace Nethermind.DataMarketplace.Test.Services
             _enabled = false;
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetResponse.FaucetDisabled);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_null_faucet_address()
         {
             _faucetAddress = null;
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetResponse.FaucetAddressNotSet);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_zero_faucet_address()
         {
             _faucetAddress = Address.Zero;
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetResponse.FaucetAddressNotSet);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_empty_host()
         {
             _host = string.Empty;
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetResponse.InvalidNodeAddress);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_null_address()
         {
             _address = null;
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetResponse.InvalidNodeAddress);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_zero_address()
         {
             _address = Address.Zero;
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetResponse.InvalidNodeAddress);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_faucet_address_equal_address()
         {
             _address = _faucetAddress;
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetResponse.SameAddressAsFaucet);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_zero_value()
         {
             _value = 0;
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetResponse.ZeroValue);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_for_value_bigger_than_max_value()
         {
             _value = _maxValue + 1;
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeFalse();
+            ethRequested.Should().Be(FaucetResponse.TooBigValue);
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_when_same_ip_address_sends_another_request_the_same_day()
         {
@@ -159,17 +159,20 @@ namespace Nethermind.DataMarketplace.Test.Services
             _repository.GetLatestAsync(_host).Returns(latestRequest);
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeFalse();
+            ethRequested.Should()
+                .Be(FaucetResponse.RequestAlreadyProcessedToday(FaucetRequestDetails.From(latestRequest)));
         }
-        
+
         [Test]
         public async Task request_eth_should_succeed_when_no_previous_requests_were_made()
         {
+            _timestamp = new Timestamp(DateTime.UtcNow);
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeTrue();
+            ethRequested.Should().Be(FaucetResponse.RequestCompleted(new FaucetRequestDetails("127.0.0.1",
+                _address, _value, _timestamp.UtcNow, Keccak.Zero)));
         }
-        
+
         [Test]
         public async Task request_eth_should_succeed_when_previous_request_was_made_at_least_yesterday()
         {
@@ -179,13 +182,14 @@ namespace Nethermind.DataMarketplace.Test.Services
             _repository.GetLatestAsync(_host).Returns(latestRequest);
             InitFaucet();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().BeTrue();
+            ethRequested.Should().Be(FaucetResponse.RequestCompleted(new FaucetRequestDetails("127.0.0.1",
+                _address, _value, _timestamp.UtcNow, Keccak.Zero)));
         }
 
         private void InitFaucet()
             => _faucet = new NdmFaucet(_blockchainBridge, _repository, _faucetAddress, _maxValue, _enabled,
                 _timestamp, _logManager);
 
-        private Task<bool> TryRequestEthAsync() => _faucet.TryRequestEthAsync(_host, _address, _value);
+        private Task<FaucetResponse> TryRequestEthAsync() => _faucet.TryRequestEthAsync(_host, _address, _value);
     }
 }

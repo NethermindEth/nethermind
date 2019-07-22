@@ -25,6 +25,7 @@ using NUnit.Framework;
 namespace Nethermind.DataMarketplace.Integration.Test
 {
     [TestFixture]
+    [Ignore("Needs a new flow")]
     public class NdmTests : TestBuilder
     {
         [SetUp]

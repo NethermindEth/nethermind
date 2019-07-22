@@ -84,9 +84,9 @@ namespace Nethermind.WebSockets
                     }
 
                     var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    var client = webSocketsManager.AddClient(webSocket);
-                    await ReceiveAsync(webSocket, client, module);
-                    webSocketsManager.RemoveClient(client.Id);
+                    var client = webSocketsManager.CreateClient(module, webSocket);
+                    await ReceiveAsync(webSocket, client);
+                    module.RemoveClient(client.Id);
                 }
                 catch (Exception e)
                 {
@@ -95,19 +95,18 @@ namespace Nethermind.WebSockets
             });
         }
 
-        private static async Task ReceiveAsync(WebSocket webSocket, IWebSocketsClient client, IWebSocketsModule module)
+        private static async Task ReceiveAsync(WebSocket webSocket, IWebSocketsClient client)
         {
             var buffer = new byte[1024 * 4];
             var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
             while (!result.CloseStatus.HasValue)
             {
                 var data = buffer.Slice(0, result.Count);
-                await module.ExecuteAsync(client, data);
+                await client.ReceiveAsync(data);
                 result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
             }
 
             await webSocket.CloseAsync(result.CloseStatus.Value, result.CloseStatusDescription, CancellationToken.None);
-            module.Cleanup(client);
         }
     }
 }

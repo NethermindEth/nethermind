@@ -16,124 +16,62 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
-using System.Text;
+using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Core.Crypto;
+using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
-using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.WebSockets;
 
 namespace Nethermind.DataMarketplace.WebSockets
 {
     public class NdmWebSocketsModule : IWebSocketsModule
     {
+        private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients =
+            new ConcurrentDictionary<string, IWebSocketsClient>();
+
         private readonly INdmConsumerChannelManager _consumerChannelManager;
         private readonly INdmDataPublisher _dataPublisher;
-        private ClientType _clientType;
-        private Keccak _depositId;
-        private WebSocketsNdmConsumerChannel _channel;
-        
+        private readonly IJsonSerializer _jsonSerializer;
+        private NdmWebSocketsConsumerChannel _channel;
+
         public string Name { get; } = "ndm";
 
-        public NdmWebSocketsModule(INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher)
+        public NdmWebSocketsModule(INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
+            IJsonSerializer jsonSerializer)
         {
             _consumerChannelManager = consumerChannelManager;
             _dataPublisher = dataPublisher;
+            _jsonSerializer = jsonSerializer;
         }
 
         public bool TryInit(HttpRequest request)
         {
-            if (!request.Query.TryGetValue("type", out var type) || string.IsNullOrWhiteSpace(type))
-            {
-                return false;
-            }
-
-            if (!Enum.TryParse<ClientType>(type, true, out var clientType))
-            {
-                return false;
-            }
-
-            _clientType = clientType;
-            if (_clientType == ClientType.Provider)
-            {
-                return true;
-            }
-
-            if (!request.Query.TryGetValue("deposit", out var deposit) ||
-                string.IsNullOrWhiteSpace(deposit))
-            {
-                return false;
-            }
-
-            _depositId = Keccak.TryParse(deposit);
-            
-            return !(_depositId is null);
+            return true;
         }
 
-        public void AddClient(IWebSocketsClient client)
+        public IWebSocketsClient CreateClient(WebSocket webSocket)
         {
-            _channel = new WebSocketsNdmConsumerChannel(client, _depositId);
+            var client = new NdmWebSocketsClient(new WebSocketsClient(webSocket, _jsonSerializer),
+                _dataPublisher);
+            _channel = new NdmWebSocketsConsumerChannel(client);
             _consumerChannelManager.Add(_channel);
+            _clients.TryAdd(client.Id, client);
+
+            return client;
         }
 
-        public Task ExecuteAsync(IWebSocketsClient client, byte[] data)
-        {
-            if (_clientType == ClientType.Consumer)
-            {
-                return Task.CompletedTask;
-            }
+        public Task SendRawAsync(string data)
+            => Task.WhenAll(_clients.Values.Select(c => c.SendRawAsync(data)));
 
-            if (data is null || data.Length == 0)
-            {
-                return Task.CompletedTask;
-            }
-            
-            var (dataHeaderId, headerData) = GetDataInfo(data);
-            if (dataHeaderId is null || string.IsNullOrWhiteSpace(headerData))
-            {
-                return Task.CompletedTask;
-            }
+        public Task SendAsync(WebSocketsMessage message)
+            => Task.WhenAll(_clients.Values.Select(c => c.SendAsync(message)));
 
-            var dataResult = new Dictionary<string, string>
-            {
-                [string.Empty] = headerData
-            };
-            _dataPublisher.Publish(new DataHeaderData(dataHeaderId, dataResult));
-
-            return Task.CompletedTask;
-        }
-
-        public void Cleanup(IWebSocketsClient client)
-        {
-            _consumerChannelManager.Remove(_channel);
-        }
-
-        private static (Keccak dataHeaderId, string data) GetDataInfo(byte[] bytes)
-        {
-            var request = Encoding.UTF8.GetString(bytes);
-            var parts = request.Split('|');
-
-            if (!parts.Any() || parts.Length != 3)
-            {
-                return (null, null);
-            }
-
-            var dataHeaderId = parts[0];
-            var extension = parts[1];
-            var data = parts[2];
-
-            return string.IsNullOrWhiteSpace(dataHeaderId) ? (null, null) : (new Keccak(dataHeaderId), data);
-        }
+        public void Cleanup(string clientId) => _clients.TryRemove(clientId, out _);
         
-        private enum ClientType
-        {
-            Consumer,
-            Provider
-        }
+        public void RemoveClient(string id) => _clients.TryRemove(id, out _);
     }
 }

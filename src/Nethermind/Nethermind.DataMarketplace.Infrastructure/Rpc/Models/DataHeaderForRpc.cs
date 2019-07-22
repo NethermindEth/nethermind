@@ -39,6 +39,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
         public string State { get; }
         public string TermsAndConditions { get; set; }
         public bool KycRequired { get; set; }
+        public string Plugin { get; set; }
 
         public DataHeaderForRpc()
         {
@@ -60,6 +61,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
             State = dataHeader.State.ToString().ToLowerInvariant();
             TermsAndConditions = dataHeader.TermsAndConditions;
             KycRequired = dataHeader.KycRequired;
+            Plugin = dataHeader.Plugin;
         }
     }
 }

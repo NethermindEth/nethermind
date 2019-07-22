@@ -93,9 +93,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<DataHeaderInfoForRpc[]>> ndm_getKnownDataHeaders()
         {
-            var providers = await _consumerService.GetKnownDataHeadersAsync();
+            var dataHeaders = await _consumerService.GetKnownDataHeadersAsync();
 
-            return ResultWrapper<DataHeaderInfoForRpc[]>.Success(providers
+            return ResultWrapper<DataHeaderInfoForRpc[]>.Success(dataHeaders
                 .Select(d => new DataHeaderInfoForRpc(d)).ToArray());
         }
 
@@ -136,8 +136,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit)
         {
-            var depositId = await _consumerService.MakeDepositAsync(deposit.DataHeaderId, deposit.Units,
-                (UInt256) deposit.Value);
+            var depositId = await _consumerService.MakeDepositAsync(deposit.DataHeaderId, deposit.Units, deposit.Value);
 
             return depositId is null
                 ? ResultWrapper<Keccak>.Fail("Deposit couldn't be made.")
@@ -186,14 +185,20 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
 
         public async Task<ResultWrapper<Keccak>> ndm_requestDepositApproval(Keccak headerId, string kyc)
-            => await _consumerService.RequestDepositApprovalAsync(headerId, kyc) is null
-                ? ResultWrapper<Keccak>.Fail($"Deposit approval for data header: '{headerId}' couldn't be requested")
-                : ResultWrapper<Keccak>.Success(headerId);
+        {
+            var id = await _consumerService.RequestDepositApprovalAsync(headerId, kyc);
 
-        public async Task<ResultWrapper<bool>> ndm_requestEth(Address address)
-            => await _ethRequestService.TryRequestEthAsync(address, 1.Ether())
-                ? ResultWrapper<bool>.Success(true)
-                : ResultWrapper<bool>.Fail($"ETH couldn't be requested for an address: {address}");
+            return id is null
+                ? ResultWrapper<Keccak>.Fail($"Deposit approval for data header: '{headerId}' couldn't be requested.")
+                : ResultWrapper<Keccak>.Success(id);
+        }
+
+        public async Task<ResultWrapper<FaucetResponseForRpc>> ndm_requestEth(Address address)
+        {
+            var response = await _ethRequestService.TryRequestEthAsync(address, 1.Ether());
+
+            return ResultWrapper<FaucetResponseForRpc>.Success(new FaucetResponseForRpc(response));
+        }
 
         public ResultWrapper<string> ndm_pullData(Keccak depositId)
         {

@@ -29,6 +29,14 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
             => Nethermind.Core.Encoding.Rlp.Encode(message.DataHeaders).Bytes;
 
         public DataHeadersMessage Deserialize(byte[] bytes)
-            => new DataHeadersMessage(Nethermind.Core.Encoding.Rlp.DecodeArray<DataHeader>(bytes.AsRlpContext()));
+        {
+            var dataHeaders = Nethermind.Core.Encoding.Rlp.DecodeArray<DataHeader>(bytes.AsRlpContext());
+            foreach (var dataHeader in dataHeaders)
+            {
+                dataHeader.ClearPlugin();
+            }
+
+            return new DataHeadersMessage(dataHeaders);
+        }
     }
 }
