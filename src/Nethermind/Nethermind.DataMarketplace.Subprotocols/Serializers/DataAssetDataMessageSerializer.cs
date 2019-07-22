@@ -22,24 +22,24 @@ using Nethermind.Network;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 {
-    public class DataHeaderDataMessageSerializer : IMessageSerializer<DataHeaderDataMessage>
+    public class DataAssetDataMessageSerializer : IMessageSerializer<DataAssetDataMessage>
     {
-        public byte[] Serialize(DataHeaderDataMessage headerDataMessage)
+        public byte[] Serialize(DataAssetDataMessage assetDataMessage)
             => Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(headerDataMessage.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode(headerDataMessage.Data),
-                Nethermind.Core.Encoding.Rlp.Encode(headerDataMessage.ConsumedUnits)
+                Nethermind.Core.Encoding.Rlp.Encode(assetDataMessage.DepositId),
+                Nethermind.Core.Encoding.Rlp.Encode(assetDataMessage.Data),
+                Nethermind.Core.Encoding.Rlp.Encode(assetDataMessage.ConsumedUnits)
             ).Bytes;
 
-        public DataHeaderDataMessage Deserialize(byte[] bytes)
+        public DataAssetDataMessage Deserialize(byte[] bytes)
         {
             var context = bytes.AsRlpContext();
             context.ReadSequenceLength();
             var depositId = context.DecodeKeccak();
-            var dataHeaderData = context.DecodeString();
+            var data = context.DecodeString();
             var usage = context.DecodeUInt();
 
-            return new DataHeaderDataMessage(depositId, dataHeaderData, usage);
+            return new DataAssetDataMessage(depositId, data, usage);
         }
     }
 }

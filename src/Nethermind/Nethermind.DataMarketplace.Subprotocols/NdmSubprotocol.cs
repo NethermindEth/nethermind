@@ -114,7 +114,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     Handle(Deserialize<DataHeaderStateChangedMessage>(message.Data)),
                 [NdmMessageCode.DataHeaderRemoved] =
                     message => Handle(Deserialize<DataHeaderRemovedMessage>(message.Data)),
-                [NdmMessageCode.DataHeaderData] = message => Handle(Deserialize<DataHeaderDataMessage>(message.Data)),
+                [NdmMessageCode.DataAssetData] = message => Handle(Deserialize<DataAssetDataMessage>(message.Data)),
                 [NdmMessageCode.InvalidData] = message => Handle(Deserialize<InvalidDataMessage>(message.Data)),
                 [NdmMessageCode.SessionStarted] = message => Handle(Deserialize<SessionStartedMessage>(message.Data)),
                 [NdmMessageCode.SessionFinished] = message => Handle(Deserialize<SessionFinishedMessage>(message.Data)),
@@ -529,9 +529,9 @@ namespace Nethermind.DataMarketplace.Subprotocols
             request.CompletionSource.SetResult(message.Response);
         }
 
-        private void Handle(DataHeaderDataMessage message)
+        private void Handle(DataAssetDataMessage message)
         {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataheaderdata");
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataassetdata");
             ConsumerService.SetUnitsAsync(message.DepositId, message.ConsumedUnits).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)

@@ -16,20 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P;
 
-namespace Nethermind.DataMarketplace.Core.Domain
+namespace Nethermind.DataMarketplace.Subprotocols.Messages
 {
-    public class DataHeaderData
+    public class DataAssetDataMessage : P2PMessage
     {
-        public Keccak Id { get; }
-        public IDictionary<string, string> Data { get; }
+        public override int PacketType { get; } = NdmMessageCode.DataAssetData;
+        public override string Protocol => "ndm";
+        public Keccak DepositId { get; }
+        public string Data { get; }
+        public uint ConsumedUnits { get; }
 
-        public DataHeaderData(Keccak id, IDictionary<string, string> data)
+        public DataAssetDataMessage(Keccak depositId, string data, uint consumedUnits)
         {
-            Id = id;
+            DepositId = depositId;
             Data = data;
+            ConsumedUnits = consumedUnits;
         }
     }
 }

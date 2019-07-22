@@ -34,11 +34,7 @@ namespace Nethermind.DataMarketplace.WebSockets
                 return Task.CompletedTask;
             }
 
-            var dataResult = new Dictionary<string, string>
-            {
-                [string.Empty] = headerData
-            };
-            _dataPublisher.Publish(new DataHeaderData(dataHeaderId, dataResult));
+            _dataPublisher.Publish(new DataAssetData(dataHeaderId, headerData));
 
             return Task.CompletedTask;
         }

@@ -89,7 +89,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
                            !deposit.Subscriptions.Any();
                 })
                 .DC.EnableDataStream(() => state.DepositId, new[] {"test-sub"})
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
                     DataHeaderId = state.DataHeaderId,
                     Data = "test-data",
@@ -110,7 +110,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
                            deposit.Subscriptions.Contains("test-sub");
                 })
                 .DC.DisableDataStream(() => state.DepositId)
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
                     DataHeaderId = state.DataHeaderId,
                     Data = "test-data",
@@ -118,7 +118,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
                 })
                 .DC.PullData(() => state.DepositId, validator: string.IsNullOrWhiteSpace)
                 .DC.EnableDataStream(() => state.DepositId, new[] {"test-sub"})
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
                     DataHeaderId = state.DataHeaderId,
                     Data = "test-data-2",
@@ -155,19 +155,19 @@ namespace Nethermind.DataMarketplace.Integration.Test
                 })
                 .DC.SendDataRequest(() => state.DepositId, validator: d => !string.IsNullOrWhiteSpace(d))
                 .DC.EnableDataStream(() => state.DepositId, new[] {"test-sub"})
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
                     DataHeaderId = state.DataHeaderId,
                     Data = "test-data-3",
                     Subscription = "test-sub"
                 })
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
                     DataHeaderId = state.DataHeaderId,
                     Data = "test-data-4",
                     Subscription = "test-sub"
                 })
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
                     DataHeaderId = state.DataHeaderId,
                     Data = "test-data-5",
