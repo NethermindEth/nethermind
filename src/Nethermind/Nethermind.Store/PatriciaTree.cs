@@ -214,7 +214,7 @@ namespace Nethermind.Store
             Run(input, input.Length, value, true);
         }
 
-        public byte[] Get(byte[] rawKey)
+        public byte[] Get(Span<byte> rawKey)
         {
 //            byte[] value = ValueCache.Get(rawKey);
 //            if (value != null)

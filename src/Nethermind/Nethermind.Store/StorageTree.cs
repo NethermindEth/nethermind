@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -53,7 +54,7 @@ namespace Nethermind.Store
         {
         }
         
-        private byte[] GetKey(UInt256 index)
+        private Span<byte> GetKey(UInt256 index)
         {
             if (index < CacheSize)
             {
@@ -62,13 +63,14 @@ namespace Nethermind.Store
 
             Span<byte> span = stackalloc byte[32];
             index.ToBigEndian(span);
-            return Keccak.Compute(span).Bytes;
+            
+            return ValueKeccak.Compute(span).BytesAsSpan.ToArray();
         }
         
         public byte[] Get(UInt256 index)
         {
-            byte[] key = GetKey(index);
-            byte[] value = Get(key);
+            Span<byte> key = GetKey(index);
+            byte[] value = Get(key.ToArray());
             if (value == null)
             {
                 return new byte[] {0};
@@ -82,11 +84,11 @@ namespace Nethermind.Store
         {
             if (value.IsZero())
             {
-                Set(GetKey(index), Bytes.Empty);
+                Set(GetKey(index).ToArray(), Bytes.Empty);
             }
             else
             {
-                Set(GetKey(index), Rlp.Encode(value));
+                Set(GetKey(index).ToArray(), Rlp.Encode(value));
             }
         }
     }
