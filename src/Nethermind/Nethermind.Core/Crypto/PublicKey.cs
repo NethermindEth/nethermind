@@ -79,13 +79,11 @@ namespace Nethermind.Core.Crypto
 
             return Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
-
+        
         private Address ComputeAddress()
         {
-            byte[] hash = Keccak.Compute(Bytes).Bytes;
-            byte[] last160Bits = new byte[20];
-            Buffer.BlockCopy(hash, 12, last160Bits, 0, 20);
-            return new Address(last160Bits);
+            Span<byte> hash = ValueKeccak.Compute(Bytes).BytesAsSpan;
+            return new Address(hash.Slice(12).ToArray());
         }
 
         public override bool Equals(object obj)

@@ -214,7 +214,7 @@ namespace Nethermind.Store
             Run(input, input.Length, value, true);
         }
 
-        public byte[] Get(byte[] rawKey)
+        public byte[] Get(Span<byte> rawKey)
         {
 //            byte[] value = ValueCache.Get(rawKey);
 //            if (value != null)
@@ -233,7 +233,7 @@ namespace Nethermind.Store
         }
 
         [DebuggerStepThrough]
-        public void Set(byte[] rawKey, byte[] value)
+        public void Set(Span<byte> rawKey, byte[] value)
         {
 //            ValueCache.Delete(rawKey);
             int nibblesCount = 2 * rawKey.Length;
@@ -247,7 +247,7 @@ namespace Nethermind.Store
         }
 
         [DebuggerStepThrough]
-        public void Set(byte[] rawKey, Rlp value)
+        public void Set(Span<byte> rawKey, Rlp value)
         {
 //            ValueCache.Delete(rawKey);
             int nibblesCount = 2 * rawKey.Length;

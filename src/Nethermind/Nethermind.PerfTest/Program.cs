@@ -179,7 +179,7 @@ namespace Nethermind.PerfTest
             public event EventHandler<BlockEventArgs> NewHeadBlock;
         }
 
-        private const string DbBasePath = @"C:\perf_db2";
+        private const string DbBasePath = @"C:\perf_db";
 //        private const string DbBasePath = @"C:\chains\blocks_1M";
 
         private static void DeleteDb(string dbPath)
@@ -194,7 +194,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, "blocks");
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, "blockInfos");
 
-        private const int BlocksToLoad = 900_000;
+        private const int BlocksToLoad = 100_000;
 
         private static async Task RunBenchmarkBlocks()
         {
@@ -214,7 +214,7 @@ namespace Nethermind.PerfTest
 
             /* load spec */
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "goerli.json"));
+            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "ropsten.json"));
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
             _logger.Info($"ChainSpec loaded");

@@ -57,7 +57,7 @@ namespace Nethermind.Core
 
         public void Set(byte[] sequence)
         {
-            byte[] keccakBytes = Keccak.Compute(sequence).Bytes;
+            Span<byte> keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
             for (int i = 0; i < 6; i += 2)
             {
                 int index = 2047 - ((keccakBytes[i] << 8) + keccakBytes[i + 1]) % 2048;

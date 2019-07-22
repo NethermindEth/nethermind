@@ -46,7 +46,7 @@ namespace Nethermind.Store
         [DebuggerStepThrough]
         public Account Get(Address address)
         {
-            byte[] bytes = Get(Keccak.Compute(address.Bytes).Bytes);
+            byte[] bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan);
             if (bytes == null)
             {
                 return null;
@@ -71,8 +71,8 @@ namespace Nethermind.Store
 
         public void Set(Address address, Account account)
         {
-            Keccak keccak = Keccak.Compute(address.Bytes);
-            Set(keccak.Bytes, account == null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+            ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
+            Set(keccak.BytesAsSpan, account == null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
         
         [DebuggerStepThrough]
