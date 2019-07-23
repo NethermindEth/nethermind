@@ -9,34 +9,27 @@ namespace Nethermind.Grpc.Clients
     public class GrpcClient : IGrpcClient
     {
         private static readonly string NewLine = Environment.NewLine;
-        private bool _stopped;
+        private bool _connected;
         private readonly ILogger _logger;
         private Channel _channel;
         private NethermindService.NethermindServiceClient _client;
         private readonly string _address;
 
-        public GrpcClient(IGrpcClientConfig config, ILogManager logManager)
+        public GrpcClient(string host, int port, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
-            _address = $"{config.Host}:{config.Port}";
+            _address = $"{host}:{port}";
         }
 
         public async Task StartAsync()
         {
-            while (!_stopped)
+            try
             {
-                try
-                {
-                    await TryStartAsync();
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError) _logger.Error($"There was an error:{NewLine}{ex}{NewLine}");
-                }
-                finally
-                {
-                    await _channel.ShutdownAsync();
-                }
+                await TryStartAsync();
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"There was an error:{NewLine}{ex}{NewLine}");
             }
         }
 
@@ -52,20 +45,26 @@ namespace Nethermind.Grpc.Clients
             }
 
             if (_logger.IsInfo) _logger.Info($"Connected GRPC client to: '{_address}'");
+            _connected = true;
         }
 
         public Task StopAsync()
         {
-            _stopped = true;
-            return _channel.ShutdownAsync();
+            _connected = false;
+            return _channel?.ShutdownAsync() ?? Task.CompletedTask;
         }
 
         public async Task<string> QueryAsync(params string[] args)
         {
+            if (!_connected)
+            {
+                return string.Empty;
+            }
+
             var queryArgs = args ?? Array.Empty<string>();
             var result = await _client.QueryAsync(new QueryRequest
             {
-                Args = {args}
+                Args = {queryArgs}
             });
 
             return result.Data;
@@ -73,13 +72,18 @@ namespace Nethermind.Grpc.Clients
 
         public async Task SubscribeAsync(Action<string> callback, params string[] args)
         {
+            if (!_connected)
+            {
+                return;
+            }
+
             var streamArgs = args ?? Array.Empty<string>();
             using (var stream = _client.Subscribe(new SubscriptionRequest
             {
                 Args = {streamArgs}
             }))
             {
-                while (await stream.ResponseStream.MoveNext())
+                while (_connected && await stream.ResponseStream.MoveNext())
                 {
                     callback(stream.ResponseStream.Current.Data);
                 }
