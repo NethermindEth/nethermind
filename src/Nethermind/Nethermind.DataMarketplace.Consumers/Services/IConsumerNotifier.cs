@@ -7,6 +7,6 @@ namespace Nethermind.DataMarketplace.Consumers.Services
     public interface IConsumerNotifier
     {
         Task SendDepositConfirmationsStatusAsync(Keccak depositId, int confirmations, int requiredConfirmations);
-        Task SendInvalidDataReasonAsync(Keccak depositId, InvalidDataReason reason);
+        Task SendDataInvalidAsync(Keccak depositId, InvalidDataReason reason);
     }
 }

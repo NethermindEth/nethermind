@@ -24,8 +24,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     requiredConfirmations
                 }));
 
-        public Task SendInvalidDataReasonAsync(Keccak depositId, InvalidDataReason reason)
-            => _notifier.NotifyAsync(new Notification("invalid_data",
+        public Task SendDataInvalidAsync(Keccak depositId, InvalidDataReason reason)
+            => _notifier.NotifyAsync(new Notification("data_invalid",
                 new
                 {
                     depositId,

@@ -997,7 +997,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         }
 
         public Task HandleInvalidDataAsync(Keccak depositId, InvalidDataReason reason)
-            => _consumerNotifier.SendInvalidDataReasonAsync(depositId, reason);
+            => _consumerNotifier.SendDataInvalidAsync(depositId, reason);
 
         public async Task<PagedResult<DepositApproval>> GetDepositApprovalsAsync(GetConsumerDepositApprovals query)
             => await _depositApprovalRepository.BrowseAsync(query);
