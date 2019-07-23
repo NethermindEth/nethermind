@@ -2,7 +2,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
 {
     public enum InvalidDataReason
     {
-        DataHeaderNotFound,
+        DataAssetNotFound,
         DepositNotFound,
         SessionNotFound,
         NoUnitsLeft,

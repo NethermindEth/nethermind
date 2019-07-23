@@ -101,8 +101,7 @@ namespace Nethermind.Runner.Runners
         private static readonly bool HiveEnabled =
             Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
 
-        private readonly IGrpcService _grpcService;
-        private readonly IGrpcClient _grpcClient;
+        private readonly IGrpcServer _grpcServer;
         private static ILogManager _logManager;
         private readonly INdmConsumerChannelManager _ndmConsumerChannelManager;
         private readonly INdmDataPublisher _ndmDataPublisher;
@@ -166,14 +165,13 @@ namespace Nethermind.Runner.Runners
         public const string PeersDbPath = "peers";
 
         public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider,
-            ILogManager logManager, IGrpcService grpcService, IGrpcClient grpcClient,
+            ILogManager logManager, IGrpcServer grpcServer, 
             INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
             INdmInitializer ndmInitializer, IWebSocketsManager webSocketsManager,
             IJsonSerializer ethereumJsonSerializer)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _grpcService = grpcService;
-            _grpcClient = grpcClient;
+            _grpcServer = grpcServer;
             _ndmConsumerChannelManager = ndmConsumerChannelManager;
             _ndmDataPublisher = ndmDataPublisher;
             _ndmInitializer = ndmInitializer;
@@ -643,10 +641,10 @@ namespace Nethermind.Runner.Runners
                 producers.Add(kafkaProducer);
             }
             
-            var grpcClientConfig = _configProvider.GetConfig<IGrpcClientConfig>();
-            if (grpcClientConfig.Enabled)
+            var grpcConfig = _configProvider.GetConfig<IGrpcConfig>();
+            if (grpcConfig.Enabled && grpcConfig.ProducerEnabled)
             {
-                var grpcProducer = new GrpcProducer(_grpcClient, _logManager);
+                var grpcProducer = new GrpcProducer(_grpcServer);
                 producers.Add(grpcProducer);
             }
             
@@ -861,7 +859,7 @@ namespace Nethermind.Runner.Runners
                     _initConfig.BaseDbPath, _blockProcessor, _blockTree, _txPool, _txPoolInfoProvider, _specProvider,
                     _receiptStorage, _wallet, _timestamp, _ethereumEcdsa, _rpcModuleProvider, _keyStore,
                     _ethereumJsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher,
-                    _grpcService, _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
+                    _grpcServer, _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
                     _initConfig.EnableUnsecuredDevWallet, _webSocketsManager, _logManager);
                 capabilityConnector.Init();
                 if (_logger.IsInfo) _logger.Info($"NDM initialized.");

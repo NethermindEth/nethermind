@@ -68,7 +68,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         private IEnode _enode;
         private INdmConsumerChannelManager _ndmConsumerChannelManager;
         private INdmDataPublisher _ndmDataPublisher;
-        private IGrpcService _grpcService;
+        private IGrpcServer _grpcServer;
         private IEthRequestService _ethRequestService;
         private INdmNotifier _notifier;
         private bool _enableUnsecuredDevWallet;
@@ -100,7 +100,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _enode = Substitute.For<IEnode>();
             _ndmConsumerChannelManager = Substitute.For<INdmConsumerChannelManager>();
             _ndmDataPublisher = Substitute.For<INdmDataPublisher>();
-            _grpcService = Substitute.For<IGrpcService>();
+            _grpcServer = Substitute.For<IGrpcServer>();
             _ethRequestService = Substitute.For<IEthRequestService>();
             _notifier = Substitute.For<INdmNotifier>();
             _enableUnsecuredDevWallet = false;
@@ -114,7 +114,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
                 _baseDbPath, _rocksProvider, _mongoProvider, _logManager, _blockProcessor, _blockTree,
                 _transactionPool, _transactionPoolInfoProvider, _specProvider, _receiptStorage,
                 _wallet, _timestamp, _ecdsa, _keyStore, _rpcModuleProvider, _jsonSerializer, _cryptoRandom,
-                _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcService, _ethRequestService,
+                _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcServer, _ethRequestService,
                 _notifier, _enableUnsecuredDevWallet));
             services.Should().NotBeNull();
             services.CreatedServices.Should().NotBeNull();

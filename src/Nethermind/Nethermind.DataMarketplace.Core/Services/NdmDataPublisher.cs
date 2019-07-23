@@ -25,9 +25,9 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         public EventHandler<NdmDataEventArgs> DataPublished { get; set; }
 
-        public void Publish(DataHeaderData dataHeaderData)
+        public void Publish(DataAssetData dataAssetData)
         {
-            DataPublished?.Invoke(this, new NdmDataEventArgs(dataHeaderData));
+            DataPublished?.Invoke(this, new NdmDataEventArgs(dataAssetData));
         }
     }
 }

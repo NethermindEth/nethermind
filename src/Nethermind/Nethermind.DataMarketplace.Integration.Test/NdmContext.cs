@@ -128,7 +128,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
                 () => client.PostAsync<string>(nameof(DisableDataStream), new object[] {depositId()}), validator, stateUpdater);
         }
 
-        public NdmContext SendData(Func<DataHeaderDataDto> data, string name = "Send data",
+        public NdmContext SendData(Func<DataAssetDataDto> data, string name = "Send data",
             Func<string, bool> validator = null, Action<NdmState, JsonRpcResponse<string>> stateUpdater = null)
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;

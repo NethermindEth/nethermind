@@ -102,11 +102,11 @@ jobs:
       - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Wallet.Test
       name: "Nethermind.Wallet.Test"
-      script:
+    - script:
       - git -c submodule."src/tests".update=none submodule update --init 
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Test
       name: "Nethermind.DataMarketplace.Test"
-      script:
+    - script:
       - git -c submodule."src/tests".update=none submodule update --init 
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
       name: "Nethermind.DataMarketplace.Consumers.Test"

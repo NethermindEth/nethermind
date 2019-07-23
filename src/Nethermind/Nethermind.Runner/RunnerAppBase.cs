@@ -37,6 +37,7 @@ using Nethermind.DataMarketplace.Initializers;
 using Nethermind.DataMarketplace.WebSockets;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Clients;
+using Nethermind.Grpc.Servers;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Web3;
@@ -163,32 +164,20 @@ namespace Nethermind.Runner
             }
 
             var grpcConfig = configProvider.GetConfig<IGrpcConfig>();
-            GrpcService grpcService = null;
+            GrpcServer grpcServer = null;
             if (grpcConfig.Enabled)
             {
-                grpcService = new GrpcService(logManager);
+                grpcServer = new GrpcServer(jsonSerializer, logManager);
                 if (ndmEnabled)
                 {
-                    ndmConsumerChannelManager.Add(new GrpcNdmConsumerChannel(grpcService));
+                    ndmConsumerChannelManager.Add(new GrpcNdmConsumerChannel(grpcServer));
                 }
                 
-                _grpcRunner = new GrpcRunner(grpcService, grpcConfig, logManager);
+                _grpcRunner = new GrpcRunner(grpcServer, grpcConfig, logManager);
                 await _grpcRunner.Start().ContinueWith(x =>
                 {
                     if (x.IsFaulted && Logger.IsError) Logger.Error("Error during GRPC runner start", x.Exception);
                 });
-            }
-
-            GrpcClient grpcClient = null;
-            var grpcClientConfig = configProvider.GetConfig<IGrpcClientConfig>();
-            if (grpcClientConfig.Enabled)
-            {
-                grpcClient = new GrpcClient(grpcClientConfig, jsonSerializer, logManager);
-                _grpcClientRunner = new GrpcClientRunner(grpcClient, grpcClientConfig, logManager);
-                await Task.Factory.StartNew(() => _grpcClientRunner.Start().ContinueWith(x =>
-                {
-                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during GRPC client runner start", x.Exception);
-                }));
             }
             
             if (initParams.WebSocketsEnabled)
@@ -200,7 +189,7 @@ namespace Nethermind.Runner
                 }
             }
             
-            _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager, grpcService, grpcClient,
+            _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager, grpcServer,
                 ndmConsumerChannelManager, ndmDataPublisher, ndmInitializer, webSocketsManager, jsonSerializer);
             await _ethereumRunner.Start().ContinueWith(x =>
             {

@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
         public const int DataHeader = 0x03;
         public const int DataHeaderStateChanged = 0x4;
         public const int DataHeaderRemoved = 0x05;
-        public const int DataHeaderData = 0x06;
+        public const int DataAssetData = 0x06;
         public const int InvalidData = 0x07;
         public const int SendDataRequest = 0x08;
         public const int SessionStarted = 0x09;

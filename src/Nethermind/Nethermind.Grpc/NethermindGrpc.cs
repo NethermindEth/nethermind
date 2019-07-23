@@ -12,33 +12,24 @@ namespace Nethermind.Grpc {
   {
     static readonly string __ServiceName = "Nethermind.Grpc.NethermindService";
 
-    static readonly grpc::Marshaller<global::Nethermind.Grpc.NdmExtension> __Marshaller_Nethermind_Grpc_NdmExtension = grpc::Marshallers.Create((arg) => global::Google.Protobuf.MessageExtensions.ToByteArray(arg), global::Nethermind.Grpc.NdmExtension.Parser.ParseFrom);
-    static readonly grpc::Marshaller<global::Nethermind.Grpc.NdmQuery> __Marshaller_Nethermind_Grpc_NdmQuery = grpc::Marshallers.Create((arg) => global::Google.Protobuf.MessageExtensions.ToByteArray(arg), global::Nethermind.Grpc.NdmQuery.Parser.ParseFrom);
-    static readonly grpc::Marshaller<global::Nethermind.Grpc.NdmQueryData> __Marshaller_Nethermind_Grpc_NdmQueryData = grpc::Marshallers.Create((arg) => global::Google.Protobuf.MessageExtensions.ToByteArray(arg), global::Nethermind.Grpc.NdmQueryData.Parser.ParseFrom);
-    static readonly grpc::Marshaller<global::Nethermind.Grpc.Empty> __Marshaller_Nethermind_Grpc_Empty = grpc::Marshallers.Create((arg) => global::Google.Protobuf.MessageExtensions.ToByteArray(arg), global::Nethermind.Grpc.Empty.Parser.ParseFrom);
-    static readonly grpc::Marshaller<global::Nethermind.Grpc.NdmDataSubscription> __Marshaller_Nethermind_Grpc_NdmDataSubscription = grpc::Marshallers.Create((arg) => global::Google.Protobuf.MessageExtensions.ToByteArray(arg), global::Nethermind.Grpc.NdmDataSubscription.Parser.ParseFrom);
-    static readonly grpc::Marshaller<global::Nethermind.Grpc.NdmDataResponse> __Marshaller_Nethermind_Grpc_NdmDataResponse = grpc::Marshallers.Create((arg) => global::Google.Protobuf.MessageExtensions.ToByteArray(arg), global::Nethermind.Grpc.NdmDataResponse.Parser.ParseFrom);
+    static readonly grpc::Marshaller<global::Nethermind.Grpc.QueryRequest> __Marshaller_Nethermind_Grpc_QueryRequest = grpc::Marshallers.Create((arg) => global::Google.Protobuf.MessageExtensions.ToByteArray(arg), global::Nethermind.Grpc.QueryRequest.Parser.ParseFrom);
+    static readonly grpc::Marshaller<global::Nethermind.Grpc.QueryResponse> __Marshaller_Nethermind_Grpc_QueryResponse = grpc::Marshallers.Create((arg) => global::Google.Protobuf.MessageExtensions.ToByteArray(arg), global::Nethermind.Grpc.QueryResponse.Parser.ParseFrom);
+    static readonly grpc::Marshaller<global::Nethermind.Grpc.SubscriptionRequest> __Marshaller_Nethermind_Grpc_SubscriptionRequest = grpc::Marshallers.Create((arg) => global::Google.Protobuf.MessageExtensions.ToByteArray(arg), global::Nethermind.Grpc.SubscriptionRequest.Parser.ParseFrom);
+    static readonly grpc::Marshaller<global::Nethermind.Grpc.SubscriptionResponse> __Marshaller_Nethermind_Grpc_SubscriptionResponse = grpc::Marshallers.Create((arg) => global::Google.Protobuf.MessageExtensions.ToByteArray(arg), global::Nethermind.Grpc.SubscriptionResponse.Parser.ParseFrom);
 
-    static readonly grpc::Method<global::Nethermind.Grpc.NdmExtension, global::Nethermind.Grpc.NdmQuery> __Method_InitNdmExtension = new grpc::Method<global::Nethermind.Grpc.NdmExtension, global::Nethermind.Grpc.NdmQuery>(
-        grpc::MethodType.ServerStreaming,
-        __ServiceName,
-        "InitNdmExtension",
-        __Marshaller_Nethermind_Grpc_NdmExtension,
-        __Marshaller_Nethermind_Grpc_NdmQuery);
-
-    static readonly grpc::Method<global::Nethermind.Grpc.NdmQueryData, global::Nethermind.Grpc.Empty> __Method_SendNdmData = new grpc::Method<global::Nethermind.Grpc.NdmQueryData, global::Nethermind.Grpc.Empty>(
+    static readonly grpc::Method<global::Nethermind.Grpc.QueryRequest, global::Nethermind.Grpc.QueryResponse> __Method_Query = new grpc::Method<global::Nethermind.Grpc.QueryRequest, global::Nethermind.Grpc.QueryResponse>(
         grpc::MethodType.Unary,
         __ServiceName,
-        "SendNdmData",
-        __Marshaller_Nethermind_Grpc_NdmQueryData,
-        __Marshaller_Nethermind_Grpc_Empty);
+        "Query",
+        __Marshaller_Nethermind_Grpc_QueryRequest,
+        __Marshaller_Nethermind_Grpc_QueryResponse);
 
-    static readonly grpc::Method<global::Nethermind.Grpc.NdmDataSubscription, global::Nethermind.Grpc.NdmDataResponse> __Method_SubscribeNdmData = new grpc::Method<global::Nethermind.Grpc.NdmDataSubscription, global::Nethermind.Grpc.NdmDataResponse>(
+    static readonly grpc::Method<global::Nethermind.Grpc.SubscriptionRequest, global::Nethermind.Grpc.SubscriptionResponse> __Method_Subscribe = new grpc::Method<global::Nethermind.Grpc.SubscriptionRequest, global::Nethermind.Grpc.SubscriptionResponse>(
         grpc::MethodType.ServerStreaming,
         __ServiceName,
-        "SubscribeNdmData",
-        __Marshaller_Nethermind_Grpc_NdmDataSubscription,
-        __Marshaller_Nethermind_Grpc_NdmDataResponse);
+        "Subscribe",
+        __Marshaller_Nethermind_Grpc_SubscriptionRequest,
+        __Marshaller_Nethermind_Grpc_SubscriptionResponse);
 
     /// <summary>Service descriptor</summary>
     public static global::Google.Protobuf.Reflection.ServiceDescriptor Descriptor
@@ -47,19 +38,15 @@ namespace Nethermind.Grpc {
     }
 
     /// <summary>Base class for server-side implementations of NethermindService</summary>
+    [grpc::BindServiceMethod(typeof(NethermindService), "BindService")]
     public abstract partial class NethermindServiceBase
     {
-      public virtual global::System.Threading.Tasks.Task InitNdmExtension(global::Nethermind.Grpc.NdmExtension request, grpc::IServerStreamWriter<global::Nethermind.Grpc.NdmQuery> responseStream, grpc::ServerCallContext context)
+      public virtual global::System.Threading.Tasks.Task<global::Nethermind.Grpc.QueryResponse> Query(global::Nethermind.Grpc.QueryRequest request, grpc::ServerCallContext context)
       {
         throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
       }
 
-      public virtual global::System.Threading.Tasks.Task<global::Nethermind.Grpc.Empty> SendNdmData(global::Nethermind.Grpc.NdmQueryData request, grpc::ServerCallContext context)
-      {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
-      }
-
-      public virtual global::System.Threading.Tasks.Task SubscribeNdmData(global::Nethermind.Grpc.NdmDataSubscription request, grpc::IServerStreamWriter<global::Nethermind.Grpc.NdmDataResponse> responseStream, grpc::ServerCallContext context)
+      public virtual global::System.Threading.Tasks.Task Subscribe(global::Nethermind.Grpc.SubscriptionRequest request, grpc::IServerStreamWriter<global::Nethermind.Grpc.SubscriptionResponse> responseStream, grpc::ServerCallContext context)
       {
         throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
       }
@@ -89,37 +76,29 @@ namespace Nethermind.Grpc {
       {
       }
 
-      public virtual grpc::AsyncServerStreamingCall<global::Nethermind.Grpc.NdmQuery> InitNdmExtension(global::Nethermind.Grpc.NdmExtension request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      public virtual global::Nethermind.Grpc.QueryResponse Query(global::Nethermind.Grpc.QueryRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
       {
-        return InitNdmExtension(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+        return Query(request, new grpc::CallOptions(headers, deadline, cancellationToken));
       }
-      public virtual grpc::AsyncServerStreamingCall<global::Nethermind.Grpc.NdmQuery> InitNdmExtension(global::Nethermind.Grpc.NdmExtension request, grpc::CallOptions options)
+      public virtual global::Nethermind.Grpc.QueryResponse Query(global::Nethermind.Grpc.QueryRequest request, grpc::CallOptions options)
       {
-        return CallInvoker.AsyncServerStreamingCall(__Method_InitNdmExtension, null, options, request);
+        return CallInvoker.BlockingUnaryCall(__Method_Query, null, options, request);
       }
-      public virtual global::Nethermind.Grpc.Empty SendNdmData(global::Nethermind.Grpc.NdmQueryData request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      public virtual grpc::AsyncUnaryCall<global::Nethermind.Grpc.QueryResponse> QueryAsync(global::Nethermind.Grpc.QueryRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
       {
-        return SendNdmData(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+        return QueryAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
       }
-      public virtual global::Nethermind.Grpc.Empty SendNdmData(global::Nethermind.Grpc.NdmQueryData request, grpc::CallOptions options)
+      public virtual grpc::AsyncUnaryCall<global::Nethermind.Grpc.QueryResponse> QueryAsync(global::Nethermind.Grpc.QueryRequest request, grpc::CallOptions options)
       {
-        return CallInvoker.BlockingUnaryCall(__Method_SendNdmData, null, options, request);
+        return CallInvoker.AsyncUnaryCall(__Method_Query, null, options, request);
       }
-      public virtual grpc::AsyncUnaryCall<global::Nethermind.Grpc.Empty> SendNdmDataAsync(global::Nethermind.Grpc.NdmQueryData request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      public virtual grpc::AsyncServerStreamingCall<global::Nethermind.Grpc.SubscriptionResponse> Subscribe(global::Nethermind.Grpc.SubscriptionRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
       {
-        return SendNdmDataAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+        return Subscribe(request, new grpc::CallOptions(headers, deadline, cancellationToken));
       }
-      public virtual grpc::AsyncUnaryCall<global::Nethermind.Grpc.Empty> SendNdmDataAsync(global::Nethermind.Grpc.NdmQueryData request, grpc::CallOptions options)
+      public virtual grpc::AsyncServerStreamingCall<global::Nethermind.Grpc.SubscriptionResponse> Subscribe(global::Nethermind.Grpc.SubscriptionRequest request, grpc::CallOptions options)
       {
-        return CallInvoker.AsyncUnaryCall(__Method_SendNdmData, null, options, request);
-      }
-      public virtual grpc::AsyncServerStreamingCall<global::Nethermind.Grpc.NdmDataResponse> SubscribeNdmData(global::Nethermind.Grpc.NdmDataSubscription request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return SubscribeNdmData(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      public virtual grpc::AsyncServerStreamingCall<global::Nethermind.Grpc.NdmDataResponse> SubscribeNdmData(global::Nethermind.Grpc.NdmDataSubscription request, grpc::CallOptions options)
-      {
-        return CallInvoker.AsyncServerStreamingCall(__Method_SubscribeNdmData, null, options, request);
+        return CallInvoker.AsyncServerStreamingCall(__Method_Subscribe, null, options, request);
       }
       /// <summary>Creates a new instance of client from given <c>ClientBaseConfiguration</c>.</summary>
       protected override NethermindServiceClient NewInstance(ClientBaseConfiguration configuration)
@@ -133,9 +112,8 @@ namespace Nethermind.Grpc {
     public static grpc::ServerServiceDefinition BindService(NethermindServiceBase serviceImpl)
     {
       return grpc::ServerServiceDefinition.CreateBuilder()
-          .AddMethod(__Method_InitNdmExtension, serviceImpl.InitNdmExtension)
-          .AddMethod(__Method_SendNdmData, serviceImpl.SendNdmData)
-          .AddMethod(__Method_SubscribeNdmData, serviceImpl.SubscribeNdmData).Build();
+          .AddMethod(__Method_Query, serviceImpl.Query)
+          .AddMethod(__Method_Subscribe, serviceImpl.Subscribe).Build();
     }
 
     /// <summary>Register service method with a service binder with or without implementation. Useful when customizing the  service binding logic.
@@ -144,9 +122,8 @@ namespace Nethermind.Grpc {
     /// <param name="serviceImpl">An object implementing the server-side handling logic.</param>
     public static void BindService(grpc::ServiceBinderBase serviceBinder, NethermindServiceBase serviceImpl)
     {
-      serviceBinder.AddMethod(__Method_InitNdmExtension, serviceImpl == null ? null : new grpc::ServerStreamingServerMethod<global::Nethermind.Grpc.NdmExtension, global::Nethermind.Grpc.NdmQuery>(serviceImpl.InitNdmExtension));
-      serviceBinder.AddMethod(__Method_SendNdmData, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Nethermind.Grpc.NdmQueryData, global::Nethermind.Grpc.Empty>(serviceImpl.SendNdmData));
-      serviceBinder.AddMethod(__Method_SubscribeNdmData, serviceImpl == null ? null : new grpc::ServerStreamingServerMethod<global::Nethermind.Grpc.NdmDataSubscription, global::Nethermind.Grpc.NdmDataResponse>(serviceImpl.SubscribeNdmData));
+      serviceBinder.AddMethod(__Method_Query, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Nethermind.Grpc.QueryRequest, global::Nethermind.Grpc.QueryResponse>(serviceImpl.Query));
+      serviceBinder.AddMethod(__Method_Subscribe, serviceImpl == null ? null : new grpc::ServerStreamingServerMethod<global::Nethermind.Grpc.SubscriptionRequest, global::Nethermind.Grpc.SubscriptionResponse>(serviceImpl.Subscribe));
     }
 
   }

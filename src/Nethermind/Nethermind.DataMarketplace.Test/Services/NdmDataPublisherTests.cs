@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core;
@@ -42,8 +41,8 @@ namespace Nethermind.DataMarketplace.Test.Services
             object sender = null;
             NdmDataEventArgs eventArgs = null;
             var headerId = Keccak.Zero;
-            var headerData = new Dictionary<string, string>();
-            var data = new DataHeaderData(headerId, headerData);
+            var headerData = string.Empty;
+            var data = new DataAssetData(headerId, headerData);
             _dataPublisher.DataPublished += (s, e) =>
             {
                 sender = s;
@@ -51,8 +50,8 @@ namespace Nethermind.DataMarketplace.Test.Services
             };
             _dataPublisher.Publish(data);
             sender.Should().Be(_dataPublisher);
-            eventArgs.DataHeaderData.Should().Be(data);
-            data.Id.Should().Be(headerId);
+            eventArgs.DataAssetData.Should().Be(data);
+            data.AssetId.Should().Be(headerId);
             data.Data.Should().BeEquivalentTo(headerData);
         }
     }

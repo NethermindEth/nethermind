@@ -24,6 +24,6 @@ namespace Nethermind.DataMarketplace.Core
     public interface INdmDataPublisher
     {
         EventHandler<NdmDataEventArgs> DataPublished { get; set; }
-        void Publish(DataHeaderData dataHeaderData);
+        void Publish(DataAssetData dataAssetData);
     }
 }
