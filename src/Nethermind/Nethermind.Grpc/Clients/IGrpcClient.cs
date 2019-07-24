@@ -8,6 +8,6 @@ namespace Nethermind.Grpc.Clients
         Task StartAsync();
         Task StopAsync();
         Task<string> QueryAsync(params string[] args);
-        Task SubscribeAsync(Action<string> callback, params string[] args);
+        Task SubscribeAsync(Action<string> callback, Func<bool> enabled, params string[] args);
     }
 }

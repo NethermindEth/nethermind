@@ -70,7 +70,7 @@ namespace Nethermind.Grpc.Clients
             return result.Data;
         }
 
-        public async Task SubscribeAsync(Action<string> callback, params string[] args)
+        public async Task SubscribeAsync(Action<string> callback, Func<bool> enabled, params string[] args)
         {
             if (!_connected)
             {
@@ -83,7 +83,7 @@ namespace Nethermind.Grpc.Clients
                 Args = {streamArgs}
             }))
             {
-                while (_connected && await stream.ResponseStream.MoveNext())
+                while (enabled() && _connected && await stream.ResponseStream.MoveNext())
                 {
                     callback(stream.ResponseStream.Current.Data);
                 }
