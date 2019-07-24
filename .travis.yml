@@ -81,11 +81,11 @@ jobs:
       - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Mining.Test
       name: "Nethermind.Mining.Test"
-    #- script:
-    #  - sudo apt-get install libsnappy-dev 
-    #  - git -c submodule."src/tests".update=none submodule update --init
-    #  - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Network.Test
-    #  name: "Nethermind.Network.Test"
+    - script:
+      - sudo apt-get install libsnappy-dev 
+      - git -c submodule."src/tests".update=none submodule update --init
+      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Network.Test
+      name: "Nethermind.Network.Test"
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Secp256k1.Test
@@ -93,7 +93,7 @@ jobs:
     #- script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
     #  name: "Nethermind.Secp256k1.Test.Osx"
     #  os: osx
-    #- script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+    # - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
     #  name: "Nethermind.DataMarketplace.Consumers.Test"
     #- script: dotnet test /p:CollectCNethermind.Network.TesttFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DatNethermind.Network.Test
     #  name: "Nethermind.DataMarketplaNethermind.Network.Test"
