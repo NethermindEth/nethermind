@@ -9,9 +9,8 @@ addons:
     token:
       secure: "PtExebEqLhdP4eZ3nXBuiSJXNsnFMGJcZFCaUNQNs59tBnypUNC8DeTbsJ+525hANfIIImR57UYO7tYyiJLHOI+riyDx2ZN3/7E6ppeprbVtEvzmseOpOP0WukQxaI5eZ4ixABXPc8pfT6E3O0znrvp5LhAeMwCHQ3VJBoPV7LcpTzcZ0Fi5YV69MbDTGgutYuPAEpI+G7F1gU6nR+PzFxkij73NwGOYbPHJlUUH9zlJTbEUmsv8PlbXcyY+7oUPR09va66tFytZV5cTkjRSCcQACbTYtRuOyBg7Lb1InOlIDBQ/or0YOMGJlCr7nIA5SW6UThOo/psIMI02PwDHk7l7v3aHzuwHGGn2wb7jtQ/CpeKA+SIjwm9x/PYOzGHqc6t64R9mixm783GfjLXzCFro6b2IFPeHtb7lzlYtvAm8u5HERFrOZMruqneJeaTbJAhulwPkiIR0Kxjh1g9xES007fowh9vRsHUKTjR7wna74HvsbTkFiDjWNpUgG+peDKuF1rV2zlndLeMR8LmNSLJSr7YlohMryaT0sAy/IsewwZFZFD5EP0KfhCtPrVHnw1klsMWb8gd0ARtX10I46lUgxwNaPQ5qyeERT44bA6iUOcEJ4/dZAAKkQHDDCtFT3hha84eIKRf97JJpiyf324n4RRu6tSLCWei7I5pYYts="
 git:
-  depth: 1
+  depth: false
   submodules: false
-  submodules_depth: 1
 before_script:
 - chmod -R +x scripts
 notifications:
@@ -76,12 +75,12 @@ jobs:
     - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*"
       src/Nethermind/Nethermind.Mining.Test
     name: Nethermind.Mining.Test
-  # - script:
-  #  - sudo apt-get install libsnappy-dev
-  #  - git -c submodule."src/tests".update=none submodule update --init
-  #  - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*"
-  #    src/Nethermind/Nethermind.Network.Test
-  # name: Nethermind.Network.Test
+   - script:
+    - sudo apt-get install libsnappy-dev
+    - git -c submodule."src/tests".update=none submodule update --init
+    - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*"
+      src/Nethermind/Nethermind.Network.Test
+    name: Nethermind.Network.Test
   - script:
     - git -c submodule."src/tests".update=none submodule update --init
     - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*"
