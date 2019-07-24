@@ -35,6 +35,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public Keccak ClaimedRefundTransactionHash { get; set; }
         public uint ConsumedUnits { get; set; }
         public string Kyc { get; set; }
+        public uint Confirmations { get; set; }
+        public uint RequiredConfirmations { get; set; }
 
         public DepositDetailsForRpc()
         {
@@ -53,6 +55,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
             ClaimedRefundTransactionHash = deposit.ClaimedRefundTransactionHash;
             ConsumedUnits = deposit.ConsumedUnits;
             Kyc = deposit.Kyc;
+            Confirmations = deposit.Confirmations;
+            RequiredConfirmations = deposit.RequiredConfirmations;
         }
     }
 }

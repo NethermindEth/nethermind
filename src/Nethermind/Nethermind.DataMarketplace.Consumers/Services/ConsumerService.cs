@@ -215,14 +215,20 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             var confirmations = _blockchainBridge.Head.Number - receipt.BlockNumber;
             if (_logger.IsInfo) _logger.Info($"Deposit: '{depositDetails.Id}' has {confirmations} confirmations (required at least {_blockConfirmations}) for transaction hash: '{transactionHash}' to be verified.");
+
             var confirmed = confirmations >= _blockConfirmations;
             if (confirmed)
             {
                 depositDetails.Verify(verificationTimestamp);
-                await _depositRepository.UpdateAsync(depositDetails);
                 if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Deposit.Id}' has been verified, timestamp: {verificationTimestamp}.");
             }
-
+            
+            if (confirmations != depositDetails.Confirmations || confirmed)
+            {
+                depositDetails.SetConfirmations((uint) confirmations);
+                await _depositRepository.UpdateAsync(depositDetails);
+            }
+            
             await _consumerNotifier.SendDepositConfirmationsStatusAsync(depositDetails.Id, (int) confirmations,
                 (int) _blockConfirmations);
         }
@@ -532,7 +538,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var depositId = Keccak.Compute(abiHash);
             var deposit = new Deposit(depositId, units, expiryTime, value);
             var transactionHash = _depositService.MakeDeposit(_consumerAddress, deposit);
-            var depositDetails = new DepositDetails(deposit, dataHeader, pepper, now, transactionHash);
+            var depositDetails = new DepositDetails(deposit, dataHeader, pepper, now, transactionHash,
+                requiredConfirmations: _blockConfirmations);
             await _depositRepository.AddAsync(depositDetails);
             if (_logger.IsInfo) _logger.Info($"Making a deposit with id: '{depositId}' for data header: '{headerId}', address: '{_consumerAddress}'.");
 
