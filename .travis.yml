@@ -3,10 +3,14 @@ mono: none
 sudo: required
 dist: xenial
 dotnet: 2.2
+addons:
+  sonarcloud:
+    organization: nethermindeth
+    token:
+      secure: "PtExebEqLhdP4eZ3nXBuiSJXNsnFMGJcZFCaUNQNs59tBnypUNC8DeTbsJ+525hANfIIImR57UYO7tYyiJLHOI+riyDx2ZN3/7E6ppeprbVtEvzmseOpOP0WukQxaI5eZ4ixABXPc8pfT6E3O0znrvp5LhAeMwCHQ3VJBoPV7LcpTzcZ0Fi5YV69MbDTGgutYuPAEpI+G7F1gU6nR+PzFxkij73NwGOYbPHJlUUH9zlJTbEUmsv8PlbXcyY+7oUPR09va66tFytZV5cTkjRSCcQACbTYtRuOyBg7Lb1InOlIDBQ/or0YOMGJlCr7nIA5SW6UThOo/psIMI02PwDHk7l7v3aHzuwHGGn2wb7jtQ/CpeKA+SIjwm9x/PYOzGHqc6t64R9mixm783GfjLXzCFro6b2IFPeHtb7lzlYtvAm8u5HERFrOZMruqneJeaTbJAhulwPkiIR0Kxjh1g9xES007fowh9vRsHUKTjR7wna74HvsbTkFiDjWNpUgG+peDKuF1rV2zlndLeMR8LmNSLJSr7YlohMryaT0sAy/IsewwZFZFD5EP0KfhCtPrVHnw1klsMWb8gd0ARtX10I46lUgxwNaPQ5qyeERT44bA6iUOcEJ4/dZAAKkQHDDCtFT3hha84eIKRf97JJpiyf324n4RRu6tSLCWei7I5pYYts="
 git:
-  depth: 1
+  depth: false
   submodules: false
-  submodules_depth: 1
 before_script:
   - chmod -R +x scripts
 notifications:
@@ -16,6 +20,7 @@ notifications:
       - demerzelsolutions:hzD3lmq2hbUgHuLFxjCOvk6x#general
 after_success:
   - ./scripts/docker-publish.sh
+  - sonar-scanner
 after_script: 
   - bash <(curl -s https://codecov.io/bash)
 jobs:
@@ -88,7 +93,7 @@ jobs:
     #- script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
     #  name: "Nethermind.Secp256k1.Test.Osx"
     #  os: osx
-    #- script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+    # - script: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
     #  name: "Nethermind.DataMarketplace.Consumers.Test"
     #- script: dotnet test /p:CollectCNethermind.Network.TesttFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DatNethermind.Network.Test
     #  name: "Nethermind.DataMarketplaNethermind.Network.Test"

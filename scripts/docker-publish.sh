@@ -1,7 +1,7 @@
 #!/bin/bash
-GIT_TAG=$(git describe --tags)
+GIT_TAG=$(git describe --tags --always)
 DOCKER_TAGS="latest $GIT_TAG"
-DOCKER_IMAGE_NAME=nethermind.runner
+DOCKER_IMAGE_NAME=nethermind
 
 if [ "$TRAVIS_BRANCH" != "master" ]; then
     exit 0
