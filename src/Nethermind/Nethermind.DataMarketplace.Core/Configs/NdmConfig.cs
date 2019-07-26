@@ -22,7 +22,7 @@ namespace Nethermind.DataMarketplace.Core.Configs
 {
     public class NdmConfig : INdmConfig
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; }
         public string InitializerName { get; set; } = "ndm";
         public bool StoreConfigInDatabase { get; set; } = true;
         public string Id { get; set; } = "ndm";

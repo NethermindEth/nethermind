@@ -40,7 +40,6 @@ namespace Nethermind.Blockchain
         private long _lastEvmExceptions;
         private long _lastSelfDestructs;
         private long _maxMemory;
-        private bool _wasQueueEmptied;
         private long _totalBlocks;
 
         public ProcessingStats(ILogger logger)
@@ -50,8 +49,6 @@ namespace Nethermind.Blockchain
 
         public void UpdateStats(Block block, int recoveryQueueSize, int blockQueueSize)
         {
-            _wasQueueEmptied = blockQueueSize == 0;
-
             if (_lastBlockNumber == 0)
             {
                 _lastBlockNumber = (long)block.Number;
@@ -67,9 +64,8 @@ namespace Nethermind.Blockchain
             decimal totalMicroseconds = _processingStopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
             decimal chunkMicroseconds = (_processingStopwatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
 
-            if (chunkMicroseconds > 1 * 1000 * 1000 || (_wasQueueEmptied && chunkMicroseconds > 1 * 1000 * 1000)) // 10s
+            if (chunkMicroseconds > 1 * 1000 * 1000)
             {
-                _wasQueueEmptied = false;
                 long currentGen0 = GC.CollectionCount(0);
                 long currentGen1 = GC.CollectionCount(1);
                 long currentGen2 = GC.CollectionCount(2);

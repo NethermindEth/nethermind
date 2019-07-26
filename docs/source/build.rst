@@ -39,8 +39,8 @@ All Platforms
 
 ::
 
-    git clone https://github.com/tkstanczak/nethermind nethworkshop --recursive -b workshop
-    cd nethworkshop/src/Nethermind
+    git clone https://github.com/tkstanczak/nethermind --recursive
+    cd nethermind/src/Nethermind
     dotnet build Nethermind.sln -c Release
 
 launch goerli testnet for quick sync and testing
@@ -57,7 +57,7 @@ or (mainnet)
 
 ::
 
-    cd Nethermind.EvmPlayground
+    cd Nethermind.Runner
     dotnet run --no-build -c Release -- --config mainnet
 
 Potential Issues

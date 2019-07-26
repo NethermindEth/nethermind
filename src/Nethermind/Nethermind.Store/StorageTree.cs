@@ -53,7 +53,7 @@ namespace Nethermind.Store
         {
         }
         
-        private byte[] GetKey(UInt256 index)
+        private Span<byte> GetKey(UInt256 index)
         {
             if (index < CacheSize)
             {
@@ -62,19 +62,19 @@ namespace Nethermind.Store
 
             Span<byte> span = stackalloc byte[32];
             index.ToBigEndian(span);
-            return Keccak.Compute(span).Bytes;
+            return ValueKeccak.Compute(span).BytesAsSpan.ToArray();
         }
         
         public byte[] Get(UInt256 index)
         {
-            byte[] key = GetKey(index);
+            Span<byte> key = GetKey(index);
             byte[] value = Get(key);
             if (value == null)
             {
                 return new byte[] {0};
             }
 
-            Rlp.DecoderContext rlp = value.AsRlpContext();
+            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
         }
 

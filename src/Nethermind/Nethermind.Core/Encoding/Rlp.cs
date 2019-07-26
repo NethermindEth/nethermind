@@ -45,6 +45,14 @@ namespace Nethermind.Core.Encoding
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
 
         public static readonly Rlp OfEmptySequence = new Rlp(192);
+        
+        private static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
+        
+        private static readonly Rlp OfEmptySequenceRlpHash = Encode(Keccak.OfAnEmptySequenceRlp.Bytes); // use bytes to avoid stack overflow
+        
+        private static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
+        
+        private static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes); // use bytes to avoid stack overflow
 
         static Rlp()
         {
@@ -690,6 +698,11 @@ namespace Nethermind.Core.Encoding
                 return OfEmptyByteArray;
             }
 
+            if (ReferenceEquals(bloom, Bloom.Empty))
+            {
+                return EmptyBloom;
+            }
+
             byte[] result = new byte[259];
             result[0] = 185;
             result[1] = 1;
@@ -703,6 +716,14 @@ namespace Nethermind.Core.Encoding
             if (keccak == null)
             {
                 stream.WriteByte(OfEmptyByteArray.Bytes[0]);
+            }
+            else if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
+            {
+                stream.Write(OfEmptyTreeHash.Bytes);
+            }
+            else if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
+            {
+                stream.Write(OfEmptyStringHash.Bytes);
             }
             else
             {
@@ -744,6 +765,16 @@ namespace Nethermind.Core.Encoding
             if (keccak == null)
             {
                 return OfEmptyByteArray;
+            }
+
+            if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
+            {
+                return OfEmptyTreeHash;
+            }
+
+            if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
+            {
+                return OfEmptyStringHash;
             }
 
             byte[] result = new byte[LengthOfKeccakRlp];

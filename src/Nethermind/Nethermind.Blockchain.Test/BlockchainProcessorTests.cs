@@ -304,7 +304,7 @@ namespace Nethermind.Blockchain.Test
             public class AfterBlock
             {
                 private ILogger _logger;
-                public const int ProcessingWait = 1000;
+                public const int ProcessingWait = 2000;
                 public const int IgnoreWait = 200;
                 private readonly Block _block;
 

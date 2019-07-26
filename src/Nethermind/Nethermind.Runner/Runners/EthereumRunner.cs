@@ -58,7 +58,6 @@ using Nethermind.Grpc;
 using Nethermind.Grpc.Clients;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
-using Nethermind.JsonRpc.Modules.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
@@ -133,6 +132,7 @@ namespace Nethermind.Runner.Runners
         private IReceiptStorage _receiptStorage;
         private IEthereumEcdsa _ethereumEcdsa;
         private IEthSyncPeerPool _syncPeerPool;
+        private ISyncReport _syncReport;
         private ISynchronizer _synchronizer;
         private ISyncServer _syncServer;
         private IKeyStore _keyStore;
@@ -156,7 +156,6 @@ namespace Nethermind.Runner.Runners
         private IWallet _wallet;
         private IEnode _enode;
         private HiveRunner _hiveRunner;
-        private IDataBridge _dataBridge;
         private ISessionMonitor _sessionMonitor;
         private ISyncConfig _syncConfig;
         public IEnode Enode => _enode;
@@ -660,8 +659,6 @@ namespace Nethermind.Runner.Runners
             }
 
             _disposeStack.Push(subscription);
-            _dataBridge = new DataBridge(subscription, _receiptStorage, _blockTree, _logManager);
-            _dataBridge.Start();
 
             await InitializeNetwork();
         }
@@ -695,8 +692,8 @@ namespace Nethermind.Runner.Runners
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, maxPeersCount, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
-            SyncReport syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, _syncConfig, _logManager);
-            _synchronizer = new Synchronizer(_specProvider, _blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, syncReport, _logManager);
+            _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, _syncConfig, _logManager);
+            _synchronizer = new Synchronizer(_specProvider, _blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _syncReport, _logManager);
 
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,

@@ -13,41 +13,36 @@
 |Codecov.io| [![codecov](https://codecov.io/gh/NethermindEth/nethermind/branch/master/graph/badge.svg)](https://codecov.io/gh/NethermindEth/nethermind) | https://codecov.io/gh/NethermindEth/nethermind |
 
 ## Download and run:
+
 [Windows](http://downloads.nethermind.io)<br/>
 [Linux](http://downloads.nethermind.io)<br/>
 [MacOS](http://downloads.nethermind.io)<br/>
 
 it syncs fully on Mainnet, Ropsten, Rinkeby, Goerli
 
-## Build (Windows / Linux / MacOS)
+## Build from Source
 
-### IDE
-•	JetBrains Rider https://www.jetbrains.com/rider/<br/>
-•	VS Code https://code.visualstudio.com/docs/other/dotnet<br/>
+### Prerequisites
 
-### SDKs
-•	Windows https://www.microsoft.com/net/download?initial-os=windows<br/>
-•	Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)<br/>
-•	Mac https://www.microsoft.com/net/download?initial-os=macos<br/>
+.NET 2.2 SDK
 
-### source and build
+#### Windows
 
-on Linux:
-```
-sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6
-```
+*	Windows https://www.microsoft.com/net/download?initial-os=windows
+* you may need to install https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
 
-on Mac:
-```
-brew install gmp && brew install snappy && brew install lz4
-```
+#### Linux
 
-on Windows:
-```
-you may need to install https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
-```
+*	Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)
+* `sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6`
 
-then (any platform):
+#### Mac
+
+*	Mac https://www.microsoft.com/net/download?initial-os=macos
+* `brew install gmp && brew install snappy && brew install lz4`
+
+### Build
+
 ```
 git clone https://github.com/tkstanczak/nethermind --recursive
 cd nethermind/src/Nethermind
@@ -56,6 +51,7 @@ cd Nethermind.Runner
 dotnet run -c Release --no-build -- --config mainnet
 ```
 
+### Test
 
 if you want to run the Nethermind or Ethereum Foundation tests, then:
 ```
@@ -65,6 +61,12 @@ dotnet test Nethermind.sln
 dotnet build EthereumTests.sln -c Debug
 dotnet test EthereumTests.sln
 ```
+
+### IDE
+
+•	JetBrains Rider https://www.jetbrains.com/rider/<br/>
+•	VS Code https://code.visualstudio.com/docs/other/dotnet<br/>
+
 
 ## Contributors welcome
 [![GitHub issues](https://img.shields.io/github/issues/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/issues)
