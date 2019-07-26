@@ -91,7 +91,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly PublicKey _nodePublicKey;
         private readonly ITimestamp _timestamp;
         private readonly IConsumerNotifier _consumerNotifier;
-        private readonly uint _blockConfirmations;
+        private readonly uint _depositRequiredConfirmations;
         private readonly ILogger _logger;
         private readonly Timer _timer;
         private readonly IEcdsa _ecdsa = new Ecdsa();
@@ -104,7 +104,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             ICryptoRandom cryptoRandom, IDepositService depositService,
             IReceiptRequestValidator receiptRequestValidator, IRefundService refundService,
             IBlockchainBridge blockchainBridge, Address consumerAddress, PublicKey nodePublicKey,
-            ITimestamp timestamp, IConsumerNotifier consumerNotifier, uint blockConfirmations, ILogManager logManager)
+            ITimestamp timestamp, IConsumerNotifier consumerNotifier, uint depositRequiredConfirmations, ILogManager logManager)
         {
             _configManager = configManager;
             _configId = configId;
@@ -124,7 +124,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _nodePublicKey = nodePublicKey;
             _timestamp = timestamp;
             _consumerNotifier = consumerNotifier;
-            _blockConfirmations = blockConfirmations;
+            _depositRequiredConfirmations = depositRequiredConfirmations;
             _logger = logManager.GetClassLogger();
             _timer = new Timer {Interval = 5000};
             _timer.Elapsed += OnTimeElapsed;
@@ -198,13 +198,25 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
         private async Task TryVerifyDepositAsync(DepositDetails depositDetails)
         {
-            var verificationTimestamp = _depositService.VerifyDeposit(depositDetails.Id);
-            if (verificationTimestamp == 0)
+            if (depositDetails.Verified)
             {
-                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Id}' didn't return verification timestamp from contract call yet.'");
                 return;
             }
-
+            
+            if (depositDetails.VerificationTimestamp == 0)
+            {
+                var verificationTimestamp = _depositService.VerifyDeposit(depositDetails.Id);
+                if (verificationTimestamp == 0)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Id}' didn't return verification timestamp from contract call yet.'");
+                    return;
+                }
+                
+                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Deposit.Id}' has verification timestamp (from contract call): {verificationTimestamp}.");
+                depositDetails.SetVerificationTimestamp(verificationTimestamp);
+                await _depositRepository.UpdateAsync(depositDetails);
+            }
+            
             var transactionHash = depositDetails.TransactionHash;
             var (receipt, transaction) = _blockchainBridge.GetTransaction(depositDetails.TransactionHash);                        
             if (transaction is null)
@@ -214,13 +226,12 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
             
             var confirmations = _blockchainBridge.Head.Number - receipt.BlockNumber;
-            if (_logger.IsInfo) _logger.Info($"Deposit: '{depositDetails.Id}' has {confirmations} confirmations (required at least {_blockConfirmations}) for transaction hash: '{transactionHash}' to be verified.");
+            if (_logger.IsInfo) _logger.Info($"Deposit: '{depositDetails.Id}' has {confirmations} confirmations (required at least {_depositRequiredConfirmations}) for transaction hash: '{transactionHash}' to be verified.");
 
-            var confirmed = confirmations >= _blockConfirmations;
+            var confirmed = confirmations >= _depositRequiredConfirmations;
             if (confirmed)
             {
-                depositDetails.Verify(verificationTimestamp);
-                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Deposit.Id}' has been verified, timestamp: {verificationTimestamp}.");
+                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Deposit.Id}' has been verified.");
             }
             
             if (confirmations != depositDetails.Confirmations || confirmed)
@@ -228,9 +239,9 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 depositDetails.SetConfirmations((uint) confirmations);
                 await _depositRepository.UpdateAsync(depositDetails);
             }
-            
-            await _consumerNotifier.SendDepositConfirmationsStatusAsync(depositDetails.Id, (int) confirmations,
-                (int) _blockConfirmations);
+
+            await _consumerNotifier.SendDepositConfirmationsStatusAsync(depositDetails.Id, (uint) confirmations,
+                _depositRequiredConfirmations, depositDetails.VerificationTimestamp);
         }
 
         private async Task TryClaimRefundAsync(DepositDetails depositDetails)
@@ -539,7 +550,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var deposit = new Deposit(depositId, units, expiryTime, value);
             var transactionHash = _depositService.MakeDeposit(_consumerAddress, deposit);
             var depositDetails = new DepositDetails(deposit, dataHeader, pepper, now, transactionHash,
-                requiredConfirmations: _blockConfirmations);
+                requiredConfirmations: _depositRequiredConfirmations);
             await _depositRepository.AddAsync(depositDetails);
             if (_logger.IsInfo) _logger.Info($"Making a deposit with id: '{depositId}' for data header: '{headerId}', address: '{_consumerAddress}'.");
 
@@ -1174,8 +1185,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
             
             var confirmations = _blockchainBridge.Head.Number - receipt.BlockNumber;
-            if (_logger.IsInfo) _logger.Info($"Deposit: '{depositDetails.Id}' has {confirmations} confirmations (required at least {_blockConfirmations}) for transaction hash: '{transactionHash}' to claim an early refund.");
-            if (confirmations < _blockConfirmations)
+            if (_logger.IsInfo) _logger.Info($"Deposit: '{depositDetails.Id}' has {confirmations} confirmations (required at least {_depositRequiredConfirmations}) for transaction hash: '{transactionHash}' to claim an early refund.");
+            if (confirmations < _depositRequiredConfirmations)
             {
                 return;
             }
@@ -1201,8 +1212,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
             
             var confirmations = _blockchainBridge.Head.Number - receipt.BlockNumber;
-            if (_logger.IsInfo) _logger.Info($"Deposit: '{depositDetails.Id}' has {confirmations} confirmations (required at least {_blockConfirmations}) for transaction hash: '{transactionHash}' to claim a refund.");
-            if (confirmations < _blockConfirmations)
+            if (_logger.IsInfo) _logger.Info($"Deposit: '{depositDetails.Id}' has {confirmations} confirmations (required at least {_depositRequiredConfirmations}) for transaction hash: '{transactionHash}' to claim a refund.");
+            if (confirmations < _depositRequiredConfirmations)
             {
                 return;
             }

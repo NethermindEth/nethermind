@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public uint Timestamp { get; private set; }
         public Keccak TransactionHash { get; private set; }
         public uint VerificationTimestamp { get; private set; }
-        public bool Verified => VerificationTimestamp > 0;
+        public bool Verified => VerificationTimestamp > 0 && Confirmations >= RequiredConfirmations;
         public EarlyRefundTicket EarlyRefundTicket { get; private set; }
         public Keccak ClaimedRefundTransactionHash { get; private set; }
         public bool RefundClaimed => !(ClaimedRefundTransactionHash is null);
@@ -51,7 +51,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             Pepper = pepper;
             Timestamp = timestamp;
             TransactionHash = transactionHash;
-            VerificationTimestamp = verificationTimestamp;
+            SetVerificationTimestamp(verificationTimestamp);
             EarlyRefundTicket = earlyRefundTicket;
             SetRefundClaimed(claimedRefundTransactionHash);
             Kyc = kyc;
@@ -59,7 +59,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             RequiredConfirmations = requiredConfirmations;
         }
 
-        public void Verify(uint timestamp)
+        public void SetVerificationTimestamp(uint timestamp)
         {
             VerificationTimestamp = timestamp;
         }
