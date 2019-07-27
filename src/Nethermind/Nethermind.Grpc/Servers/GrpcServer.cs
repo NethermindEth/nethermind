@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Grpc.Core;
@@ -26,13 +27,20 @@ namespace Nethermind.Grpc.Servers
         public override async Task Subscribe(SubscriptionRequest request,
             IServerStreamWriter<SubscriptionResponse> responseStream, ServerCallContext context)
         {
-            while (true)
+            try
             {
-                var result = _results.Take();
-                await responseStream.WriteAsync(new SubscriptionResponse
+                while (true)
                 {
-                    Data = result
-                });
+                    var result = _results.Take();
+                    await responseStream.WriteAsync(new SubscriptionResponse
+                    {
+                        Data = result
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error(ex.Message, ex);
             }
         }
 

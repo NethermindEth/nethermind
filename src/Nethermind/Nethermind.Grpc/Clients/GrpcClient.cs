@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Nethermind.Logging;
@@ -29,7 +30,7 @@ namespace Nethermind.Grpc.Clients
             }
             catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error($"There was an error:{NewLine}{ex}{NewLine}");
+                if (_logger.IsError) _logger.Error(ex.Message, ex);
             }
         }
 
@@ -54,33 +55,31 @@ namespace Nethermind.Grpc.Clients
             return _channel?.ShutdownAsync() ?? Task.CompletedTask;
         }
 
-        public async Task<string> QueryAsync(params string[] args)
+        public async Task<string> QueryAsync(IEnumerable<string> args)
         {
             if (!_connected)
             {
                 return string.Empty;
             }
 
-            var queryArgs = args ?? Array.Empty<string>();
             var result = await _client.QueryAsync(new QueryRequest
             {
-                Args = {queryArgs}
+                Args = {args ?? Enumerable.Empty<string>()}
             });
 
             return result.Data;
         }
 
-        public async Task SubscribeAsync(Action<string> callback, Func<bool> enabled, params string[] args)
+        public async Task SubscribeAsync(Action<string> callback, Func<bool> enabled, IEnumerable<string> args)
         {
             if (!_connected)
             {
                 return;
             }
 
-            var streamArgs = args ?? Array.Empty<string>();
             using (var stream = _client.Subscribe(new SubscriptionRequest
             {
-                Args = {streamArgs}
+                Args = {args ?? Enumerable.Empty<string>()}
             }))
             {
                 while (enabled() && _connected && await stream.ResponseStream.MoveNext())

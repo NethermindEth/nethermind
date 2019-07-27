@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using Nethermind.Grpc;
 using Nethermind.Grpc.Clients;
 using Nethermind.Logging;
 

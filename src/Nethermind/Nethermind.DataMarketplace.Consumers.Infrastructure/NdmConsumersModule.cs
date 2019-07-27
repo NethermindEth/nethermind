@@ -104,7 +104,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var consumerNotifier = new ConsumerNotifier(services.RequiredServices.Notifier);
             var consumerService = new ConsumerService(services.RequiredServices.ConfigManager, ndmConfig.Id,
                 depositRepository, depositApprovalRepository, providerRepository, receiptRepository, sessionRepository,
-                services.RequiredServices.Wallet, services.CreatedServices.AbiEncoder,
+                services.RequiredServices.Wallet, services.CreatedServices.AbiEncoder, services.RequiredServices.Ecdsa,
                 services.RequiredServices.CryptoRandom, depositService, receiptRequestValidator, refundService,
                 services.CreatedServices.BlockchainBridge, services.CreatedServices.ConsumerAddress,
                 services.RequiredServices.Enode.PublicKey, services.RequiredServices.Timestamp,
