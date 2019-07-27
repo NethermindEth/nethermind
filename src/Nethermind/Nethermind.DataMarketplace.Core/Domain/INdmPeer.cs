@@ -47,7 +47,6 @@ namespace Nethermind.DataMarketplace.Core.Domain
         void SendRequestDepositApproval(Keccak headerId, string kyc);
 
         Task<IReadOnlyList<DepositApproval>> SendGetDepositApprovals(Keccak dataHeaderId = null,
-            bool onlyPending = false,
-            CancellationToken? token = null);
+            bool onlyPending = false, CancellationToken? token = null);
     }
 }

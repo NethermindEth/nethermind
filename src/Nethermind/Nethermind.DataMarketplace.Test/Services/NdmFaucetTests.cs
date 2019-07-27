@@ -39,6 +39,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         private IEthRequestRepository _repository;
         private Address _faucetAddress;
         private UInt256 _maxValue;
+        private UInt256 _dailyRequestsTotalValueEth;
         private bool _enabled;
         private ITimestamp _timestamp;
         private ILogManager _logManager;
@@ -57,6 +58,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _repository = Substitute.For<IEthRequestRepository>();
             _faucetAddress = Address.FromNumber(1);
             _maxValue = 1.Ether();
+            _dailyRequestsTotalValueEth = 500;
             _enabled = true;
             _timestamp = new Timestamp();
             _logManager = LimboLogs.Instance;
@@ -164,6 +166,23 @@ namespace Nethermind.DataMarketplace.Test.Services
         }
 
         [Test]
+        public async Task request_eth_should_fail_when_today_requests_value_limit_was_reached()
+        {
+            var requestedAt = new DateTime(2019, 1, 1);
+            _timestamp = new Timestamp(requestedAt);
+            _dailyRequestsTotalValueEth = 3;
+            InitFaucet();
+            var ethRequested = await TryRequestEthAsync();
+            ethRequested.Status.Should().Be(FaucetRequestStatus.RequestCompleted);
+            ethRequested = await TryRequestEthAsync();
+            ethRequested.Status.Should().Be(FaucetRequestStatus.RequestCompleted);
+            ethRequested = await TryRequestEthAsync();
+            ethRequested.Status.Should().Be(FaucetRequestStatus.RequestCompleted);
+            ethRequested = await TryRequestEthAsync();
+            ethRequested.Should().Be(FaucetResponse.DailyRequestsTotalValueReached);
+        }
+
+        [Test]
         public async Task request_eth_should_succeed_when_no_previous_requests_were_made()
         {
             _timestamp = new Timestamp(DateTime.UtcNow);
@@ -187,8 +206,8 @@ namespace Nethermind.DataMarketplace.Test.Services
         }
 
         private void InitFaucet()
-            => _faucet = new NdmFaucet(_blockchainBridge, _repository, _faucetAddress, _maxValue, _enabled,
-                _timestamp, _logManager);
+            => _faucet = new NdmFaucet(_blockchainBridge, _repository, _faucetAddress, _maxValue,
+                _dailyRequestsTotalValueEth, _enabled, _timestamp, _logManager);
 
         private Task<FaucetResponse> TryRequestEthAsync() => _faucet.TryRequestEthAsync(_host, _address, _value);
     }

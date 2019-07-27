@@ -9,7 +9,6 @@ namespace Nethermind.Grpc.Clients
 {
     public class GrpcClient : IGrpcClient
     {
-        private static readonly string NewLine = Environment.NewLine;
         private bool _connected;
         private readonly ILogger _logger;
         private Channel _channel;
