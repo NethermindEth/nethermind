@@ -32,7 +32,7 @@ namespace Nethermind.Runner.Controllers
     public class MainController : ControllerBase
     {
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
-        private static volatile JsonSerializerSettings _jsonSettings;
+        private static JsonSerializerSettings _jsonSettings;
         private static JsonSerializer _serializer;
         private static object _lockObject = new object();
 
@@ -40,11 +40,11 @@ namespace Nethermind.Runner.Controllers
         {
             _jsonRpcProcessor = jsonRpcProcessor;
 
-            if (_jsonSettings == null)
+            if (_serializer == null)
             {
                 lock (_lockObject)
                 {
-                    if (_jsonSettings == null)
+                    if (_serializer == null)
                     {
                         _jsonSettings = new JsonSerializerSettings
                         {
@@ -55,9 +55,9 @@ namespace Nethermind.Runner.Controllers
                         {
                             _jsonSettings.Converters.Add(converter);
                         }
-                    }
 
-                    _serializer = JsonSerializer.Create(_jsonSettings);
+                        _serializer = JsonSerializer.Create(_jsonSettings);
+                    }
                 }
             }
         }
