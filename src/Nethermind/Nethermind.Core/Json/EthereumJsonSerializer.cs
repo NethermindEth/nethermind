@@ -25,6 +25,11 @@ namespace Nethermind.Core.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
+        public EthereumJsonSerializer()
+        {
+            _serializer = JsonSerializer.Create(_settings);
+        }
+
         public static IList<JsonConverter> BasicConverters { get; } = new List<JsonConverter>
         {
             new AddressConverter(),
@@ -79,9 +84,10 @@ namespace Nethermind.Core.Json
             return JsonConvert.DeserializeObject<T>(json, _settings);
         }
 
+        private JsonSerializer _serializer;
+
         public (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json)
         {
-            JsonSerializer serializer = JsonSerializer.Create(_settings);
             var token = JToken.Parse(json);
             if (token is JArray array)
             {
@@ -90,11 +96,11 @@ namespace Nethermind.Core.Json
                     UpdateParams(tokenElement);
                 }
 
-                return (default, array.ToObject<List<T>>(serializer));
+                return (default, array.ToObject<List<T>>(_serializer));
             }
             
             UpdateParams(token);
-            return (token.ToObject<T>(serializer), null);
+            return (token.ToObject<T>(_serializer), null);
         }
         
         private void UpdateParams(JToken token)
