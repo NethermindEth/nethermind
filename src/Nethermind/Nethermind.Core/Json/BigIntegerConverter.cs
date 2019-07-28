@@ -48,14 +48,16 @@ namespace Nethermind.Core.Json
             switch (_conversion)
             {
                 case NumberConversion.PaddedHex:
-                    writer.WriteRaw("0x");
+                    writer.WriteRaw("\"0x");
                     writer.WriteRaw(value.ToString("x64").TrimStart('0'));
-                    //writer.WriteValue(string.Concat("0x", value.ToString("x64").TrimStart('0')));
+                    writer.WriteRaw("\"");
+                    writer.WriteRawValue("");
                     break;
                 case NumberConversion.Hex:
-                    writer.WriteRaw("0x");
+                    writer.WriteRaw("\"0x");
                     writer.WriteRaw(value.ToString("x").TrimStart('0'));
-                    //writer.WriteValue(string.Concat("0x", value.ToString("x").TrimStart('0')));
+                    writer.WriteRaw("\"");
+                    writer.WriteRawValue("");
                     break;
                 case NumberConversion.Decimal:
                     writer.WriteValue(value.ToString());
