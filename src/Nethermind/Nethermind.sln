@@ -70,6 +70,9 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Nethermind", "Nethermind", "{1564814A-27F8-40A3-943E-8E950D5EE17D}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{E627BFEF-ABD3-4B8F-A9AC-204251AE440C}"
+ProjectSection(SolutionItems) = preProject
+	..\..\.travis.yml = ..\..\.travis.yml
+EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Numerics", "Numerics", "{4FD45249-02DC-483E-B76E-100704B3B337}"
 EndProject
