@@ -70,7 +70,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             var filteredDeposits = deposits.AsEnumerable();
             if (query.OnlyUnverified)
             {
-                filteredDeposits = filteredDeposits.Where(d => d.VerificationTimestamp == 0);
+                filteredDeposits = filteredDeposits.Where(d => d.VerificationTimestamp == 0 ||
+                                                               d.Confirmations < d.RequiredConfirmations);
             }
 
             return Task.FromResult(filteredDeposits.OrderByDescending(d => d.Timestamp).Paginate(query));

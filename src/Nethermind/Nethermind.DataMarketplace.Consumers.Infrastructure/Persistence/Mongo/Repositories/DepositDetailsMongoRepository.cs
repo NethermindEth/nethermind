@@ -50,7 +50,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             var deposits = Deposits.AsQueryable();
             if (query.OnlyUnverified)
             {
-                deposits = deposits.Where(d => d.VerificationTimestamp == 0);
+                deposits = deposits.Where(d => d.VerificationTimestamp == 0 ||
+                                               d.Confirmations < d.RequiredConfirmations);
             }
 
             return await deposits.OrderByDescending(d => d.Timestamp).PaginateAsync(query);
