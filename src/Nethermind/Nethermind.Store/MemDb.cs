@@ -76,6 +76,11 @@ namespace Nethermind.Store
             _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
         }
 
+        public void Clear()
+        {
+            _db.Clear();
+        }
+        
         public void Dispose()
         {
         }

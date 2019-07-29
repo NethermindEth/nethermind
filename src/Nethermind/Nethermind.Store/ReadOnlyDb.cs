@@ -22,7 +22,7 @@ namespace Nethermind.Store
 {
     public class ReadOnlyDb : IDb
     {
-        private IDb _memDb = new MemDb();
+        private MemDb _memDb = new MemDb();
 
         private readonly IDb _wrappedDb;
         private readonly bool _createInMemWriteStore;
@@ -74,7 +74,7 @@ namespace Nethermind.Store
 
         public void ClearTempChanges()
         {
-            _memDb = new MemDb();
+            _memDb.Clear();
         }
     }
 }

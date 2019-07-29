@@ -24,7 +24,10 @@ namespace Nethermind.Store
     {
         public ReadOnlyDbProvider(IDbProvider wrappedProvider, bool createInMemoryWriteStore)
         {
-            wrappedProvider = wrappedProvider ?? throw new ArgumentNullException(nameof(wrappedProvider));
+            if (wrappedProvider == null)
+            {
+                throw new ArgumentNullException(nameof(wrappedProvider));
+            }
 
             NestedStateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
             StateDb = new StateDb(NestedStateDb);
