@@ -162,7 +162,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             {
                 if (t.IsFaulted && _logger.IsError)
                 {
-                    _logger.Error($"Disabling data stream failed.", t.Exception);
+                    _logger.Error("Disabling data stream failed.", t.Exception);
                 }
             });
         }
@@ -175,6 +175,12 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 })
                 .ContinueWith(async t =>
                 {
+                    if (t.IsFaulted && _logger.IsError)
+                    {
+                        _logger.Error($"Updating deposits failed.", t.Exception);
+                        return;
+                    }
+                    
                     for (var i = 0; i < t.Result.Items.Count; i++)
                     {
                         var depositDetails = t.Result.Items[i];
