@@ -16,8 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Core.Repositories
 {
@@ -26,5 +28,6 @@ namespace Nethermind.DataMarketplace.Core.Repositories
         Task<EthRequest> GetLatestAsync(string host);
         Task AddAsync(EthRequest request);
         Task UpdateAsync(EthRequest request);
+        Task<UInt256> SumDailyRequestsTotalValueAsync(DateTime date);
     }
 }

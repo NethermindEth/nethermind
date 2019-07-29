@@ -46,6 +46,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         private readonly bool _enabled;
         private readonly ITimestamp _timestamp;
         private readonly ILogger _logger;
+        private bool _initialized;
 
         public NdmFaucet(IBlockchainBridge blockchainBridge, IEthRequestRepository requestRepository,
             Address faucetAddress, UInt256 maxValue, UInt256 dailyRequestsTotalValueEth, bool enabled,
@@ -60,14 +61,40 @@ namespace Nethermind.DataMarketplace.Core.Services
             _timestamp = timestamp;
             _today = _timestamp.UtcNow;
             _logger = logManager.GetClassLogger();
-            if (_enabled && !(_faucetAddress is null))
+            if (!enabled || faucetAddress is null)
             {
-                if (_logger.IsInfo) _logger.Info($"NDM Faucet was enabled for this host, account: {faucetAddress}, request max value: {maxValue} wei");
+                return;
             }
+            
+            if (_logger.IsInfo) _logger.Info($"NDM Faucet was enabled for this host, account: {faucetAddress}, request max value: {maxValue} wei");
+            _requestRepository.SumDailyRequestsTotalValueAsync(_today).ContinueWith(t =>
+            {
+                if (t.IsFaulted && _logger.IsError)
+                {
+                    _logger.Error($"Error during NDM faucet today's ({_today.Date:d}) total value initialization.", t.Exception);
+                    return;
+                }
+
+                _todayRequestsTotalValueWei = t.Result;
+                _initialized = true;
+                if (_logger.IsInfo) _logger.Info($"Initialized NDM faucet today's ({_today.Date:d}) total value: {_todayRequestsTotalValueWei} wei");
+            });
         }
 
         public async Task<FaucetResponse> TryRequestEthAsync(string node, Address address, UInt256 value)
         {
+            if (!_enabled)
+            {
+                if (_logger.IsInfo) _logger.Info("NDM Faucet is disabled.");
+                return FaucetResponse.FaucetDisabled;
+            }
+            
+            if (!_initialized)
+            {
+                if (_logger.IsInfo) _logger.Info("NDM Faucet is not initialized.");
+                return FaucetResponse.FaucetDisabled;
+            }
+            
             if (_today.Date != _timestamp.UtcNow.Date)
             {
                 lock (Locker)
@@ -76,24 +103,18 @@ namespace Nethermind.DataMarketplace.Core.Services
                     _todayRequestsTotalValueWei = 0;
                 }
                 
-                if (_logger.IsInfo) _logger.Info($"NDM Faucet has updated its today's date ({_today.Date}) and reset the total requests value.");
-            }
-            
-            if (!_enabled)
-            {
-                if (_logger.IsInfo) _logger.Info("NDM Faucet is disabled");
-                return FaucetResponse.FaucetDisabled;
+                if (_logger.IsInfo) _logger.Info($"NDM Faucet has updated its today's date ({_today.Date:d}) and reset the total requests value.");
             }
             
             if (_faucetAddress is null || _faucetAddress == Address.Zero)
             {
-                if (_logger.IsWarn) _logger.Warn("NDM Faucet address is not set");
+                if (_logger.IsWarn) _logger.Warn("NDM Faucet address is not set.");
                 return FaucetResponse.FaucetAddressNotSet;
             }
 
             if (string.IsNullOrWhiteSpace(node) || address is null || address == Address.Zero)
             {
-                if (_logger.IsInfo) _logger.Info("Invalid NDM Faucet request");
+                if (_logger.IsInfo) _logger.Info("Invalid NDM Faucet request.");
                 return FaucetResponse.InvalidNodeAddress;
             }
 
@@ -111,11 +132,11 @@ namespace Nethermind.DataMarketplace.Core.Services
             
             if (value > _maxValue)
             {
-                if (_logger.IsInfo) _logger.Info($"NDM Faucet request from: {node} has too big value: {value} wei > {_maxValue} wei");
+                if (_logger.IsInfo) _logger.Info($"NDM Faucet request from: {node} has too big value: {value} wei > {_maxValue} wei.");
                 return FaucetResponse.TooBigValue;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Received NDM Faucet request from: {node}, address: {address}, value: {value} wei");
+            if (_logger.IsInfo) _logger.Info($"Received NDM Faucet request from: {node}, address: {address}, value: {value} wei.");
             if (_pendingRequests.TryGetValue(node, out _))
             {
                 if (_logger.IsInfo) _logger.Info($"NDM Faucet request from: {node} is already being processed.");
@@ -126,29 +147,29 @@ namespace Nethermind.DataMarketplace.Core.Services
             var requestedAt = _timestamp.UtcNow;
             if (!(latestRequest is null) && latestRequest.RequestedAt.Date >= requestedAt.Date)
             {
-                if (_logger.IsInfo) _logger.Info($"NDM Faucet request from: {node} was already processed today at: {latestRequest.RequestedAt}");
+                if (_logger.IsInfo) _logger.Info($"NDM Faucet request from: {node} was already processed today at: {latestRequest.RequestedAt}.");
                 return FaucetResponse.RequestAlreadyProcessedToday(FaucetRequestDetails.From(latestRequest));
             }
 
             if (!_pendingRequests.TryAdd(node, true))
             {
-                if (_logger.IsWarn) _logger.Warn($"Couldn't start processing NDM Faucet request from: {node}");
+                if (_logger.IsWarn) _logger.Warn($"Couldn't start processing NDM Faucet request from: {node}.");
                 return FaucetResponse.RequestError;
             }
             
             lock (Locker)
             {
                 _todayRequestsTotalValueWei += value;
-                if (_logger.IsInfo) _logger.Info($"Increased NDM Faucet total value of today's ({_today.Date}) requests to {_todayRequestsTotalValueWei} wei.");
+                if (_logger.IsInfo) _logger.Info($"Increased NDM Faucet total value of today's ({_today.Date:d}) requests to {_todayRequestsTotalValueWei} wei.");
             }
             
             if (_todayRequestsTotalValueWei > _dailyRequestsTotalValueWei)
             {
-                if (_logger.IsInfo) _logger.Info($"Daily ({_today.Date}) requests value for NDM Faucet was reached ({_dailyRequestsTotalValueWei} wei).");
+                if (_logger.IsInfo) _logger.Info($"Daily ({_today.Date:d}) requests value for NDM Faucet was reached ({_dailyRequestsTotalValueWei} wei).");
                 return FaucetResponse.DailyRequestsTotalValueReached;
             }
 
-            if (_logger.IsInfo) _logger.Info($"NDM Faucet is processing request for: {node}, address: {address}, value: {value} wei");
+            if (_logger.IsInfo) _logger.Info($"NDM Faucet is processing request for: {node}, address: {address}, value: {value} wei.");
             try
             {
                 var faucetAccount = _blockchainBridge.GetAccount(_faucetAddress);
@@ -175,7 +196,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                     await _requestRepository.UpdateAsync(latestRequest);
                 }
 
-                if (_logger.IsInfo) _logger.Info($"NDM Faucet has successfully processed request for: {node}, address: {address}, value: {value} wei");
+                if (_logger.IsInfo) _logger.Info($"NDM Faucet has successfully processed request for: {node}, address: {address}, value: {value} wei.");
                 return FaucetResponse.RequestCompleted(FaucetRequestDetails.From(latestRequest));
             }
             catch (Exception ex)
@@ -184,7 +205,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 lock (Locker)
                 {
                     _todayRequestsTotalValueWei -= value;
-                    if (_logger.IsInfo) _logger.Info($"Decreased NDM Faucet total value of today's ({_today.Date}) requests to {_todayRequestsTotalValueWei} wei.");
+                    if (_logger.IsInfo) _logger.Info($"Decreased NDM Faucet total value of today's ({_today.Date:d}) requests to {_todayRequestsTotalValueWei} wei.");
                 }
                 
                 return FaucetResponse.ProcessingRequestError;
