@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
 using System.Threading.Tasks;
 using MongoDB.Driver;
 using MongoDB.Driver.Linq;
@@ -23,6 +24,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Domain;
 using Nethermind.DataMarketplace.Consumers.Queries;
 using Nethermind.DataMarketplace.Consumers.Repositories;
+using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 
@@ -50,8 +52,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             var deposits = Deposits.AsQueryable();
             if (query.OnlyUnverified)
             {
-                deposits = deposits.Where(d => d.VerificationTimestamp == 0 ||
-                                               d.Confirmations < d.RequiredConfirmations);
+                //MongoDB unsupported predicate: (d.Confirmations < d.RequiredConfirmations) - maybe due to uint type?
+                var allDeposits = await deposits.ToListAsync();
+                var unverified = allDeposits.Where(d => d.VerificationTimestamp == 0 ||
+                                                        d.Confirmations < d.RequiredConfirmations);
+
+                return unverified.OrderByDescending(d => d.Timestamp).Paginate(query);
             }
 
             return await deposits.OrderByDescending(d => d.Timestamp).PaginateAsync(query);
