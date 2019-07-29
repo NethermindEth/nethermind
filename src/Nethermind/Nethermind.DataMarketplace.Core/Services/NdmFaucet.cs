@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             _timestamp = timestamp;
             _today = _timestamp.UtcNow;
             _logger = logManager.GetClassLogger();
-            if (!enabled || faucetAddress is null)
+            if (!_enabled || _faucetAddress is null)
             {
                 return;
             }
