@@ -72,11 +72,6 @@ jobs:
       name: "Nethermind.JsonRpc.Test"
     #- script: dotnet test src/Nethermind/Nethermind.KeyStore.Test
     #  name: "Nethermind.KeyStore.Test"
-    #- script: dotnet test src/Nethermind/Nethermind.LibSolc.Test
-    #  name: "Nethermind.LibSolc.Test.Linux"
-    #- script: dotnet test src/Nethermind/Nethermind.LibSolc.Test
-    #  name: "Nethermind.LibSolc.Test.Osx"
-    #  os: osx
     - script:
       - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Mining.Test
@@ -101,8 +96,12 @@ jobs:
     #  name: "Nethermind.DataMarketplace.Test"
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
+      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Runner.Test
+      name: "Nethermind.Runner.Test"
+    - script: 
+      - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Store.Test
-      name: "Nethermind.Store.Test"
+      name: "Nethermind.Runner.Test"
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Wallet.Test
