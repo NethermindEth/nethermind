@@ -207,7 +207,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             if (depositDetails.VerificationTimestamp == 0)
             {
-                var verificationTimestamp = _depositService.VerifyDeposit(depositDetails.Id);
+                var verificationTimestamp = _depositService.VerifyDeposit(_consumerAddress, depositDetails.Id);
                 if (verificationTimestamp == 0)
                 {
                     if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Id}' didn't return verification timestamp from contract call yet.'");
@@ -276,7 +276,6 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _consumerAddress = address;
             _accountLocked = !_wallet.IsUnlocked(_consumerAddress);
             AddressChanged?.Invoke(this, new AddressChangedEventArgs(oldAddress, _consumerAddress));
-            _depositService.ChangeConsumerAddress(_consumerAddress);
             var config = await _configManager.GetAsync(_configId);
             config.ConsumerAddress = _consumerAddress.ToString();
             await _configManager.UpdateAsync(config);
