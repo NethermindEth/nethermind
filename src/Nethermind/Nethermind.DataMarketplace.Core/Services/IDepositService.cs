@@ -26,8 +26,7 @@ namespace Nethermind.DataMarketplace.Core.Services
     public interface IDepositService
     {
         Keccak MakeDeposit(Address onBehalfOf, Deposit deposit);
-        uint VerifyDeposit(Keccak depositId);
-        UInt256 ReadDepositBalance(Keccak depositId);
-        void ChangeConsumerAddress(Address address);
+        uint VerifyDeposit(Address onBehalfOf, Keccak depositId);
+        UInt256 ReadDepositBalance(Address onBehalfOf, Keccak depositId);
     }
 }

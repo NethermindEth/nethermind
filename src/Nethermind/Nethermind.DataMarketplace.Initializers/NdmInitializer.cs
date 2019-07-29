@@ -166,7 +166,8 @@ namespace Nethermind.DataMarketplace.Initializers
                 ? null
                 : new Address(ndmConfig.FaucetAddress);
             var faucet = new NdmFaucet(services.CreatedServices.BlockchainBridge, ethRequestRepository, faucetAddress,
-                ndmConfig.FaucetWeiRequestMaxValue, ndmConfig.FaucetEnabled, timestamp, logManager);
+                ndmConfig.FaucetWeiRequestMaxValue, ndmConfig.FaucetEthDailyRequestsTotalValue, ndmConfig.FaucetEnabled,
+                timestamp, logManager);
 
             var consumerAddress = string.IsNullOrWhiteSpace(ndmConfig.ConsumerAddress)
                 ? Address.Zero

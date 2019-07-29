@@ -38,46 +38,33 @@ namespace Nethermind.DataMarketplace.Core.Services
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IWallet _wallet;
         private readonly ILogger _logger;
-        private Address _consumerAddress;
         private readonly Address _contractAddress;
 
         public DepositService(IBlockchainBridge blockchainBridge, IAbiEncoder abiEncoder, IWallet wallet,
-            INdmConfig ndmConfig, ILogManager logManager)
+           Address contractAddress, ILogManager logManager)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            ndmConfig = ndmConfig ?? throw new ArgumentNullException(nameof(ndmConfig));
+            _contractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _consumerAddress = string.IsNullOrWhiteSpace(ndmConfig.ConsumerAddress)
-                ? Address.Zero
-                : new Address(ndmConfig.ConsumerAddress);
-            _contractAddress = string.IsNullOrWhiteSpace(ndmConfig.ContractAddress)
-                ? Address.Zero
-                : new Address(ndmConfig.ContractAddress);
         }
 
-        public UInt256 ReadDepositBalance(Keccak depositId)
+        public UInt256 ReadDepositBalance(Address onBehalfOf, Keccak depositId)
         {
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositBalanceAbiSig, depositId.Bytes);
             Transaction transaction = new Transaction();
             transaction.Value = 0;
             transaction.Data = txData;
             transaction.To = _contractAddress;
-            transaction.SenderAddress = _consumerAddress;
+            transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = 100000;
             transaction.GasPrice = 0.GWei();
-            transaction.Nonce = (UInt256) _blockchainBridge.GetNonce(_consumerAddress);
+            transaction.Nonce = (UInt256) _blockchainBridge.GetNonce(onBehalfOf);
             _wallet.Sign(transaction, _blockchainBridge.GetNetworkId());
             BlockchainBridge.CallOutput callOutput = _blockchainBridge.Call(_blockchainBridge.Head, transaction);
             return (callOutput.OutputData ?? new byte[] {0}).ToUInt256();
         }
-
-        public void ChangeConsumerAddress(Address address)
-        {
-            _consumerAddress = address;
-        }
-
         public void ValidateContractAddress(Address contractAddress)
         {
             if (contractAddress != _contractAddress)
@@ -111,17 +98,17 @@ namespace Nethermind.DataMarketplace.Core.Services
             return _blockchainBridge.SendTransaction(transaction);
         }
 
-        public uint VerifyDeposit(Keccak depositId)
+        public uint VerifyDeposit(Address onBehalfOf, Keccak depositId)
         {
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.VerifyDepositAbiSig, depositId.Bytes);
             Transaction transaction = new Transaction();
             transaction.Value = 0;
             transaction.Data = txData;
             transaction.To = _contractAddress;
-            transaction.SenderAddress = _consumerAddress;
+            transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = 100000;
             transaction.GasPrice = 0.GWei();
-            transaction.Nonce = (UInt256) _blockchainBridge.GetNonce(_consumerAddress);
+            transaction.Nonce = (UInt256) _blockchainBridge.GetNonce(onBehalfOf);
             BlockchainBridge.CallOutput callOutput = _blockchainBridge.Call(_blockchainBridge.Head, transaction);
             return (callOutput.OutputData ?? new byte[] {0}).ToUInt32();
         }

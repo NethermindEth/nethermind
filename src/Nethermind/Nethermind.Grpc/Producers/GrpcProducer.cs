@@ -1,7 +1,7 @@
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 
-namespace Nethermind.Grpc.Clients
+namespace Nethermind.Grpc.Producers
 {
     public class GrpcProducer : IProducer
     {

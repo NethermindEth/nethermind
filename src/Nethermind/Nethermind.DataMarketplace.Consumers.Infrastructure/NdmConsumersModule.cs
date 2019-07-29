@@ -16,25 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.Repositories;
-/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
-
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp;
@@ -59,6 +42,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             AddDecoders();
             var ndmConfig = services.RequiredServices.NdmConfig;
             var dbConfig = services.RequiredServices.ConfigProvider.GetConfig<IDbConfig>();
+            var contractAddress = string.IsNullOrWhiteSpace(ndmConfig.ContractAddress)
+                ? Address.Zero
+                : new Address(ndmConfig.ContractAddress);
             var logManager = services.RequiredServices.LogManager;
             var rocksDbProvider = new ConsumerRocksDbProvider(services.RequiredServices.BaseDbPath, dbConfig,
                 logManager);
@@ -68,7 +54,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var sessionRlpDecoder = new ConsumerSessionDecoder();
             var receiptRequestValidator = new ReceiptRequestValidator(logManager);
             var refundService = new RefundService(services.CreatedServices.BlockchainBridge,
-                services.CreatedServices.AbiEncoder, services.RequiredServices.Wallet, ndmConfig, logManager);
+                services.CreatedServices.AbiEncoder, services.RequiredServices.Wallet, contractAddress, logManager);
 
             IDepositDetailsRepository depositRepository;
             IConsumerDepositApprovalRepository depositApprovalRepository;
@@ -100,11 +86,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             }
 
             var depositService = new DepositService(services.CreatedServices.BlockchainBridge,
-                services.CreatedServices.AbiEncoder, services.RequiredServices.Wallet, ndmConfig, logManager);
+                services.CreatedServices.AbiEncoder, services.RequiredServices.Wallet, contractAddress, logManager);
             var consumerNotifier = new ConsumerNotifier(services.RequiredServices.Notifier);
             var consumerService = new ConsumerService(services.RequiredServices.ConfigManager, ndmConfig.Id,
                 depositRepository, depositApprovalRepository, providerRepository, receiptRepository, sessionRepository,
-                services.RequiredServices.Wallet, services.CreatedServices.AbiEncoder,
+                services.RequiredServices.Wallet, services.CreatedServices.AbiEncoder, services.RequiredServices.Ecdsa,
                 services.RequiredServices.CryptoRandom, depositService, receiptRequestValidator, refundService,
                 services.CreatedServices.BlockchainBridge, services.CreatedServices.ConsumerAddress,
                 services.RequiredServices.Enode.PublicKey, services.RequiredServices.Timestamp,

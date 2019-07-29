@@ -16,12 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositories
@@ -58,6 +60,27 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
 
         public Task UpdateAsync(EthRequest request) => AddOrUpdateAsync(request);
         
+        public Task<UInt256> SumDailyRequestsTotalValueAsync(DateTime date)
+        {
+            var requestsBytes = _database.GetAll();
+            if (requestsBytes.Length == 0)
+            {
+                return Task.FromResult<UInt256>(0);
+            }
+
+            var requests = new EthRequest[requestsBytes.Length];
+            for (var i = 0; i < requestsBytes.Length; i++)
+            {
+                requests[i] = Decode(requestsBytes[i]);
+            }
+            
+            var totalValue = UInt256.Zero;
+            totalValue = requests.Where(r => r.RequestedAt.Date == date.Date)
+                .Aggregate(totalValue, (current, request) => current + request.Value);
+
+            return Task.FromResult(totalValue);
+        }
+
         private Task AddOrUpdateAsync(EthRequest request)
         {
             var rlp = _rlpDecoder.Encode(request);

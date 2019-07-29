@@ -94,17 +94,18 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly uint _depositRequiredConfirmations;
         private readonly ILogger _logger;
         private readonly Timer _timer;
-        private readonly IEcdsa _ecdsa = new Ecdsa();
+        private readonly IEcdsa _ecdsa;
         private bool _accountLocked;
 
         public ConsumerService(IConfigManager configManager, string configId,
             IDepositDetailsRepository depositRepository, IConsumerDepositApprovalRepository depositApprovalRepository,
             IProviderRepository providerRepository, IReceiptRepository receiptRepository,
-            IConsumerSessionRepository sessionRepository, IWallet wallet, IAbiEncoder abiEncoder,
+            IConsumerSessionRepository sessionRepository, IWallet wallet, IAbiEncoder abiEncoder, IEcdsa ecdsa,
             ICryptoRandom cryptoRandom, IDepositService depositService,
             IReceiptRequestValidator receiptRequestValidator, IRefundService refundService,
             IBlockchainBridge blockchainBridge, Address consumerAddress, PublicKey nodePublicKey,
-            ITimestamp timestamp, IConsumerNotifier consumerNotifier, uint depositRequiredConfirmations, ILogManager logManager)
+            ITimestamp timestamp, IConsumerNotifier consumerNotifier, uint depositRequiredConfirmations,
+            ILogManager logManager)
         {
             _configManager = configManager;
             _configId = configId;
@@ -115,6 +116,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _sessionRepository = sessionRepository;
             _wallet = wallet;
             _abiEncoder = abiEncoder;
+            _ecdsa = ecdsa;
             _cryptoRandom = cryptoRandom;
             _depositService = depositService;
             _receiptRequestValidator = receiptRequestValidator;
@@ -205,7 +207,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             if (depositDetails.VerificationTimestamp == 0)
             {
-                var verificationTimestamp = _depositService.VerifyDeposit(depositDetails.Id);
+                var verificationTimestamp = _depositService.VerifyDeposit(_consumerAddress, depositDetails.Id);
                 if (verificationTimestamp == 0)
                 {
                     if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Id}' didn't return verification timestamp from contract call yet.'");
@@ -274,7 +276,6 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _consumerAddress = address;
             _accountLocked = !_wallet.IsUnlocked(_consumerAddress);
             AddressChanged?.Invoke(this, new AddressChangedEventArgs(oldAddress, _consumerAddress));
-            _depositService.ChangeConsumerAddress(_consumerAddress);
             var config = await _configManager.GetAsync(_configId);
             config.ConsumerAddress = _consumerAddress.ToString();
             await _configManager.UpdateAsync(config);
@@ -351,7 +352,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         {
             if (!_providers.TryGetValue(provider.NodeId, out var providerPeer))
             {
-                if (_logger.IsInfo) _logger.Info($"Cannot start the session: '{session.Id}', provider: '{provider.NodeId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}', provider: '{provider.NodeId}' was not found.");
 
                 return;
             }
@@ -359,7 +360,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var depositDetails = await GetDepositAsync(session.DepositId);
             if (depositDetails is null)
             {
-                if (_logger.IsInfo) _logger.Info($"Cannot start the session: '{session.Id}', deposit: '{session.DepositId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}', deposit: '{session.DepositId}' was not found.");
 
                 return;
             }
@@ -367,28 +368,28 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var dataHeaderId = depositDetails.DataHeader.Id;
             if (!_discoveredDataHeaders.TryGetValue(dataHeaderId, out var dataHeader))
             {
-                if (_logger.IsInfo) _logger.Info($"Available data header: '{dataHeaderId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Available data header: '{dataHeaderId}' was not found.");
 
                 return;
             }
 
             if (!IsDataHeaderAvailable(dataHeader))
             {
-                if (_logger.IsInfo) _logger.Info($"Data header: '{dataHeaderId}' is unavailable, state: {dataHeader.State}.");
+                if (_logger.IsWarn) _logger.Warn($"Data header: '{dataHeaderId}' is unavailable, state: {dataHeader.State}.");
 
                 return;
             }
 
             if (!providerPeer.ProviderAddress.Equals(depositDetails.DataHeader.Provider.Address))
             {
-                if (_logger.IsInfo) _logger.Info($"Cannot start the session: '{session.Id}' for deposit: '{session.DepositId}', provider address (peer): '{providerPeer.ProviderAddress}' doesn't equal the address from data header: '{depositDetails.DataHeader.Provider.Address}'.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}' for deposit: '{session.DepositId}', provider address (peer): '{providerPeer.ProviderAddress}' doesn't equal the address from data header: '{depositDetails.DataHeader.Provider.Address}'.");
 
                 return;
             }
 
             if (!_discoveredDataHeaders.TryGetValue(depositDetails.DataHeader.Id, out _))
             {
-                if (_logger.IsInfo) _logger.Info($"Cannot start the session: '{session.Id}' for deposit: '{session.DepositId}', discovered data header: '{depositDetails.DataHeader.Id}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}' for deposit: '{session.DepositId}', discovered data header: '{depositDetails.DataHeader.Id}' was not found.");
 
                 return;
             }
@@ -424,8 +425,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 if (_logger.IsInfo) _logger.Info($"Unpaid units: '{unpaidTimeUnits}' for deposit: '{session.DepositId}' based on time.");
             }
 
-            await _sessionRepository.AddAsync(consumerSession);
             SetActiveSession(consumerSession);
+            await _sessionRepository.AddAsync(consumerSession);
             if (_logger.IsInfo) _logger.Info($"Started a session with id: '{session.Id}' for deposit: '{session.DepositId}', address: '{_consumerAddress}'.");
         }
 
@@ -500,14 +501,14 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             if (!_discoveredDataHeaders.TryGetValue(headerId, out var dataHeader))
             {
-                if (_logger.IsInfo) _logger.Info($"Available data header: '{headerId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Available data header: '{headerId}' was not found.");
 
                 return null;
             }
 
             if (!IsDataHeaderAvailable(dataHeader))
             {
-                if (_logger.IsInfo) _logger.Info($"Data header: '{headerId}' is unavailable, state: {dataHeader.State}.");
+                if (_logger.IsWarn) _logger.Warn($"Data header: '{headerId}' is unavailable, state: {dataHeader.State}.");
 
                 return null;
             }
@@ -527,7 +528,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
             if (dataHeader.MinUnits > units || dataHeader.MaxUnits < units)
             {
-                if (_logger.IsInfo) _logger.Info($"Invalid data request units: '{units}', min: '{dataHeader.MinUnits}', max: '{dataHeader.MaxUnits}'.");
+                if (_logger.IsWarn) _logger.Warn($"Invalid data request units: '{units}', min: '{dataHeader.MinUnits}', max: '{dataHeader.MaxUnits}'.");
 
                 return null;
             }
@@ -535,7 +536,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var unitsValue = units * dataHeader.UnitPrice;
             if (units * dataHeader.UnitPrice != value)
             {
-                if (_logger.IsInfo) _logger.Info($"Invalid data request value: '{value}', while it should be: '{unitsValue}'.");
+                if (_logger.IsWarn) _logger.Warn($"Invalid data request value: '{value}', while it should be: '{unitsValue}'.");
 
                 return null;
             }
@@ -673,7 +674,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var depositApproval = await _depositApprovalRepository.GetAsync(id);
             if (depositApproval is null)
             {
-                if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{headerId}' was not found.");
+                if (_logger.IsError) _logger.Error($"Deposit approval for data header: '{headerId}' was not found.");
 
                 return false;
             }
@@ -695,7 +696,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var depositDetails = await GetDepositAsync(depositId);
             if (depositDetails is null)
             {
-                if (_logger.IsInfo) _logger.Warn($"Deposit with id: '{depositId}' was not found.'");
+                if (_logger.IsWarn) _logger.Warn($"Deposit with id: '{depositId}' was not found.'");
 
                 return null;
             }
@@ -738,8 +739,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var session = GetActiveSession(depositId);
             if (session is null)
             {
-                await SendDataRequestAsync(depositId);
-                if (_logger.IsWarn) _logger.Warn($"Session for: '{depositId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Session for deposit: '{depositId}' was not found.");
                 return null;
             }
 
@@ -752,7 +752,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var depositDetails = await GetDepositAsync(session.DepositId);
             if (depositDetails is null)
             {
-                if (_logger.IsInfo) _logger.Info($"Cannot toggle data stream, deposit: '{session.DepositId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot toggle data stream, deposit: '{session.DepositId}' was not found.");
 
                 return null;
             }
@@ -760,25 +760,26 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var dataHeaderId = depositDetails.DataHeader.Id;
             if (!_discoveredDataHeaders.TryGetValue(dataHeaderId, out var dataHeader))
             {
-                if (_logger.IsInfo) _logger.Info($"Available data header: '{dataHeaderId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Available data header: '{dataHeaderId}' was not found.");
 
                 return null;
             }
 
             if (!IsDataHeaderAvailable(dataHeader))
             {
-                if (_logger.IsInfo) _logger.Info($"Data header: '{dataHeaderId}' is unavailable, state: {dataHeader.State}.");
+                if (_logger.IsWarn) _logger.Warn($"Data header: '{dataHeaderId}' is unavailable, state: {dataHeader.State}.");
 
                 return null;
             }
 
             if (enabled)
             {
-                if (_logger.IsInfo) _logger.Info($"Sending enable data stream for: '{depositId}'.");
+                if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}'.");
                 providerPeer.SendEnableDataStream(depositId, subscriptions);
             }
             else
             {
+                if (_logger.IsInfo) _logger.Info($"Sending disable data stream for deposit: '{depositId}'.");
                 providerPeer.SendDisableDataStream(depositId);
             }
 
@@ -793,9 +794,9 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Enabling data stream for deposit: '{depositId}'.");
             session.EnableStream(subscriptions);
             await _sessionRepository.UpdateAsync(session);
+            if (_logger.IsInfo) _logger.Info($"Enabled data stream for deposit: '{depositId}'.");
         }
 
         public async Task SetDisabledDataStreamAsync(Keccak depositId)
@@ -806,9 +807,9 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
             
-            if (_logger.IsInfo) _logger.Info($"Disabling data stream for deposit: '{depositId}'.");
             session.DisableStream();
             await _sessionRepository.UpdateAsync(session);
+            if (_logger.IsInfo) _logger.Info($"Disabled data stream for deposit: '{depositId}'.");
         }
 
         public async Task SendDataDeliveryReceiptAsync(DataDeliveryReceiptRequest request)
@@ -827,7 +828,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 while (retry < retries)
                 {
                     retry++;
-                    await Task.Delay(1000);
+                    await Task.Delay(3000);
                     (_, session) = TryGetDepositAndSession(depositId);
                     if (session is null)
                     {
@@ -846,7 +847,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var providerAddress = deposit.DataHeader.Provider.Address;
             if (!_providers.TryGetValue(session.ProviderNodeId, out var providerPeer))
             {
-                if (_logger.IsInfo) _logger.Info($"Provider: '{providerAddress}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Provider: '{providerAddress}' was not found.");
 
                 return;
             }
@@ -931,21 +932,21 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         {
             if (!_discoveredDataHeaders.TryGetValue(headerId, out var dataHeader))
             {
-                if (_logger.IsInfo) _logger.Info($"Available data header: '{headerId}' was not found.");
+                if (_logger.IsError) _logger.Error($"Available data header: '{headerId}' was not found.");
 
                 return null;
             }
 
             if (string.IsNullOrWhiteSpace(kyc))
             {
-                if (_logger.IsInfo) _logger.Info("KYC cannot be empty.");
+                if (_logger.IsError) _logger.Error("KYC cannot be empty.");
 
                 return null;
             }
 
-            if (kyc.Length > 10000)
+            if (kyc.Length > 100000)
             {
-                if (_logger.IsInfo) _logger.Info("Invalid KYC (over 10000 chars).");
+                if (_logger.IsError) _logger.Error("Invalid KYC (over 100000 chars).");
 
                 return null;
             }
@@ -1008,7 +1009,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     case DepositApprovalState.Rejected:
                         existingDepositApproval.Reject();
                         await _depositApprovalRepository.UpdateAsync(existingDepositApproval);
-                        if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{depositApproval.HeaderId}' was rejected.");
+                        if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{depositApproval.HeaderId}' was rejected.");
                         break;
                 }
             }
@@ -1026,7 +1027,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var depositApproval = await _depositApprovalRepository.GetAsync(id);
             if (depositApproval is null)
             {
-                if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{headerId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{headerId}' was not found.");
                 
                 return;
             }
@@ -1049,7 +1050,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var depositApproval = await _depositApprovalRepository.GetAsync(id);
             if (depositApproval is null)
             {
-                if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{headerId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{headerId}' was not found.");
                 
                 return;
             }
@@ -1063,21 +1064,26 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             depositApproval.Reject();
             await _depositApprovalRepository.UpdateAsync(depositApproval);
-            if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{headerId}' was rejected.");
+            if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{headerId}' was rejected.");
         }
 
         public async Task FinishSessionAsync(Session session, INdmPeer provider, bool removePeer = true)
         {
             if (!_providers.TryGetValue(provider.NodeId, out _))
             {
-                if (_logger.IsInfo) _logger.Info($"Provider: '{provider.NodeId}' was not found.");
-
+                if (_logger.IsInfo) _logger.Info($"Provider node: '{provider.NodeId}' was not found.");
                 return;
             }
 
             if (removePeer)
             {
                 _providers.TryRemove(provider.NodeId, out _);
+            }
+
+            if (provider.ProviderAddress is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Provider node: '{provider.NodeId}' has no address assigned.");
+                return;
             }
 
             if (_providersWithCommonAddress.TryGetValue(provider.ProviderAddress, out var nodes) && removePeer)
@@ -1108,14 +1114,19 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             if (_logger.IsInfo) _logger.Info($"Finishing {_sessions.Count} session(s) with provider: '{provider.ProviderAddress}'.");
             if (!_providers.TryGetValue(provider.NodeId, out var providerPeer))
             {
-                if (_logger.IsInfo) _logger.Info($"Provider: '{provider.NodeId}' was not found.");
-
+                if (_logger.IsWarn) _logger.Warn($"Provider node: '{provider.NodeId}' was not found.");
                 return;
             }
             
             if (removePeer)
             {
                 _providers.TryRemove(provider.NodeId, out _);
+            }
+            
+            if (provider.ProviderAddress is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Provider node: '{provider.NodeId}' has no address assigned.");
+                return;
             }
 
             if (_providersWithCommonAddress.TryGetValue(provider.ProviderAddress, out var nodes) && removePeer)
@@ -1151,7 +1162,6 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             if (!_providersWithCommonAddress.TryGetValue(address, out var nodes) || nodes.Count == 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Provider nodes were not found for address: '{address}'.");
-
                 return null;
             }
             
@@ -1159,8 +1169,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var nodeId = nodes.First();
             if (!_providers.TryGetValue(nodeId.Key, out var providerPeer))
             {
-                if (_logger.IsWarn) _logger.Warn($"Provider: '{nodeId}' was not found.");
-                
+                if (_logger.IsWarn) _logger.Warn($"Provider node: '{nodeId}' was not found.");
                 return null;
             }
 
@@ -1243,7 +1252,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return session;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Active session for deposit: '{depositId}' was not found.");
+            if (_logger.IsWarn) _logger.Warn($"Active session for deposit: '{depositId}' was not found.");
             
             return null;
         }
