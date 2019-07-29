@@ -89,6 +89,7 @@ namespace Nethermind.DataMarketplace.Test
         protected INdmConfig _ndmConfig;
         protected AbiEncoder _abiEncoder = new AbiEncoder();
         protected ILogManager _logManager = new OneLoggerLogManager(new TestLogger());
+        protected Address _contractAddress;
 
         protected void Prepare()
         {
@@ -114,6 +115,7 @@ namespace Nethermind.DataMarketplace.Test
 
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
+            _contractAddress = receipt.ContractAddress;
         }
 
         protected TxReceipt DeployContract(byte[] initCode)

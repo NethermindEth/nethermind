@@ -56,6 +56,8 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Clients;
+using Nethermind.Grpc.Producers;
+using Nethermind.Grpc.Servers;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;

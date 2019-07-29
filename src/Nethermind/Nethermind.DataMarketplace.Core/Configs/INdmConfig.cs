@@ -69,7 +69,8 @@ namespace Nethermind.DataMarketplace.Core.Configs
         string FaucetHost { get; }
         [ConfigItem(Description = "Maximal value (Wei) of a single ETH request to the faucet", DefaultValue = "1000000000000000000")]
         UInt256 FaucetWeiRequestMaxValue { get; }
-
+        [ConfigItem(Description = "Maximal value (ETH) of a total ETH requests (per day) to the faucet", DefaultValue = "500")]
+        UInt256 FaucetEthDailyRequestsTotalValue { get; }
         [ConfigItem(Description = "An arbitrary path to the plugins directory that should be loaded as external assemblies", DefaultValue = "ndm/plugins")]
         string PluginsPath { get; }
     }

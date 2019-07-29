@@ -43,6 +43,7 @@ namespace Nethermind.DataMarketplace.Core.Configs
         public string FaucetAddress { get; set; }
         public string FaucetHost { get; set; }
         public UInt256 FaucetWeiRequestMaxValue { get; set; } = 1000000000000000000;
+        public UInt256 FaucetEthDailyRequestsTotalValue { get; set; } = 500;
         public string PluginsPath { get; set; } = "ndm/plugins";
     }
 }

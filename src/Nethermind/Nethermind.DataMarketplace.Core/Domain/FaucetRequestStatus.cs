@@ -9,6 +9,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         SameAddressAsFaucet,
         ZeroValue,
         TooBigValue,
+        DailyRequestsTotalValueReached,
         ProcessingRequestError,
         RequestAlreadyProcessing,
         RequestAlreadyProcessedToday,

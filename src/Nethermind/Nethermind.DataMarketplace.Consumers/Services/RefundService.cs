@@ -36,15 +36,16 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IAbiEncoder _abiEncoder;
         private readonly IWallet _wallet;
-        private readonly INdmConfig _ndmConfig;
+        private readonly Address _contractAddress;
         private readonly ILogger _logger;
 
-        public RefundService(IBlockchainBridge blockchainBridge, IAbiEncoder abiEncoder, IWallet wallet, INdmConfig ndmConfig, ILogManager logManager)
+        public RefundService(IBlockchainBridge blockchainBridge, IAbiEncoder abiEncoder, IWallet wallet,
+            Address contractAddress, ILogManager logManager)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _ndmConfig = ndmConfig ?? throw new ArgumentNullException(nameof(ndmConfig));
+            _contractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
@@ -54,7 +55,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             Transaction transaction = new Transaction();
             transaction.Value = 0;
             transaction.Data = txData;
-            transaction.To = new Address(_ndmConfig.ContractAddress);
+            transaction.To = _contractAddress;
             transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = 90000; // check  
             transaction.GasPrice = 20.GWei();
@@ -75,7 +76,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             Transaction transaction = new Transaction();
             transaction.Value = 0;
             transaction.Data = txData;
-            transaction.To = new Address(_ndmConfig.ContractAddress);
+            transaction.To = _contractAddress;
             transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = 90000; // check  
             transaction.GasPrice = 20.GWei();

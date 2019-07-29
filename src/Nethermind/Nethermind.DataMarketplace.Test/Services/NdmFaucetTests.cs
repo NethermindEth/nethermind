@@ -39,6 +39,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         private IEthRequestRepository _repository;
         private Address _faucetAddress;
         private UInt256 _maxValue;
+        private UInt256 _dailyRequestsTotalValueEth;
         private bool _enabled;
         private ITimestamp _timestamp;
         private ILogManager _logManager;
@@ -49,14 +50,15 @@ namespace Nethermind.DataMarketplace.Test.Services
         private Account _faucetAccount;
         private Keccak _transactionHash;
 
-
         [SetUp]
         public void Setup()
         {
             _blockchainBridge = Substitute.For<IBlockchainBridge>();
             _repository = Substitute.For<IEthRequestRepository>();
+            _repository.SumDailyRequestsTotalValueAsync(Arg.Any<DateTime>()).ReturnsForAnyArgs(UInt256.Zero);
             _faucetAddress = Address.FromNumber(1);
             _maxValue = 1.Ether();
+            _dailyRequestsTotalValueEth = 500;
             _enabled = true;
             _timestamp = new Timestamp();
             _logManager = LimboLogs.Instance;
@@ -73,7 +75,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task request_eth_should_fail_for_disabled_faucet()
         {
             _enabled = false;
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.FaucetDisabled);
         }
@@ -82,16 +84,16 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task request_eth_should_fail_for_null_faucet_address()
         {
             _faucetAddress = null;
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
-            ethRequested.Should().Be(FaucetResponse.FaucetAddressNotSet);
+            ethRequested.Should().Be(FaucetResponse.FaucetDisabled);
         }
 
         [Test]
         public async Task request_eth_should_fail_for_zero_faucet_address()
         {
             _faucetAddress = Address.Zero;
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.FaucetAddressNotSet);
         }
@@ -100,7 +102,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task request_eth_should_fail_for_empty_host()
         {
             _host = string.Empty;
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.InvalidNodeAddress);
         }
@@ -109,7 +111,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task request_eth_should_fail_for_null_address()
         {
             _address = null;
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.InvalidNodeAddress);
         }
@@ -118,7 +120,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task request_eth_should_fail_for_zero_address()
         {
             _address = Address.Zero;
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.InvalidNodeAddress);
         }
@@ -127,7 +129,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task request_eth_should_fail_for_faucet_address_equal_address()
         {
             _address = _faucetAddress;
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.SameAddressAsFaucet);
         }
@@ -136,7 +138,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task request_eth_should_fail_for_zero_value()
         {
             _value = 0;
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.ZeroValue);
         }
@@ -145,7 +147,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task request_eth_should_fail_for_value_bigger_than_max_value()
         {
             _value = _maxValue + 1;
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.TooBigValue);
         }
@@ -157,17 +159,34 @@ namespace Nethermind.DataMarketplace.Test.Services
             _timestamp = new Timestamp(requestedAt);
             var latestRequest = new EthRequest(Keccak.Zero, _host, _address, _value, requestedAt, Keccak.Zero);
             _repository.GetLatestAsync(_host).Returns(latestRequest);
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should()
                 .Be(FaucetResponse.RequestAlreadyProcessedToday(FaucetRequestDetails.From(latestRequest)));
         }
 
         [Test]
+        public async Task request_eth_should_fail_when_today_requests_value_limit_was_reached()
+        {
+            var requestedAt = new DateTime(2019, 1, 1);
+            _timestamp = new Timestamp(requestedAt);
+            _dailyRequestsTotalValueEth = 3;
+            await InitFaucetAsync();
+            var ethRequested = await TryRequestEthAsync();
+            ethRequested.Status.Should().Be(FaucetRequestStatus.RequestCompleted);
+            ethRequested = await TryRequestEthAsync();
+            ethRequested.Status.Should().Be(FaucetRequestStatus.RequestCompleted);
+            ethRequested = await TryRequestEthAsync();
+            ethRequested.Status.Should().Be(FaucetRequestStatus.RequestCompleted);
+            ethRequested = await TryRequestEthAsync();
+            ethRequested.Should().Be(FaucetResponse.DailyRequestsTotalValueReached);
+        }
+
+        [Test]
         public async Task request_eth_should_succeed_when_no_previous_requests_were_made()
         {
             _timestamp = new Timestamp(DateTime.UtcNow);
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.RequestCompleted(new FaucetRequestDetails("127.0.0.1",
                 _address, _value, _timestamp.UtcNow, Keccak.Zero)));
@@ -180,15 +199,18 @@ namespace Nethermind.DataMarketplace.Test.Services
             _timestamp = new Timestamp(requestedAt.AddDays(1));
             var latestRequest = new EthRequest(Keccak.Zero, _host, _address, _value, requestedAt, Keccak.Zero);
             _repository.GetLatestAsync(_host).Returns(latestRequest);
-            InitFaucet();
+            await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.RequestCompleted(new FaucetRequestDetails("127.0.0.1",
                 _address, _value, _timestamp.UtcNow, Keccak.Zero)));
         }
 
-        private void InitFaucet()
-            => _faucet = new NdmFaucet(_blockchainBridge, _repository, _faucetAddress, _maxValue, _enabled,
-                _timestamp, _logManager);
+        private async Task InitFaucetAsync()
+        {
+            _faucet = new NdmFaucet(_blockchainBridge, _repository, _faucetAddress, _maxValue,
+                _dailyRequestsTotalValueEth, _enabled, _timestamp, _logManager);
+            await Task.Delay(1);
+        }
 
         private Task<FaucetResponse> TryRequestEthAsync() => _faucet.TryRequestEthAsync(_host, _address, _value);
     }

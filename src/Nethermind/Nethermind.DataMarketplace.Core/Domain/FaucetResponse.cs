@@ -21,6 +21,9 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public static FaucetResponse ZeroValue => new FaucetResponse(FaucetRequestStatus.ZeroValue);
         public static FaucetResponse TooBigValue => new FaucetResponse(FaucetRequestStatus.TooBigValue);
 
+        public static FaucetResponse DailyRequestsTotalValueReached =>
+            new FaucetResponse(FaucetRequestStatus.DailyRequestsTotalValueReached);
+
         public static FaucetResponse RequestAlreadyProcessing =>
             new FaucetResponse(FaucetRequestStatus.RequestAlreadyProcessing);
 

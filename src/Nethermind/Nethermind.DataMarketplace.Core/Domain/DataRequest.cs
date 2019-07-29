@@ -43,7 +43,6 @@ namespace Nethermind.DataMarketplace.Core.Domain
             Pepper = pepper;
             Provider = provider;
             Consumer = consumer;
-            Consumer = consumer;
             Signature = signature;
         }
     }

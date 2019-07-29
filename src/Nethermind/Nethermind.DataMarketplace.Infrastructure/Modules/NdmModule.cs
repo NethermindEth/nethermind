@@ -45,6 +45,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             var consumerAddress = string.IsNullOrWhiteSpace(config.ConsumerAddress)
                 ? Address.Zero
                 : new Address(config.ConsumerAddress);
+            var contractAddress = string.IsNullOrWhiteSpace(config.ContractAddress)
+                ? Address.Zero
+                : new Address(config.ContractAddress);
             UnlockHardcodedAccounts(providerAddress, consumerAddress, services.Wallet);
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
             var filterStore = new FilterStore();
@@ -67,7 +70,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.Ecdsa);
             var dataHeaderRlpDecoder = new DataHeaderDecoder();
             var encoder = new AbiEncoder();
-            var depositService = new DepositService(blockchainBridge, encoder, services.Wallet, config,
+            var depositService = new DepositService(blockchainBridge, encoder, services.Wallet, contractAddress,
                 LimboLogs.Instance);
             var ndmConsumerChannelManager = services.NdmConsumerChannelManager;
             var ndmDataPublisher = services.NdmDataPublisher;

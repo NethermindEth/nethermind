@@ -51,6 +51,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var faucetAddress = context.DecodeString();
             var faucetHost = context.DecodeString();
             var faucetWeiRequestMaxValue = context.DecodeUInt256();
+            var faucetEthDailyRequestsTotalValue = context.DecodeUInt256();
             var consumerAddress = context.DecodeString();
             var contractAddress = context.DecodeString();
             var providerName = context.DecodeString();
@@ -76,6 +77,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 FaucetAddress = faucetAddress,
                 FaucetHost = faucetHost,
                 FaucetWeiRequestMaxValue = faucetWeiRequestMaxValue,
+                FaucetEthDailyRequestsTotalValue = faucetEthDailyRequestsTotalValue,
                 ConsumerAddress = consumerAddress,
                 ContractAddress = contractAddress,
                 ProviderName = providerName,
@@ -109,6 +111,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Nethermind.Core.Encoding.Rlp.Encode(item.FaucetAddress),
                 Nethermind.Core.Encoding.Rlp.Encode(item.FaucetHost),
                 Nethermind.Core.Encoding.Rlp.Encode(item.FaucetWeiRequestMaxValue),
+                Nethermind.Core.Encoding.Rlp.Encode(item.FaucetEthDailyRequestsTotalValue),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ConsumerAddress),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ContractAddress),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ProviderName),
