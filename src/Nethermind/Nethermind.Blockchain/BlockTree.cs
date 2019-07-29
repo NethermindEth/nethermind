@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain
                 {
                     BlockHeader genesisHeader = LoadHeader(genesisLevel.BlockInfos[0].BlockHash);
                     Genesis = genesisHeader;
-                    LoadHeadBlock();
+                    LoadHeadBlockAtStart();
                 }
             }
 
@@ -995,7 +995,7 @@ namespace Nethermind.Blockchain
             return BestKnownNumber - headNumber;
         }
 
-        private void LoadHeadBlock()
+        private void LoadHeadBlockAtStart()
         {
             byte[] data = _blockInfoDb.Get(HeadAddressInDb);
             if (data != null)

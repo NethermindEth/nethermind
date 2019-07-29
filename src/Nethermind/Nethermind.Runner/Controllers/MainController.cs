@@ -17,7 +17,6 @@
  */
 
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -33,20 +32,33 @@ namespace Nethermind.Runner.Controllers
     public class MainController : ControllerBase
     {
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
-        private readonly JsonSerializerSettings _jsonSettings;
+        private static JsonSerializerSettings _jsonSettings;
+        private static JsonSerializer _serializer;
+        private static object _lockObject = new object();
 
         public MainController(IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
-            _jsonSettings = new JsonSerializerSettings
+
+            if (_serializer == null)
             {
-                Formatting = Formatting.Indented,
-                ContractResolver = new CamelCasePropertyNamesContractResolver()
-            };
-            
-            foreach (var converter in jsonRpcService.Converters)
-            {
-                _jsonSettings.Converters.Add(converter);
+                lock (_lockObject)
+                {
+                    if (_serializer == null)
+                    {
+                        _jsonSettings = new JsonSerializerSettings
+                        {
+                            ContractResolver = new CamelCasePropertyNamesContractResolver()
+                        };
+
+                        foreach (var converter in jsonRpcService.Converters)
+                        {
+                            _jsonSettings.Converters.Add(converter);
+                        }
+
+                        _serializer = JsonSerializer.Create(_jsonSettings);
+                    }
+                }
             }
         }
 
@@ -59,11 +71,22 @@ namespace Nethermind.Runner.Controllers
             using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
             {
                 var result = await _jsonRpcProcessor.ProcessAsync(await reader.ReadToEndAsync());
-                var json = result.IsCollection
-                    ? JsonConvert.SerializeObject(result.Responses, _jsonSettings)
-                    : JsonConvert.SerializeObject(result.Responses.SingleOrDefault(), _jsonSettings);
-                await Response.WriteAsync($"{json}\n");
+
+                using (var streamWriter = new StreamWriter(Response.Body))
+                using (var jsonTextWriter = new JsonTextWriter(streamWriter))
+                {
+                    if (result.IsCollection)
+                    {
+                        _serializer.Serialize(jsonTextWriter, result.Responses);
+                    }
+                    else
+                    {
+                        _serializer.Serialize(jsonTextWriter, result.Responses[0]);
+                    }
+                }
             }
+
+            await Response.WriteAsync("\n");
         }
     }
 }

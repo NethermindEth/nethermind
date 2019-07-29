@@ -23,7 +23,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\goerli_archive.cfg --baseDbPath C:\\nethermind_db"
+      "commandLineArgs": "--config configs\\goerli_archive.cfg --baseDbPath C:\\ --InitConfig.JsonRpcEnabled true"
     }
   }
 }
