@@ -66,8 +66,8 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             MainNetSpecProvider mainnet = MainNetSpecProvider.Instance;
 
-            IReleaseSpec oldSpec = mainnet.GetSpec(7280000);
-            IReleaseSpec newSpec = provider.GetSpec(7280000);
+            IReleaseSpec oldSpec = mainnet.GetSpec(10000000);
+            IReleaseSpec newSpec = provider.GetSpec(10000000);
 
             PropertyInfo[] propertyInfos = typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
             foreach (PropertyInfo propertyInfo in propertyInfos)
@@ -191,6 +191,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             chainSpec.Parameters.Eip1052Transition = 10520L;
             chainSpec.Parameters.Eip1283Transition = 12830L;
             chainSpec.Parameters.Eip1283DisableTransition = 12831L;
+            chainSpec.Parameters.Eip1344Transition = 13440L;
 
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             Assert.AreEqual(long.MaxValue, provider.GetSpec(maxCodeTransition - 1).MaxCodeSize, "one before");
@@ -676,6 +677,31 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(true, releaseSpec1283Disabled.IsEip1234Enabled);
             Assert.AreEqual(false, releaseSpec1283Disabled.IsEip1283Enabled);
             Assert.AreEqual(false, releaseSpec1283Disabled.IsEip1344Enabled);
+            
+            var releaseSpec1344 = provider.GetSpec(13440L);
+            Assert.AreEqual(releaseSpec1344.MaxCodeSize, maxCodeSize);
+            Assert.AreEqual(true, releaseSpec1344.IsEip2Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip7Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip100Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip140Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip145Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip150Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip155Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip158Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip160Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip170Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip196Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip197Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip198Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip211Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip214Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip649Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip658Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip1014Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip1052Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip1234Enabled);
+            Assert.AreEqual(false, releaseSpec1344.IsEip1283Enabled);
+            Assert.AreEqual(true, releaseSpec1344.IsEip1344Enabled);
         }
     }
 }

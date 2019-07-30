@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2018 Demerzel Solutions LimitedZ
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,8 @@
  */
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -24,19 +26,84 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1344Tests : VirtualMachineTestsBase
     {
-        [Test]
-        public void chain_id_opcode_puts_expected_value_onto_the_stack()
+        private void Test(int chainId)
         {
-            byte[] code = Prepare.EvmCode
+            var code = Prepare.EvmCode
                 .Op(Instruction.CHAINID)
                 .PushData(0)
                 .Op(Instruction.SSTORE)
                 .Done;
-            
             var result = Execute(code);
+            var setCost = chainId == 0 ? GasCostOf.SReset : GasCostOf.SSet;
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
-            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + GasCostOf.SSet);
-            AssertStorage(0, SpecProvider.ChainId.ToBigEndianByteArray());
+            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + setCost);
+            AssertStorage(0, chainId.ToBigEndianByteArray());
+        }
+        
+        private class Custom0 : Eip1344Tests
+        {
+            protected override ISpecProvider SpecProvider => new CustomSpecProvider(0, (0, Istanbul.Instance));
+
+            [Test]
+            public void given_custom_0_network_chain_id_opcode_puts_expected_value_onto_the_stack()
+            {
+                Test(SpecProvider.ChainId);
+            }
+        }
+        
+        private class Custom32000 : Eip1344Tests
+        {
+            protected override ISpecProvider SpecProvider => new CustomSpecProvider(32000, (0, Istanbul.Instance));
+
+            [Test]
+            public void given_custom_custom_32000_network_chain_id_opcode_puts_expected_value_onto_the_stack()
+            {
+                Test(SpecProvider.ChainId);
+            }
+        }
+        
+        private class Goerli : Eip1344Tests
+        {
+            protected override ISpecProvider SpecProvider => GoerliSpecProvider.Instance;
+
+            [Test]
+            public void given_goerli_network_chain_id_opcode_puts_expected_value_onto_the_stack()
+            {
+                Test(SpecProvider.ChainId);
+            }
+        }
+        
+        private class Mainnet : Eip1344Tests
+        {
+            protected override ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
+
+            [Test]
+            public void given_mainnet_network_chain_id_opcode_puts_expected_value_onto_the_stack()
+            {
+                Test(SpecProvider.ChainId);
+            }
+        }
+
+        private class Rinkeby : Eip1344Tests
+        {
+            protected override ISpecProvider SpecProvider => RinkebySpecProvider.Instance;
+
+            [Test]
+            public void given_rinkeby_network_chain_id_opcode_puts_expected_value_onto_the_stack()
+            {
+                Test(SpecProvider.ChainId);
+            }
+        }
+        
+        private class Ropsten : Eip1344Tests
+        {
+            protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
+
+            [Test]
+            public void given_ropsten_network_chain_id_opcode_puts_expected_value_onto_the_stack()
+            {
+                Test(SpecProvider.ChainId);
+            }
         }
     }
 }

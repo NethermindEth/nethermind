@@ -59,7 +59,7 @@ namespace Nethermind.Evm
             0, 0, 0, 0, 0, 0, 0, 0
         };
 
-        private readonly byte[] _chainId;
+        private byte[] _chainId;
 
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly ISpecProvider _specProvider;
