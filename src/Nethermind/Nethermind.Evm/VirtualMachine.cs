@@ -590,6 +590,7 @@ namespace Nethermind.Evm
                 stack.Slice(stackHead * 32, 32).Clear();
                 stack[stackHead * 32 + 31] = value;
                 stackHead++;
+
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
@@ -733,7 +734,8 @@ namespace Nethermind.Evm
                 }
             }
 
-            Span<byte> wordBuffer = new byte[32].AsSpan();
+            byte[] wordBufferArray = new byte[32];
+            Span<byte> wordBuffer = wordBufferArray.AsSpan();
 
             void Swap(int depth, Span<byte> stack, Span<byte> buffer)
             {
@@ -1262,12 +1264,13 @@ namespace Nethermind.Evm
 
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
-                        for (int i = 0; i < 32; i++)
-                        {
-                            wordBuffer[i] = (byte)(a[i] & b[i]);
-                        }
+        
+                        Vector<byte> aVec = new Vector<byte>(a);
+                        Vector<byte> bVec = new Vector<byte>(b);
+                        
+                        Vector.BitwiseAnd(aVec, bVec).CopyTo(wordBufferArray);
 
-                        PushBytes(wordBuffer, bytesOnStack);
+                        PushBytes(wordBufferArray, bytesOnStack);
                         break;
                     }
                     case Instruction.OR:
@@ -1280,12 +1283,13 @@ namespace Nethermind.Evm
 
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
-                        for (int i = 0; i < 32; i++)
-                        {
-                            wordBuffer[i] = (byte)(a[i] | b[i]);
-                        }
+        
+                        Vector<byte> aVec = new Vector<byte>(a);
+                        Vector<byte> bVec = new Vector<byte>(b);
+                        
+                        Vector.BitwiseOr(aVec, bVec).CopyTo(wordBufferArray);
 
-                        PushBytes(wordBuffer, bytesOnStack);
+                        PushBytes(wordBufferArray, bytesOnStack);
                         break;
                     }
                     case Instruction.XOR:
@@ -1298,12 +1302,13 @@ namespace Nethermind.Evm
 
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
-                        for (int i = 0; i < 32; i++)
-                        {
-                            wordBuffer[i] = (byte)(a[i] ^ b[i]);
-                        }
+        
+                        Vector<byte> aVec = new Vector<byte>(a);
+                        Vector<byte> bVec = new Vector<byte>(b);
+                        
+                        Vector.Xor(aVec, bVec).CopyTo(wordBufferArray);
 
-                        PushBytes(wordBuffer, bytesOnStack);
+                        PushBytes(wordBufferArray, bytesOnStack);
                         break;
                     }
                     case Instruction.NOT:
@@ -1314,13 +1319,14 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        Span<byte> bytes = PopBytes(bytesOnStack);
-                        for (int i = 0; i < 32; ++i)
-                        {
-                            bytes[i] = (byte)~bytes[i];
-                        }
+                        Span<byte> a = PopBytes(bytesOnStack);
 
-                        PushBytes(bytes, bytesOnStack);
+                        Vector<byte> aVec = new Vector<byte>(a);
+                        Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
+
+                        negVec.CopyTo(wordBufferArray);
+
+                        PushBytes(wordBufferArray, bytesOnStack);
                         break;
                     }
                     case Instruction.BYTE:
@@ -1507,8 +1513,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger gasPrice = env.GasPrice; 
-                        PushUInt(ref gasPrice, bytesOnStack);
+                        UInt256 gasPrice = env.GasPrice; 
+                        PushUInt256(ref gasPrice, bytesOnStack);
                         break;
                     }
                     case Instruction.EXTCODESIZE:

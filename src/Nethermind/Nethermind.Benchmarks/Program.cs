@@ -68,6 +68,10 @@ namespace Nethermind.Benchmarks
 //              BenchmarkRunner.Run<RlpDecodeLong>();
 //              BenchmarkRunner.Run<RlpDecodeInt>();
               BenchmarkRunner.Run<SignExtend>();
+            BenchmarkRunner.Run<BitwiseOr>();
+            BenchmarkRunner.Run<BitwiseAnd>();
+            BenchmarkRunner.Run<BitwiseNot>();
+            BenchmarkRunner.Run<BitwiseXor>();
 
 //              BenchmarkRunner.Run<PatriciaTree>();
 //            
