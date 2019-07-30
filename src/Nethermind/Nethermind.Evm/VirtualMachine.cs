@@ -1109,7 +1109,7 @@ namespace Nethermind.Evm
                             break;
                         }
 
-                        int position = (int)a;
+                        int position = 31 - (int)a;
 
                         Span<byte> b = PopBytes(bytesOnStack);
                         sbyte sign = (sbyte)b[position];

@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] code = Prepare.EvmCode
                 .PushData(0)
-                .PushData(31)
+                .PushData(0)
                 .Op(Instruction.SIGNEXTEND)
                 .PushData(0)
                 .Op(Instruction.SSTORE)
@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] code = Prepare.EvmCode
                 .PushData(255)
-                .PushData(31)
+                .PushData(0)
                 .Op(Instruction.SIGNEXTEND)
                 .PushData(0)
                 .Op(Instruction.SSTORE)
