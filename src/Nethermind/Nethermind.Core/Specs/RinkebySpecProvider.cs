@@ -48,10 +48,10 @@ namespace Nethermind.Core.Specs
             
             if (blockNumber < IstanbulBlockNumber)
             {
-                return Istanbul.Instance;
+                return ConstantinopleFix.Instance;
             }
             
-            return ConstantinopleFix.Instance;
+            return Istanbul.Instance;
         }
 
         public long? DaoBlockNumber { get; } = null;

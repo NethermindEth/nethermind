@@ -58,10 +58,10 @@ namespace Nethermind.Core.Specs
             
             if (blockNumber < IstanbulBlockNumber)
             {
-                return Istanbul.Instance;
+                return ConstantinopleFix.Instance;
             }
 
-            return ConstantinopleFix.Instance;
+            return Istanbul.Instance;
         }
 
         public static long HomesteadBlockNumber { get; } = 1150000;

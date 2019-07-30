@@ -66,8 +66,8 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             MainNetSpecProvider mainnet = MainNetSpecProvider.Instance;
 
-            IReleaseSpec oldSpec = mainnet.GetSpec(10000000);
-            IReleaseSpec newSpec = provider.GetSpec(10000000);
+            IReleaseSpec oldSpec = mainnet.GetSpec(7280000);
+            IReleaseSpec newSpec = provider.GetSpec(7280000);
 
             PropertyInfo[] propertyInfos = typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
             foreach (PropertyInfo propertyInfo in propertyInfos)

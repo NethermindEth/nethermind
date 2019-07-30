@@ -42,6 +42,7 @@ namespace Nethermind.Evm.Test
         
         private class Custom0 : Eip1344Tests
         {
+            protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber;
             protected override ISpecProvider SpecProvider => new CustomSpecProvider(0, (0, Istanbul.Instance));
 
             [Test]
@@ -53,6 +54,7 @@ namespace Nethermind.Evm.Test
         
         private class Custom32000 : Eip1344Tests
         {
+            protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber;
             protected override ISpecProvider SpecProvider => new CustomSpecProvider(32000, (0, Istanbul.Instance));
 
             [Test]
@@ -64,6 +66,7 @@ namespace Nethermind.Evm.Test
         
         private class Goerli : Eip1344Tests
         {
+            protected override long BlockNumber => GoerliSpecProvider.IstanbulBlockNumber;
             protected override ISpecProvider SpecProvider => GoerliSpecProvider.Instance;
 
             [Test]
@@ -75,6 +78,7 @@ namespace Nethermind.Evm.Test
         
         private class Mainnet : Eip1344Tests
         {
+            protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber;
             protected override ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
 
             [Test]
@@ -86,6 +90,7 @@ namespace Nethermind.Evm.Test
 
         private class Rinkeby : Eip1344Tests
         {
+            protected override long BlockNumber => RinkebySpecProvider.IstanbulBlockNumber;
             protected override ISpecProvider SpecProvider => RinkebySpecProvider.Instance;
 
             [Test]
@@ -97,6 +102,7 @@ namespace Nethermind.Evm.Test
         
         private class Ropsten : Eip1344Tests
         {
+            protected override long BlockNumber => RopstenSpecProvider.IstanbulBlockNumber;
             protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
 
             [Test]

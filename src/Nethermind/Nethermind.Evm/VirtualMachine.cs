@@ -1664,6 +1664,13 @@ namespace Nethermind.Evm
                     }
                     case Instruction.CHAINID:
                     {
+                        if (!spec.IsEip1344Enabled)
+                        {
+                            Metrics.EvmExceptions++;
+                            EndInstructionTraceError(BadInstructionErrorText);
+                            return CallResult.InvalidInstructionException;
+                        }
+                        
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
                             EndInstructionTraceError(OutOfGasErrorText);
