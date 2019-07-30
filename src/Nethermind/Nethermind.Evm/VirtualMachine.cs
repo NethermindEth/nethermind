@@ -58,6 +58,14 @@ namespace Nethermind.Evm
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0
         };
+        
+        internal readonly byte[] BytesMax32 =
+        {
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255
+        };
 
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(4 * 1024);
@@ -1308,8 +1316,9 @@ namespace Nethermind.Evm
                         Span<byte> a = PopBytes(bytesOnStack);
 
                         Vector<byte> aVec = new Vector<byte>(a);
+                        Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
 
-                        Vector.Negate(aVec).CopyTo(wordBufferArray);
+                        negVec.CopyTo(wordBufferArray);
 
                         PushBytes(wordBufferArray, bytesOnStack);
                         break;

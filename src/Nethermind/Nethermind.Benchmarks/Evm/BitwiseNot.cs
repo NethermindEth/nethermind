@@ -34,6 +34,14 @@ namespace Nethermind.Benchmarks.Evm
         private byte[] a = new byte[32];
         private byte[] c = new byte[32];
         
+        internal readonly byte[] BytesMax32 =
+        {
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255
+        };
+        
         [Benchmark(Baseline = true)]
         public void Current()
         {
@@ -47,7 +55,7 @@ namespace Nethermind.Benchmarks.Evm
         public void Improved()
         {
             Vector<byte> aVec = new Vector<byte>(a);
-            Vector.Negate(aVec).CopyTo(c);
+            Vector.Xor(aVec, new Vector<byte>(BytesMax32)).CopyTo(c);
         }
     }
 }
