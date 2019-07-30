@@ -32,10 +32,16 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GetSpec(long blockNumber)
         {
+            if (blockNumber < IstanbulBlockNumber)
+            {
+                return Istanbul.Instance;
+            }
+
             return ConstantinopleFix.Instance;
         }
 
         public long? DaoBlockNumber { get; } = null;
+        public static long IstanbulBlockNumber { get; } = 10000000;
 
         public int ChainId => 0x5;
     }
