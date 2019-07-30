@@ -58,6 +58,14 @@ namespace Nethermind.Evm
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0
         };
+        
+        internal readonly byte[] BytesMax32 =
+        {
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255
+        };
 
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(4 * 1024);
@@ -1101,16 +1109,21 @@ namespace Nethermind.Evm
                             break;
                         }
 
+                        int position = (int)a;
+
                         Span<byte> b = PopBytes(bytesOnStack);
-                        BitArray bits1 = b.ToBigEndianBitArray256();
-                        int bitPosition = Math.Max(0, 248 - 8 * (int)a);
-                        bool isSet = bits1[bitPosition];
-                        for (int i = 0; i < bitPosition; i++)
+                        sbyte sign = (sbyte)b[31 - position];
+
+                        if (sign < 0)
                         {
-                            bits1[i] = isSet;
+                            BytesZero32.AsSpan().Slice(0, position - 1).CopyTo(b.Slice(0, position - 1));
+                        }
+                        else
+                        {
+                            BytesMax32.AsSpan().Slice(0, position - 1).CopyTo(b.Slice(0, position - 1));
                         }
 
-                        PushBytes(bits1.ToBytes(), bytesOnStack);
+                        PushBytes(b, bytesOnStack);
                         break;
                     }
                     case Instruction.LT:
