@@ -44,8 +44,8 @@ namespace Ethereum.VM.Test
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
         private IStateProvider _stateProvider;
+        private ISpecProvider _specProvider;
         private ILogManager _logManager = NullLogManager.Instance;
-        private readonly IReleaseSpec _releaseSpec = Olympic.Instance;
 
         [SetUp]
         public void Setup()
@@ -53,6 +53,7 @@ namespace Ethereum.VM.Test
             _stateDb = new StateDb();
             _codeDb = new StateDb();
             _blockhashProvider = new TestBlockhashProvider();
+            _specProvider = OlympicSpecProvider.Instance;;
             _stateProvider = new StateProvider(_stateDb, _codeDb, _logManager);
             _storageProvider = new StorageProvider(_stateDb, _stateProvider, _logManager);
         }
@@ -142,7 +143,7 @@ namespace Ethereum.VM.Test
         {
             TestContext.WriteLine($"Running {test.GetType().FullName}");
             
-            VirtualMachine machine = new VirtualMachine(_stateProvider, _storageProvider, _blockhashProvider, _logManager);
+            VirtualMachine machine = new VirtualMachine(_stateProvider, _storageProvider, _blockhashProvider, _specProvider, _logManager);
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;
@@ -193,7 +194,7 @@ namespace Ethereum.VM.Test
             _storageProvider.Commit();
             _stateProvider.Commit(Olympic.Instance);
 
-            TransactionSubstate substate = machine.Run(state, Olympic.Instance, NullTxTracer.Instance);
+            TransactionSubstate substate = machine.Run(state, NullTxTracer.Instance);
             if (test.Out == null)
             {
                 Assert.NotNull(substate.Error);

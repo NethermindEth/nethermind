@@ -254,6 +254,7 @@ namespace Ethereum.Test.Base
                 stateProvider,
                 storageProvider,
                 blockhashProvider,
+                specProvider,
                 _logManager);
 
             IBlockProcessor blockProcessor = new BlockProcessor(
