@@ -86,15 +86,15 @@ namespace Nethermind.Benchmarks.Evm
         {
             int a = 12;
             Span<byte> localB = b.AsSpan();
-            sbyte sign = (sbyte)localB[31 - a];
+            sbyte sign = (sbyte)localB[a];
 
             if (sign < 0)
             {
-                BytesZero32.AsSpan().Slice(0, a - 1).CopyTo(localB.Slice(0, a - 1));
+                BytesZero32.AsSpan().Slice(0, a).CopyTo(localB.Slice(0, a));
             }
             else
             {
-                BytesMax32.AsSpan().Slice(0, a - 1).CopyTo(localB.Slice(0, a - 1));
+                BytesMax32.AsSpan().Slice(0, a).CopyTo(localB.Slice(0, a));
             }
             
             localB.CopyTo(c);
@@ -105,10 +105,10 @@ namespace Nethermind.Benchmarks.Evm
         {
             int a = 12;
             Span<byte> localB = b.AsSpan();
-            sbyte sign = (sbyte)localB[31 - a];
+            sbyte sign = (sbyte)localB[a];
 
             Span<byte> signBytes = sign < 0 ? BytesZero32.AsSpan() : BytesMax32.AsSpan();
-            signBytes.Slice(0, a - 1).CopyTo(b.Slice(0, a - 1));
+            signBytes.Slice(0, a).CopyTo(b.Slice(0, a));
             
             localB.CopyTo(c);
         }

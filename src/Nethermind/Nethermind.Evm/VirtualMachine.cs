@@ -1112,15 +1112,15 @@ namespace Nethermind.Evm
                         int position = (int)a;
 
                         Span<byte> b = PopBytes(bytesOnStack);
-                        sbyte sign = (sbyte)b[31 - position];
+                        sbyte sign = (sbyte)b[position];
 
-                        if (sign < 0)
+                        if (sign >= 0)
                         {
-                            BytesZero32.AsSpan().Slice(0, position - 1).CopyTo(b.Slice(0, position - 1));
+                            BytesZero32.AsSpan().Slice(0, position).CopyTo(b.Slice(0, position));
                         }
                         else
                         {
-                            BytesMax32.AsSpan().Slice(0, position - 1).CopyTo(b.Slice(0, position - 1));
+                            BytesMax32.AsSpan().Slice(0, position).CopyTo(b.Slice(0, position));
                         }
 
                         PushBytes(b, bytesOnStack);
