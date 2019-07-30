@@ -1111,16 +1111,21 @@ namespace Nethermind.Evm
                             break;
                         }
 
+                        int position = 31 - (int)a;
+
                         Span<byte> b = PopBytes(bytesOnStack);
-                        BitArray bits1 = b.ToBigEndianBitArray256();
-                        int bitPosition = Math.Max(0, 248 - 8 * (int)a);
-                        bool isSet = bits1[bitPosition];
-                        for (int i = 0; i < bitPosition; i++)
+                        sbyte sign = (sbyte)b[position];
+
+                        if (sign >= 0)
                         {
-                            bits1[i] = isSet;
+                            BytesZero32.AsSpan().Slice(0, position).CopyTo(b.Slice(0, position));
+                        }
+                        else
+                        {
+                            BytesMax32.AsSpan().Slice(0, position).CopyTo(b.Slice(0, position));
                         }
 
-                        PushBytes(bits1.ToBytes(), bytesOnStack);
+                        PushBytes(b, bytesOnStack);
                         break;
                     }
                     case Instruction.LT:
