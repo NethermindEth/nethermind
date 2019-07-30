@@ -161,5 +161,10 @@ namespace Nethermind.Core.Specs
         /// in chainspec as DifficultyBombDelays and BlockReward
         /// </summary>
         bool IsEip1234Enabled { get; }
+        
+        /// <summary>
+        /// Istanbul ChainID opcode
+        /// </summary>
+        bool IsEip1344Enabled { get; }
     }
 }

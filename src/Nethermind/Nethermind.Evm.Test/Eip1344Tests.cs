@@ -16,17 +16,27 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
+using Nethermind.Core.Extensions;
+using NUnit.Framework;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.Test
 {
-    public interface IVirtualMachine
+    [TestFixture]
+    public class Eip1344Tests : VirtualMachineTestsBase
     {
-        TransactionSubstate Run(EvmState state, ITxTracer tracer);
-        
-        [Todo(Improve.Refactor, "Remove this responsibility from VM")]
-        CodeInfo GetCachedCodeInfo(Address codeSource);
+        [Test]
+        public void chain_id_opcode_puts_expected_value_onto_the_stack()
+        {
+            byte[] code = Prepare.EvmCode
+                .Op(Instruction.CHAINID)
+                .PushData(0)
+                .Op(Instruction.SSTORE)
+                .Done;
+            
+            var result = Execute(code);
+            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + GasCostOf.SSet);
+            AssertStorage(0, SpecProvider.ChainId.ToBigEndianByteArray());
+        }
     }
 }

@@ -59,7 +59,10 @@ namespace Nethermind.Evm
             0, 0, 0, 0, 0, 0, 0, 0
         };
 
+        private readonly byte[] _chainId;
+
         private readonly IBlockhashProvider _blockhashProvider;
+        private readonly ISpecProvider _specProvider;
         private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(4 * 1024);
         private readonly ILogger _logger;
         private readonly IStateProvider _state;
@@ -70,22 +73,24 @@ namespace Nethermind.Evm
         private byte[] _returnDataBuffer = new byte[0];
         private ITxTracer _txTracer;
 
-        public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogManager logManager)
+        public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider,
+            IBlockhashProvider blockhashProvider, ISpecProvider specProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _state = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storage = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
-
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _chainId = specProvider.ChainId.ToBigEndianByteArray();
             InitializePrecompiledContracts();
         }
 
         // can refactor and integrate the other call
-        public TransactionSubstate Run(EvmState state, IReleaseSpec releaseSpec, ITxTracer txTracer)
+        public TransactionSubstate Run(EvmState state, ITxTracer txTracer)
         {
             _txTracer = txTracer;
 
-            IReleaseSpec spec = releaseSpec;
+            IReleaseSpec spec = _specProvider.GetSpec(state.Env.CurrentBlock.Number);
             EvmState currentState = state;
             byte[] previousCallResult = null;
             byte[] previousCallOutput = Bytes.Empty;
@@ -234,7 +239,7 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                if (releaseSpec.IsEip2Enabled)
+                                if (spec.IsEip2Enabled)
                                 {
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
                                     _state.Restore(previousState.StateSnapshot);
@@ -1655,6 +1660,17 @@ namespace Nethermind.Evm
 
                         UInt256 gasLimit = (UInt256)env.CurrentBlock.GasLimit; 
                         PushUInt256(ref gasLimit, bytesOnStack);
+                        break;
+                    }
+                    case Instruction.CHAINID:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            EndInstructionTraceError(OutOfGasErrorText);
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushBytes(_chainId, bytesOnStack);
                         break;
                     }
                     case Instruction.POP:

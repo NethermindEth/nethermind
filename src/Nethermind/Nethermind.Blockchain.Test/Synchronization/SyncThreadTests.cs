@@ -259,7 +259,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var txPool = new TxPool(new InMemoryTxStorage(), new Timestamp(), ecdsa, specProvider, new TxPoolConfig(), logManager);
             var tree = new BlockTree(blockDb, headerDb, blockInfoDb, specProvider, txPool, logManager);
             var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
-            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
+            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
 
             var sealValidator = TestSealValidator.AlwaysValid;
             var headerValidator = new HeaderValidator(tree, sealValidator, specProvider, logManager);
@@ -283,7 +283,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             StateProvider devState = new StateProvider(stateDb, codeDb, logManager);
             StorageProvider devStorage = new StorageProvider(stateDb, devState, logManager);
-            var devEvm = new VirtualMachine(devState, devStorage, blockhashProvider, logManager);
+            var devEvm = new VirtualMachine(devState, devStorage, blockhashProvider, specProvider, logManager);
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
             var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, traceDb, devState, devStorage, txPool, receiptStorage, logManager);
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false, false);
