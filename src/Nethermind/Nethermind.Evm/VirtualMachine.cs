@@ -582,6 +582,7 @@ namespace Nethermind.Evm
                 stack.Slice(stackHead * 32, 32).Clear();
                 stack[stackHead * 32 + 31] = value;
                 stackHead++;
+
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
@@ -1494,8 +1495,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger gasPrice = env.GasPrice; 
-                        PushUInt(ref gasPrice, bytesOnStack);
+                        UInt256 gasPrice = env.GasPrice; 
+                        PushUInt256(ref gasPrice, bytesOnStack);
                         break;
                     }
                     case Instruction.EXTCODESIZE:
