@@ -65,10 +65,10 @@ namespace Nethermind.Blockchain.Test
             EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, logManager);
             MemDb receiptsDb = new MemDb();
             MemDb traceDb = new MemDb();
-            TxPool txPool = new TxPool(NullTxStorage.Instance, Timestamp.Default, ecdsa, specProvider, new TxPoolConfig(), logManager);
+            TxPool txPool = new TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, NullDb.Instance, specProvider, logManager);
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, txPool, logManager);
-            Timestamp timestamp = new Timestamp();
+            Timestamper timestamper = new Timestamper();
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, logManager);
             OmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, logManager);
@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
 
-            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(difficultyCalculator, txPool, blockchainProcessor, sealer, blockTree, timestamp, NullLogManager.Instance);
+            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(difficultyCalculator, txPool, blockchainProcessor, sealer, blockTree, timestamper, NullLogManager.Instance);
             minedBlockProducer.Start();
 
             ManualResetEventSlim manualResetEvent = new ManualResetEventSlim(false);

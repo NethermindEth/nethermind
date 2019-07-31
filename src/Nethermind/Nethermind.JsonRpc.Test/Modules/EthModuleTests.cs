@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider specProvider = MainNetSpecProvider.Instance;
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
-            ITxPool txPool = new TxPool(txStorage, Timestamp.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), LimboLogs.Instance);
+            ITxPool txPool = new TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), LimboLogs.Instance);
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
             IStateReader stateReader = new StateReader(stateDb, codeDb, LimboLogs.Instance);

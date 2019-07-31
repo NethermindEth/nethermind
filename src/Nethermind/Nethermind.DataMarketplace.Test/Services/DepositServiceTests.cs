@@ -56,7 +56,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public void Can_make_and_verify_deposit()
         {
             DepositService depositService = new DepositService(_bridge, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
-            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamp().EpochSeconds + 86000, 1.Ether());
+            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
             Keccak depositTxHash = depositService.MakeDeposit(_consumerAccount, deposit);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -67,7 +67,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public void Make_deposit_verify_incorrect_id()
         {
             DepositService depositService = new DepositService(_bridge, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
-            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamp().EpochSeconds + 86000, 1.Ether());
+            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
             Keccak depositTxHash = depositService.MakeDeposit(_consumerAccount, deposit);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -78,7 +78,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public void Can_make_and_verify_deposit_locally()
         {
             DepositService depositService = new DepositService(_bridge, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
-            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamp().EpochSeconds + 86000, 1.Ether());
+            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
             Keccak depositTxHash = depositService.MakeDeposit(_consumerAccount, deposit);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -126,7 +126,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public void Returns_a_valid_balance()
         {
             DepositService depositService = new DepositService(_bridge, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
-            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamp().EpochSeconds + 86000, 1.Ether());
+            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
             Keccak depositTxHash = depositService.MakeDeposit(_consumerAccount, deposit);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             UInt256 balance = depositService.ReadDepositBalance(_consumerAccount, deposit.Id);

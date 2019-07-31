@@ -93,10 +93,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 services.RequiredServices.Wallet, services.CreatedServices.AbiEncoder, services.RequiredServices.Ecdsa,
                 services.RequiredServices.CryptoRandom, depositService, receiptRequestValidator, refundService,
                 services.CreatedServices.BlockchainBridge, services.CreatedServices.ConsumerAddress,
-                services.RequiredServices.Enode.PublicKey, services.RequiredServices.Timestamp,
+                services.RequiredServices.Enode.PublicKey, services.RequiredServices.Timestamper,
                 consumerNotifier, ndmConfig.BlockConfirmations, logManager);
             var reportService = new ReportService(depositRepository, receiptRepository, sessionRepository,
-                services.RequiredServices.Timestamp);
+                services.RequiredServices.Timestamper);
 
             IPersonalBridge personalBridge = services.RequiredServices.EnableUnsecuredDevWallet
                 ? new PersonalBridge(services.RequiredServices.Ecdsa, services.RequiredServices.Wallet)

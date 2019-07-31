@@ -33,11 +33,11 @@ namespace Nethermind.Network.Test.Builders
 {
     public class SerializationBuilder : BuilderBase<IMessageSerializationService>
     {
-        private readonly ITimestamp _timestamp;
+        private readonly ITimestamper _timestamper;
 
-        public SerializationBuilder(ITimestamp timestamp = null)
+        public SerializationBuilder(ITimestamper timestamper = null)
         {
-            _timestamp = timestamp ?? new Timestamp();
+            _timestamper = timestamper ?? new Timestamper();
             TestObject = new MessageSerializationService();
         }
 
@@ -80,10 +80,10 @@ namespace Nethermind.Network.Test.Builders
             Ecdsa ecdsa = new Ecdsa();
             SameKeyGenerator privateKeyProvider = new SameKeyGenerator(privateKey);
 
-            PingMessageSerializer pingSerializer = new PingMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamp), new NodeIdResolver(ecdsa));
-            PongMessageSerializer pongSerializer = new PongMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamp), new NodeIdResolver(ecdsa));
-            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamp), new NodeIdResolver(ecdsa));
-            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamp), new NodeIdResolver(ecdsa));
+            PingMessageSerializer pingSerializer = new PingMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
+            PongMessageSerializer pongSerializer = new PongMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
+            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
+            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
 
             return With(pingSerializer)
                 .With(pongSerializer)

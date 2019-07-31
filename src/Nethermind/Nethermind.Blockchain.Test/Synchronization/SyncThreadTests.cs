@@ -256,7 +256,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var receiptStorage = new InMemoryReceiptStorage();
 
             var ecdsa = new EthereumEcdsa(specProvider, logManager);
-            var txPool = new TxPool(new InMemoryTxStorage(), new Timestamp(), ecdsa, specProvider, new TxPoolConfig(), logManager);
+            var txPool = new TxPool(new InMemoryTxStorage(), new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), logManager);
             var tree = new BlockTree(blockDb, headerDb, blockInfoDb, specProvider, txPool, logManager);
             var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
@@ -287,7 +287,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
             var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, traceDb, devState, devStorage, txPool, receiptStorage, logManager);
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false, false);
-            var producer = new DevBlockProducer(txPool, devChainProcessor, tree, new Timestamp(), logManager);
+            var producer = new DevBlockProducer(txPool, devChainProcessor, tree, new Timestamper(), logManager);
 
             NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, logManager);
             NodeDataDownloader downloader = new NodeDataDownloader(syncPeerPool, feed, logManager);

@@ -67,7 +67,7 @@ namespace Nethermind.DataMarketplace.Initializers
         public virtual async Task<INdmCapabilityConnector> InitAsync(IConfigProvider configProvider,
             IDbProvider dbProvider, string baseDbPath, IBlockProcessor blockProcessor, IBlockTree blockTree,
             ITxPool txPool, ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider,
-            IReceiptStorage receiptStorage, IWallet wallet, ITimestamp timestamp, IEthereumEcdsa ecdsa,
+            IReceiptStorage receiptStorage, IWallet wallet, ITimestamper timestamper, IEthereumEcdsa ecdsa,
             IRpcModuleProvider rpcModuleProvider, IKeyStore keyStore, IJsonSerializer jsonSerializer,
             ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager consumerChannelManager,
             INdmDataPublisher dataPublisher, IGrpcServer grpcServer, INodeStatsManager nodeStatsManager,
@@ -78,7 +78,7 @@ namespace Nethermind.DataMarketplace.Initializers
 
             var (config, services, faucet, consumerService, consumerAddress, providerAddress) =
                 await PreInitAsync(configProvider, dbProvider, baseDbPath, blockProcessor, blockTree,
-                    txPool, txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamp, ecdsa,
+                    txPool, txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamper, ecdsa,
                     rpcModuleProvider, keyStore, jsonSerializer, cryptoRandom, enode, consumerChannelManager,
                     dataPublisher, grpcServer, enableUnsecuredDevWallet, webSocketsManager, logManager);
             if (!config.Enabled)
@@ -102,7 +102,7 @@ namespace Nethermind.DataMarketplace.Initializers
             PreInitAsync(IConfigProvider configProvider, IDbProvider dbProvider, string baseDbPath,
                 IBlockProcessor blockProcessor, IBlockTree blockTree, ITxPool txPool,
                 ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider, IReceiptStorage receiptStorage,
-                IWallet wallet, ITimestamp timestamp, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider,
+                IWallet wallet, ITimestamper timestamper, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider,
                 IKeyStore keyStore, IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
                 INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
                 IGrpcServer grpcServer, bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager,
@@ -158,7 +158,7 @@ namespace Nethermind.DataMarketplace.Initializers
 
             var services = _ndmModule.Init(new NdmRequiredServices(configProvider, configManager, ndmConfig,
                 baseDbPath, dbProvider, mongoProvider, logManager, blockProcessor, blockTree, txPool,
-                txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamp, ecdsa, keyStore,
+                txPoolInfoProvider, specProvider, receiptStorage, wallet, timestamper, ecdsa, keyStore,
                 rpcModuleProvider, jsonSerializer, cryptoRandom, enode, consumerChannelManager,
                 dataPublisher, grpcServer, ethRequestService, notifier, enableUnsecuredDevWallet));
 
@@ -167,7 +167,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 : new Address(ndmConfig.FaucetAddress);
             var faucet = new NdmFaucet(services.CreatedServices.BlockchainBridge, ethRequestRepository, faucetAddress,
                 ndmConfig.FaucetWeiRequestMaxValue, ndmConfig.FaucetEthDailyRequestsTotalValue, ndmConfig.FaucetEnabled,
-                timestamp, logManager);
+                timestamper, logManager);
 
             var consumerAddress = string.IsNullOrWhiteSpace(ndmConfig.ConsumerAddress)
                 ? Address.Zero

@@ -44,7 +44,7 @@ namespace Nethermind.Clique
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
-        private readonly ITimestamp _timestamp;
+        private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
         private readonly ICryptoRandom _cryptoRandom;
         private readonly WiggleRandomizer _wiggle;
@@ -63,7 +63,7 @@ namespace Nethermind.Clique
         public CliqueBlockProducer(ITxPool txPool,
             IBlockchainProcessor blockchainProcessor,
             IBlockTree blockTree,
-            ITimestamp timestamp,
+            ITimestamper timestamper,
             ICryptoRandom cryptoRandom,
             IStateProvider stateProvider,
             ISnapshotManager snapshotManager,
@@ -77,7 +77,7 @@ namespace Nethermind.Clique
             _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _sealer = cliqueSealer ?? throw new ArgumentNullException(nameof(cliqueSealer));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
@@ -130,7 +130,7 @@ namespace Nethermind.Clique
                 Block scheduledBlock = _scheduledBlock;
                 if (scheduledBlock == null)
                 {
-                    if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamp.EpochSeconds)
+                    if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamper.EpochSeconds)
                     {
                         _signalsQueue.Add(_blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None));
                     }
@@ -142,7 +142,7 @@ namespace Nethermind.Clique
                 string turnDescription = scheduledBlock.IsInTurn() ? "IN TURN" : "OUT OF TURN";
                 
                 int wiggle = _wiggle.WiggleFor(_scheduledBlock.Header);
-                if (scheduledBlock.Timestamp * 1000 + (UInt256)wiggle < _timestamp.EpochMilliseconds)
+                if (scheduledBlock.Timestamp * 1000 + (UInt256)wiggle < _timestamper.EpochMilliseconds)
                 {
                     if (scheduledBlock.TotalDifficulty > _blockTree.Head.TotalDifficulty)
                     {
@@ -307,7 +307,7 @@ namespace Nethermind.Clique
 
             if (_logger.IsInfo) _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
-            UInt256 timestamp = _timestamp.EpochSeconds;
+            UInt256 timestamp = _timestamper.EpochSeconds;
 
             BlockHeader header = new BlockHeader(
                 parentBlock.Hash,
@@ -374,9 +374,9 @@ namespace Nethermind.Clique
             header.MixHash = Keccak.Zero;
             // Ensure the timestamp has the correct delay
             header.Timestamp = parentBlock.Timestamp + _config.BlockPeriod;
-            if (header.Timestamp < _timestamp.EpochSeconds)
+            if (header.Timestamp < _timestamper.EpochSeconds)
             {
-                header.Timestamp = new UInt256(_timestamp.EpochSeconds);
+                header.Timestamp = new UInt256(_timestamper.EpochSeconds);
             }
 
             var transactions = _txPool.GetPendingTransactions().OrderBy(t => t.Nonce).ThenByDescending(t => t.GasPrice).ThenBy(t => t.GasLimit); // by nonce in case there are two transactions for the same account

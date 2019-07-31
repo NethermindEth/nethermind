@@ -49,7 +49,7 @@ namespace Nethermind.Clique.Test
             private ILogManager _logManager = LimboLogs.Instance;
 //            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
             private ILogger _logger;
-            private static Timestamp _timestamp = new Timestamp();
+            private static Timestamper _timestamper = new Timestamper();
             private CliqueConfig _cliqueConfig;
             private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(GoerliSpecProvider.Instance, NullLogManager.Instance);
             private Dictionary<PrivateKey, ILogManager> _logManagers = new Dictionary<PrivateKey, ILogManager>();
@@ -88,7 +88,7 @@ namespace Nethermind.Clique.Test
                 MemDb headersDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
 
-                TxPool txPool = new TxPool(new InMemoryTxStorage(), _timestamp, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), _logManager);
+                TxPool txPool = new TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), _logManager);
                 _pools[privateKey] = txPool;
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, GoerliSpecProvider.Instance, txPool, nodeLogManager);
@@ -134,7 +134,7 @@ namespace Nethermind.Clique.Test
                     ProcessGenesis(privateKey);
                 }
 
-                CliqueBlockProducer blockProducer = new CliqueBlockProducer(txPool, minerProcessor, blockTree, _timestamp, new CryptoRandom(), minerStateProvider, snapshotManager, cliqueSealer, privateKey.Address, _cliqueConfig, nodeLogManager);
+                CliqueBlockProducer blockProducer = new CliqueBlockProducer(txPool, minerProcessor, blockTree, _timestamper, new CryptoRandom(), minerStateProvider, snapshotManager, cliqueSealer, privateKey.Address, _cliqueConfig, nodeLogManager);
                 blockProducer.Start();
 
                 _producers.Add(privateKey, blockProducer);
@@ -158,7 +158,7 @@ namespace Nethermind.Clique.Test
                 UInt256 difficulty = new UInt256(1);
                 long number = 0L;
                 int gasLimit = 4700000;
-                UInt256 timestamp = _timestamp.EpochSeconds - _cliqueConfig.BlockPeriod;
+                UInt256 timestamp = _timestamper.EpochSeconds - _cliqueConfig.BlockPeriod;
                 string extraDataHex = "0x2249276d20646f6e652077616974696e672e2e2e20666f7220626c6f636b2066";
                 extraDataHex += TestItem.PrivateKeyA.Address.ToString(false).Replace("0x", string.Empty);
                 extraDataHex += TestItem.PrivateKeyB.Address.ToString(false).Replace("0x", string.Empty);

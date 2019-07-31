@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain
         private readonly IBlockchainProcessor _processor;
         private readonly ISealer _sealer;
         private readonly IBlockTree _blockTree;
-        private readonly ITimestamp _timestamp;
+        private readonly ITimestamper _timestamper;
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ITxPool _txPool;
         private readonly ILogger _logger;
@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
-            ITimestamp timestamp,
+            ITimestamper timestamper,
             ILogManager logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _timestamp = timestamp;
+            _timestamper = timestamper;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -121,9 +121,9 @@ namespace Nethermind.Blockchain
             }
 
             Block parent = _blockTree.FindBlock(parentHeader.Hash, BlockTreeLookupOptions.None);
-            UInt256 timestamp = _timestamp.EpochSeconds;
+            UInt256 timestamp = _timestamper.EpochSeconds;
 
-            UInt256 difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, _timestamp.EpochSeconds, parent.Number + 1, parent.Ommers.Length > 0);
+            UInt256 difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, _timestamper.EpochSeconds, parent.Number + 1, parent.Ommers.Length > 0);
             BlockHeader header = new BlockHeader(
                 parent.Hash,
                 Keccak.OfAnEmptySequenceRlp,

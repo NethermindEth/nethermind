@@ -1095,13 +1095,13 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestHeader(Build.A.BlockHeader.WithNumber(pivotNumber + 1).WithParent(pivotBlock.Header).TestObject);
 
             BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
-            
+
             Assert.AreEqual(pivotNumber + 1, tree.BestKnownNumber, "tree");
             Assert.AreEqual(1, tree.LowestInsertedHeader?.Number, "loaded tree - lowest header");
             Assert.AreEqual(null, tree.LowestInsertedBody?.Number, "loaded tree - lowest body");
             Assert.AreEqual(pivotNumber + 1, loadedTree.BestKnownNumber, "loaded tree");
         }
-        
+
         [Test]
         public void Cannot_insert_genesis()
         {
@@ -1110,7 +1110,7 @@ namespace Nethermind.Blockchain.Test
             MemDb headersDb = new MemDb();
 
             long pivotNumber = 0L;
-            
+
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = pivotNumber.ToString();
 
@@ -1121,7 +1121,7 @@ namespace Nethermind.Blockchain.Test
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
             Assert.Throws<InvalidOperationException>(() => tree.Insert(new[] {genesis}));
         }
-        
+
         [Test]
         public void Can_batch_insert_blocks()
         {
@@ -1130,13 +1130,13 @@ namespace Nethermind.Blockchain.Test
             MemDb headersDb = new MemDb();
 
             long pivotNumber = 5L;
-            
+
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = pivotNumber.ToString();
 
             BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
-            
+
             List<Block> blocks = new List<Block>();
             for (long i = 5; i > 0; i--)
             {
@@ -1147,14 +1147,14 @@ namespace Nethermind.Blockchain.Test
 
             tree.Insert(blocks);
         }
-        
+
         [Test]
         public void Block_loading_is_lazy()
         {
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
-            
+
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = 0L.ToString();
 
@@ -1171,9 +1171,60 @@ namespace Nethermind.Blockchain.Test
             }
 
             Block lastBlock = previousBlock;
-            
+
             BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
             loadedTree.FindHeader(lastBlock.Hash, BlockTreeLookupOptions.None);
+        }
+
+        [Test]
+        public void When_block_is_moved_to_main_transactions_are_removed_from_tx_pool()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+
+            Transaction t1 = Build.A.Transaction.TestObject;
+            Transaction t2 = Build.A.Transaction.TestObject;
+
+            ITxPool txPoolMock = Substitute.For<ITxPool>();
+            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, OlympicSpecProvider.Instance, txPoolMock, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
+
+            AddToMain(blockTree, block0);
+
+            blockTree.SuggestBlock(block1B);
+            blockTree.SuggestBlock(block1A);
+            blockTree.UpdateMainChain(block1A);
+
+            txPoolMock.Received().RemoveTransaction(t1.Hash);
+        }
+        
+        [Test]
+        public void When_block_is_moved_out_of_main_transactions_are_removed_from_tx_pool()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+
+            Transaction t1 = Build.A.Transaction.TestObject;
+            Transaction t2 = Build.A.Transaction.TestObject;
+
+            ITxPool txPoolMock = Substitute.For<ITxPool>();
+            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, OlympicSpecProvider.Instance, txPoolMock, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
+
+            AddToMain(blockTree, block0);
+
+            blockTree.SuggestBlock(block1B);
+            blockTree.SuggestBlock(block1A);
+            blockTree.UpdateMainChain(block1A);
+            blockTree.UpdateMainChain(block1B);
+
+            txPoolMock.Received().AddTransaction(t1, 1);
         }
 
         static object[] SourceOfBSearchTestCases =

@@ -56,13 +56,13 @@ namespace Nethermind.Blockchain.TxPools
         /// <summary>
         /// All pending transactions.
         /// </summary>
-        private readonly ConcurrentDictionary<Keccak, Transaction> _pendingTransactions =
+        private readonly ConcurrentDictionary<Keccak, Transaction> _pendingTxs =
             new ConcurrentDictionary<Keccak, Transaction>();
 
         /// <summary>
         /// Transactions that should never be removed. (TODO: we should always remove transactions that are incorrect due to nonce overrides)
         /// </summary>
-        private readonly ConcurrentDictionary<Keccak, bool> _nonEvictableTransactions =
+        private readonly ConcurrentDictionary<Keccak, bool> _nonEvictableTxs =
             new ConcurrentDictionary<Keccak, bool>();
         
         /// <summary>
@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.TxPools
             = new ConcurrentDictionary<Keccak, Transaction>();
 
         /// <summary>
-        /// Filters on pending transactions.
+        /// Filters defining which transactions should be ignored before storing them in persistent storage.
         /// </summary>
         private readonly ConcurrentDictionary<Type, ITxFilter> _filters =
             new ConcurrentDictionary<Type, ITxFilter>();
@@ -102,13 +102,23 @@ namespace Nethermind.Blockchain.TxPools
         /// <summary>
         /// Timer for removing obsolete transactions.
         /// </summary>
-        private Timer _transactionRemovalTimer;
+        private Timer _txRemovalTimer;
         
         /// <summary>
         /// Defines the percentage of peers that will be notified about pending transactions on average.
         /// </summary>
         private readonly int _peerNotificationThreshold;
 
+        /// <summary>
+        /// This class stores all known pending transactions that can be used for block production
+        /// (by miners or validators) or simply informing other nodes about known pending transactions (broadcasting).
+        /// </summary>
+        /// <param name="txStorage">Tx storage used to reject known transactions.</param>
+        /// <param name="timestamper">Used for calculating the difference between the current time and the time when the transaction was added.</param>
+        /// <param name="ecdsa">Used to recover sender addresses from transaction signatures.</param>
+        /// <param name="specProvider">Used for retrieving information on EIPs that may affect tx signature scheme.</param>
+        /// <param name="txPoolConfig"></param>
+        /// <param name="logManager"></param>
         public TxPool(
             ITxStorage txStorage,
             ITimestamper timestamper,
@@ -137,13 +147,13 @@ namespace Nethermind.Blockchain.TxPools
                 return;
             }
 
-            _transactionRemovalTimer = new Timer(removeIntervalInSeconds * 1000);
-            _transactionRemovalTimer.Elapsed += RemovalTimerElapsed;
-            _transactionRemovalTimer.AutoReset = false;
-            _transactionRemovalTimer.Start();
+            _txRemovalTimer = new Timer(removeIntervalInSeconds * 1000);
+            _txRemovalTimer.Elapsed += RemovalTimerElapsed;
+            _txRemovalTimer.AutoReset = false;
+            _txRemovalTimer.Start();
         }
 
-        public Transaction[] GetPendingTransactions() => _pendingTransactions.Values.ToArray();
+        public Transaction[] GetPendingTransactions() => _pendingTxs.Values.ToArray();
 
         public void AddFilter<T>(T filter) where T : ITxFilter
             => _filters.TryAdd(filter.GetType(), filter);
@@ -155,7 +165,7 @@ namespace Nethermind.Blockchain.TxPools
                 return;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Added a peer: {peer.ClientId}");
+            if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer.ClientId}");
         }
 
         public void RemovePeer(PublicKey nodeId)
@@ -165,67 +175,79 @@ namespace Nethermind.Blockchain.TxPools
                 return;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Removed a peer: {nodeId}");
+            if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
 
-        public AddTxResult AddTransaction(Transaction transaction, long blockNumber, bool doNotEvict = false)
+        public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool doNotEvict = false)
         {
             Metrics.PendingTransactionsReceived++;
             if (doNotEvict)
             {
-                _nonEvictableTransactions.TryAdd(transaction.Hash, true);
-                if (_logger.IsDebug) _logger.Debug($"Added a transaction: {transaction.Hash} that will not be evicted.");
+                _nonEvictableTxs.TryAdd(tx.Hash, true);
+                if (_logger.IsDebug) _logger.Debug($"Added an unevictable transaction to TX pool: {tx.Hash}.");
             }
 
-            // note that we are discarding here the old signature scheme (without ChainId)
-            if (transaction.Signature.GetChainId == null)
+            if (tx.Signature.GetChainId == null)
             {
+                // Note that we are discarding here any transactions that follow the old signature scheme (no ChainId).
                 Metrics.PendingTransactionsDiscarded++;
                 return AddTxResult.OldScheme;
             }
-
-            if (transaction.Signature.GetChainId != _specProvider.ChainId)
+            
+            if (tx.Signature.GetChainId != _specProvider.ChainId)
             {
+                // It may happen that other nodes send us transactions that were signed for another chain.
                 Metrics.PendingTransactionsDiscarded++;
                 return AddTxResult.InvalidChainId;
             }
 
-            if (!_pendingTransactions.TryAdd(transaction.Hash, transaction))
+            if (!_pendingTxs.TryAdd(tx.Hash, tx))
             {
+                // If transaction is fresh and already known then it may be stored in memory.
                 Metrics.PendingTransactionsKnown++;
                 return AddTxResult.AlreadyKnown;
             }
 
-            if (_txStorage.Get(transaction.Hash) != null)
+            if (_txStorage.Get(tx.Hash) != null)
             {
+                // If transaction is a bit older and already known then it may be stored in the persistent storage.
                 Metrics.PendingTransactionsKnown++;
                 return AddTxResult.AlreadyKnown;
             }
 
-            transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, blockNumber);
-            // check nonce
-
-            if (transaction.DeliveredBy == null)
+            /* We have encountered multiple transactions that do not resolve sender address properly.
+             * We need to investigate what these txs are and why the sender address is resolved to null.
+             * Then we need to decide whether we really want to broadcast them.
+             * */
+            
+            tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
+            
+            /* Note that here we should also test incoming transactions for old nonce.
+             * This is not a critical check and it is expensive since it requires state read so it is better
+             * if we leave it for block production only.
+             * */
+            
+            if (tx.DeliveredBy == null)
             {
-                _ownTransactions.TryAdd(transaction.Hash, transaction);
+                _ownTransactions.TryAdd(tx.Hash, tx);
                 _ownTimer.Enabled = true;
 
-                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {tx.Hash} to {_peers.Count} peers");
             }
             
-            NotifySelectedPeers(transaction);
+            NotifySelectedPeers(tx);
 
-            FilterAndStoreTransaction(transaction, blockNumber);
-            NewPending?.Invoke(this, new TxEventArgs(transaction));
+            FilterAndStoreTx(tx, blockNumber);
+            NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
         }
 
         public void RemoveTransaction(Keccak hash)
         {
-            if (_pendingTransactions.TryRemove(hash, out var transaction))
+            if (_pendingTxs.TryRemove(hash, out var transaction))
             {
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
-                _nonEvictableTransactions.TryRemove(hash, out _);
+                _nonEvictableTxs.TryRemove(hash, out _);
             }
 
             if (_ownTransactions.Count != 0)
@@ -243,7 +265,7 @@ namespace Nethermind.Blockchain.TxPools
 
         public bool TryGetSender(Keccak hash, out Address sender)
         {
-            bool found = _pendingTransactions.TryGetValue(hash, out Transaction transaction);
+            bool found = _pendingTxs.TryGetValue(hash, out Transaction transaction);
             sender = found ? transaction.SenderAddress : null;
             return found;
         }
@@ -251,45 +273,45 @@ namespace Nethermind.Blockchain.TxPools
         public void Dispose()
         {
             _ownTimer?.Dispose();
-            _transactionRemovalTimer?.Dispose();
+            _txRemovalTimer?.Dispose();
         }
         
         public event EventHandler<TxEventArgs> NewPending;
         public event EventHandler<TxEventArgs> RemovedPending;
         
-        private void Notify(ISyncPeer peer, Transaction transaction)
+        private void Notify(ISyncPeer peer, Transaction tx)
         {
-            var timestamp = new UInt256(_timestamper.EpochSeconds);
-            if (_pendingTxThresholdValidator.IsObsolete(timestamp, transaction.Timestamp))
+            UInt256 timestamp = new UInt256(_timestamper.EpochSeconds);
+            if (_pendingTxThresholdValidator.IsObsolete(timestamp, tx.Timestamp))
             {
                 return;
             }
 
             Metrics.PendingTransactionsSent++;
-            peer.SendNewTransaction(transaction);
+            peer.SendNewTransaction(tx);
 
-            if (_logger.IsTrace) _logger.Trace($"Notified {peer.Node.Id} about a transaction: {transaction.Hash}");
+            if (_logger.IsTrace) _logger.Trace($"Notified {peer.Node.Id} about a transaction: {tx.Hash}");
         }
 
-        private void NotifyAllPeers(Transaction transaction)
+        private void NotifyAllPeers(Transaction tx)
         {
             foreach ((_, ISyncPeer peer) in _peers)
             {
-                Notify(peer, transaction);
+                Notify(peer, tx);
             }
         }
         
-        private void NotifySelectedPeers(Transaction transaction)
+        private void NotifySelectedPeers(Transaction tx)
         {
             foreach ((_, ISyncPeer peer) in _peers)
             {
-                if (transaction.DeliveredBy == null)
+                if (tx.DeliveredBy == null)
                 {
-                    Notify(peer, transaction);
+                    Notify(peer, tx);
                     continue;
                 }
                 
-                if (transaction.DeliveredBy.Equals(peer.Node.Id))
+                if (tx.DeliveredBy.Equals(peer.Node.Id))
                 {
                     continue;
                 }
@@ -299,20 +321,20 @@ namespace Nethermind.Blockchain.TxPools
                     continue;
                 }
 
-                Notify(peer, transaction);
+                Notify(peer, tx);
             }
-        }
+        } 
         
-                private void FilterAndStoreTransaction(Transaction transaction, long blockNumber)
+        private void FilterAndStoreTx(Transaction tx, long blockNumber)
         {
             var filters = _filters.Values;
-            if (filters.Any(filter => !filter.IsValid(transaction)))
+            if (filters.Any(filter => !filter.IsValid(tx)))
             {
                 return;
             }
 
-            _txStorage.Add(transaction, blockNumber);
-            if (_logger.IsTrace) _logger.Trace($"Added a transaction: {transaction.Hash}");
+            _txStorage.Add(tx, blockNumber);
+            if (_logger.IsTrace) _logger.Trace($"Added a transaction: {tx.Hash}");
         }
 
         private void OwnTimerOnElapsed(object sender, ElapsedEventArgs e)
@@ -332,32 +354,32 @@ namespace Nethermind.Blockchain.TxPools
         
         private void RemovalTimerElapsed(object sender, ElapsedEventArgs eventArgs)
         {
-            if (_pendingTransactions.Count == 0)
+            if (_pendingTxs.Count == 0)
             {
                 return;
             }
 
-            var hashes = new List<Keccak>();
-            var timestamp = new UInt256(_timestamper.EpochSeconds);
-            foreach (var transaction in _pendingTransactions.Values)
+            List<Keccak> hashes = new List<Keccak>();
+            UInt256 timestamp = new UInt256(_timestamper.EpochSeconds);
+            foreach (Transaction tx in _pendingTxs.Values)
             {
-                if (_nonEvictableTransactions.ContainsKey(transaction.Hash))
+                if (_nonEvictableTxs.ContainsKey(tx.Hash))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Pending transaction: {transaction.Hash} will not be evicted.");
+                    if (_logger.IsDebug) _logger.Debug($"Pending transaction: {tx.Hash} will not be evicted.");
                     continue;
                 }
                 
-                if (_pendingTxThresholdValidator.IsRemovable(timestamp, transaction.Timestamp))
+                if (_pendingTxThresholdValidator.IsRemovable(timestamp, tx.Timestamp))
                 {
-                    hashes.Add(transaction.Hash);
+                    hashes.Add(tx.Hash);
                 }
             }
 
-            for (var i = 0; i < hashes.Count; i++)
+            for (int i = 0; i < hashes.Count; i++)
             {
-                if (_pendingTransactions.TryRemove(hashes[i], out var transaction))
+                if (_pendingTxs.TryRemove(hashes[i], out Transaction tx))
                 {
-                    RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+                    RemovedPending?.Invoke(this, new TxEventArgs(tx));
                 }
             }
         }

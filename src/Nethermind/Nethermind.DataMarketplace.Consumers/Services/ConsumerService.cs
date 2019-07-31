@@ -89,7 +89,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly IBlockchainBridge _blockchainBridge;
         private Address _consumerAddress;
         private readonly PublicKey _nodePublicKey;
-        private readonly ITimestamp _timestamp;
+        private readonly ITimestamper _timestamper;
         private readonly IConsumerNotifier _consumerNotifier;
         private readonly uint _depositRequiredConfirmations;
         private readonly ILogger _logger;
@@ -104,7 +104,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             ICryptoRandom cryptoRandom, IDepositService depositService,
             IReceiptRequestValidator receiptRequestValidator, IRefundService refundService,
             IBlockchainBridge blockchainBridge, Address consumerAddress, PublicKey nodePublicKey,
-            ITimestamp timestamp, IConsumerNotifier consumerNotifier, uint depositRequiredConfirmations,
+            ITimestamper timestamper, IConsumerNotifier consumerNotifier, uint depositRequiredConfirmations,
             ILogManager logManager)
         {
             _configManager = configManager;
@@ -124,7 +124,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _blockchainBridge = blockchainBridge;
             _consumerAddress = consumerAddress ?? Address.Zero;
             _nodePublicKey = nodePublicKey;
-            _timestamp = timestamp;
+            _timestamper = timestamper;
             _consumerNotifier = consumerNotifier;
             _depositRequiredConfirmations = depositRequiredConfirmations;
             _logger = logManager.GetClassLogger();
@@ -459,7 +459,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             switch (deposit.DataHeader.UnitType)
             {
                 case DataHeaderUnitType.Time:
-                    var now = (uint) _timestamp.EpochSeconds;
+                    var now = (uint) _timestamper.EpochSeconds;
                     var currentlyConsumedUnits = now - deposit.VerificationTimestamp;
                     var currentlyUnpaidUnits = currentlyConsumedUnits > session.PaidUnits
                         ? currentlyConsumedUnits - session.PaidUnits
@@ -559,7 +559,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return null;
             }
 
-            var now = (uint) _timestamp.EpochSeconds;
+            var now = (uint) _timestamper.EpochSeconds;
             var expiryTime = now + (uint) dataHeader.Rules.Expiry.Value;
             expiryTime += dataHeader.UnitType == DataHeaderUnitType.Unit ? 0 : units;
             var pepper = _cryptoRandom.GenerateRandomBytes(16);
@@ -874,7 +874,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
 
             var receiptId = Keccak.Compute(Rlp.Encode(Rlp.Encode(depositId), Rlp.Encode(request.Number),
-                Rlp.Encode(_timestamp.EpochSeconds)));
+                Rlp.Encode(_timestamper.EpochSeconds)));
             if (!_receiptRequestValidator.IsValid(request, session.UnpaidUnits, session.ConsumedUnits,
                 deposit.Deposit.Units))
             {
@@ -882,7 +882,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 var receipt = new DataDeliveryReceipt(StatusCodes.InvalidReceiptRequestRange,
                     session.ConsumedUnits, session.UnpaidUnits, new Signature(1, 1, 27));
                 await _receiptRepository.AddAsync(new DataDeliveryReceiptDetails(receiptId, session.Id,
-                    session.DataHeaderId, _nodePublicKey, request, receipt, _timestamp.EpochSeconds, false));
+                    session.DataHeaderId, _nodePublicKey, request, receipt, _timestamper.EpochSeconds, false));
                 await _sessionRepository.UpdateAsync(session);
                 providerPeer.SendDataDeliveryReceipt(depositId, receipt);
                 return;
@@ -899,7 +899,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 var receipt = new DataDeliveryReceipt(StatusCodes.InvalidReceiptAddress,
                     session.ConsumedUnits, session.UnpaidUnits, new Signature(1, 1, 27));
                 await _receiptRepository.AddAsync(new DataDeliveryReceiptDetails(receiptId, session.Id,
-                    session.DataHeaderId, _nodePublicKey, request, receipt, _timestamp.EpochSeconds, false));
+                    session.DataHeaderId, _nodePublicKey, request, receipt, _timestamper.EpochSeconds, false));
                 await _sessionRepository.UpdateAsync(session);
                 providerPeer.SendDataDeliveryReceipt(depositId, receipt);
                 return;
@@ -930,7 +930,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var deliveryReceipt = new DataDeliveryReceipt(StatusCodes.Ok, session.ConsumedUnits,
                 session.UnpaidUnits, signature);
             await _receiptRepository.AddAsync(new DataDeliveryReceiptDetails(receiptId, session.Id,
-                session.DataHeaderId, _nodePublicKey, request, deliveryReceipt, _timestamp.EpochSeconds, false));
+                session.DataHeaderId, _nodePublicKey, request, deliveryReceipt, _timestamper.EpochSeconds, false));
             providerPeer.SendDataDeliveryReceipt(depositId, deliveryReceipt);
             if (_logger.IsInfo) _logger.Info($"Sent data delivery receipt for deposit: '{depositId}', range: [{request.UnitsRange.From}, {request.UnitsRange.To}].");
         }
@@ -982,7 +982,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             if (approval is null)
             {
                 approval = new DepositApproval(id, headerId, dataHeader.Name, kyc, _consumerAddress,
-                    dataHeader.Provider.Address, _timestamp.EpochSeconds);
+                    dataHeader.Provider.Address, _timestamper.EpochSeconds);
                 await _depositApprovalRepository.AddAsync(approval);
             }
 
@@ -1167,7 +1167,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 }
             }
 
-            var timestamp = _timestamp.EpochSeconds;
+            var timestamp = _timestamper.EpochSeconds;
             foreach (var (_, session) in _sessions)
             {
                 if (!providerPeer.ProviderAddress.Equals(session.ProviderAddress))

@@ -984,6 +984,8 @@ namespace Nethermind.Blockchain
             {
                 _txPool.RemoveTransaction(block.Transactions[i].Hash);
             }
+            
+            
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
         }
