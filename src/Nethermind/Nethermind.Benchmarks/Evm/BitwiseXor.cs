@@ -16,33 +16,41 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Specs.Forks;
+using System.Numerics;
+using BenchmarkDotNet.Attributes;
 
-namespace Nethermind.Core.Specs
+namespace Nethermind.Benchmarks.Evm
 {
-    public class GoerliSpecProvider : ISpecProvider
+    [MemoryDiagnoser]
+    [CoreJob(baseline: true)]
+    public class BitwiseXor
     {
-        public static readonly GoerliSpecProvider Instance = new GoerliSpecProvider();
-
-        private GoerliSpecProvider()
+        [GlobalSetup]
+        public void Setup()
         {
+            a[31] = 3;
+            b[31] = 7;
         }
 
-        public IReleaseSpec GenesisSpec => ConstantinopleFix.Instance;
-
-        public IReleaseSpec GetSpec(long blockNumber)
+        private byte[] a = new byte[32];
+        private byte[] b = new byte[32];
+        private byte[] c = new byte[32];
+        
+        [Benchmark(Baseline = true)]
+        public void Current()
         {
-            if (blockNumber < IstanbulBlockNumber)
+            for (int i = 0; i < 32; i++)
             {
-                return ConstantinopleFix.Instance;
+                c[i] = (byte)(a[i] ^ b[i]);
             }
-
-            return Istanbul.Instance;
         }
-
-        public long? DaoBlockNumber { get; } = null;
-        public static long IstanbulBlockNumber { get; } = 10000000;
-
-        public int ChainId => 0x5;
+        
+        [Benchmark]
+        public void Improved()
+        {
+            Vector<byte> aVec = new Vector<byte>(a);
+            Vector<byte> bVec = new Vector<byte>(b);
+            Vector.Xor(aVec, bVec).CopyTo(c);
+        }
     }
 }

@@ -58,8 +58,19 @@ namespace Nethermind.Evm
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0
         };
+        
+        internal readonly byte[] BytesMax32 =
+        {
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255
+        };
+
+        private byte[] _chainId;
 
         private readonly IBlockhashProvider _blockhashProvider;
+        private readonly ISpecProvider _specProvider;
         private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(4 * 1024);
         private readonly ILogger _logger;
         private readonly IStateProvider _state;
@@ -70,22 +81,24 @@ namespace Nethermind.Evm
         private byte[] _returnDataBuffer = new byte[0];
         private ITxTracer _txTracer;
 
-        public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogManager logManager)
+        public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider,
+            IBlockhashProvider blockhashProvider, ISpecProvider specProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _state = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storage = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
-
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _chainId = specProvider.ChainId.ToBigEndianByteArray();
             InitializePrecompiledContracts();
         }
 
         // can refactor and integrate the other call
-        public TransactionSubstate Run(EvmState state, IReleaseSpec releaseSpec, ITxTracer txTracer)
+        public TransactionSubstate Run(EvmState state, ITxTracer txTracer)
         {
             _txTracer = txTracer;
 
-            IReleaseSpec spec = releaseSpec;
+            IReleaseSpec spec = _specProvider.GetSpec(state.Env.CurrentBlock.Number);
             EvmState currentState = state;
             byte[] previousCallResult = null;
             byte[] previousCallOutput = Bytes.Empty;
@@ -234,7 +247,7 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                if (releaseSpec.IsEip2Enabled)
+                                if (spec.IsEip2Enabled)
                                 {
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
                                     _state.Restore(previousState.StateSnapshot);
@@ -582,6 +595,7 @@ namespace Nethermind.Evm
                 stack.Slice(stackHead * 32, 32).Clear();
                 stack[stackHead * 32 + 31] = value;
                 stackHead++;
+
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
@@ -725,7 +739,8 @@ namespace Nethermind.Evm
                 }
             }
 
-            Span<byte> wordBuffer = new byte[32].AsSpan();
+            byte[] wordBufferArray = new byte[32];
+            Span<byte> wordBuffer = wordBufferArray.AsSpan();
 
             void Swap(int depth, Span<byte> stack, Span<byte> buffer)
             {
@@ -1101,16 +1116,21 @@ namespace Nethermind.Evm
                             break;
                         }
 
+                        int position = 31 - (int)a;
+
                         Span<byte> b = PopBytes(bytesOnStack);
-                        BitArray bits1 = b.ToBigEndianBitArray256();
-                        int bitPosition = Math.Max(0, 248 - 8 * (int)a);
-                        bool isSet = bits1[bitPosition];
-                        for (int i = 0; i < bitPosition; i++)
+                        sbyte sign = (sbyte)b[position];
+
+                        if (sign >= 0)
                         {
-                            bits1[i] = isSet;
+                            BytesZero32.AsSpan().Slice(0, position).CopyTo(b.Slice(0, position));
+                        }
+                        else
+                        {
+                            BytesMax32.AsSpan().Slice(0, position).CopyTo(b.Slice(0, position));
                         }
 
-                        PushBytes(bits1.ToBytes(), bytesOnStack);
+                        PushBytes(b, bytesOnStack);
                         break;
                     }
                     case Instruction.LT:
@@ -1249,12 +1269,13 @@ namespace Nethermind.Evm
 
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
-                        for (int i = 0; i < 32; i++)
-                        {
-                            wordBuffer[i] = (byte)(a[i] & b[i]);
-                        }
+        
+                        Vector<byte> aVec = new Vector<byte>(a);
+                        Vector<byte> bVec = new Vector<byte>(b);
+                        
+                        Vector.BitwiseAnd(aVec, bVec).CopyTo(wordBufferArray);
 
-                        PushBytes(wordBuffer, bytesOnStack);
+                        PushBytes(wordBufferArray, bytesOnStack);
                         break;
                     }
                     case Instruction.OR:
@@ -1267,12 +1288,13 @@ namespace Nethermind.Evm
 
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
-                        for (int i = 0; i < 32; i++)
-                        {
-                            wordBuffer[i] = (byte)(a[i] | b[i]);
-                        }
+        
+                        Vector<byte> aVec = new Vector<byte>(a);
+                        Vector<byte> bVec = new Vector<byte>(b);
+                        
+                        Vector.BitwiseOr(aVec, bVec).CopyTo(wordBufferArray);
 
-                        PushBytes(wordBuffer, bytesOnStack);
+                        PushBytes(wordBufferArray, bytesOnStack);
                         break;
                     }
                     case Instruction.XOR:
@@ -1285,12 +1307,13 @@ namespace Nethermind.Evm
 
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
-                        for (int i = 0; i < 32; i++)
-                        {
-                            wordBuffer[i] = (byte)(a[i] ^ b[i]);
-                        }
+        
+                        Vector<byte> aVec = new Vector<byte>(a);
+                        Vector<byte> bVec = new Vector<byte>(b);
+                        
+                        Vector.Xor(aVec, bVec).CopyTo(wordBufferArray);
 
-                        PushBytes(wordBuffer, bytesOnStack);
+                        PushBytes(wordBufferArray, bytesOnStack);
                         break;
                     }
                     case Instruction.NOT:
@@ -1301,13 +1324,14 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        Span<byte> bytes = PopBytes(bytesOnStack);
-                        for (int i = 0; i < 32; ++i)
-                        {
-                            bytes[i] = (byte)~bytes[i];
-                        }
+                        Span<byte> a = PopBytes(bytesOnStack);
 
-                        PushBytes(bytes, bytesOnStack);
+                        Vector<byte> aVec = new Vector<byte>(a);
+                        Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
+
+                        negVec.CopyTo(wordBufferArray);
+
+                        PushBytes(wordBufferArray, bytesOnStack);
                         break;
                     }
                     case Instruction.BYTE:
@@ -1494,8 +1518,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger gasPrice = env.GasPrice; 
-                        PushUInt(ref gasPrice, bytesOnStack);
+                        UInt256 gasPrice = env.GasPrice; 
+                        PushUInt256(ref gasPrice, bytesOnStack);
                         break;
                     }
                     case Instruction.EXTCODESIZE:
@@ -1655,6 +1679,24 @@ namespace Nethermind.Evm
 
                         UInt256 gasLimit = (UInt256)env.CurrentBlock.GasLimit; 
                         PushUInt256(ref gasLimit, bytesOnStack);
+                        break;
+                    }
+                    case Instruction.CHAINID:
+                    {
+                        if (!spec.IsEip1344Enabled)
+                        {
+                            Metrics.EvmExceptions++;
+                            EndInstructionTraceError(BadInstructionErrorText);
+                            return CallResult.InvalidInstructionException;
+                        }
+                        
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            EndInstructionTraceError(OutOfGasErrorText);
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushBytes(_chainId, bytesOnStack);
                         break;
                     }
                     case Instruction.POP:

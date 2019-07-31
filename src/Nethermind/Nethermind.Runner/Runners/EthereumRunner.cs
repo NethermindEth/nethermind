@@ -546,6 +546,7 @@ namespace Nethermind.Runner.Runners
                 stateProvider,
                 storageProvider,
                 blockhashProvider,
+                _specProvider,
                 _logManager);
 
             var transactionProcessor = new TransactionProcessor(

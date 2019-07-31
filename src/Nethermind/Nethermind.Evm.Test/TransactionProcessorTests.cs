@@ -45,7 +45,7 @@ namespace Nethermind.Evm.Test
             StateDb stateDb = new StateDb();
             _stateProvider = new StateProvider(stateDb, new MemDb(), LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance);
+            VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), _specProvider, LimboLogs.Instance);
             _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             _ethereumEcdsa = new EthereumEcdsa(_specProvider, LimboLogs.Instance);
         }

@@ -49,7 +49,7 @@ namespace Nethermind.Runner.Runners
             StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, StateProvider, logManager);
             IBlockTree readOnlyTree = new ReadOnlyBlockTree(blockTree);
             BlockhashProvider blockhashProvider = new BlockhashProvider(readOnlyTree, logManager);
-            VirtualMachine virtualMachine = new VirtualMachine(StateProvider, storageProvider, blockhashProvider, logManager);
+            VirtualMachine virtualMachine = new VirtualMachine(StateProvider, storageProvider, blockhashProvider, specProvider, logManager);
             ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, StateProvider, storageProvider, virtualMachine, logManager);
             ITxPool txPool = customTxPool;
             IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, storageProvider, txPool, receiptStorage, logManager);

@@ -16,17 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
+using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
+using NUnit.Framework;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.Test
 {
-    public interface IVirtualMachine
+    public class UInt256Tests
     {
-        TransactionSubstate Run(EvmState state, ITxTracer tracer);
-        
-        [Todo(Improve.Refactor, "Remove this responsibility from VM")]
-        CodeInfo GetCachedCodeInfo(Address codeSource);
+        [Test]
+        public void IsOne()
+        {
+            Assert.True(UInt256.One.IsOne, "1");
+            Assert.False(UInt256.Zero.IsOne, "0");
+            Assert.False(new UInt256(BigInteger.Pow(2, 64)).IsOne, "2^64");
+            Assert.False(new UInt256(BigInteger.Pow(2, 128)).IsOne, "2^128");
+            Assert.False(new UInt256(BigInteger.Pow(2, 196)).IsOne, "2^196");
+        }
     }
 }

@@ -27,9 +27,9 @@ namespace Nethermind.Core.Specs
         public long MinGasLimit { get; set; }
         public long GasLimitBoundDivisor { get; set; }
         public Address Registrar { get; set; }
-        public UInt256 BlockReward  { get; set; }
-        public long DifficultyBombDelay  { get; set; }
-        public long DifficultyBoundDivisor  { get; set; }
+        public UInt256 BlockReward { get; set; }
+        public long DifficultyBombDelay { get; set; }
+        public long DifficultyBoundDivisor { get; set; }
         public bool IsTimeAdjustmentPostOlympic { get; set; }
         public bool IsEip2Enabled { get; set; }
         public bool IsEip7Enabled { get; set; }
@@ -52,5 +52,6 @@ namespace Nethermind.Core.Specs
         public bool IsEip1052Enabled { get; set; }
         public bool IsEip1283Enabled { get; set; }
         public bool IsEip1234Enabled { get; set; }
+        public bool IsEip1344Enabled { get; set; }
     }
 }
