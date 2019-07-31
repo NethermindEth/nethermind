@@ -39,6 +39,11 @@ namespace Nethermind.Blockchain.TxPools
     public class TxPool : ITxPool, IDisposable
     {
         /// <summary>
+        /// Number of blocks after which own transaction will not be resurrected any more
+        /// </summary>
+        private const long FadingTimeInBlocks = 64;
+        
+        /// <summary>
         /// Notification threshold randomizer seed
         /// </summary>
         private static int _seed = Environment.TickCount;
@@ -70,6 +75,13 @@ namespace Nethermind.Blockchain.TxPools
         /// </summary>
         private ConcurrentDictionary<Keccak, Transaction> _ownTransactions
             = new ConcurrentDictionary<Keccak, Transaction>();
+        
+        /// <summary>
+        /// Own transactions that were already added to the chain but need more confirmations
+        /// before being removed from pending entirely.
+        /// </summary>
+        private ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)> _fadingOwnTransactions
+            = new ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)>();
 
         /// <summary>
         /// Filters defining which transactions should be ignored before storing them in persistent storage.
@@ -180,6 +192,14 @@ namespace Nethermind.Blockchain.TxPools
 
         public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool doNotEvict = false)
         {
+            if(_fadingOwnTransactions.ContainsKey(tx.Hash))
+            {
+                _fadingOwnTransactions.TryRemove(tx.Hash, out (Transaction Tx, long _) fadingTxHolder);
+                _ownTransactions.TryAdd(fadingTxHolder.Tx.Hash, fadingTxHolder.Tx);
+                _ownTimer.Enabled = true;
+                return AddTxResult.Added;
+            }
+            
             Metrics.PendingTransactionsReceived++;
             if (doNotEvict)
             {
@@ -242,8 +262,24 @@ namespace Nethermind.Blockchain.TxPools
             return AddTxResult.Added;
         }
 
-        public void RemoveTransaction(Keccak hash)
+        public void RemoveTransaction(Keccak hash, long blockNumber)
         {
+            if (_fadingOwnTransactions.Count > 0)
+            {
+                /* If we receive a remove transaction call then it means that a block was processed (assumed).
+                 * If our fading transaction has been included in the main chain more than FadingTimeInBlocks blocks ago
+                 * then we can assume that is is set in stone (or rather blockchain) and we do not have to worry about
+                 * it any more.
+                 */
+                foreach ((Keccak fadingHash, (Transaction Tx, long BlockNumber) fadingHolder) in _fadingOwnTransactions)
+                {
+                    if (fadingHolder.BlockNumber < blockNumber - FadingTimeInBlocks)
+                    {
+                        _fadingOwnTransactions.TryRemove(fadingHash, out _);
+                    }
+                }
+            }
+            
             if (_pendingTxs.TryRemove(hash, out var transaction))
             {
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
@@ -252,9 +288,10 @@ namespace Nethermind.Blockchain.TxPools
 
             if (_ownTransactions.Count != 0)
             {
-                bool ownIncluded = _ownTransactions.TryRemove(hash, out _);
+                bool ownIncluded = _ownTransactions.TryRemove(hash, out Transaction fadingTx);
                 if (ownIncluded)
                 {
+                    _fadingOwnTransactions.TryAdd(hash, (fadingTx, blockNumber));
                     if (_logger.IsInfo) _logger.Trace($"Transaction {hash} created on this node was included in the block");
                 }
             }

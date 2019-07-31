@@ -1198,7 +1198,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1A);
             blockTree.UpdateMainChain(block1A);
 
-            txPoolMock.Received().RemoveTransaction(t1.Hash);
+            txPoolMock.Received().RemoveTransaction(t1.Hash, 1);
         }
         
         [Test]

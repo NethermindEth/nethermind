@@ -248,7 +248,7 @@ namespace Nethermind.Blockchain.Test
         {
             foreach (var transaction in transactions)
             {
-                _txPool.RemoveTransaction(transaction.Hash);
+                _txPool.RemoveTransaction(transaction.Hash, 0);
             }
         }
 

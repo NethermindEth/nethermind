@@ -947,18 +947,14 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.FullHashAndNumber)} to main");
             }
 
+            Keccak hashOfThePreviousMainBlock = level.HasBlockOnMainChain ? level.BlockInfos[0].BlockHash : null;
+
             BlockInfo info = level.BlockInfos[index.Value];
             info.WasProcessed = true;
             if (index.Value != 0)
             {
                 (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
             }
-
-            // tks: in testing chains we have a chain full of processed blocks that we process again
-            //if (level.HasBlockOnMainChain)
-            //{
-            //    throw new InvalidOperationException("When moving to main encountered a block in main on the same level");
-            //}
 
             level.HasBlockOnMainChain = true;
             PersistLevel(block.Number, level);
@@ -982,10 +978,18 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _txPool.RemoveTransaction(block.Transactions[i].Hash);
+                _txPool.RemoveTransaction(block.Transactions[i].Hash, block.Number);
             }
-            
-            
+
+            if (hashOfThePreviousMainBlock != null)
+            {
+                Block previous = FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                for (int i = 0; i < previous.Transactions.Length; i++)
+                {
+                    Transaction tx = previous.Transactions[i];
+                    _txPool.AddTransaction(tx, previous.Number);
+                }
+            }
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
         }

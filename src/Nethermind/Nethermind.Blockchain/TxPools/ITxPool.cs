@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.TxPools
         void AddPeer(ISyncPeer peer);
         void RemovePeer(PublicKey nodeId);
         AddTxResult AddTransaction(Transaction tx, long blockNumber, bool doNotEvict = false);
-        void RemoveTransaction(Keccak hash);
+        void RemoveTransaction(Keccak hash, long blockNumber);
         bool TryGetSender(Keccak hash, out Address sender);
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
