@@ -67,7 +67,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 _logger.Info($"Sending a refund claim transaction for {refundClaim.DepositId} to be refunded to {refundClaim.RefundTo}");
             }
             
-            return _blockchainBridge.SendTransaction(transaction);
+            return _blockchainBridge.SendTransaction(transaction, true);
         }
 
         public Keccak ClaimEarlyRefund(Address onBehalfOf, EarlyRefundClaim earlyRefundClaim)

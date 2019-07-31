@@ -68,7 +68,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _faucetAccount = Account.TotallyEmpty;
             _transactionHash = Keccak.Zero;
             _blockchainBridge.GetAccount(_faucetAddress).Returns(_faucetAccount);
-            _blockchainBridge.SendTransaction(Arg.Any<Transaction>()).Returns(_transactionHash);
+            _blockchainBridge.SendTransaction(Arg.Any<Transaction>(), true).Returns(_transactionHash);
         }
 
         [Test]

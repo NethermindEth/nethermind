@@ -246,7 +246,7 @@ namespace Nethermind.DataMarketplace.Test
 
             private int _txIndex = 0;
 
-            public Keccak SendTransaction(Transaction transaction, bool doNotEvict = false)
+            public Keccak SendTransaction(Transaction transaction, bool isOwn = false)
             {
                 transaction.Hash = Transaction.CalculateHash(transaction);
                 _headBlock.Transactions[_txIndex++] = transaction;

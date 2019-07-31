@@ -183,7 +183,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                     Nonce = faucetAccount?.Nonce ?? 0
                 };
                 _blockchainBridge.Sign(transaction);
-                var transactionHash = _blockchainBridge.SendTransaction(transaction);
+                var transactionHash = _blockchainBridge.SendTransaction(transaction, true);
                 if (latestRequest is null)
                 {
                     var requestId = Keccak.Compute(Rlp.Encode(Rlp.Encode(node)));

@@ -33,6 +33,8 @@ namespace Nethermind.Blockchain.TxPools
         public static NullTxPool Instance { get; } = new NullTxPool();
 
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
+        
+        public Transaction[] GetOwnPendingTransactions() => Array.Empty<Transaction>();
 
         public void AddFilter<T>(T filter) where T : ITxFilter
         {
@@ -46,7 +48,7 @@ namespace Nethermind.Blockchain.TxPools
         {
         }
 
-        public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool doNotEvict = false)
+        public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool isOwn = false)
         {
             return AddTxResult.Added;
         }

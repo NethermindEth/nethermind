@@ -65,12 +65,6 @@ namespace Nethermind.Blockchain.TxPools
             new ConcurrentDictionary<Keccak, Transaction>();
 
         /// <summary>
-        /// Transactions that should never be removed. (TODO: we should always remove transactions that are incorrect due to nonce overrides)
-        /// </summary>
-        private readonly ConcurrentDictionary<Keccak, bool> _nonEvictableTxs =
-            new ConcurrentDictionary<Keccak, bool>();
-        
-        /// <summary>
         /// Transactions published locally (initiated by this node users).
         /// </summary>
         private ConcurrentDictionary<Keccak, Transaction> _ownTransactions
@@ -166,6 +160,8 @@ namespace Nethermind.Blockchain.TxPools
         }
 
         public Transaction[] GetPendingTransactions() => _pendingTxs.Values.ToArray();
+        
+        public Transaction[] GetOwnPendingTransactions() => _ownTransactions.Values.ToArray();
 
         public void AddFilter<T>(T filter) where T : ITxFilter
             => _filters.TryAdd(filter.GetType(), filter);
@@ -190,7 +186,7 @@ namespace Nethermind.Blockchain.TxPools
             if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
 
-        public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool doNotEvict = false)
+        public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool isOwn = false)
         {
             if(_fadingOwnTransactions.ContainsKey(tx.Hash))
             {
@@ -201,11 +197,6 @@ namespace Nethermind.Blockchain.TxPools
             }
             
             Metrics.PendingTransactionsReceived++;
-            if (doNotEvict)
-            {
-                _nonEvictableTxs.TryAdd(tx.Hash, true);
-                if (_logger.IsDebug) _logger.Debug($"Added an unevictable transaction to TX pool: {tx.Hash}.");
-            }
 
             if (tx.Signature.GetChainId == null)
             {
@@ -247,7 +238,7 @@ namespace Nethermind.Blockchain.TxPools
              * if we leave it for block production only.
              * */
             
-            if (tx.DeliveredBy == null)
+            if (isOwn)
             {
                 _ownTransactions.TryAdd(tx.Hash, tx);
                 _ownTimer.Enabled = true;
@@ -283,7 +274,6 @@ namespace Nethermind.Blockchain.TxPools
             if (_pendingTxs.TryRemove(hash, out var transaction))
             {
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
-                _nonEvictableTxs.TryRemove(hash, out _);
             }
 
             if (_ownTransactions.Count != 0)
@@ -400,9 +390,9 @@ namespace Nethermind.Blockchain.TxPools
             UInt256 timestamp = new UInt256(_timestamper.EpochSeconds);
             foreach (Transaction tx in _pendingTxs.Values)
             {
-                if (_nonEvictableTxs.ContainsKey(tx.Hash))
+                if (_ownTransactions.ContainsKey(tx.Hash))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Pending transaction: {tx.Hash} will not be evicted.");
+                    if (_logger.IsDebug) _logger.Debug($"Pending own transaction: {tx.Hash} will not be removed.");
                     continue;
                 }
                 
