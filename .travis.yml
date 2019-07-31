@@ -210,7 +210,7 @@ jobs:
       - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.KeyAddress.Test;
         else 
-          dotnet test src/Ethereum.KeyAddress.Test;
+          dotnet test src/Nethermind/Ethereum.KeyAddress.Test;
         fi
       name: "Ethereum.KeyAddress.Test"
     - script:
