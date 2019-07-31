@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, specProvider, txPool, LimboLogs.Instance);
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-            VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), LimboLogs.Instance);
+            VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
             TransactionProcessor txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             IBlockProcessor blockProcessor = new BlockProcessor(specProvider, AlwaysValidBlockValidator.Instance, new RewardCalculator(specProvider), txProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, LimboLogs.Instance);
 

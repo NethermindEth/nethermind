@@ -21,46 +21,46 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.Forks
 {
-    public class Homestead : IReleaseSpec
-    {   
+    public class Istanbul : IReleaseSpec
+    {
         private static IReleaseSpec _instance;
 
-        private Homestead()
+        private Istanbul()
         {
         }
 
-        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Homestead());
+        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Istanbul());
 
         public long MaximumExtraDataSize => 32;
-        public long MaxCodeSize => long.MaxValue;
+        public long MaxCodeSize => 24576;
         public long MinGasLimit => 5000;
         public long GasLimitBoundDivisor => 0x0400;
         public Address Registrar => new Address("0xe3389675d0338462dC76C6f9A3e432550c36A142");
-        public UInt256 BlockReward => UInt256.Parse("5000000000000000000");
-        public long DifficultyBombDelay => 0L;
+        public UInt256 BlockReward => UInt256.Parse("2000000000000000000");
+        public long DifficultyBombDelay => 5000000L;
         public long DifficultyBoundDivisor => 0x0800;
         public bool IsTimeAdjustmentPostOlympic => true;
         public bool IsEip2Enabled => true;
         public bool IsEip7Enabled => true;
-        public bool IsEip100Enabled => false;
-        public bool IsEip140Enabled => false;
-        public bool IsEip150Enabled => false;
-        public bool IsEip155Enabled => false;
-        public bool IsEip158Enabled => false;
-        public bool IsEip160Enabled => false;
-        public bool IsEip170Enabled => false;
-        public bool IsEip196Enabled => false;
-        public bool IsEip197Enabled => false;
-        public bool IsEip198Enabled => false;
-        public bool IsEip211Enabled => false;
-        public bool IsEip214Enabled => false;
-        public bool IsEip649Enabled => false;
-        public bool IsEip658Enabled => false;
-        public bool IsEip145Enabled => false;
-        public bool IsEip1014Enabled => false;
-        public bool IsEip1052Enabled => false;
+        public bool IsEip100Enabled => true;
+        public bool IsEip140Enabled => true;
+        public bool IsEip150Enabled => true;
+        public bool IsEip155Enabled => true;
+        public bool IsEip158Enabled => true;
+        public bool IsEip160Enabled => true;
+        public bool IsEip170Enabled => true;
+        public bool IsEip196Enabled => true;
+        public bool IsEip197Enabled => true;
+        public bool IsEip198Enabled => true;
+        public bool IsEip211Enabled => true;
+        public bool IsEip214Enabled => true;
+        public bool IsEip649Enabled => true;
+        public bool IsEip658Enabled => true;
+        public bool IsEip145Enabled => true;
+        public bool IsEip1014Enabled => true;
+        public bool IsEip1052Enabled => true;
         public bool IsEip1283Enabled => false;
-        public bool IsEip1234Enabled => false;
-        public bool IsEip1344Enabled => false;
+        public bool IsEip1234Enabled => true;
+        public bool IsEip1344Enabled => true;
     }
 }

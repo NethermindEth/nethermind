@@ -268,7 +268,7 @@ namespace Nethermind.PerfTest
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
-            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _logManager);
+            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
             

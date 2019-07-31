@@ -27,8 +27,16 @@ namespace Nethermind.Core.Specs
     {
         private readonly (long BlockNumber, IReleaseSpec Release)[] _transitions;
 
-        public CustomSpecProvider(params (long BlockNumber, IReleaseSpec Release)[] transitions)
+        public int ChainId { get; }
+
+        public CustomSpecProvider(params (long BlockNumber, IReleaseSpec Release)[] transitions) : this(0, transitions)
         {
+        }
+
+        public CustomSpecProvider(int chainId, params (long BlockNumber, IReleaseSpec Release)[] transitions)
+        {
+            ChainId = chainId;
+            
             if (transitions.Length == 0)
             {
                 throw new ArgumentException($"There must be at least one release specified when instantiating {nameof(CustomSpecProvider)}", $"{nameof(transitions)}");
@@ -41,7 +49,7 @@ namespace Nethermind.Core.Specs
                 throw new ArgumentException($"First release specified when instantiating {nameof(CustomSpecProvider)} should be at genesis block (0)", $"{nameof(transitions)}");
             }
         }
-
+        
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
         
         public IReleaseSpec GetSpec(long blockNumber)
@@ -71,6 +79,5 @@ namespace Nethermind.Core.Specs
             }
         }
 
-        public int ChainId => 0;
     }
 }

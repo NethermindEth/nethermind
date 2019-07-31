@@ -109,7 +109,8 @@ namespace Nethermind.DataMarketplace.Test
             _state.Commit(spec);
             _state.CommitTree();
 
-            VirtualMachine machine = new VirtualMachine(_state, storageProvider, Substitute.For<IBlockhashProvider>(), _logManager);
+            VirtualMachine machine = new VirtualMachine(_state, storageProvider, Substitute.For<IBlockhashProvider>(),
+                specProvider, _logManager);
             TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
             _bridge = new BlockchainBridge(processor, _releaseSpec);
 

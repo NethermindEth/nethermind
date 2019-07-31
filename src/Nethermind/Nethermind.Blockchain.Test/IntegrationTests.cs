@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Test
 
             /* blockchain processing */
             BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
+            VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
             TransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator,

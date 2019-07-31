@@ -136,7 +136,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
                 BlockTree = new ReadOnlyBlockTree(blockTree);
                 BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
-                VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, logManager);
+                VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider,
+                    logManager);
                 TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider,
                     VirtualMachine, logManager);
             }

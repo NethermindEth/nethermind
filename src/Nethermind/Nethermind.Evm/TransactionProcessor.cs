@@ -199,7 +199,7 @@ namespace Nethermind.Evm
                 ExecutionType executionType = transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
                 using (EvmState state = new EvmState(unspentGas, env, executionType, isPrecompile, true, false))
                 {
-                    substate = _virtualMachine.Run(state, spec, txTracer);
+                    substate = _virtualMachine.Run(state, txTracer);
                     unspentGas = state.GasAvailable;
                 }
 
