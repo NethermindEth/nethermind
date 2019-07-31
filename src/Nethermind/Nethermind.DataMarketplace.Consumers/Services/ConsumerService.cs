@@ -204,52 +204,52 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     }
                 });
 
-        private async Task TryVerifyDepositAsync(DepositDetails depositDetails)
+        private async Task TryVerifyDepositAsync(DepositDetails deposit)
         {
-            if (depositDetails.Verified)
+            if (deposit.Verified)
             {
                 return;
             }
             
-            if (depositDetails.VerificationTimestamp == 0)
+            if (deposit.VerificationTimestamp == 0)
             {
-                var verificationTimestamp = _depositService.VerifyDeposit(_consumerAddress, depositDetails.Id);
+                var verificationTimestamp = _depositService.VerifyDeposit(_consumerAddress, deposit.Id);
                 if (verificationTimestamp == 0)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Id}' didn't return verification timestamp from contract call yet.'");
+                    if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Id}' didn't return verification timestamp from contract call yet.'");
                     return;
                 }
                 
-                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Deposit.Id}' has verification timestamp (from contract call): {verificationTimestamp}.");
-                depositDetails.SetVerificationTimestamp(verificationTimestamp);
-                await _depositRepository.UpdateAsync(depositDetails);
+                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Deposit.Id}' has verification timestamp (from contract call): {verificationTimestamp}.");
+                deposit.SetVerificationTimestamp(verificationTimestamp);
+                await _depositRepository.UpdateAsync(deposit);
             }
             
-            var transactionHash = depositDetails.TransactionHash;
-            var (receipt, transaction) = _blockchainBridge.GetTransaction(depositDetails.TransactionHash);                        
+            var transactionHash = deposit.TransactionHash;
+            var (receipt, transaction) = _blockchainBridge.GetTransaction(deposit.TransactionHash);                        
             if (transaction is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Transaction was not found for hash: '{transactionHash}' for deposit: '{depositDetails.Id}' to be verified.");
+                if (_logger.IsWarn) _logger.Warn($"Transaction was not found for hash: '{transactionHash}' for deposit: '{deposit.Id}' to be verified.");
                 return;
             }
             
             var confirmations = _blockchainBridge.Head.Number - receipt.BlockNumber;
-            if (_logger.IsInfo) _logger.Info($"Deposit: '{depositDetails.Id}' has {confirmations} confirmations (required at least {_depositRequiredConfirmations}) for transaction hash: '{transactionHash}' to be verified.");
+            if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_depositRequiredConfirmations}) for transaction hash: '{transactionHash}' to be verified.");
 
             var confirmed = confirmations >= _depositRequiredConfirmations;
             if (confirmed)
             {
-                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{depositDetails.Deposit.Id}' has been verified.");
+                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Deposit.Id}' has been verified.");
             }
             
-            if (confirmations != depositDetails.Confirmations || confirmed)
+            if (confirmations != deposit.Confirmations || confirmed)
             {
-                depositDetails.SetConfirmations((uint) confirmations);
-                await _depositRepository.UpdateAsync(depositDetails);
+                deposit.SetConfirmations((uint) confirmations);
+                await _depositRepository.UpdateAsync(deposit);
             }
 
-            await _consumerNotifier.SendDepositConfirmationsStatusAsync(depositDetails.Id, (uint) confirmations,
-                _depositRequiredConfirmations, depositDetails.VerificationTimestamp);
+            await _consumerNotifier.SendDepositConfirmationsStatusAsync(deposit.Id, deposit.DataHeader.Name,
+                (uint) confirmations, _depositRequiredConfirmations, deposit.VerificationTimestamp);
         }
 
         private async Task TryClaimRefundAsync(DepositDetails depositDetails)

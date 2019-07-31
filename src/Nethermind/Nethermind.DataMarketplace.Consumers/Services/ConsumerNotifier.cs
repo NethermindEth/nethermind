@@ -15,12 +15,13 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _notifier = notifier;
         }
 
-        public Task SendDepositConfirmationsStatusAsync(Keccak depositId, uint confirmations,
+        public Task SendDepositConfirmationsStatusAsync(Keccak depositId, string dataAssetName, uint confirmations,
             uint requiredConfirmations, uint verificationTimestamp)
             => _notifier.NotifyAsync(new Notification("deposit_confirmations",
                 new
                 {
                     depositId,
+                    dataAssetName,
                     confirmations,
                     requiredConfirmations,
                     verificationTimestamp
