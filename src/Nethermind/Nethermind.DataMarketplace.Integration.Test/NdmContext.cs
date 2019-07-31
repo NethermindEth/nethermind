@@ -111,13 +111,13 @@ namespace Nethermind.DataMarketplace.Integration.Test
         }
 
 
-        public NdmContext EnableDataStream(Func<string> depositId, string[] subscriptions,
+        public NdmContext EnableDataStream(Func<string> depositId, string[] args,
             string name = "Enable data stream", Func<string, bool> validator = null,
             Action<NdmState, JsonRpcResponse<string>> stateUpdater = null)
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
             return AddJsonRpc(name, "npm_enableDataStream",
-                () => client.PostAsync<string>(nameof(EnableDataStream), new object[] {depositId(), subscriptions}), validator, stateUpdater);
+                () => client.PostAsync<string>(nameof(EnableDataStream), new object[] {depositId(), args}), validator, stateUpdater);
         }
 
         public NdmContext DisableDataStream(Func<string> depositId, string name = "Disable data stream",

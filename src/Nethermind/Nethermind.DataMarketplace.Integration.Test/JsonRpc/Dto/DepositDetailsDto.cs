@@ -27,7 +27,7 @@ namespace Nethermind.DataMarketplace.Integration.Test.JsonRpc.Dto
         public string TransactionHash { get; set; }
         public DataHeaderDto DataHeader { get; set; }
         public DataRequestDto DataRequest { get; set; }
-        public string[] Subscriptions { get; set; }
+        public string[] Args { get; set; }
         public bool StreamEnabled { get; set; }
         public uint ConsumedUnitsFromProvider { get; set; }
         public long ConsumedUnitsFromConsumer { get; set; }

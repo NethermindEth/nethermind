@@ -155,6 +155,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
             
             _accountLocked = true;
+            _consumerNotifier.SendConsumerAccountLockedAsync(e.Address);
             if (_logger.IsInfo) _logger.Info($"Locked consumer account: '{e.Address}', all of the existing data streams will be disabled.");
 
             var disableStreamTasks = _sessions.Values.Select(s => DisableDataStreamAsync(s.DepositId));
@@ -277,11 +278,11 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
 
-            var oldAddress = _consumerAddress;
-            if (_logger.IsInfo) _logger.Info($"Changing consumer address: '{oldAddress}' -> '{address}'...");
+            var previousAddress = _consumerAddress;
+            if (_logger.IsInfo) _logger.Info($"Changing consumer address: '{previousAddress}' -> '{address}'...");
             _consumerAddress = address;
             _accountLocked = !_wallet.IsUnlocked(_consumerAddress);
-            AddressChanged?.Invoke(this, new AddressChangedEventArgs(oldAddress, _consumerAddress));
+            AddressChanged?.Invoke(this, new AddressChangedEventArgs(previousAddress, _consumerAddress));
             var config = await _configManager.GetAsync(_configId);
             config.ConsumerAddress = _consumerAddress.ToString();
             await _configManager.UpdateAsync(config);
@@ -291,23 +292,25 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 provider.SendConsumerAddressChanged(_consumerAddress);
                 await FinishSessionsAsync(provider, false);
             }
-
-            if (_logger.IsInfo) _logger.Info($"Changed consumer address: '{_consumerAddress}' -> '{address}'.");
+            
+            await _consumerNotifier.SendConsumerAddressChangedAsync(address, previousAddress);
+            if (_logger.IsInfo) _logger.Info($"Changed consumer address: '{previousAddress}' -> '{address}'.");
         }
 
-        public Task ChangeProviderAddressAsync(INdmPeer peer, Address address)
+        public async Task ChangeProviderAddressAsync(INdmPeer peer, Address address)
         {
             if (peer.ProviderAddress == address)
             {
-                return Task.CompletedTask;
+                return;
             }
             
-            if (_logger.IsInfo) _logger.Info($"Changing provider address: '{peer.ProviderAddress}' -> '{address}' for peer: '{peer.NodeId}'.");
+            var previousAddress = peer.ProviderAddress;
+            if (_logger.IsInfo) _logger.Info($"Changing provider address: '{previousAddress}' -> '{address}' for peer: '{peer.NodeId}'.");
             _providersWithCommonAddress.TryRemove(peer.ProviderAddress, out _);
             peer.ChangeProviderAddress(address);
             AddProviderNodes(peer);
-            
-            return Task.CompletedTask;
+            await _consumerNotifier.SendProviderAddressChangedAsync(address, previousAddress);
+            if (_logger.IsInfo) _logger.Info($"Changed provider address: '{previousAddress}' -> '{address}'.");
         }
 
         public void AddProviderPeer(INdmPeer peer)
@@ -346,12 +349,18 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
             
             dataHeader.SetState(state);
+            _consumerNotifier.SendDataAssetStateChangedAsync(dataHeaderId, dataHeader.Name, state);
             if (_logger.IsInfo) _logger.Info($"Changed discovered data header: '{dataHeaderId}' state to: '{state}'.");
         }
 
         public void RemoveDiscoveredDataHeader(Keccak dataHeaderId)
         {
-            _discoveredDataHeaders.TryRemove(dataHeaderId, out _);
+            if (!_discoveredDataHeaders.TryRemove(dataHeaderId, out var dataHeader))
+            {
+                return;
+            }
+
+            _consumerNotifier.SendDataAssetRemovedAsync(dataHeaderId, dataHeader.Name);
         }
 
         public async Task StartSessionAsync(Session session, INdmPeer provider)
@@ -433,6 +442,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
             SetActiveSession(consumerSession);
             await _sessionRepository.AddAsync(consumerSession);
+            await _consumerNotifier.SendSessionStartedAsync(session.DepositId, session.Id,
+                consumerSession.StreamEnabled, consumerSession.Args);
             if (_logger.IsInfo) _logger.Info($"Started a session with id: '{session.Id}' for deposit: '{session.DepositId}', address: '{_consumerAddress}'.");
         }
 
@@ -494,6 +505,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             if (_logger.IsInfo) _logger.Info($"Setting data availability: '{dataAvailability}', for deposit: '{depositId}', session: {session.Id}.");
             session.SetDataAvailability(dataAvailability);
             await _sessionRepository.UpdateAsync(session);
+            await _consumerNotifier.SendDataAvailabilityChangedAsync(depositId, session.Id, dataAvailability);
         }
 
         public async Task<Keccak> MakeDepositAsync(Keccak headerId, uint units, UInt256 value)
@@ -725,7 +737,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             return depositId;
         }
 
-        public Task<Keccak> EnableDataStreamAsync(Keccak depositId, string[] subscriptions)
+        public Task<Keccak> EnableDataStreamAsync(Keccak depositId, string[] args)
         {
             if (_accountLocked)
             {
@@ -734,13 +746,13 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return Task.FromResult<Keccak>(null);
             }
             
-            return ToggleDataStreamAsync(depositId, true, subscriptions);
+            return ToggleDataStreamAsync(depositId, true, args);
         }
 
         public Task<Keccak> DisableDataStreamAsync(Keccak depositId)
             => ToggleDataStreamAsync(depositId, false);
 
-        private async Task<Keccak> ToggleDataStreamAsync(Keccak depositId, bool enabled, string[] subscriptions = null)
+        private async Task<Keccak> ToggleDataStreamAsync(Keccak depositId, bool enabled, string[] args = null)
         {
             var session = GetActiveSession(depositId);
             if (session is null)
@@ -781,7 +793,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             if (enabled)
             {
                 if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}'.");
-                providerPeer.SendEnableDataStream(depositId, subscriptions);
+                providerPeer.SendEnableDataStream(depositId, args);
             }
             else
             {
@@ -792,7 +804,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             return depositId;
         }
 
-        public async Task SetEnabledDataStreamAsync(Keccak depositId, string[] subscriptions)
+        public async Task SetEnabledDataStreamAsync(Keccak depositId, string[] args)
         {
             var session = GetActiveSession(depositId);
             if (session is null)
@@ -800,9 +812,10 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
 
-            session.EnableStream(subscriptions);
+            session.EnableStream(args);
             await _sessionRepository.UpdateAsync(session);
-            if (_logger.IsInfo) _logger.Info($"Enabled data stream for deposit: '{depositId}'.");
+            await _consumerNotifier.SendDataStreamEnabledAsync(depositId, session.Id);
+            if (_logger.IsInfo) _logger.Info($"Enabled data stream for deposit: '{depositId}', session: '{session.Id}'.'");
         }
 
         public async Task SetDisabledDataStreamAsync(Keccak depositId)
@@ -815,7 +828,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             session.DisableStream();
             await _sessionRepository.UpdateAsync(session);
-            if (_logger.IsInfo) _logger.Info($"Disabled data stream for deposit: '{depositId}'.");
+            await _consumerNotifier.SendDataStreamDisabledAsync(depositId, session.Id);
+            if (_logger.IsInfo) _logger.Info($"Disabled data stream for deposit: '{depositId}', session: '{session.Id}'.");
         }
 
         public async Task SendDataDeliveryReceiptAsync(DataDeliveryReceiptRequest request)
@@ -1010,11 +1024,15 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     case DepositApprovalState.Confirmed:
                         existingDepositApproval.Confirm();
                         await _depositApprovalRepository.UpdateAsync(existingDepositApproval);
+                        await _consumerNotifier.SendDepositApprovalConfirmedAsync(depositApproval.HeaderId,
+                            depositApproval.HeaderName);
                         if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{depositApproval.HeaderId}' was confirmed.");
                         break;
                     case DepositApprovalState.Rejected:
                         existingDepositApproval.Reject();
                         await _depositApprovalRepository.UpdateAsync(existingDepositApproval);
+                        await _consumerNotifier.SendDepositApprovalRejectedAsync(depositApproval.HeaderId,
+                            depositApproval.HeaderName);
                         if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{depositApproval.HeaderId}' was rejected.");
                         break;
                 }
@@ -1047,6 +1065,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             depositApproval.Confirm();
             await _depositApprovalRepository.UpdateAsync(depositApproval);
+            await _consumerNotifier.SendDepositApprovalConfirmedAsync(depositApproval.HeaderId,
+                depositApproval.HeaderName);
             if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{headerId}' was confirmed.");
         }
 
@@ -1070,6 +1090,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             depositApproval.Reject();
             await _depositApprovalRepository.UpdateAsync(depositApproval);
+            await _consumerNotifier.SendDepositApprovalRejectedAsync(depositApproval.HeaderId,
+                depositApproval.HeaderName);
             if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{headerId}' was rejected.");
         }
 
@@ -1112,6 +1134,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var timestamp = session.FinishTimestamp;
             consumerSession.Finish(session.State, timestamp);
             await _sessionRepository.UpdateAsync(consumerSession);
+            await _consumerNotifier.SendSessionFinishedAsync(session.DepositId, session.Id);
             if (_logger.IsInfo) _logger.Info($"Finished a session: '{session.Id}' for deposit: '{depositId}', provider: '{provider.ProviderAddress}', state: '{session.State}', timestamp: {timestamp}.");
         }
 
@@ -1159,6 +1182,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 _sessions.TryRemove(session.DepositId, out _);
                 session.Finish(SessionState.ProviderDisconnected, timestamp);
                 await _sessionRepository.UpdateAsync(session);
+                await _consumerNotifier.SendSessionFinishedAsync(session.DepositId, session.Id);
                 if (_logger.IsInfo) _logger.Info($"Finished a session: '{session.Id}' for deposit: '{depositId}', provider: '{provider.ProviderAddress}', state: '{session.State}', timestamp: {timestamp}.");
             }
         }
@@ -1208,6 +1232,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             depositDetails.SetRefundClaimed(transactionHash);
             await _depositRepository.UpdateAsync(depositDetails);
+            await _consumerNotifier.SendClaimedEarlyRefund(depositId, depositDetails.DataHeader.Name, transactionHash);
             if (_logger.IsInfo) _logger.Info($"Claimed an early refund for deposit: '{depositId}', transaction hash: '{transactionHash}'.");
         }
 
@@ -1235,6 +1260,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             depositDetails.SetRefundClaimed(transactionHash);
             await _depositRepository.UpdateAsync(depositDetails);
+            await _consumerNotifier.SendClaimedRefund(depositId, depositDetails.DataHeader.Name, transactionHash);
             if (_logger.IsInfo) _logger.Info($"Claimed a refund for deposit: '{depositId}', transaction hash: '{transactionHash}'.");
         }
 

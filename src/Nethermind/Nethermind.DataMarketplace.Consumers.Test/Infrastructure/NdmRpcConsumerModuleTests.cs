@@ -273,10 +273,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task enable_data_stream_should_return_deposit_id()
         {
             var depositId = TestItem.KeccakA;
-            var subscriptions = new[] {"test"};
-            _consumerService.EnableDataStreamAsync(depositId, subscriptions).Returns(depositId);
-            var result = await _rpc.ndm_enableDataStream(depositId, subscriptions);
-            await _consumerService.Received().EnableDataStreamAsync(depositId, subscriptions);
+            var args = new[] {"test"};
+            _consumerService.EnableDataStreamAsync(depositId, args).Returns(depositId);
+            var result = await _rpc.ndm_enableDataStream(depositId, args);
+            await _consumerService.Received().EnableDataStreamAsync(depositId, args);
             result.Data.Should().Be(depositId);
         }
         
@@ -284,9 +284,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task enable_data_stream_should_fail_if_deposit_was_not_found()
         {
             var depositId = TestItem.KeccakA;
-            var subscriptions = new[] {"test"};
-            var result = await _rpc.ndm_enableDataStream(depositId, subscriptions);
-            await _consumerService.Received().EnableDataStreamAsync(depositId, subscriptions);
+            var args = new[] {"test"};
+            var result = await _rpc.ndm_enableDataStream(depositId, args);
+            await _consumerService.Received().EnableDataStreamAsync(depositId, args);
             result.Data.Should().BeNull();
             result.Result.ResultType.Should().Be(ResultType.Failure);
             result.ErrorType.Should().Be(ErrorType.InternalError);
@@ -489,7 +489,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             session.ConsumedUnitsFromProvider.Should().Be(0);
             session.DataAvailability.Should().Be(DataAvailability.Available.ToString().ToLowerInvariant());
             session.StreamEnabled.Should().BeFalse();
-            session.Subscriptions.Should().BeEmpty();
+            session.Args.Should().BeEmpty();
         }
 
         private static void VerifyDepositDetails(DepositDetailsForRpc deposit)

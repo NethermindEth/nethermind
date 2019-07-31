@@ -44,7 +44,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit);
         Task<ResultWrapper<Keccak>> ndm_sendDataRequest(Keccak depositId);
         Task<ResultWrapper<Keccak>> ndm_finishSession(Keccak depositId);
-        Task<ResultWrapper<Keccak>> ndm_enableDataStream(Keccak depositId, string[] subscriptions);
+        Task<ResultWrapper<Keccak>> ndm_enableDataStream(Keccak depositId, string[] args);
         Task<ResultWrapper<Keccak>> ndm_disableDataStream(Keccak depositId);
         ResultWrapper<string> ndm_pullData(Keccak depositId);
         Task<ResultWrapper<DepositsReportForRpc>> ndm_getDepositsReport(GetDepositsReport query = null);

@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
     {
         private long _consumedUnitsFromProvider;
         private int _streamEnabled;
-        private string[] _subscriptions;
+        private string[] _args;
         private int _dataAvailability;
 
         public bool StreamEnabled
@@ -39,10 +39,10 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             private set => _streamEnabled = value ? 1 : 0;
         }
 
-        public string[] Subscriptions
+        public string[] Args
         {
-            get => _subscriptions;
-            private set => _subscriptions = value;
+            get => _args;
+            private set => _args = value;
         }
 
         public DataAvailability DataAvailability
@@ -70,14 +70,14 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             ulong finishTimestamp = 0, uint consumedUnits = 0, uint unpaidUnits = 0, uint paidUnits = 0,
             uint settledUnits = 0,  uint consumedUnitsFromProvider = 0,
             DataAvailability dataAvailability = DataAvailability.Unknown, bool streamEnabled = false,
-            IEnumerable<string> subscriptions = null) : base(id, depositId,  dataHeaderId, consumerAddress,
+            IEnumerable<string> args = null) : base(id, depositId,  dataHeaderId, consumerAddress,
             consumerNodeId, providerAddress, providerNodeId, state, startUnitsFromConsumer, startUnitsFromProvider,
             startTimestamp, finishTimestamp, consumedUnits, unpaidUnits, paidUnits, settledUnits)
         {
             _consumedUnitsFromProvider = consumedUnitsFromProvider;
             _dataAvailability = (int) dataAvailability;
             _streamEnabled = streamEnabled ? 1 : 0;
-            _subscriptions = subscriptions?.ToArray() ?? Array.Empty<string>();
+            _args = args?.ToArray() ?? Array.Empty<string>();
         }
 
         public static ConsumerSession From(Session session) => new ConsumerSession(session.Id, session.DepositId,
@@ -113,11 +113,11 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public void SetDataAvailability(DataAvailability dataAvailability) =>
             Interlocked.Exchange(ref _dataAvailability, (int) dataAvailability);
 
-        public void EnableStream(string[] subscriptions)
+        public void EnableStream(string[] args)
         {
             ValidateIfSessionStarted();
             Interlocked.Exchange(ref _streamEnabled, 1);
-            Interlocked.Exchange(ref _subscriptions, subscriptions);
+            Interlocked.Exchange(ref _args, args);
         }
 
         public void DisableStream()
