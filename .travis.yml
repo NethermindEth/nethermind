@@ -29,17 +29,15 @@ jobs:
     - stage: Nethermind Tests    
       script: 
       - git submodule update --init src/Dirichlet
-      - |
-        if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
-          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Abi.Test;
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Abi.Test
         else 
-          dotnet test src/Nethermind/Nethermind.Abi.Test; 
+          dotnet test src/Nethermind/Nethermind.Abi.Test
         fi
       name: "Nethermind.Abi.Test"
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
-      - |
-        if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Blockchain.Test;
         else 
           dotnet test src/Nethermind/Nethermind.Blockchain.Test; 
@@ -47,8 +45,7 @@ jobs:
       name: "Nethermind.Blockchain.Test"
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
-      - |
-        if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Clique.Test;
         else 
           dotnet test src/Nethermind/Nethermind.Clique.Test;
@@ -56,8 +53,7 @@ jobs:
       name: "Nethermind.Clique.Test"
     - script:
       - git -c submodule."src/tests".update=none submodule update --init
-      - |
-        if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Config.Test;
         else 
           dotnet test src/Nethermind/Nethermind.Config.Test;
