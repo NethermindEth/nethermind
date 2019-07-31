@@ -112,7 +112,7 @@ jobs:
       - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Secp256k1.Test;
         else 
-          dotnet test src/Nethermind/Nethermind.Secp256k1.Test.Linux;
+          dotnet test src/Nethermind/Nethermind.Secp256k1.Test;
         fi
       name: "Nethermind.Secp256k1.Test.Linux"
     #- script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
