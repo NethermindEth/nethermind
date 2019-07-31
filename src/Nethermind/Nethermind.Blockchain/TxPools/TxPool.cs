@@ -32,72 +32,115 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.TxPools
 {
-    public class TxPool : ITxPool
+    /// <summary>
+    /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
+    /// or simply for broadcasting and tracing in other cases.
+    /// </summary>
+    public class TxPool : ITxPool, IDisposable
     {
+        /// <summary>
+        /// Notification threshold randomizer seed
+        /// </summary>
         private static int _seed = Environment.TickCount;
+        
+        /// <summary>
+        /// Random number generator for peer notification threshold - no need to be securely random.
+        /// </summary>
         private static readonly ThreadLocal<Random> Random =
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
+        
+        private readonly ISpecProvider _specProvider;
+        private readonly IEthereumEcdsa _ecdsa;
+        private readonly ILogger _logger;
+
+        /// <summary>
+        /// All pending transactions.
+        /// </summary>
         private readonly ConcurrentDictionary<Keccak, Transaction> _pendingTransactions =
             new ConcurrentDictionary<Keccak, Transaction>();
 
+        /// <summary>
+        /// Transactions that should never be removed. (TODO: we should always remove transactions that are incorrect due to nonce overrides)
+        /// </summary>
         private readonly ConcurrentDictionary<Keccak, bool> _nonEvictableTransactions =
             new ConcurrentDictionary<Keccak, bool>();
+        
+        /// <summary>
+        /// Transactions published locally (initiated by this node users).
+        /// </summary>
+        private ConcurrentDictionary<Keccak, Transaction> _ownTransactions
+            = new ConcurrentDictionary<Keccak, Transaction>();
+
+        /// <summary>
+        /// Filters on pending transactions.
+        /// </summary>
         private readonly ConcurrentDictionary<Type, ITxFilter> _filters =
             new ConcurrentDictionary<Type, ITxFilter>();
 
+        private readonly ITimestamper _timestamper;
+        
+        /// <summary>
+        /// Long term storage for pending transactions.
+        /// </summary>
         private readonly ITxStorage _txStorage;
+        
+        /// <summary>
+        /// Defines which of the pending transactions can be removed and should not be broadcast or included in blocks any more. 
+        /// </summary>
         private readonly IPendingTxThresholdValidator _pendingTxThresholdValidator;
-        private readonly ITimestamp _timestamp;
 
+        /// <summary>
+        /// Connected peers that can be notified about transactions.
+        /// </summary>
         private readonly ConcurrentDictionary<PublicKey, ISyncPeer> _peers = new ConcurrentDictionary<PublicKey, ISyncPeer>();
-        private readonly IEthereumEcdsa _ecdsa;
-        private readonly ISpecProvider _specProvider;
-        private readonly ILogger _logger;
-        private readonly int _peerNotificationThreshold;
-        private readonly Timer _ownTimer;
 
-        public TxPool(ITxStorage txStorage,
-            ITimestamp timestamp,
+        /// <summary>
+        /// Timer for rebroadcasting pending own transactions.
+        /// </summary>
+        private readonly Timer _ownTimer;
+        
+        /// <summary>
+        /// Timer for removing obsolete transactions.
+        /// </summary>
+        private Timer _transactionRemovalTimer;
+        
+        /// <summary>
+        /// Defines the percentage of peers that will be notified about pending transactions on average.
+        /// </summary>
+        private readonly int _peerNotificationThreshold;
+
+        public TxPool(
+            ITxStorage txStorage,
+            ITimestamper timestamper,
             IEthereumEcdsa ecdsa,
             ISpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
             ILogManager logManager)
         {
-            int removePendingTransactionInterval = txPoolConfig.RemovePendingTransactionInterval;
-            _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
-            _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             
-            _pendingTxThresholdValidator = new PendingTxThresholdValidator(txPoolConfig);
-            if (removePendingTransactionInterval <= 0)
-            {
-                return;
-            }
-
-            var timer = new Timer(removePendingTransactionInterval * 1000);
-            timer.Elapsed += OnTimerElapsed;
-            timer.Start();
+            _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
+            
             _ownTimer = new Timer(500);
             _ownTimer.Elapsed += OwnTimerOnElapsed;
             _ownTimer.AutoReset = false;
             _ownTimer.Start();
-        }
-
-
-        private void OwnTimerOnElapsed(object sender, ElapsedEventArgs e)
-        {
-            if (_ownTransactions.Count > 0)
+            
+            _pendingTxThresholdValidator = new PendingTxThresholdValidator(txPoolConfig);
+            int removeIntervalInSeconds = txPoolConfig.RemovePendingTransactionInterval;
+            if (removeIntervalInSeconds <= 0)
             {
-                foreach ((_, Transaction tx) in _ownTransactions)
-                {
-                    NotifyAllPeers(tx);
-                }
-
-                _ownTimer.Enabled = true;
+                return;
             }
+
+            _transactionRemovalTimer = new Timer(removeIntervalInSeconds * 1000);
+            _transactionRemovalTimer.Elapsed += RemovalTimerElapsed;
+            _transactionRemovalTimer.AutoReset = false;
+            _transactionRemovalTimer.Start();
         }
 
         public Transaction[] GetPendingTransactions() => _pendingTransactions.Values.ToArray();
@@ -134,7 +177,7 @@ namespace Nethermind.Blockchain.TxPools
                 if (_logger.IsDebug) _logger.Debug($"Added a transaction: {transaction.Hash} that will not be evicted.");
             }
 
-            // beware we are discarding here the old signature scheme without ChainId
+            // note that we are discarding here the old signature scheme (without ChainId)
             if (transaction.Signature.GetChainId == null)
             {
                 Metrics.PendingTransactionsDiscarded++;
@@ -177,50 +220,6 @@ namespace Nethermind.Blockchain.TxPools
             return AddTxResult.Added;
         }
 
-        private void FilterAndStoreTransaction(Transaction transaction, long blockNumber)
-        {
-            var filters = _filters.Values;
-            if (filters.Any(filter => !filter.IsValid(transaction)))
-            {
-                return;
-            }
-
-            _txStorage.Add(transaction, blockNumber);
-            if (_logger.IsTrace) _logger.Trace($"Added a transaction: {transaction.Hash}");
-        }
-
-        private void OnTimerElapsed(object sender, ElapsedEventArgs eventArgs)
-        {
-            if (_pendingTransactions.Count == 0)
-            {
-                return;
-            }
-
-            var hashes = new List<Keccak>();
-            var timestamp = new UInt256(_timestamp.EpochSeconds);
-            foreach (var transaction in _pendingTransactions.Values)
-            {
-                if (_nonEvictableTransactions.ContainsKey(transaction.Hash))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Pending transaction: {transaction.Hash} will not be evicted.");
-                    continue;
-                }
-                
-                if (_pendingTxThresholdValidator.IsRemovable(timestamp, transaction.Timestamp))
-                {
-                    hashes.Add(transaction.Hash);
-                }
-            }
-
-            for (var i = 0; i < hashes.Count; i++)
-            {
-                if (_pendingTransactions.TryRemove(hashes[i], out var transaction))
-                {
-                    RemovedPending?.Invoke(this, new TxEventArgs(transaction));
-                }
-            }
-        }
-
         public void RemoveTransaction(Keccak hash)
         {
             if (_pendingTransactions.TryRemove(hash, out var transaction))
@@ -249,12 +248,18 @@ namespace Nethermind.Blockchain.TxPools
             return found;
         }
 
+        public void Dispose()
+        {
+            _ownTimer?.Dispose();
+            _transactionRemovalTimer?.Dispose();
+        }
+        
         public event EventHandler<TxEventArgs> NewPending;
         public event EventHandler<TxEventArgs> RemovedPending;
-
+        
         private void Notify(ISyncPeer peer, Transaction transaction)
         {
-            var timestamp = new UInt256(_timestamp.EpochSeconds);
+            var timestamp = new UInt256(_timestamper.EpochSeconds);
             if (_pendingTxThresholdValidator.IsObsolete(timestamp, transaction.Timestamp))
             {
                 return;
@@ -265,8 +270,6 @@ namespace Nethermind.Blockchain.TxPools
 
             if (_logger.IsTrace) _logger.Trace($"Notified {peer.Node.Id} about a transaction: {transaction.Hash}");
         }
-
-        private ConcurrentDictionary<Keccak, Transaction> _ownTransactions = new ConcurrentDictionary<Keccak, Transaction>();
 
         private void NotifyAllPeers(Transaction transaction)
         {
@@ -297,6 +300,65 @@ namespace Nethermind.Blockchain.TxPools
                 }
 
                 Notify(peer, transaction);
+            }
+        }
+        
+                private void FilterAndStoreTransaction(Transaction transaction, long blockNumber)
+        {
+            var filters = _filters.Values;
+            if (filters.Any(filter => !filter.IsValid(transaction)))
+            {
+                return;
+            }
+
+            _txStorage.Add(transaction, blockNumber);
+            if (_logger.IsTrace) _logger.Trace($"Added a transaction: {transaction.Hash}");
+        }
+
+        private void OwnTimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            if (_ownTransactions.Count > 0)
+            {
+                foreach ((_, Transaction tx) in _ownTransactions)
+                {
+                    NotifyAllPeers(tx);
+                }
+
+                // we only reenable the timer if there are any transaction pending
+                // otherwise adding own transaction will reenable the timer anyway
+                _ownTimer.Enabled = true;
+            }
+        }
+        
+        private void RemovalTimerElapsed(object sender, ElapsedEventArgs eventArgs)
+        {
+            if (_pendingTransactions.Count == 0)
+            {
+                return;
+            }
+
+            var hashes = new List<Keccak>();
+            var timestamp = new UInt256(_timestamper.EpochSeconds);
+            foreach (var transaction in _pendingTransactions.Values)
+            {
+                if (_nonEvictableTransactions.ContainsKey(transaction.Hash))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Pending transaction: {transaction.Hash} will not be evicted.");
+                    continue;
+                }
+                
+                if (_pendingTxThresholdValidator.IsRemovable(timestamp, transaction.Timestamp))
+                {
+                    hashes.Add(transaction.Hash);
+                }
+            }
+
+            for (var i = 0; i < hashes.Count; i++)
+            {
+                if (_pendingTransactions.TryRemove(hashes[i], out var transaction))
+                {
+                    RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+                }
             }
         }
     }

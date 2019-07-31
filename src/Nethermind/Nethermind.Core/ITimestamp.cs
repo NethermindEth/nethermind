@@ -20,7 +20,7 @@ using System;
 
 namespace Nethermind.Core
 {
-    public interface ITimestamp
+    public interface ITimestamper
     {
         ulong EpochSeconds { get; }
         ulong EpochMilliseconds { get; }
