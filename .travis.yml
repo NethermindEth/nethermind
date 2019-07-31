@@ -30,9 +30,9 @@ jobs:
       script: 
       - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
-          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Abi.Test
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Abi.Test;
         else 
-          dotnet test src/Nethermind/Nethermind.Abi.Test
+          dotnet test src/Nethermind/Nethermind.Abi.Test;
         fi
       name: "Nethermind.Abi.Test"
     - script: 
@@ -61,7 +61,11 @@ jobs:
       name: "Nethermind.Config.Test"
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Core.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Core.Test;
+        else 
+          dotnet test src/Nethermind/Nethermind.Core.Test;
+        fi
       name: "Nethermind.Core.Test"
     #- script: dotnet test src/Nethermind/Nethermind.Db.Test
     #  name: "Nethermind.Db.Test.Linux"
@@ -70,26 +74,46 @@ jobs:
     #  os: osx
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Evm.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Evm.Test;
+        else 
+          dotnet test src/Nethermind/Nethermind.Evm.Test;
+        fi
       name: "Nethermind.Evm.Test"
     - script:
       - git -c submodule."src/tests".update=none submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.JsonRpc.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.JsonRpc.Test;
+        else 
+          dotnet test src/Nethermind/Nethermind.JsonRpc.Test;
+        fi
       name: "Nethermind.JsonRpc.Test"
     #- script: dotnet test src/Nethermind/Nethermind.KeyStore.Test
     #  name: "Nethermind.KeyStore.Test"
     - script:
       - git -c submodule."src/tests".update=none submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Mining.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Mining.Test;
+        else 
+          dotnet test src/Nethermind/Nethermind.Mining.Test;
+        fi
       name: "Nethermind.Mining.Test"
     - script:
       - git -c submodule."src/tests".update=none submodule update --init
       - sudo apt-get install libsnappy-dev 
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Network.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.Network.Test;
+        else 
+          dotnet test src/Nethermind/Nethermind.Network.Test;
+        fi
       name: "Nethermind.Network.Test"
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Secp256k1.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Secp256k1.Test;
+        else 
+          dotnet test src/Nethermind/Nethermind.Secp256k1.Test.Linux;
+        fi
       name: "Nethermind.Secp256k1.Test.Linux"
     #- script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
     #  name: "Nethermind.Secp256k1.Test.Osx"
@@ -102,66 +126,130 @@ jobs:
     #  name: "Nethermind.DataMarketplace.Test"
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Runner.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Runner.Test;
+        else 
+          dotnet test src/Nethermind/Nethermind.Runner.Test;
+        fi
       name: "Nethermind.Runner.Test"
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Store.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Store.Test;
+        else 
+          dotnet test src/Nethermind/Nethermind.Store.Test;
+        fi
       name: "Nethermind.Store.Test"
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Wallet.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Wallet.Test;
+        else 
+          dotnet test src/Nethermind/Nethermind.Wallet.Test;
+        fi
       name: "Nethermind.Wallet.Test"
     - script:
       - git -c submodule."src/tests".update=none submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Test;
+        else 
+          dotnet test src/Nethermind/Nethermind.DataMarketplace.Test;
+        fi
       name: "Nethermind.DataMarketplace.Test"
     - script:
       - git -c submodule."src/tests".update=none submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test;
+        else 
+          dotnet test src/Nethermind/Nethermind.DataMarketplace.Consumers.Test;
+        fi
       name: "Nethermind.DataMarketplace.Consumers.Test"
     - stage: Ethereum Tests
       script:
       - git submodule update --init 
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test;
+        else 
+          dotnet test src/Nethermind/Ethereum.Basic.Test;
+        fi
       name: "Ethereum.Basic.Test"
     - script: 
       - git submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Block.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Block.Test;
+        else 
+          dotnet test src/Nethermind/Ethereum.Blockchain.Block.Test;
+        fi
       name: "Ethereum.Blockchain.Block.Test"
     - script:
       - git submodule update --init
-      - travis_wait 21 dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Ethereum.Test.Base]*" src/Nethermind/Ethereum.Blockchain.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          travis_wait 21 dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Ethereum.Test.Base]*" src/Nethermind/Ethereum.Blockchain.Test;
+        else 
+          dotnet test src/Nethermind/Ethereum.Blockchain.Test;
+        fi
       name: "Ethereum.Blockchain.Test"
     - script:
       - git submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Difficulty.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Difficulty.Test;
+        else 
+          dotnet test src/Nethermind/Ethereum.Difficulty.Test;
+        fi
       name: "Ethereum.Difficulty.Test"
     - script:
       - git submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.HexPrefix.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.HexPrefix.Test;
+        else 
+          dotnet test src/Nethermind/Ethereum.HexPrefix.Test;
+        fi
       name: "Ethereum.HexPrefix.Test"
     - script:
       - git submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.KeyAddress.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.KeyAddress.Test;
+        else 
+          dotnet test src/Ethereum.KeyAddress.Test;
+        fi
       name: "Ethereum.KeyAddress.Test"
     - script:
       - git submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.PoW.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.PoW.Test;
+        else 
+          dotnet test src/Nethermind/Ethereum.PoW.Test;
+        fi
       name: "Ethereum.PoW.Test"
     - script:
       - git submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Ethereum.Rlp.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Ethereum.Rlp.Test;
+        else 
+          dotnet test src/Nethermind/Ethereum.Rlp.Test;
+        fi
       name: "Ethereum.Rlp.Test"
     - script:
       - git submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Transaction.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Transaction.Test;
+        else 
+          dotnet test src/Nethermind/Ethereum.Transaction.Test;
+        fi
       name: "Ethereum.Transaction.Test"
     - script:
       - git submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Transition.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Transition.Test;
+        else 
+          dotnet test src/Nethermind/Ethereum.Transition.Test;
+        fi
       name: "Ethereum.Transition.Test"
     - script:
       - git submodule update --init
-      - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Trie.Test
+      - if [ $TRAVIS_PULL_REQUEST == false ] && [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Trie.Test;
+        else 
+          dotnet test src/Nethermind/Ethereum.Trie.Test;
+        fi
       name: "Ethereum.Trie.Test"
