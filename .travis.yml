@@ -122,7 +122,7 @@ jobs:
       name: "Nethermind.DataMarketplace.Consumers.Test"
     - stage: Ethereum Tests
       script:
-        - git submodule update --init 
+      - git submodule update --init 
       - dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test
       name: "Ethereum.Basic.Test"
     - script: 
