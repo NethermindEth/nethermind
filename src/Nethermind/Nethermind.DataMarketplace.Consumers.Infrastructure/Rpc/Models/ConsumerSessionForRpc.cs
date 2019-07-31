@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public uint ConsumedUnitsFromProvider { get; set; }
         public string DataAvailability { get; set; }
         public bool StreamEnabled { get; set; }
-        public string[] Subscriptions { get; set; }
+        public string[] Args { get; set; }
 
         public ConsumerSessionForRpc()
         {
@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
             ConsumedUnitsFromProvider = session.ConsumedUnitsFromProvider;
             DataAvailability = session.DataAvailability.ToString().ToLowerInvariant();
             StreamEnabled = session.StreamEnabled;
-            Subscriptions = session.Subscriptions;
+            Args = session.Args;
         }
     }
 }

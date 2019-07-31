@@ -64,12 +64,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
             var consumedUnitsFromProvider = context.DecodeUInt();
             var dataAvailability = (DataAvailability) context.DecodeInt();
             var streamEnabled = context.DecodeBool();
-            var subscriptions = context.DecodeArray(c => c.DecodeString());
+            var args = context.DecodeArray(c => c.DecodeString());
 
             return new ConsumerSession(id, depositId, dataHeaderId, consumerAddress, consumerNodeId, providerAddress,
                 providerNodeId, state, startUnitsFromProvider, startUnitsFromConsumer, startTimestamp, finishTimestamp,
                 consumedUnits, unpaidUnits, paidUnits, settledUnits, consumedUnitsFromProvider, dataAvailability,
-                streamEnabled, subscriptions);
+                streamEnabled, args);
         }
 
         public Nethermind.Core.Encoding.Rlp Encode(ConsumerSession item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -99,7 +99,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 Nethermind.Core.Encoding.Rlp.Encode(item.ConsumedUnitsFromProvider),
                 Nethermind.Core.Encoding.Rlp.Encode((int) item.DataAvailability),
                 Nethermind.Core.Encoding.Rlp.Encode(item.StreamEnabled),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Subscriptions));
+                Nethermind.Core.Encoding.Rlp.Encode(item.Args));
         }
 
         public void Encode(MemoryStream stream, ConsumerSession item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

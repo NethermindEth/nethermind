@@ -412,10 +412,10 @@ namespace Nethermind.DataMarketplace.Subprotocols
             Send(new FinishSessionMessage(depositId));
         }
 
-        public void SendEnableDataStream(Keccak depositId, string[] subscriptions)
+        public void SendEnableDataStream(Keccak depositId, string[] args)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: enabledatastream");
-            Send(new EnableDataStreamMessage(depositId, subscriptions));
+            Send(new EnableDataStreamMessage(depositId, args));
         }
         
         public void SendDisableDataStream(Keccak depositId)
@@ -501,7 +501,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DataStreamEnabledMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: datastreamenabled");
-            ConsumerService.SetEnabledDataStreamAsync(message.DepositId, message.Subscriptions).ContinueWith(t =>
+            ConsumerService.SetEnabledDataStreamAsync(message.DepositId, message.Args).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {

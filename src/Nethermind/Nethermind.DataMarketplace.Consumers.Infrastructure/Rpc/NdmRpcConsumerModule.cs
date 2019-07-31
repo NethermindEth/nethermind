@@ -153,8 +153,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
                 ? ResultWrapper<Keccak>.Fail($"Couldn't finish session for deposit: '{depositId}'.")
                 : ResultWrapper<Keccak>.Success(depositId);
 
-        public async Task<ResultWrapper<Keccak>> ndm_enableDataStream(Keccak depositId, string[] subscriptions)
-            => await _consumerService.EnableDataStreamAsync(depositId, subscriptions) is null
+        public async Task<ResultWrapper<Keccak>> ndm_enableDataStream(Keccak depositId, string[] args)
+            => await _consumerService.EnableDataStreamAsync(depositId, args) is null
                 ? ResultWrapper<Keccak>.Fail($"Couldn't enable data stream for deposit: '{depositId}'.")
                 : ResultWrapper<Keccak>.Success(depositId);
 

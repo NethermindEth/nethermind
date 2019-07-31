@@ -26,16 +26,16 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     {
         public byte[] Serialize(DataStreamEnabledMessage message)
             => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode(message.Subscriptions)).Bytes;
+                Nethermind.Core.Encoding.Rlp.Encode(message.Args)).Bytes;
 
         public DataStreamEnabledMessage Deserialize(byte[] bytes)
         {
             var context = bytes.AsRlpContext();
             context.ReadSequenceLength();
             var depositId = context.DecodeKeccak();
-            var subscriptions = context.DecodeArray(c => c.DecodeString());
+            var args = context.DecodeArray(c => c.DecodeString());
 
-            return new DataStreamEnabledMessage(depositId, subscriptions);
+            return new DataStreamEnabledMessage(depositId, args);
         }
     }
 }

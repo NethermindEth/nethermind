@@ -86,7 +86,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
 
                     return deposit.ConsumedUnitsFromProvider == 0 &&
                            !deposit.StreamEnabled &&
-                           !deposit.Subscriptions.Any();
+                           !deposit.Args.Any();
                 })
                 .DC.EnableDataStream(() => state.DepositId, new[] {"test-sub"})
                 .DP.SendData(() => new DataAssetDataDto
@@ -107,7 +107,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
                     return deposit.ConsumedUnitsFromProvider == 1 && deposit.StartUnits == 0 &&
                            deposit.CurrentUnits == 1 && deposit.UnpaidUnits == 1 &&
                            deposit.StreamEnabled &&
-                           deposit.Subscriptions.Contains("test-sub");
+                           deposit.Args.Contains("test-sub");
                 })
                 .DC.DisableDataStream(() => state.DepositId)
                 .DP.SendData(() => new DataAssetDataDto
@@ -136,7 +136,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
                     return dataRequest.ConsumedUnitsFromProvider == 2 && dataRequest.StartUnits == 0 &&
                            dataRequest.CurrentUnits == 2 && dataRequest.UnpaidUnits == 2 &&
                            dataRequest.StreamEnabled &&
-                           dataRequest.Subscriptions.Contains("test-sub");
+                           dataRequest.Args.Contains("test-sub");
                 })
                 .KillDataConsumer()
                 .StartDataConsumer()
@@ -151,7 +151,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
                     return dataRequest.ConsumedUnitsFromProvider == 2 && dataRequest.StartUnits == 0 &&
                            dataRequest.CurrentUnits == 0 && dataRequest.UnpaidUnits == 2 &&
                            dataRequest.StreamEnabled &&
-                           dataRequest.Subscriptions.Contains("test-sub");
+                           dataRequest.Args.Contains("test-sub");
                 })
                 .DC.SendDataRequest(() => state.DepositId, validator: d => !string.IsNullOrWhiteSpace(d))
                 .DC.EnableDataStream(() => state.DepositId, new[] {"test-sub"})
@@ -187,7 +187,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
                     return dataRequest.ConsumedUnitsFromProvider == 5 && dataRequest.StartUnits == 2 &&
                            dataRequest.CurrentUnits == 3 && dataRequest.UnpaidUnits == 3 &&
                            dataRequest.StreamEnabled &&
-                           dataRequest.Subscriptions.Contains("test-sub");
+                           dataRequest.Args.Contains("test-sub");
                 })
                 .KillDataProvider()
                 .KillDataConsumer()
