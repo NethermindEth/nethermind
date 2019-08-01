@@ -49,7 +49,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private Keccak _remoteHeadBlockHash;
         protected IPerfService _perfService;
         private readonly ITxPool _txPool;
-        private readonly ITimestamp _timestamp;
+        private readonly ITimestamper _timestamper;
 
         public Eth62ProtocolHandler(
             ISession session,
@@ -64,7 +64,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             SyncServer = syncServer;
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _txPool = txPool;
-            _timestamp = new Timestamp();
+            _timestamper = new Timestamper();
 
             _txFloodCheckTimer = new System.Timers.Timer(_txFloodCheckInterval.TotalMilliseconds);
             _txFloodCheckTimer.Elapsed += CheckTxFlooding;
@@ -327,7 +327,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 var transaction = msg.Transactions[i];
                 transaction.DeliveredBy = Node.Id;
-                transaction.Timestamp = _timestamp.EpochSeconds;
+                transaction.Timestamp = _timestamper.EpochSeconds;
                 AddTxResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number);
                 if (result == AddTxResult.AlreadyKnown)
                 {

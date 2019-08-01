@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             var specProvider = MainNetSpecProvider.Instance;
             var ethereumEcdsa = new EthereumEcdsa(specProvider, logger);
             var txStorage = new InMemoryTxStorage();
-            var txPool = new TxPool(txStorage, Timestamp.Default, ethereumEcdsa, specProvider, new TxPoolConfig(),
+            var txPool = new TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(),
                 LimboLogs.Instance);
             _parityModule = new ParityModule(new EthereumEcdsa(specProvider,logger), txPool, logger);
             var blockNumber = 1;

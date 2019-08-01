@@ -35,15 +35,15 @@ namespace Nethermind.Network.Discovery
         private readonly IDiscoveryManager _discoveryManager;
         private readonly IDatagramChannel _channel;
         private readonly IMessageSerializationService _messageSerializationService;
-        private readonly ITimestamp _timestamp;
+        private readonly ITimestamper _timestamper;
 
-        public NettyDiscoveryHandler(IDiscoveryManager discoveryManager, IDatagramChannel channel, IMessageSerializationService messageSerializationService, ITimestamp timestamp, ILogManager logManager)
+        public NettyDiscoveryHandler(IDiscoveryManager discoveryManager, IDatagramChannel channel, IMessageSerializationService messageSerializationService, ITimestamper timestamper, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
-            _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         }
 
         public override void ChannelActive(IChannelHandlerContext context)
@@ -138,7 +138,7 @@ namespace Nethermind.Network.Discovery
 
             try
             {
-                if ((ulong)message.ExpirationTime < _timestamp.EpochSeconds)
+                if ((ulong)message.ExpirationTime < _timestamper.EpochSeconds)
                 {
                     if(_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
                     ctx.DisconnectAsync();

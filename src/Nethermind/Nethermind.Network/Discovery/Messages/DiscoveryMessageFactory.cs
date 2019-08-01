@@ -30,18 +30,18 @@ namespace Nethermind.Network.Discovery.Messages
         /// </summary>
         private const int ExpirationTimeInSeconds = 20;
         
-        private readonly ITimestamp _timestamp;
+        private readonly ITimestamper _timestamper;
 
-        public DiscoveryMessageFactory(ITimestamp timestamp)
+        public DiscoveryMessageFactory(ITimestamper timestamper)
         {
-            _timestamp = timestamp;
+            _timestamper = timestamper;
         }
 
         public T CreateOutgoingMessage<T>(Node destination) where T : DiscoveryMessage
         {
             T message = Activator.CreateInstance<T>();
             message.FarAddress = destination.Address;
-            message.ExpirationTime = ExpirationTimeInSeconds + (long) _timestamp.EpochSeconds;
+            message.ExpirationTime = ExpirationTimeInSeconds + (long) _timestamper.EpochSeconds;
             return message;
         }
 

@@ -130,16 +130,16 @@ namespace Nethermind.Facade
 
         public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Find(transactionHash).BlockHash;
 
-        private Timestamp _timestamp = new Timestamp();
+        private Timestamper _timestamper = new Timestamper();
 
-        public Keccak SendTransaction(Transaction transaction, bool doNotEvict = false)
+        public Keccak SendTransaction(Transaction transaction, bool isOwn = false)
         {
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
 
             transaction.Hash = Transaction.CalculateHash(transaction);
-            transaction.Timestamp = _timestamp.EpochSeconds;
+            transaction.Timestamp = _timestamper.EpochSeconds;
 
-            _txPool.AddTransaction(transaction, _blockTree.Head.Number, doNotEvict);
+            _txPool.AddTransaction(transaction, _blockTree.Head.Number, isOwn);
 
             _stateProvider.Reset();
             return transaction.Hash;

@@ -42,7 +42,7 @@ namespace Nethermind.Network.Discovery
     public class DiscoveryApp : IDiscoveryApp
     {
         private readonly IDiscoveryConfig _discoveryConfig;
-        private readonly ITimestamp _timestamp;
+        private readonly ITimestamper _timestamper;
         private readonly INodesLocator _nodesLocator;
         private readonly IDiscoveryManager _discoveryManager;
         private readonly INodeTable _nodeTable;
@@ -69,7 +69,7 @@ namespace Nethermind.Network.Discovery
             ICryptoRandom cryptoRandom,
             INetworkStorage discoveryStorage,
             IDiscoveryConfig discoveryConfig,
-            ITimestamp timestamp,
+            ITimestamper timestamper,
             ILogManager logManager,
             IPerfService perfService)
         {
@@ -77,7 +77,7 @@ namespace Nethermind.Network.Discovery
             _logger = _logManager.GetClassLogger();
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
-            _timestamp = timestamp ?? throw new ArgumentNullException(nameof(timestamp));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
             _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
             _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
@@ -167,7 +167,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeChannel(IDatagramChannel channel)
         {
-            _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService, _timestamp, _logManager);
+            _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService, _timestamper, _logManager);
             _discoveryManager.MessageSender = _discoveryHandler;
             _discoveryHandler.OnChannelActivated += OnChannelActivated;
             channel.Pipeline

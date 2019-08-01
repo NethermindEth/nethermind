@@ -20,19 +20,18 @@ using System;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TxPools
 {
     public interface ITxPool
     {
         Transaction[] GetPendingTransactions();
+        Transaction[] GetOwnPendingTransactions();
         void AddFilter<T>(T filter) where T : ITxFilter;
         void AddPeer(ISyncPeer peer);
         void RemovePeer(PublicKey nodeId);
-        AddTxResult AddTransaction(Transaction transaction, long blockNumber, bool doNotEvict = false);
-        void RemoveTransaction(Keccak hash);
+        AddTxResult AddTransaction(Transaction tx, long blockNumber, bool isOwn = false);
+        void RemoveTransaction(Keccak hash, long blockNumber);
         bool TryGetSender(Keccak hash, out Address sender);
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;

@@ -41,7 +41,7 @@ namespace Nethermind.Clique.Test
                 Substitute.For<ITxPool>(),
                 Substitute.For<IBlockchainProcessor>(),
                 blockTree,
-                Substitute.For<ITimestamp>(),
+                Substitute.For<ITimestamper>(),
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<IStateProvider>(),
                 Substitute.For<ISnapshotManager>(),

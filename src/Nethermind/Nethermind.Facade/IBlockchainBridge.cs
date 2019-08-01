@@ -60,7 +60,7 @@ namespace Nethermind.Facade
 
         (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
-        Keccak SendTransaction(Transaction transaction, bool doNotEvict = false);
+        Keccak SendTransaction(Transaction transaction, bool isOwn = false);
         TxReceipt GetReceipt(Keccak txHash);
         BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction);
         long EstimateGas(Block block, Transaction transaction);

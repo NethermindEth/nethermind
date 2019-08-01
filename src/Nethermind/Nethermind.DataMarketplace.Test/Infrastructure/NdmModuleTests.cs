@@ -59,7 +59,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         private ISpecProvider _specProvider;
         private IReceiptStorage _receiptStorage;
         private IWallet _wallet;
-        private ITimestamp _timestamp;
+        private ITimestamper _timestamper;
         private IEthereumEcdsa _ecdsa;
         private IKeyStore _keyStore;
         private IRpcModuleProvider _rpcModuleProvider;
@@ -91,7 +91,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _specProvider = Substitute.For<ISpecProvider>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
             _wallet = Substitute.For<IWallet>();
-            _timestamp = Substitute.For<ITimestamp>();
+            _timestamper = Substitute.For<ITimestamper>();
             _ecdsa = Substitute.For<IEthereumEcdsa>();
             _keyStore = Substitute.For<IKeyStore>();
             _rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             var services = _ndmModule.Init(new NdmRequiredServices(_configProvider, _configManager, _ndmConfig,
                 _baseDbPath, _rocksProvider, _mongoProvider, _logManager, _blockProcessor, _blockTree,
                 _transactionPool, _transactionPoolInfoProvider, _specProvider, _receiptStorage,
-                _wallet, _timestamp, _ecdsa, _keyStore, _rpcModuleProvider, _jsonSerializer, _cryptoRandom,
+                _wallet, _timestamper, _ecdsa, _keyStore, _rpcModuleProvider, _jsonSerializer, _cryptoRandom,
                 _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcServer, _ethRequestService,
                 _notifier, _enableUnsecuredDevWallet));
             services.Should().NotBeNull();

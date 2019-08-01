@@ -44,13 +44,13 @@ namespace Nethermind.DataMarketplace.Core.Services
         private readonly UInt256 _maxValue;
         private readonly UInt256 _dailyRequestsTotalValueWei;
         private readonly bool _enabled;
-        private readonly ITimestamp _timestamp;
+        private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
         private bool _initialized;
 
         public NdmFaucet(IBlockchainBridge blockchainBridge, IEthRequestRepository requestRepository,
             Address faucetAddress, UInt256 maxValue, UInt256 dailyRequestsTotalValueEth, bool enabled,
-            ITimestamp timestamp, ILogManager logManager)
+            ITimestamper timestamper, ILogManager logManager)
         {
             _blockchainBridge = blockchainBridge;
             _requestRepository = requestRepository;
@@ -58,8 +58,8 @@ namespace Nethermind.DataMarketplace.Core.Services
             _maxValue = maxValue;
             _dailyRequestsTotalValueWei = dailyRequestsTotalValueEth * 1_000_000_000_000_000_000;
             _enabled = enabled;
-            _timestamp = timestamp;
-            _today = _timestamp.UtcNow;
+            _timestamper = timestamper;
+            _today = _timestamper.UtcNow;
             _logger = logManager.GetClassLogger();
             if (!_enabled || _faucetAddress is null)
             {
@@ -95,11 +95,11 @@ namespace Nethermind.DataMarketplace.Core.Services
                 return FaucetResponse.FaucetDisabled;
             }
             
-            if (_today.Date != _timestamp.UtcNow.Date)
+            if (_today.Date != _timestamper.UtcNow.Date)
             {
                 lock (Locker)
                 {
-                    _today = _timestamp.UtcNow;
+                    _today = _timestamper.UtcNow;
                     _todayRequestsTotalValueWei = 0;
                 }
                 
@@ -144,7 +144,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             }
             
             var latestRequest = await _requestRepository.GetLatestAsync(node);
-            var requestedAt = _timestamp.UtcNow;
+            var requestedAt = _timestamper.UtcNow;
             if (!(latestRequest is null) && latestRequest.RequestedAt.Date >= requestedAt.Date)
             {
                 if (_logger.IsInfo) _logger.Info($"NDM Faucet request from: {node} was already processed today at: {latestRequest.RequestedAt}.");
@@ -183,7 +183,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                     Nonce = faucetAccount?.Nonce ?? 0
                 };
                 _blockchainBridge.Sign(transaction);
-                var transactionHash = _blockchainBridge.SendTransaction(transaction);
+                var transactionHash = _blockchainBridge.SendTransaction(transaction, true);
                 if (latestRequest is null)
                 {
                     var requestId = Keccak.Compute(Rlp.Encode(Rlp.Encode(node)));

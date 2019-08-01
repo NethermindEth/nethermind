@@ -21,11 +21,11 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
-    public class Timestamp : ITimestamp
+    public class Timestamper : ITimestamper
     {
         private readonly DateTime? _constantDate;
 
-        public Timestamp(DateTime? constantDate = null)
+        public Timestamper(DateTime? constantDate = null)
         {
             _constantDate = constantDate;
         }
@@ -38,6 +38,6 @@ namespace Nethermind.Core
         
         private DateTimeOffset Offset => new DateTimeOffset(UtcNow);
         
-        public static Timestamp Default = new Timestamp();
+        public static Timestamper Default = new Timestamper();
     }
 }

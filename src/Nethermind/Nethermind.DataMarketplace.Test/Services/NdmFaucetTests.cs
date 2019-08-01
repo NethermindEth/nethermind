@@ -41,7 +41,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         private UInt256 _maxValue;
         private UInt256 _dailyRequestsTotalValueEth;
         private bool _enabled;
-        private ITimestamp _timestamp;
+        private ITimestamper _timestamper;
         private ILogManager _logManager;
         private INdmFaucet _faucet;
         private string _host;
@@ -60,7 +60,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _maxValue = 1.Ether();
             _dailyRequestsTotalValueEth = 500;
             _enabled = true;
-            _timestamp = new Timestamp();
+            _timestamper = new Timestamper();
             _logManager = LimboLogs.Instance;
             _host = "127.0.0.1";
             _address = Address.FromNumber(2);
@@ -68,7 +68,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _faucetAccount = Account.TotallyEmpty;
             _transactionHash = Keccak.Zero;
             _blockchainBridge.GetAccount(_faucetAddress).Returns(_faucetAccount);
-            _blockchainBridge.SendTransaction(Arg.Any<Transaction>()).Returns(_transactionHash);
+            _blockchainBridge.SendTransaction(Arg.Any<Transaction>(), true).Returns(_transactionHash);
         }
 
         [Test]
@@ -156,7 +156,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task request_eth_should_fail_when_same_ip_address_sends_another_request_the_same_day()
         {
             var requestedAt = new DateTime(2019, 1, 1);
-            _timestamp = new Timestamp(requestedAt);
+            _timestamper = new Timestamper(requestedAt);
             var latestRequest = new EthRequest(Keccak.Zero, _host, _address, _value, requestedAt, Keccak.Zero);
             _repository.GetLatestAsync(_host).Returns(latestRequest);
             await InitFaucetAsync();
@@ -169,7 +169,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task request_eth_should_fail_when_today_requests_value_limit_was_reached()
         {
             var requestedAt = new DateTime(2019, 1, 1);
-            _timestamp = new Timestamp(requestedAt);
+            _timestamper = new Timestamper(requestedAt);
             _dailyRequestsTotalValueEth = 3;
             await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
@@ -185,30 +185,30 @@ namespace Nethermind.DataMarketplace.Test.Services
         [Test]
         public async Task request_eth_should_succeed_when_no_previous_requests_were_made()
         {
-            _timestamp = new Timestamp(DateTime.UtcNow);
+            _timestamper = new Timestamper(DateTime.UtcNow);
             await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.RequestCompleted(new FaucetRequestDetails("127.0.0.1",
-                _address, _value, _timestamp.UtcNow, Keccak.Zero)));
+                _address, _value, _timestamper.UtcNow, Keccak.Zero)));
         }
 
         [Test]
         public async Task request_eth_should_succeed_when_previous_request_was_made_at_least_yesterday()
         {
             var requestedAt = new DateTime(2019, 1, 1);
-            _timestamp = new Timestamp(requestedAt.AddDays(1));
+            _timestamper = new Timestamper(requestedAt.AddDays(1));
             var latestRequest = new EthRequest(Keccak.Zero, _host, _address, _value, requestedAt, Keccak.Zero);
             _repository.GetLatestAsync(_host).Returns(latestRequest);
             await InitFaucetAsync();
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.RequestCompleted(new FaucetRequestDetails("127.0.0.1",
-                _address, _value, _timestamp.UtcNow, Keccak.Zero)));
+                _address, _value, _timestamper.UtcNow, Keccak.Zero)));
         }
 
         private async Task InitFaucetAsync()
         {
             _faucet = new NdmFaucet(_blockchainBridge, _repository, _faucetAddress, _maxValue,
-                _dailyRequestsTotalValueEth, _enabled, _timestamp, _logManager);
+                _dailyRequestsTotalValueEth, _enabled, _timestamper, _logManager);
             await Task.Delay(1);
         }
 

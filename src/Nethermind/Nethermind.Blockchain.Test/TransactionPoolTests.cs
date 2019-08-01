@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Synchronization;
 using Nethermind.Blockchain.TxPools;
@@ -100,7 +101,7 @@ namespace Nethermind.Blockchain.Test
             _txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTxResult.InvalidChainId);
         }
-        
+
         [Test]
         public void should_ignore_old_scheme_signatures()
         {
@@ -110,7 +111,7 @@ namespace Nethermind.Blockchain.Test
             _txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTxResult.OldScheme);
         }
-        
+
         [Test]
         public void should_ignore_already_known()
         {
@@ -122,7 +123,7 @@ namespace Nethermind.Blockchain.Test
             result1.Should().Be(AddTxResult.Added);
             result2.Should().Be(AddTxResult.AlreadyKnown);
         }
-        
+
         [Test]
         public void should_add_valid_transactions()
         {
@@ -131,6 +132,35 @@ namespace Nethermind.Blockchain.Test
             AddTxResult result = _txPool.AddTransaction(tx, 1);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
             result.Should().Be(AddTxResult.Added);
+        }
+
+        [Test]
+        public void should_broadcast_own_transactions_that_were_reorganized_out()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            var transactions = AddOwnTransactionToPool();
+            _txPool.RemoveTransaction(transactions[0].Hash, 1);
+            _txPool.AddTransaction(transactions[0], 1);
+            Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
+        }
+        
+        [Test]
+        public void should_broadcast_own_transactions()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            AddOwnTransactionToPool();
+            Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
+        }
+        
+        [Test]
+        public void should_not_broadcast_own_transactions_that_faded_out_and_came_back()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            var transactions = AddOwnTransactionToPool();
+            _txPool.RemoveTransaction(transactions[0].Hash, 1);
+            _txPool.RemoveTransaction(TestItem.KeccakA, 100);
+            _txPool.AddTransaction(transactions[0], 100);
+            Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
         }
 
         [Test]
@@ -228,7 +258,7 @@ namespace Nethermind.Blockchain.Test
 
         private TxPool CreatePool(ITxStorage txStorage)
             => new TxPool(txStorage,
-                Timestamp.Default, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _logManager);
+                Timestamper.Default, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _logManager);
 
         private ISyncPeer GetPeer(PublicKey publicKey)
             => new SyncPeerMock(_remoteBlockTree, publicKey);
@@ -244,11 +274,18 @@ namespace Nethermind.Blockchain.Test
             return transactions;
         }
 
+        private Transaction[] AddOwnTransactionToPool()
+        {
+            var transaction = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
+            _txPool.AddTransaction(transaction, 1, true);
+            return new[] {transaction};
+        }
+
         private void DeleteTransactionsFromPool(IEnumerable<Transaction> transactions)
         {
             foreach (var transaction in transactions)
             {
-                _txPool.RemoveTransaction(transaction.Hash);
+                _txPool.RemoveTransaction(transaction.Hash, 0);
             }
         }
 

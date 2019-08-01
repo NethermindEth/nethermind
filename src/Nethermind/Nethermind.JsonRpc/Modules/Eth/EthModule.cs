@@ -390,7 +390,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     _blockchainBridge.Sign(tx);
                 }
 
-                Keccak txHash = _blockchainBridge.SendTransaction(tx);
+                Keccak txHash = _blockchainBridge.SendTransaction(tx, true);
                 return ResultWrapper<Keccak>.Success(txHash);
             }
             finally
@@ -405,7 +405,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 _readerWriterLockSlim.EnterWriteLock();
                 Transaction tx = Rlp.Decode<Transaction>(transaction);
-                Keccak txHash = _blockchainBridge.SendTransaction(tx);
+                Keccak txHash = _blockchainBridge.SendTransaction(tx, true);
                 return ResultWrapper<Keccak>.Success(txHash);
             }
             finally

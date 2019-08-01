@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test.Discovery
         private IMessageSender _udpClient;
         private INodeTable _nodeTable;
         private IConfigProvider _configurationProvider;
-        private ITimestamp _timestamp;
+        private ITimestamper _timestamper;
         private int _port = 1;
         private string _host = "192.168.1.27";
 
@@ -78,10 +78,10 @@ namespace Nethermind.Network.Test.Discovery
             _nodeTable = new NodeTable(calculator, discoveryConfig, logManager);
             _nodeTable.Initialize(TestItem.PublicKeyA);
             
-            _timestamp = new Timestamp();
+            _timestamper = new Timestamper();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamp), evictionManager, new NodeStatsManager(statsConfig, logManager), discoveryConfig, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, new NodeStatsManager(statsConfig, logManager), discoveryConfig, logManager);
 
             _udpClient = Substitute.For<IMessageSender>();
 

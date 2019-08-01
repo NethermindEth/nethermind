@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain
     {
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockTree _blockTree;
-        private readonly ITimestamp _timestamp;
+        private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
 
         private readonly IBlockchainProcessor _processor;
@@ -46,13 +46,13 @@ namespace Nethermind.Blockchain
             ITxPool txPool,
             IBlockchainProcessor devProcessor,
             IBlockTree blockTree,
-            ITimestamp timestamp,
+            ITimestamper timestamper,
             ILogManager logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _processor = devProcessor ?? throw new ArgumentNullException(nameof(devProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _timestamp = timestamp;
+            _timestamper = timestamper;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain
             if (parentHeader == null) return null;
 
             Block parent = _blockTree.FindBlock(parentHeader.Hash, BlockTreeLookupOptions.None);
-            UInt256 timestamp = _timestamp.EpochSeconds;
+            UInt256 timestamp = _timestamper.EpochSeconds;
 
             BlockHeader header = new BlockHeader(
                 parent.Hash,

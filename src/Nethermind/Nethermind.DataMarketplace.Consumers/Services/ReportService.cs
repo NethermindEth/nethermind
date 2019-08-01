@@ -19,15 +19,15 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly IDepositDetailsRepository _depositRepository;
         private readonly IReceiptRepository _receiptRepository;
         private readonly IConsumerSessionRepository _sessionRepository;
-        private readonly ITimestamp _timestamp;
+        private readonly ITimestamper _timestamper;
 
         public ReportService(IDepositDetailsRepository depositRepository, IReceiptRepository receiptRepository,
-            IConsumerSessionRepository sessionRepository, ITimestamp timestamp)
+            IConsumerSessionRepository sessionRepository, ITimestamper timestamper)
         {
             _depositRepository = depositRepository;
             _receiptRepository = receiptRepository;
             _sessionRepository = sessionRepository;
-            _timestamp = timestamp;
+            _timestamper = timestamper;
         }
 
         public async Task<DepositsReport> GetDepositsReportAsync(GetDepositsReport query)
@@ -70,7 +70,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 results = 10;
             }
 
-            var now = _timestamp.EpochSeconds;
+            var now = _timestamper.EpochSeconds;
             var skip = (page - 1) * results;
             var items = new List<DepositReportItem>();
             foreach (var (_, deposit) in foundDeposits.OrderByDescending(d => d.Value.Timestamp).Skip(skip)

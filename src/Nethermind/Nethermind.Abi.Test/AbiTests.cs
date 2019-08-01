@@ -316,7 +316,7 @@ namespace Nethermind.Abi.Test
         public void Test_packed(AbiEncodingStyle encodingStyle)
         {
             Keccak headerId = Keccak.Compute("headerId");
-            uint expiryTime = (uint) new Timestamp().EpochSeconds + 86000;
+            uint expiryTime = (uint) new Timestamper().EpochSeconds + 86000;
             UInt256 value = 1.Ether();
             uint units = 10U;
             byte[] salt = new byte[16];

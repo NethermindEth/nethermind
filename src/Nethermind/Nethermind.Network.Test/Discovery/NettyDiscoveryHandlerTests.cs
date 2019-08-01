@@ -91,7 +91,7 @@ namespace Nethermind.Network.Test.Discovery
                 SourceAddress = _address,
                 DestinationAddress = _address2,
                 Version = 4,
-                ExpirationTime = (long)(new Timestamp().EpochSeconds + 1200),
+                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -104,7 +104,7 @@ namespace Nethermind.Network.Test.Discovery
                 SourceAddress = _address2,
                 DestinationAddress = _address,
                 Version = 4,
-                ExpirationTime = (long)(new Timestamp().EpochSeconds + 1200),
+                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
@@ -119,7 +119,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 PingMdc = new byte[] {1,2,3},
-                ExpirationTime = (long)(new Timestamp().EpochSeconds + 1200),
+                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -130,7 +130,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address,
                 PingMdc = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(new Timestamp().EpochSeconds + 1200),
+                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
@@ -145,7 +145,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 SearchedNodeId = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(new Timestamp().EpochSeconds + 1200),
+                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -156,7 +156,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address,
                 SearchedNodeId = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(new Timestamp().EpochSeconds + 1200),
+                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
@@ -171,7 +171,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 Nodes = new List<Node>().ToArray(),
-                ExpirationTime = (long)(new Timestamp().EpochSeconds + 1200),
+                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -182,7 +182,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address,
                 Nodes = new List<Node>().ToArray(),
-                ExpirationTime = (long)(new Timestamp().EpochSeconds + 1200),
+                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
@@ -205,7 +205,7 @@ namespace Nethermind.Network.Test.Discovery
 
         private void InitializeChannel(IDatagramChannel channel, IDiscoveryManager discoveryManager, IMessageSerializationService service)
         {
-            var handler = new NettyDiscoveryHandler(discoveryManager, channel, service, new Timestamp(), NullLogManager.Instance);
+            var handler = new NettyDiscoveryHandler(discoveryManager, channel, service, new Timestamper(), NullLogManager.Instance);
             handler.OnChannelActivated += (x, y) =>
             {
                 _channelActivatedCounter++;

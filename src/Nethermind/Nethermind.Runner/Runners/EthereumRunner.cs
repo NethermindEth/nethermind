@@ -153,7 +153,7 @@ namespace Nethermind.Runner.Runners
         private ISnapshotManager _snapshotManager;
         private IRlpxPeer _rlpxPeer;
         private IDbProvider _dbProvider;
-        private readonly ITimestamp _timestamp = new Timestamp();
+        private readonly ITimestamper _timestamper = new Timestamper();
         private IStateProvider _stateProvider;
         private IWallet _wallet;
         private IEnode _enode;
@@ -427,7 +427,7 @@ namespace Nethermind.Runner.Runners
             _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
             _txPool = new TxPool(
                 new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
-                Timestamp.Default,
+                Timestamper.Default,
                 _ethereumEcdsa,
                 _specProvider,
                 _txPoolConfig, _logManager);
@@ -594,7 +594,7 @@ namespace Nethermind.Runner.Runners
                     {
                         if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
                         _blockProducer = new CliqueBlockProducer(_txPool, producerChain.Processor,
-                            _blockTree, _timestamp, _cryptoRandom, producerChain.StateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
+                            _blockTree, _timestamper, _cryptoRandom, producerChain.StateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
                         break;
                     }
 
@@ -602,7 +602,7 @@ namespace Nethermind.Runner.Runners
                     {
                         if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
                         _blockProducer = new DevBlockProducer(_txPool, producerChain.Processor, _blockTree,
-                            _timestamp, _logManager);
+                            _timestamper, _logManager);
                         break;
                     }
 
@@ -860,7 +860,7 @@ namespace Nethermind.Runner.Runners
                 if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
                 var capabilityConnector = await _ndmInitializer.InitAsync(_configProvider, _dbProvider,
                     _initConfig.BaseDbPath, _blockProcessor, _blockTree, _txPool, _txPoolInfoProvider, _specProvider,
-                    _receiptStorage, _wallet, _timestamp, _ethereumEcdsa, _rpcModuleProvider, _keyStore,
+                    _receiptStorage, _wallet, _timestamper, _ethereumEcdsa, _rpcModuleProvider, _keyStore,
                     _ethereumJsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher,
                     _grpcServer, _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
                     _initConfig.EnableUnsecuredDevWallet, _webSocketsManager, _logManager);
@@ -898,7 +898,7 @@ namespace Nethermind.Runner.Runners
             discoveryConfig.MasterPort = _initConfig.DiscoveryPort;
 
             var privateKeyProvider = new SameKeyGenerator(_nodeKey);
-            var discoveryMessageFactory = new DiscoveryMessageFactory(_timestamp);
+            var discoveryMessageFactory = new DiscoveryMessageFactory(_timestamper);
             var nodeIdResolver = new NodeIdResolver(_ethereumEcdsa);
 
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
@@ -954,7 +954,7 @@ namespace Nethermind.Runner.Runners
                 _cryptoRandom,
                 discoveryStorage,
                 discoveryConfig,
-                _timestamp,
+                _timestamper,
                 _logManager, _perfService);
 
             _discoveryApp.Initialize(_nodeKey.PublicKey);

@@ -240,7 +240,7 @@ namespace Ethereum.Test.Base
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, _logManager);
-            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamp(), ecdsa, specProvider, new TxPoolConfig(), _logManager);
+            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);

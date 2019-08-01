@@ -232,7 +232,7 @@ namespace Nethermind.PerfTest
             var receiptsDb = dbProvider.ReceiptsDb;
             
             var transactionPool = new TxPool(NullTxStorage.Instance,
-                Timestamp.Default,
+                Timestamper.Default,
                 NullEthereumEcdsa.Instance, specProvider, new TxPoolConfig(), _logManager);
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, specProvider, transactionPool, _logManager));
             var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
