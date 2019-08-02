@@ -168,34 +168,45 @@ jobs:
       if: branch = master AND type = pull_request
       script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test
+      if: branch = master AND type = pull_request
       name: "Ethereum.Basic.Test"
     - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Block.Test
+      if: branch = master AND type = pull_request
       name: "Ethereum.Blockchain.Block.Test"
     - script:
       - git submodule update --init && travis_wait 21 dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Ethereum.Test.Base]*" src/Nethermind/Ethereum.Blockchain.Test
+      if: branch = master AND type = pull_request
       name: "Ethereum.Blockchain.Test"
     - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Difficulty.Test
+      if: branch = master AND type = pull_request
       name: "Ethereum.Difficulty.Test"
     - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.HexPrefix.Test
+      if: branch = master AND type = pull_request
       name: "Ethereum.HexPrefix.Test"
     - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.KeyAddress.Test
+      if: branch = master AND type = pull_request
       name: "Ethereum.KeyAddress.Test"
     - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.PoW.Test
+      if: branch = master AND type = pull_request
       name: "Ethereum.PoW.Test"
     - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Ethereum.Rlp.Test
+      if: branch = master AND type = pull_request
       name: "Ethereum.Rlp.Test"
     - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Transaction.Test
+      if: branch = master AND type = pull_request
       name: "Ethereum.Transaction.Test"
     - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Transition.Test
+      if: branch = master AND type = pull_request
       name: "Ethereum.Transition.Test"
     - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Trie.Test
+      if: branch = master AND type = pull_request
       name: "Ethereum.Trie.Test"
