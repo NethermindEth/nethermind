@@ -165,8 +165,7 @@ jobs:
         fi
       name: "Nethermind.DataMarketplace.Consumers.Test"
     - stage: Ethereum Tests
-      if: branch = master AND \
-          type = pull_request
+      if: branch = master AND type = pull_request
       script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test
       name: "Ethereum.Basic.Test"
