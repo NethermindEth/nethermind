@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc
 
         public async Task<JsonRpcResult> ProcessAsync(string request)
         {
-            if (_logger.IsTrace) _logger.Trace($"Received JSON RPC request: {request}");
+            if (_logger.IsInfo) _logger.Info($"JSONRPC REQUEST | {request}");
 
             (JsonRpcRequest Model, IEnumerable<JsonRpcRequest> Collection) rpcRequest;
             try

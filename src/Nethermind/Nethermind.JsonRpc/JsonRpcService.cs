@@ -83,8 +83,6 @@ namespace Nethermind.JsonRpc
 
         public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest)
         {
-            if (_logger.IsInfo) _logger.Info($"Handling JSON RPC request {rpcRequest.Id} {rpcRequest.Method}");
-
             try
             {
                 (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
