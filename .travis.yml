@@ -194,7 +194,7 @@ jobs:
     - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Transaction.Test
       name: "Ethereum.Transaction.Test"
-    - sc
+    - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Transition.Test
       name: "Ethereum.Transition.Test"
     - script:
