@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Encoding
@@ -60,12 +61,39 @@ namespace Nethermind.Core.Encoding
 
         public void Encode(MemoryStream stream, LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            if (item == null)
+            {
+                stream.Write(Rlp.OfEmptySequence.Bytes);
+                return;
+            }
+            
+            Rlp.StartSequence(stream, GetLength(item, rlpBehaviors));
+            
+            Rlp.Encode(stream, item.LoggersAddress);
+            foreach (var topic in item.Topics)
+            {
+                Rlp.Encode(stream, topic);
+            }
+            Rlp.Encode(stream, item.Data);
         }
 
-        public int GetLength(LogEntry item, RlpBehaviors rlpBehaviors)
+        public int GetLength(LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            return Rlp.LengthOfSequence(GetContentLength(item));
+        }
+        
+        private int GetContentLength(LogEntry item)
+        {
+            var contentLength = 0;
+            if (item == null)
+            {
+                return contentLength;
+            }
+
+            contentLength += Rlp.LengthOf(item.LoggersAddress);
+            contentLength += item.Topics.Sum(Rlp.LengthOf);
+            contentLength += Rlp.LengthOf(item.Data);
+            return contentLength;
         }
     }
 }

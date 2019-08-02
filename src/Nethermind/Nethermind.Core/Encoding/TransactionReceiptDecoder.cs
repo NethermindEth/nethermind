@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Encoding
@@ -101,12 +102,84 @@ namespace Nethermind.Core.Encoding
 
         public void Encode(MemoryStream stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new System.NotImplementedException();
+            if (item == null)
+            {
+                stream.Write(Rlp.OfEmptySequence.Bytes);
+                return;
+            }
+            
+            Rlp.StartSequence(stream, GetLength(item, rlpBehaviors));
+            if (rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts))
+            {
+                Rlp.Encode(stream, item.StatusCode);
+            }
+            else
+            {
+                Rlp.Encode(stream, item.PostTransactionState);
+            }
+
+            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
+            {
+                Rlp.Encode(stream, item.BlockHash);
+                Rlp.Encode(stream, item.BlockNumber);
+                Rlp.Encode(stream, item.Index);
+                Rlp.Encode(stream, item.Sender);
+                Rlp.Encode(stream, item.Recipient);
+                Rlp.Encode(stream, item.ContractAddress);
+                Rlp.Encode(stream, item.GasUsed);
+                Rlp.Encode(stream, item.GasUsedTotal);
+                Rlp.Encode(stream, item.Bloom);
+                Rlp.Encode(stream, item.Logs);
+                Rlp.Encode(stream, item.Error);
+            }
+            else
+            {
+                Rlp.Encode(stream, item.GasUsedTotal);
+                Rlp.Encode(stream, item.Bloom);
+                Rlp.Encode(stream, item.Logs);
+            }
+        }
+        
+        private int GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        {
+            var contentLength = 0;
+            if (item == null)
+            {
+                return contentLength;
+            }
+            
+            contentLength += Rlp.LengthOf(item.GasUsedTotal);
+            contentLength += Rlp.LengthOf(item.Bloom);
+            contentLength += item.Logs.Sum(Rlp.LengthOf);
+
+            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
+            {
+                contentLength += Rlp.LengthOf(item.BlockHash);
+                contentLength += Rlp.LengthOf(item.BlockNumber);
+                contentLength += Rlp.LengthOf(item.Index);
+                contentLength += Rlp.LengthOf(item.Sender);
+                contentLength += Rlp.LengthOf(item.Recipient);
+                contentLength += Rlp.LengthOf(item.ContractAddress);
+                contentLength += Rlp.LengthOf(item.GasUsed);
+                contentLength += Rlp.LengthOf(item.Error);
+            }
+
+            
+            if (rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts))
+            {
+                contentLength += Rlp.LengthOf(item.StatusCode);
+            }
+            else
+            {
+                contentLength += Rlp.LengthOf(item.PostTransactionState);
+            }
+
+            return contentLength;
         }
 
         public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
-            throw new System.NotImplementedException();
+            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
     }
 }

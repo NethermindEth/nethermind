@@ -2161,5 +2161,25 @@ namespace Nethermind.Core.Encoding
 
             return LengthOfLength(array.Length) + 1 + array.Length;
         }
+
+        public static int LengthOf(string value)
+        {
+            return LengthOf(System.Text.Encoding.ASCII.GetBytes(value));
+        }
+
+        public static int LengthOf(byte value)
+        {
+            return 1;
+        }
+        
+        public static int LengthOf(LogEntry item) 
+        {
+            if (Decoders.ContainsKey(typeof(LogEntry)))
+            {
+                ((IRlpDecoder<LogEntry>) Decoders[typeof(LogEntry)]).GetLength(item, RlpBehaviors.None);
+            }
+
+            throw new RlpException($"{nameof(Rlp)} does not support length of {typeof(LogEntry).Name}");
+        }
     }
 }
