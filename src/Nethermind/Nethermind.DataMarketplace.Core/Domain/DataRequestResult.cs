@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         DepositNotFound,
         DepositUnconfirmed,
         DepositUnverified,
-        KycUnverified,
+        KycUnconfirmed,
         ProviderNotFound,
         InvalidSignature,
         DataAssetNotFound,

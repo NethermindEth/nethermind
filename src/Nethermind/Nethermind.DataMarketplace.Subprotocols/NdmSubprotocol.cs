@@ -406,7 +406,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
 
             if (firstTask != task)
             {
-                throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(RequestEthMessage)}");
+                throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(DataRequestMessage)}");
             }
 
             return task.Result;

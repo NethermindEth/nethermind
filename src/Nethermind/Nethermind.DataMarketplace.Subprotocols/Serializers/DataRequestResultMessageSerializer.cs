@@ -26,15 +26,17 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class DataRequestResultMessageSerializer : IMessageSerializer<DataRequestResultMessage>
     {
         public byte[] Serialize(DataRequestResultMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode((int) message.Result)).Bytes;
+            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId),
+                Nethermind.Core.Encoding.Rlp.Encode((int) message.Result)).Bytes;
 
         public DataRequestResultMessage Deserialize(byte[] bytes)
         {
             var context = bytes.AsRlpContext();
             context.ReadSequenceLength();
+            var depositId = context.DecodeKeccak();
             var result = (DataRequestResult) context.DecodeUInt();
 
-            return new DataRequestResultMessage(result);
+            return new DataRequestResultMessage(depositId, result);
         }
     }
 }

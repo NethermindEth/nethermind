@@ -659,7 +659,9 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
             if (!(await VerifyKycAsync(depositDetails.DataHeader)))
             {
-                return DataRequestResult.KycUnverified;
+                if (_logger.IsWarn) _logger.Warn($"Deposit with id: '{depositId}' has unconfirmed KYC.'");
+                
+                return DataRequestResult.KycUnconfirmed;
             }
 
             if (!depositDetails.Confirmed)
