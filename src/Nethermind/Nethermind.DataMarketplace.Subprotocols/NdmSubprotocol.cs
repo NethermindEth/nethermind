@@ -118,6 +118,8 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     Handle(Deserialize<DataHeaderStateChangedMessage>(message.Data)),
                 [NdmMessageCode.DataHeaderRemoved] =
                     message => Handle(Deserialize<DataHeaderRemovedMessage>(message.Data)),
+                [NdmMessageCode.DataRequestResult] =
+                    message => Handle(Deserialize<DataRequestResultMessage>(message.Data)),
                 [NdmMessageCode.DataAssetData] = message => Handle(Deserialize<DataAssetDataMessage>(message.Data)),
                 [NdmMessageCode.InvalidData] = message => Handle(Deserialize<InvalidDataMessage>(message.Data)),
                 [NdmMessageCode.SessionStarted] = message => Handle(Deserialize<SessionStartedMessage>(message.Data)),
