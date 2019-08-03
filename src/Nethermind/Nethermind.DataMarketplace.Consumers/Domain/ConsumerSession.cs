@@ -100,6 +100,8 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             {
                 client.DisableStream();
             }
+
+            _clients.Clear();
         }
 
         public void SetDataAvailability(DataAvailability dataAvailability) =>
