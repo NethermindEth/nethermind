@@ -133,7 +133,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     dataAssetName
                 }));
 
-        public Task SendClaimedEarlyRefund(Keccak depositId, string dataAssetName, Keccak transactionHash)
+        public Task SendClaimedEarlyRefundAsync(Keccak depositId, string dataAssetName, Keccak transactionHash)
             => _notifier.NotifyAsync(new Notification("claimed_early_refund",
                 new
                 {
@@ -142,13 +142,20 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     transactionHash
                 }));
         
-        public Task SendClaimedRefund(Keccak depositId, string dataAssetName, Keccak transactionHash)
+        public Task SendClaimedRefundAsync(Keccak depositId, string dataAssetName, Keccak transactionHash)
             => _notifier.NotifyAsync(new Notification("claimed_refund",
                 new
                 {
                     depositId,
                     dataAssetName,
                     transactionHash
+                }));
+
+        public Task SendBlockProcessedAsync(long blockNumber)
+            => _notifier.NotifyAsync(new Notification("block_processed",
+                new
+                {
+                    blockNumber
                 }));
     }
 }

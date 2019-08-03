@@ -92,9 +92,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 depositRepository, depositApprovalRepository, providerRepository, receiptRepository, sessionRepository,
                 services.RequiredServices.Wallet, services.CreatedServices.AbiEncoder, services.RequiredServices.Ecdsa,
                 services.RequiredServices.CryptoRandom, depositService, receiptRequestValidator, refundService,
-                services.CreatedServices.BlockchainBridge, services.CreatedServices.ConsumerAddress,
-                services.RequiredServices.Enode.PublicKey, services.RequiredServices.Timestamper,
-                consumerNotifier, ndmConfig.BlockConfirmations, logManager);
+                services.CreatedServices.BlockchainBridge, services.RequiredServices.BlockProcessor,
+                services.CreatedServices.ConsumerAddress, services.RequiredServices.Enode.PublicKey,
+                services.RequiredServices.Timestamper, consumerNotifier, ndmConfig.BlockConfirmations, logManager);
             var reportService = new ReportService(depositRepository, receiptRepository, sessionRepository,
                 services.RequiredServices.Timestamper);
 

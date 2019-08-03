@@ -23,6 +23,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -87,6 +88,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly IReceiptRequestValidator _receiptRequestValidator;
         private readonly IRefundService _refundService;
         private readonly IBlockchainBridge _blockchainBridge;
+        private readonly IBlockProcessor _blockProcessor;
         private Address _consumerAddress;
         private readonly PublicKey _nodePublicKey;
         private readonly ITimestamper _timestamper;
@@ -103,9 +105,9 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             IConsumerSessionRepository sessionRepository, IWallet wallet, IAbiEncoder abiEncoder, IEcdsa ecdsa,
             ICryptoRandom cryptoRandom, IDepositService depositService,
             IReceiptRequestValidator receiptRequestValidator, IRefundService refundService,
-            IBlockchainBridge blockchainBridge, Address consumerAddress, PublicKey nodePublicKey,
-            ITimestamper timestamper, IConsumerNotifier consumerNotifier, uint depositRequiredConfirmations,
-            ILogManager logManager)
+            IBlockchainBridge blockchainBridge, IBlockProcessor blockProcessor, Address consumerAddress,
+            PublicKey nodePublicKey, ITimestamper timestamper, IConsumerNotifier consumerNotifier,
+            uint depositRequiredConfirmations, ILogManager logManager)
         {
             _configManager = configManager;
             _configId = configId;
@@ -122,6 +124,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _receiptRequestValidator = receiptRequestValidator;
             _refundService = refundService;
             _blockchainBridge = blockchainBridge;
+            _blockProcessor = blockProcessor;
             _consumerAddress = consumerAddress ?? Address.Zero;
             _nodePublicKey = nodePublicKey;
             _timestamper = timestamper;
@@ -133,8 +136,12 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _timer.Start();
             _wallet.AccountLocked += OnAccountLocked;
             _wallet.AccountUnlocked += OnAccountUnlocked;
+            _blockProcessor.BlockProcessed += OnBlockProcessed;
             _accountLocked = !_wallet.IsUnlocked(_consumerAddress);
         }
+
+        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
+            => _consumerNotifier.SendBlockProcessedAsync(e.Block.Number);}
 
         private void OnAccountUnlocked(object sender, AccountUnlockedEventArgs e)
         {
@@ -1253,7 +1260,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             depositDetails.SetRefundClaimed(transactionHash);
             await _depositRepository.UpdateAsync(depositDetails);
-            await _consumerNotifier.SendClaimedEarlyRefund(depositId, depositDetails.DataHeader.Name, transactionHash);
+            await _consumerNotifier.SendClaimedEarlyRefundAsync(depositId, depositDetails.DataHeader.Name, transactionHash);
             if (_logger.IsInfo) _logger.Info($"Claimed an early refund for deposit: '{depositId}', transaction hash: '{transactionHash}'.");
         }
 
@@ -1281,7 +1288,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             depositDetails.SetRefundClaimed(transactionHash);
             await _depositRepository.UpdateAsync(depositDetails);
-            await _consumerNotifier.SendClaimedRefund(depositId, depositDetails.DataHeader.Name, transactionHash);
+            await _consumerNotifier.SendClaimedRefundAsync(depositId, depositDetails.DataHeader.Name, transactionHash);
             if (_logger.IsInfo) _logger.Info($"Claimed a refund for deposit: '{depositId}', transaction hash: '{transactionHash}'.");
         }
 
