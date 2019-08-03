@@ -197,7 +197,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.Result.Error.Should().BeNullOrWhiteSpace();
             VerifyDepositDetails(result.Data);
         }
-        
+
         [Test]
         public async Task get_deposit_should_fail_if_deposit_was_not_found()
         {
@@ -209,7 +209,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.ErrorType.Should().Be(ErrorType.InternalError);
             result.Result.Error.Should().NotBeNull();
         }
-        
+
         [Test]
         public async Task make_deposit_should_return_deposit_id()
         {
@@ -227,26 +227,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public async Task send_data_request_should_return_deposit_id()
+        public async Task send_data_request_should_return_result()
         {
             var depositId = TestItem.KeccakA;
-            _consumerService.SendDataRequestAsync(depositId).Returns(depositId);
+            var dataRequestResult = DataRequestResult.DepositVerified;
+            _consumerService.SendDataRequestAsync(depositId).Returns(dataRequestResult);
             var result = await _rpc.ndm_sendDataRequest(depositId);
             await _consumerService.Received().SendDataRequestAsync(depositId);
-            result.Data.Should().Be(depositId);
+            result.Data.Should().Be(dataRequestResult.ToString());
         }
 
-        [Test] public async Task send_data_request_should_fail_if_deposit_was_not_found()
-        {
-            var depositId = TestItem.KeccakA;
-            var result = await _rpc.ndm_sendDataRequest(depositId);
-            await _consumerService.Received().SendDataRequestAsync(depositId);
-            result.Data.Should().BeNull();
-            result.Result.ResultType.Should().Be(ResultType.Failure);
-            result.ErrorType.Should().Be(ErrorType.InternalError);
-            result.Result.Error.Should().NotBeNull();
-        }
-        
         [Test]
         public async Task finish_session_should_return_deposit_id()
         {
@@ -256,7 +246,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _consumerService.Received().SendFinishSessionAsync(depositId);
             result.Data.Should().Be(depositId);
         }
-        
+
         [Test]
         public async Task finish_session_should_fail_if_deposit_was_not_found()
         {
@@ -268,7 +258,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.ErrorType.Should().Be(ErrorType.InternalError);
             result.Result.Error.Should().NotBeNull();
         }
-        
+
         [Test]
         public async Task enable_data_stream_should_return_deposit_id()
         {
@@ -280,7 +270,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _consumerService.Received().EnableDataStreamAsync(depositId, client, args);
             result.Data.Should().Be(depositId);
         }
-        
+
         [Test]
         public async Task enable_data_stream_should_fail_if_deposit_was_not_found()
         {
@@ -294,7 +284,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.ErrorType.Should().Be(ErrorType.InternalError);
             result.Result.Error.Should().NotBeNull();
         }
-        
+
         [Test]
         public async Task disable_data_stream_should_return_deposit_id()
         {
@@ -305,7 +295,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _consumerService.Received().DisableDataStreamAsync(depositId, client);
             result.Data.Should().Be(depositId);
         }
-        
+
         [Test]
         public async Task disable_data_stream_should_fail_if_deposit_was_not_found()
         {
@@ -380,7 +370,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _consumerService.Received().RequestDepositApprovalAsync(Keccak.Zero, "kyc");
             result.Data.Should().Be(id);
         }
-        
+
         [Test]
         public async Task request_deposit_approval_should_fail_if_header_was_not_found()
         {
@@ -388,7 +378,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _consumerService.Received().RequestDepositApprovalAsync(Keccak.Zero, "kyc");
             result.Data.Should().BeNull();
         }
-        
+
         [Test]
         public async Task request_eth_should_return_true()
         {
@@ -399,7 +389,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _ethRequestService.Received().TryRequestEthAsync(address, value);
             result.Data.Status.Should().Be(FaucetRequestStatus.RequestCompleted.ToString());
         }
-        
+
         [Test]
         public async Task request_eth_should_fail_if_request_cannot_be_made()
         {
@@ -410,7 +400,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _ethRequestService.Received().TryRequestEthAsync(address, value);
             result.Data.Status.Should().Be(FaucetRequestStatus.RequestError.ToString());
         }
-        
+
         [Test]
         public void pull_data_should_return_data()
         {
@@ -436,8 +426,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             rpcItem.ExpiryTime.Should().Be(item.ExpiryTime);
             rpcItem.Expired.Should().Be(item.Expired);
             rpcItem.TransactionHash.Should().Be(item.TransactionHash);
-            rpcItem.VerificationTimestamp.Should().Be(item.VerificationTimestamp);
-            rpcItem.Verified.Should().Be(item.Verified);
+            rpcItem.ConfirmationTimestamp.Should().Be(item.ConfirmationTimestamp);
+            rpcItem.Confirmations.Should().Be(item.Confirmations);
+            rpcItem.RequiredConfirmations.Should().Be(item.RequiredConfirmations);
+            rpcItem.Confirmed.Should().Be(item.Confirmed);
             rpcItem.ClaimedRefundTransactionHash.Should().Be(item.ClaimedRefundTransactionHash);
             rpcItem.RefundClaimed.Should().Be(item.RefundClaimed);
             rpcItem.ConsumedUnits.Should().Be(item.ConsumedUnits);
@@ -471,7 +463,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             rpcReceipt.Receipt.ConsumedUnits.Should().Be(receipt.Receipt.ConsumedUnits);
             rpcReceipt.Receipt.UnpaidUnits.Should().Be(receipt.Receipt.UnpaidUnits);
         }
-        
+
         private static void VerifyConsumerSession(ConsumerSessionForRpc session)
         {
             session.Id.Should().Be(Keccak.Zero);
@@ -504,7 +496,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             deposit.Deposit.ExpiryTime.Should().Be(1);
             deposit.Timestamp.Should().Be(1);
             deposit.TransactionHash.Should().Be(TestItem.KeccakA);
-            deposit.Verified.Should().Be(false);
+            deposit.Confirmed.Should().Be(false);
             deposit.RefundClaimed.Should().Be(false);
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
             deposit.ConsumedUnits.Should().Be(0);
@@ -553,7 +545,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,
                 "test", 1, 1, 1, 1, false, TestItem.KeccakA,
-                1, TestItem.KeccakB, 1, new[]
+                1, 1, 1, true, TestItem.KeccakB, 1, new[]
                 {
                     new DataDeliveryReceiptReportItem(Keccak.Zero, 1, TestItem.KeccakC, TestItem.PublicKeyA,
                         new DataDeliveryReceiptRequest(1, TestItem.KeccakD, new UnitsRange(0, 1), false,

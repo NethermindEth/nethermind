@@ -174,7 +174,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private void OnTimeElapsed(object sender, ElapsedEventArgs e)
             => _depositRepository.BrowseAsync(new GetDeposits
                 {
-                    OnlyUnverified = true,
+                    OnlyUnconfirmed = true,
                     Results = int.MaxValue
                 })
                 .ContinueWith(async t =>
@@ -188,7 +188,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     for (var i = 0; i < t.Result.Items.Count; i++)
                     {
                         var depositDetails = t.Result.Items[i];
-                        await TryVerifyDepositAsync(depositDetails).ContinueWith(verifyDepositTask =>
+                        await TryConfirmDepositAsync(depositDetails).ContinueWith(verifyDepositTask =>
                         {
                             if (verifyDepositTask.IsFaulted && _logger.IsError)
                             {
@@ -208,24 +208,24 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     }
                 });
 
-        private async Task TryVerifyDepositAsync(DepositDetails deposit)
+        private async Task TryConfirmDepositAsync(DepositDetails deposit)
         {
-            if (deposit.Verified)
+            if (deposit.Confirmed)
             {
                 return;
             }
             
-            if (deposit.VerificationTimestamp == 0)
+            if (deposit.ConfirmationTimestamp == 0)
             {
-                var verificationTimestamp = _depositService.VerifyDeposit(_consumerAddress, deposit.Id);
-                if (verificationTimestamp == 0)
+                var confirmationTimestamp = _depositService.VerifyDeposit(_consumerAddress, deposit.Id);
+                if (confirmationTimestamp == 0)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Id}' didn't return verification timestamp from contract call yet.'");
+                    if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Id}' didn't return confirmation timestamp from contract call yet.'");
                     return;
                 }
                 
-                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Deposit.Id}' has verification timestamp (from contract call): {verificationTimestamp}.");
-                deposit.SetVerificationTimestamp(verificationTimestamp);
+                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Deposit.Id}' has confirmation timestamp (from contract call): {confirmationTimestamp}.");
+                deposit.SetConfirmationTimestamp(confirmationTimestamp);
                 await _depositRepository.UpdateAsync(deposit);
             }
             
@@ -233,17 +233,17 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var (receipt, transaction) = _blockchainBridge.GetTransaction(deposit.TransactionHash);                        
             if (transaction is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Transaction was not found for hash: '{transactionHash}' for deposit: '{deposit.Id}' to be verified.");
+                if (_logger.IsWarn) _logger.Warn($"Transaction was not found for hash: '{transactionHash}' for deposit: '{deposit.Id}' to be confirmed.");
                 return;
             }
             
             var confirmations = _blockchainBridge.Head.Number - receipt.BlockNumber;
-            if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_depositRequiredConfirmations}) for transaction hash: '{transactionHash}' to be verified.");
+            if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_depositRequiredConfirmations}) for transaction hash: '{transactionHash}' to be confirmed.");
 
             var confirmed = confirmations >= _depositRequiredConfirmations;
             if (confirmed)
             {
-                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Deposit.Id}' has been verified.");
+                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Deposit.Id}' has been confirmed.");
             }
             
             if (confirmations != deposit.Confirmations || confirmed)
@@ -253,7 +253,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
 
             await _consumerNotifier.SendDepositConfirmationsStatusAsync(deposit.Id, deposit.DataHeader.Name,
-                (uint) confirmations, _depositRequiredConfirmations, deposit.VerificationTimestamp);
+                (uint) confirmations, _depositRequiredConfirmations, deposit.ConfirmationTimestamp, confirmed);
         }
 
         private async Task TryClaimRefundAsync(DepositDetails depositDetails)
@@ -438,7 +438,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             if (depositDetails.DataHeader.UnitType == DataHeaderUnitType.Time)
             {
-                var unpaidTimeUnits = (uint) consumerSession.StartTimestamp - depositDetails.VerificationTimestamp;
+                var unpaidTimeUnits = (uint) consumerSession.StartTimestamp - depositDetails.ConfirmationTimestamp;
                 consumerSession.AddUnpaidUnits(unpaidTimeUnits);
                 if (_logger.IsInfo) _logger.Info($"Unpaid units: '{unpaidTimeUnits}' for deposit: '{session.DepositId}' based on time.");
             }
@@ -462,7 +462,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             {
                 case DataHeaderUnitType.Time:
                     var now = (uint) _timestamper.EpochSeconds;
-                    var currentlyConsumedUnits = now - deposit.VerificationTimestamp;
+                    var currentlyConsumedUnits = now - deposit.ConfirmationTimestamp;
                     var currentlyUnpaidUnits = currentlyConsumedUnits > session.PaidUnits
                         ? currentlyConsumedUnits - session.PaidUnits
                         : 0;
@@ -629,13 +629,13 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             return deposit;
         }
 
-        public async Task<Keccak> SendDataRequestAsync(Keccak depositId)
+        public async Task<DataRequestResult> SendDataRequestAsync(Keccak depositId)
         {
             if (_accountLocked)
             {
                 if (_logger.IsWarn) _logger.Warn($"Account: '{_consumerAddress}' is locked, can't send a data request.");
-                
-                return null;
+
+                return DataRequestResult.ConsumerAccountLocked;
             }
             
             if (!_deposits.TryGetValue(depositId, out var depositDetails))
@@ -644,7 +644,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 if (depositDetails is null)
                 {
                     if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was not found.'");
-                    return null;
+                    return DataRequestResult.DepositNotFound;
                 }
 
                 _deposits.TryAdd(depositId, depositDetails);
@@ -652,20 +652,20 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
             if (!(await VerifyKycAsync(depositDetails.DataHeader)))
             {
-                return null;
+                return DataRequestResult.KycUnverified;
             }
 
-            if (!depositDetails.Verified)
+            if (!depositDetails.Confirmed)
             {
-                if (_logger.IsWarn) _logger.Warn($"Deposit with id: '{depositId}' is not verified.'");
+                if (_logger.IsWarn) _logger.Warn($"Deposit with id: '{depositId}' is not confirmed.'");
 
-                return null;
+                return DataRequestResult.DepositUnconfirmed;
             }
 
             var providerPeer = GetProviderPeer(depositDetails.DataHeader.Provider.Address);
             if (providerPeer is null)
             {
-                return null;
+                return DataRequestResult.ProviderNotFound;
             }
 
             var sessions = await _sessionRepository.BrowseAsync(new GetConsumerSessions
@@ -676,10 +676,11 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
             if (_logger.IsInfo) _logger.Info($"Sending data request for deposit with id: '{depositId}', consumed units: {consumedUnits}, address: '{_consumerAddress}'.");
             var dataRequest = CreateDataRequest(depositDetails);
-            providerPeer.SendSendDataRequest(dataRequest, consumedUnits);
-            if (_logger.IsInfo) _logger.Info($"Sent data request for data header: '{dataRequest.DataHeaderId}', deposit: '{depositId}', consumed units: {consumedUnits}, address: '{_consumerAddress}'.");
-
-            return dataRequest.DataHeaderId;
+            var result = await providerPeer.SendDataRequestAsync(dataRequest, consumedUnits);
+            if (_logger.IsInfo) _logger.Info($"Received data request result: '{result}' for data header: '{dataRequest.DataHeaderId}', deposit: '{depositId}', consumed units: {consumedUnits}, address: '{_consumerAddress}'.");
+            await _consumerNotifier.SendDataRequestResultAsync(depositId, result);
+            
+            return result;
         }
 
         private async Task<bool> VerifyKycAsync(DataHeader dataHeader)

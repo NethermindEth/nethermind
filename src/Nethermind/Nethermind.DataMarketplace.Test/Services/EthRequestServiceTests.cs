@@ -86,7 +86,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var address = Address.FromNumber(1);
             UInt256 value = 1;
             _ethRequestService.UpdateFaucet(_faucetPeer);
-            _faucetPeer.SendRequestEth(address, value)
+            _faucetPeer.SendRequestEthAsync(address, value)
                 .Returns(FaucetResponse.RequestCompleted(FaucetRequestDetails.Empty));
             var ethRequested = await _ethRequestService.TryRequestEthAsync(Address.FromNumber(1), 1);
             ethRequested.Should().Be(FaucetResponse.RequestCompleted(FaucetRequestDetails.Empty));

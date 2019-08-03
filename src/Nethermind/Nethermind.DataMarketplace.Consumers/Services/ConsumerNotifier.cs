@@ -16,8 +16,16 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _notifier = notifier;
         }
 
+        public Task SendDataRequestResultAsync(Keccak depositId, DataRequestResult result)
+            => _notifier.NotifyAsync(new Notification("data_request_result",
+                new
+                {
+                    depositId,
+                    result = result.ToString()
+                }));
+
         public Task SendDepositConfirmationsStatusAsync(Keccak depositId, string dataAssetName, uint confirmations,
-            uint requiredConfirmations, uint verificationTimestamp)
+            uint requiredConfirmations, uint confirmationTimestamp, bool confirmed)
             => _notifier.NotifyAsync(new Notification("deposit_confirmations",
                 new
                 {
@@ -25,7 +33,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     dataAssetName,
                     confirmations,
                     requiredConfirmations,
-                    verificationTimestamp
+                    confirmationTimestamp,
+                    confirmed
                 }));
 
         public Task SendDataInvalidAsync(Keccak depositId, InvalidDataReason reason)

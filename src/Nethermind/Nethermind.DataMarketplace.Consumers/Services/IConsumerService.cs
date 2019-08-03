@@ -50,7 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         Task<IReadOnlyList<DataHeaderInfo>> GetKnownDataHeadersAsync();
         Task<PagedResult<DepositDetails>> GetDepositsAsync(GetDeposits query);
         Task<DepositDetails> GetDepositAsync(Keccak depositId);
-        Task<Keccak> SendDataRequestAsync(Keccak depositId);
+        Task<DataRequestResult> SendDataRequestAsync(Keccak depositId);
         Task StartSessionAsync(Session session, INdmPeer provider);
         Task<Keccak> SendFinishSessionAsync(Keccak depositId);
         Task FinishSessionAsync(Session session, INdmPeer provider, bool removePeer = true);

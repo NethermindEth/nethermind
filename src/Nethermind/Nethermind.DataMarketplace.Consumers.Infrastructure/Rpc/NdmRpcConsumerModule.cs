@@ -143,10 +143,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
                 : ResultWrapper<Keccak>.Success(depositId);
         }
 
-        public async Task<ResultWrapper<Keccak>> ndm_sendDataRequest(Keccak depositId)
-            => await _consumerService.SendDataRequestAsync(depositId) is null
-                ? ResultWrapper<Keccak>.Fail($"Couldn't send data request for deposit: '{depositId}'.")
-                : ResultWrapper<Keccak>.Success(depositId);
+        public async Task<ResultWrapper<string>> ndm_sendDataRequest(Keccak depositId)
+        {
+            var result = await _consumerService.SendDataRequestAsync(depositId);
+            return ResultWrapper<string>.Success(result.ToString());
+        }
 
         public async Task<ResultWrapper<Keccak>> ndm_finishSession(Keccak depositId)
             => await _consumerService.SendFinishSessionAsync(depositId) is null

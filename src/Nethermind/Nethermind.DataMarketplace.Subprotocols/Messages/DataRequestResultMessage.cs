@@ -21,17 +21,15 @@ using Nethermind.Network.P2P;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Messages
 {
-    public class SendDataRequestMessage : P2PMessage
+    public class DataRequestResultMessage : P2PMessage
     {
-        public override int PacketType { get; } = NdmMessageCode.SendDataRequest;
+        public override int PacketType { get; } = NdmMessageCode.DataRequestResult;
         public override string Protocol => "ndm";
-        public DataRequest DataRequest { get; }
-        public uint ConsumedUnits { get; }
+        public DataRequestResult Result { get; }
 
-        public SendDataRequestMessage(DataRequest dataRequest, uint consumedUnits)
+        public DataRequestResultMessage(DataRequestResult result)
         {
-            DataRequest = dataRequest;
-            ConsumedUnits = consumedUnits;
+            Result = result;
         }
     }
 }

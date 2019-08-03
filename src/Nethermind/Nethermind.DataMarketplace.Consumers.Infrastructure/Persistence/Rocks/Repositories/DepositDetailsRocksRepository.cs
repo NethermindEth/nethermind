@@ -68,9 +68,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             }
 
             var filteredDeposits = deposits.AsEnumerable();
-            if (query.OnlyUnverified)
+            if (query.OnlyUnconfirmed)
             {
-                filteredDeposits = filteredDeposits.Where(d => d.VerificationTimestamp == 0 ||
+                filteredDeposits = filteredDeposits.Where(d => d.ConfirmationTimestamp == 0 ||
                                                                d.Confirmations < d.RequiredConfirmations);
             }
 

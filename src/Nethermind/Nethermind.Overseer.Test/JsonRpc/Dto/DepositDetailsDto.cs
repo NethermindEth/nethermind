@@ -21,7 +21,7 @@ namespace Nethermind.Overseer.Test.JsonRpc.Dto
     public class DepositDetailsDto
     {
         public DepositDto Deposit { get; set; }
-        public bool Verified { get; set; }
+        public bool Confirmed { get; set; }
         public uint StartTimestamp { get; set; }
         public uint SessionTimestamp { get; set; }
         public string TransactionHash { get; set; }

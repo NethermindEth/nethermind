@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Consumers.Services;
@@ -51,6 +52,9 @@ namespace Nethermind.DataMarketplace.Subprotocols
 
         protected readonly BlockingCollection<Request<RequestEthMessage, FaucetResponse>> RequestEthRequests =
             new BlockingCollection<Request<RequestEthMessage, FaucetResponse>>();
+
+        protected readonly BlockingCollection<Request<DataRequestMessage, DataRequestResult>>
+            DataRequestResultRequests = new BlockingCollection<Request<DataRequestMessage, DataRequestResult>>();
         
         protected readonly IEcdsa Ecdsa;
         protected readonly IWallet Wallet;
@@ -65,7 +69,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         protected override TimeSpan InitTimeout => Timeouts.NdmHi;
         public byte ProtocolVersion { get; } = 1;
         public string ProtocolCode { get; } = Protocol.Ndm;
-        public int MessageIdSpaceSize { get; } = 0x1D;
+        public int MessageIdSpaceSize { get; } = 0x1E;
 
         public bool HasAvailableCapability(Capability capability) => false;
         public bool HasAgreedCapability(Capability capability) => false;
@@ -382,10 +386,35 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 });
         }
 
-        public void SendSendDataRequest(DataRequest dataRequest, uint consumedUnits)
+        public async Task<DataRequestResult> SendDataRequestAsync(DataRequest dataRequest, uint consumedUnits,
+            CancellationToken? token = null)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: senddatarequest");
-            Send(new SendDataRequestMessage(dataRequest, consumedUnits));
+            var cancellationToken = token ?? CancellationToken.None;
+            var message = new DataRequestMessage(dataRequest, consumedUnits);
+            var request = new Request<DataRequestMessage, DataRequestResult>(message);
+            DataRequestResultRequests.Add(request, cancellationToken);
+            Send(request.Message);
+            var task = request.CompletionSource.Task;
+            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.NdmDataRequestResult, cancellationToken));
+            if (firstTask.IsCanceled)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            if (firstTask != task)
+            {
+                throw new TimeoutException($"{Session.RemoteNodeId} Request timeout in {nameof(RequestEthMessage)}");
+            }
+
+            return task.Result;
+        }
+
+        private void Handle(DataRequestResultMessage message)
+        {
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: datarequestresult");
+            var request = DataRequestResultRequests.Take();
+            request.CompletionSource.SetResult(message.Result);
         }
         
         private void Handle(EarlyRefundTicketMessage message)
@@ -476,7 +505,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             DepositApprovalsRequests.Add(request, cancellationToken);
             Send(request.Message);
             var task = request.CompletionSource.Task;
-            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.NdmDepositApprovals, cancellationToken));
+            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.NdmDepositApproval, cancellationToken));
             if (firstTask.IsCanceled)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -584,7 +613,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             });
         }
 
-        public async Task<FaucetResponse> SendRequestEth(Address address, UInt256 value, CancellationToken? token = null)
+        public async Task<FaucetResponse> SendRequestEthAsync(Address address, UInt256 value, CancellationToken? token = null)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: requesteth");
             var cancellationToken = token ?? CancellationToken.None;
@@ -593,7 +622,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             RequestEthRequests.Add(request, cancellationToken);
             Send(request.Message);
             var task = request.CompletionSource.Task;
-            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.NdmEthRequests, cancellationToken));
+            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.NdmEthRequest, cancellationToken));
             if (firstTask.IsCanceled)
             {
                 cancellationToken.ThrowIfCancellationRequested();

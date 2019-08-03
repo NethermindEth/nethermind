@@ -16,12 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.DataMarketplace.Core.Domain;
-
-namespace Nethermind.DataMarketplace.Consumers.Queries
+namespace Nethermind.DataMarketplace.Core.Domain
 {
-    public class GetDeposits : PagedQueryBase
+    public enum DataRequestResult
     {
-        public bool OnlyUnconfirmed { get; set; }
+        ConsumerAccountLocked,
+        DepositNotFound,
+        DepositUnconfirmed,
+        DepositUnverified,
+        KycUnverified,
+        ProviderNotFound,
+        InvalidSignature,
+        DataAssetNotFound,
+        DataAssetUnavailable,
+        InvalidDataRequestUnits,
+        InvalidDataRequestValue,
+        DepositVerified
     }
 }

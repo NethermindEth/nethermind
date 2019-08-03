@@ -8,8 +8,10 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 {
     public interface IConsumerNotifier
     {
+        Task SendDataRequestResultAsync(Keccak depositId, DataRequestResult result);
+
         Task SendDepositConfirmationsStatusAsync(Keccak depositId, string dataAssetName, uint confirmations,
-            uint requiredConfirmations, uint verificationTimestamp);
+            uint requiredConfirmations, uint confirmationTimestamp, bool confirmed);
 
         Task SendDataInvalidAsync(Keccak depositId, InvalidDataReason reason);
         Task SendSessionStartedAsync(Keccak depositId, Keccak sessionId);

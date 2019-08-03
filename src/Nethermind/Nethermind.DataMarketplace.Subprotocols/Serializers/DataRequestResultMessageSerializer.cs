@@ -23,20 +23,18 @@ using Nethermind.Network;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 {
-    public class SendDataRequestMessageMessageSerializer : IMessageSerializer<SendDataRequestMessage>
+    public class DataRequestResultMessageSerializer : IMessageSerializer<DataRequestResultMessage>
     {
-        public byte[] Serialize(SendDataRequestMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DataRequest),
-                Nethermind.Core.Encoding.Rlp.Encode(message.ConsumedUnits)).Bytes;
+        public byte[] Serialize(DataRequestResultMessage message)
+            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode((int) message.Result)).Bytes;
 
-        public SendDataRequestMessage Deserialize(byte[] bytes)
+        public DataRequestResultMessage Deserialize(byte[] bytes)
         {
             var context = bytes.AsRlpContext();
             context.ReadSequenceLength();
-            var dataRequest = Nethermind.Core.Encoding.Rlp.Decode<DataRequest>(context);
-            var consumedUnits = context.DecodeUInt();
+            var result = (DataRequestResult) context.DecodeUInt();
 
-            return new SendDataRequestMessage(dataRequest, consumedUnits);
+            return new DataRequestResultMessage(result);
         }
     }
 }

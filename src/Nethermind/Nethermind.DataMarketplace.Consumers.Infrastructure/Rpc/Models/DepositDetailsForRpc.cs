@@ -29,8 +29,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public DataHeaderForRpc DataHeader { get; set; }
         public uint Timestamp { get; set; }
         public Keccak TransactionHash { get; set; }
-        public uint VerificationTimestamp { get; set; }
-        public bool Verified { get; set; }
+        public uint ConfirmationTimestamp { get; set; }
+        public bool Confirmed { get; set; }
         public bool RefundClaimed { get; set; }
         public Keccak ClaimedRefundTransactionHash { get; set; }
         public uint ConsumedUnits { get; set; }
@@ -49,8 +49,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
             DataHeader = new DataHeaderForRpc(deposit.DataHeader);
             Timestamp = deposit.Timestamp;
             TransactionHash = deposit.TransactionHash;
-            VerificationTimestamp = deposit.VerificationTimestamp;
-            Verified = deposit.Verified;
+            ConfirmationTimestamp = deposit.ConfirmationTimestamp;
+            Confirmed = deposit.Confirmed;
             RefundClaimed = deposit.RefundClaimed;
             ClaimedRefundTransactionHash = deposit.ClaimedRefundTransactionHash;
             ConsumedUnits = deposit.ConsumedUnits;

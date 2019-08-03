@@ -39,8 +39,10 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public uint ExpiryTime { get; }
         public bool Expired { get; }
         public Keccak TransactionHash { get; }
-        public uint VerificationTimestamp { get; }
-        public bool Verified { get; }
+        public uint ConfirmationTimestamp { get; }
+        public uint Confirmations { get;  }
+        public uint RequiredConfirmations { get; }
+        public bool Confirmed { get; }
         public Keccak ClaimedRefundTransactionHash { get; }
         public bool RefundClaimed { get; }
         public uint ConsumedUnits { get; }
@@ -54,7 +56,8 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
 
         public DepositReportItem(Keccak id, Keccak headerId, string headerName, Address provider, string providerName,
             UInt256 value, uint units, uint timestamp, uint expiryTime, bool expired, Keccak transactionHash,
-            uint verificationTimestamp, Keccak claimedRefundTransactionHash, uint consumedUnits,
+            uint confirmationTimestamp, uint confirmations, uint requiredConfirmations, bool confirmed,
+            Keccak claimedRefundTransactionHash, uint consumedUnits,
             IEnumerable<DataDeliveryReceiptReportItem> receipts)
         {
             Id = id;
@@ -68,8 +71,10 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             ExpiryTime = expiryTime;
             Expired = expired;
             TransactionHash = transactionHash;
-            VerificationTimestamp = verificationTimestamp;
-            Verified = verificationTimestamp > 0;
+            ConfirmationTimestamp = confirmationTimestamp;
+            Confirmations = confirmations;
+            RequiredConfirmations = requiredConfirmations;
+            Confirmed = confirmed;
             ClaimedRefundTransactionHash = claimedRefundTransactionHash;
             RefundClaimed = !(claimedRefundTransactionHash is null);
             ConsumedUnits = consumedUnits;

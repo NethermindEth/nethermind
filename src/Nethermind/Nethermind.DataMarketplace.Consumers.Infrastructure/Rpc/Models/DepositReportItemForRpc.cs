@@ -39,8 +39,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public uint ExpiryTime { get; set; }
         public bool Expired { get; set; }
         public Keccak TransactionHash { get; set; }
-        public uint VerificationTimestamp { get; set; }
-        public bool Verified { get; set; }
+        public uint ConfirmationTimestamp { get; }
+        public uint Confirmations { get; }
+        public uint RequiredConfirmations { get; }
+        public bool Confirmed { get; }
         public Keccak ClaimedRefundTransactionHash { get; set; }
         public bool RefundClaimed { get; set; }
         public uint ConsumedUnits { get; set; }
@@ -51,7 +53,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public UInt256 RefundedValue { get; set; }
         public UInt256 RemainingValue { get; set; }
         public IEnumerable<DataDeliveryReceiptReportItemForRpc> Receipts { get; set; }
-        
+
         public DepositReportItemForRpc()
         {
         }
@@ -70,8 +72,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
             ExpiryTime = report.ExpiryTime;
             Expired = report.Expired;
             TransactionHash = report.TransactionHash;
-            VerificationTimestamp = report.VerificationTimestamp;
-            Verified = report.Verified;
+            ConfirmationTimestamp = report.ConfirmationTimestamp;
+            Confirmations = report.Confirmations;
+            RequiredConfirmations = report.RequiredConfirmations;
+            Confirmed = report.Confirmed;
             ClaimedRefundTransactionHash = report.ClaimedRefundTransactionHash;
             RefundClaimed = report.RefundClaimed;
             ConsumedUnits = report.ConsumedUnits;

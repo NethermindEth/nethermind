@@ -17,11 +17,21 @@
  */
 
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Network.P2P;
 
-namespace Nethermind.DataMarketplace.Consumers.Queries
+namespace Nethermind.DataMarketplace.Subprotocols.Messages
 {
-    public class GetDeposits : PagedQueryBase
+    public class DataRequestMessage : P2PMessage
     {
-        public bool OnlyUnconfirmed { get; set; }
+        public override int PacketType { get; } = NdmMessageCode.DataRequest;
+        public override string Protocol => "ndm";
+        public DataRequest DataRequest { get; }
+        public uint ConsumedUnits { get; }
+
+        public DataRequestMessage(DataRequest dataRequest, uint consumedUnits)
+        {
+            DataRequest = dataRequest;
+            ConsumedUnits = consumedUnits;
+        }
     }
 }
