@@ -31,13 +31,14 @@ namespace Nethermind.WebSockets
         private readonly IJsonSerializer _jsonSerializer;
 
         public string Id { get; } = Guid.NewGuid().ToString("N");
+        public string Client { get; }
 
-        public WebSocketsClient(WebSocket webSocket, IJsonSerializer jsonSerializer)
+        public WebSocketsClient(WebSocket webSocket, string client, IJsonSerializer jsonSerializer)
         {
             _webSocket = webSocket;
+            Client = client;
             _jsonSerializer = jsonSerializer;
         }
-
 
         public Task ReceiveAsync(byte[] data) => Task.CompletedTask;
 
@@ -48,13 +49,19 @@ namespace Nethermind.WebSockets
                 return Task.CompletedTask;
             }
 
-            return SendRawAsync(_jsonSerializer.Serialize(new
+            if (message.Client == Client || string.IsNullOrWhiteSpace(Client) ||
+                string.IsNullOrWhiteSpace(message.Client))
             {
-                type = message.Type,
-                data = message.Data
-            }));
-        }
+                return SendRawAsync(_jsonSerializer.Serialize(new
+                {
+                    type = message.Type,
+                    client = Client,
+                    data = message.Data
+                }));
+            }
 
+            return Task.CompletedTask;
+        }
 
         public Task SendRawAsync(string data)
         {

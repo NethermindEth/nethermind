@@ -25,15 +25,17 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class DisableDataStreamMessageSerializer : IMessageSerializer<DisableDataStreamMessage>
     {
         public byte[] Serialize(DisableDataStreamMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId)).Bytes;
+            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId),
+                Nethermind.Core.Encoding.Rlp.Encode(message.Client)).Bytes;
 
         public DisableDataStreamMessage Deserialize(byte[] bytes)
         {
             var context = bytes.AsRlpContext();
             context.ReadSequenceLength();
             var depositId = context.DecodeKeccak();
+            var client = context.DecodeString();
 
-            return new DisableDataStreamMessage(depositId);
+            return new DisableDataStreamMessage(depositId, client);
         }
     }
 }

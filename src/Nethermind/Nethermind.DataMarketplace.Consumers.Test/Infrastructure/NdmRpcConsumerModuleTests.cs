@@ -273,10 +273,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task enable_data_stream_should_return_deposit_id()
         {
             var depositId = TestItem.KeccakA;
+            var client = "client";
             var args = new[] {"test"};
-            _consumerService.EnableDataStreamAsync(depositId, args).Returns(depositId);
-            var result = await _rpc.ndm_enableDataStream(depositId, args);
-            await _consumerService.Received().EnableDataStreamAsync(depositId, args);
+            _consumerService.EnableDataStreamAsync(depositId, client, args).Returns(depositId);
+            var result = await _rpc.ndm_enableDataStream(depositId, client, args);
+            await _consumerService.Received().EnableDataStreamAsync(depositId, client, args);
             result.Data.Should().Be(depositId);
         }
         
@@ -284,9 +285,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task enable_data_stream_should_fail_if_deposit_was_not_found()
         {
             var depositId = TestItem.KeccakA;
+            var client = "client";
             var args = new[] {"test"};
-            var result = await _rpc.ndm_enableDataStream(depositId, args);
-            await _consumerService.Received().EnableDataStreamAsync(depositId, args);
+            var result = await _rpc.ndm_enableDataStream(depositId, client, args);
+            await _consumerService.Received().EnableDataStreamAsync(depositId, client, args);
             result.Data.Should().BeNull();
             result.Result.ResultType.Should().Be(ResultType.Failure);
             result.ErrorType.Should().Be(ErrorType.InternalError);
@@ -297,9 +299,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task disable_data_stream_should_return_deposit_id()
         {
             var depositId = TestItem.KeccakA;
-            _consumerService.DisableDataStreamAsync(depositId).Returns(depositId);
-            var result = await _rpc.ndm_disableDataStream(depositId);
-            await _consumerService.Received().DisableDataStreamAsync(depositId);
+            var client = "client";
+            _consumerService.DisableDataStreamAsync(depositId, client).Returns(depositId);
+            var result = await _rpc.ndm_disableDataStream(depositId, client);
+            await _consumerService.Received().DisableDataStreamAsync(depositId, client);
             result.Data.Should().Be(depositId);
         }
         
@@ -307,8 +310,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task disable_data_stream_should_fail_if_deposit_was_not_found()
         {
             var depositId = TestItem.KeccakA;
-            var result = await _rpc.ndm_disableDataStream(depositId);
-            await _consumerService.Received().DisableDataStreamAsync(depositId);
+            var client = "client";
+            var result = await _rpc.ndm_disableDataStream(depositId, client);
+            await _consumerService.Received().DisableDataStreamAsync(depositId, client);
             result.Data.Should().BeNull();
             result.Result.ResultType.Should().Be(ResultType.Failure);
             result.ErrorType.Should().Be(ErrorType.InternalError);
@@ -488,8 +492,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             session.SettledUnits.Should().Be(0);
             session.ConsumedUnitsFromProvider.Should().Be(0);
             session.DataAvailability.Should().Be(DataAvailability.Available.ToString().ToLowerInvariant());
-            session.StreamEnabled.Should().BeFalse();
-            session.Args.Should().BeEmpty();
         }
 
         private static void VerifyDepositDetails(DepositDetailsForRpc deposit)

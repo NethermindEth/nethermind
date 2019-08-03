@@ -25,8 +25,8 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.EarlyRefundTicket;
         public override string Protocol => "ndm";
-        public EarlyRefundTicket Ticket { get; set; }
-        public RefundReason Reason { get; set; }
+        public EarlyRefundTicket Ticket { get; }
+        public RefundReason Reason { get; }
 
         public EarlyRefundTicketMessage(EarlyRefundTicket ticket, RefundReason reason)
         {

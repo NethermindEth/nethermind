@@ -153,14 +153,19 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
                 ? ResultWrapper<Keccak>.Fail($"Couldn't finish session for deposit: '{depositId}'.")
                 : ResultWrapper<Keccak>.Success(depositId);
 
-        public async Task<ResultWrapper<Keccak>> ndm_enableDataStream(Keccak depositId, string[] args)
-            => await _consumerService.EnableDataStreamAsync(depositId, args) is null
-                ? ResultWrapper<Keccak>.Fail($"Couldn't enable data stream for deposit: '{depositId}'.")
+        public async Task<ResultWrapper<Keccak>> ndm_enableDataStream(Keccak depositId, string client, string[] args)
+            => await _consumerService.EnableDataStreamAsync(depositId, client, args) is null
+                ? ResultWrapper<Keccak>.Fail($"Couldn't enable data stream for deposit: '{depositId}', client: {client}.")
                 : ResultWrapper<Keccak>.Success(depositId);
 
-        public async Task<ResultWrapper<Keccak>> ndm_disableDataStream(Keccak depositId)
-            => await _consumerService.DisableDataStreamAsync(depositId) is null
-                ? ResultWrapper<Keccak>.Fail($"Couldn't disable data stream for deposit: '{depositId}'.")
+        public async Task<ResultWrapper<Keccak>> ndm_disableDataStream(Keccak depositId, string client)
+            => await _consumerService.DisableDataStreamAsync(depositId, client) is null
+                ? ResultWrapper<Keccak>.Fail($"Couldn't disable data stream for deposit: '{depositId}', client: {client}.")
+                : ResultWrapper<Keccak>.Success(depositId);
+
+        public async Task<ResultWrapper<Keccak>> ndm_disableDataStreams(Keccak depositId)
+            => await _consumerService.DisableDataStreamsAsync(depositId) is null
+                ? ResultWrapper<Keccak>.Fail($"Couldn't disable data streams for deposit: '{depositId}'.")
                 : ResultWrapper<Keccak>.Success(depositId);
 
         public async Task<ResultWrapper<DepositsReportForRpc>> ndm_getDepositsReport(GetDepositsReport query = null)

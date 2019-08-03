@@ -24,6 +24,6 @@ namespace Nethermind.DataMarketplace.Channels
     public interface INdmConsumerChannel
     {
         NdmConsumerChannelType Type { get; }
-        Task PublishAsync(Keccak depositId, string data);
+        Task PublishAsync(Keccak depositId, string client, string data);
     }
 }

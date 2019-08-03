@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -28,22 +29,12 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
 {
     public class ConsumerSession : Session, IEquatable<ConsumerSession>
     {
+        private readonly ConcurrentDictionary<string, SessionClient>
+            _clients = new ConcurrentDictionary<string, SessionClient>();
         private long _consumedUnitsFromProvider;
-        private int _streamEnabled;
-        private string[] _args;
         private int _dataAvailability;
 
-        public bool StreamEnabled
-        {
-            get => _streamEnabled == 1;
-            private set => _streamEnabled = value ? 1 : 0;
-        }
-
-        public string[] Args
-        {
-            get => _args;
-            private set => _args = value;
-        }
+        public IEnumerable<SessionClient> Clients => _clients.Values;
 
         public DataAvailability DataAvailability
         {
@@ -68,16 +59,14 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             PublicKey consumerNodeId, Address providerAddress, PublicKey providerNodeId, SessionState state,
             uint startUnitsFromConsumer, uint startUnitsFromProvider, ulong startTimestamp = 0,
             ulong finishTimestamp = 0, uint consumedUnits = 0, uint unpaidUnits = 0, uint paidUnits = 0,
-            uint settledUnits = 0,  uint consumedUnitsFromProvider = 0,
-            DataAvailability dataAvailability = DataAvailability.Unknown, bool streamEnabled = false,
-            IEnumerable<string> args = null) : base(id, depositId,  dataHeaderId, consumerAddress,
-            consumerNodeId, providerAddress, providerNodeId, state, startUnitsFromConsumer, startUnitsFromProvider,
-            startTimestamp, finishTimestamp, consumedUnits, unpaidUnits, paidUnits, settledUnits)
+            uint settledUnits = 0, uint consumedUnitsFromProvider = 0,
+            DataAvailability dataAvailability = DataAvailability.Unknown)
+            : base(id, depositId, dataHeaderId, consumerAddress, consumerNodeId, providerAddress, providerNodeId, state,
+                startUnitsFromConsumer, startUnitsFromProvider, startTimestamp, finishTimestamp, consumedUnits,
+                unpaidUnits, paidUnits, settledUnits)
         {
             _consumedUnitsFromProvider = consumedUnitsFromProvider;
             _dataAvailability = (int) dataAvailability;
-            _streamEnabled = streamEnabled ? 1 : 0;
-            _args = args?.ToArray() ?? Array.Empty<string>();
         }
 
         public static ConsumerSession From(Session session) => new ConsumerSession(session.Id, session.DepositId,
@@ -107,22 +96,48 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
 
             State = state;
             FinishTimestamp = timestamp;
-            DisableStream();
+            foreach (var (_, client) in _clients)
+            {
+                client.DisableStream();
+            }
+
+            _clients.Clear();
         }
 
         public void SetDataAvailability(DataAvailability dataAvailability) =>
             Interlocked.Exchange(ref _dataAvailability, (int) dataAvailability);
 
-        public void EnableStream(string[] args)
+        public void EnableStream(string client, string[] args)
         {
+            if (string.IsNullOrWhiteSpace(client))
+            {
+                throw new ArgumentException("Invalid session client id.", nameof(client));
+            }
+            
             ValidateIfSessionStarted();
-            Interlocked.Exchange(ref _streamEnabled, 1);
-            Interlocked.Exchange(ref _args, args);
+            _clients.AddOrUpdate(client,
+                _ => new SessionClient(client, true, args),
+                (_, session) =>
+                {
+                    session.EnableStream(args);
+
+                    return session;
+                });
         }
 
-        public void DisableStream()
+        public void DisableStream(string client)
         {
-            Interlocked.Exchange(ref _streamEnabled, 0);
+            if (string.IsNullOrWhiteSpace(client))
+            {
+                throw new ArgumentException("Invalid session client id.", nameof(client));
+            }
+
+            if (!_clients.TryGetValue(client, out var sessionClient))
+            {
+                return;
+            }
+
+            sessionClient.DisableStream();
         }
 
         public void IncrementConsumedUnits()

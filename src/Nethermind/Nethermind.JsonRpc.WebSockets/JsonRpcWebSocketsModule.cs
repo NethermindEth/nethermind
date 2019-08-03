@@ -41,13 +41,13 @@ namespace Nethermind.JsonRpc.WebSockets
             _jsonSerializer = jsonSerializer;
         }
 
-        public IWebSocketsClient CreateClient(WebSocket webSocket)
+        public IWebSocketsClient CreateClient(WebSocket webSocket, string client)
         {
-            var client = new JsonRpcWebSocketsClient(new WebSocketsClient(webSocket, _jsonSerializer),
+            var socketsClient = new JsonRpcWebSocketsClient(new WebSocketsClient(webSocket, client, _jsonSerializer),
                 _jsonRpcProcessor, _jsonSerializer);
-            _clients.TryAdd(client.Id, client);
+            _clients.TryAdd(socketsClient.Id, socketsClient);
 
-            return client;
+            return socketsClient;
         }
 
         public bool TryInit(HttpRequest request)

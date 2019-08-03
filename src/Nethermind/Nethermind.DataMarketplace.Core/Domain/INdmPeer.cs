@@ -40,8 +40,8 @@ namespace Nethermind.DataMarketplace.Core.Domain
         void SendConsumerAddressChanged(Address consumer);
         void SendSendDataRequest(DataRequest dataRequest, uint consumedUnits);
         void SendFinishSession(Keccak depositId);
-        void SendEnableDataStream(Keccak depositId, string[] args);
-        void SendDisableDataStream(Keccak depositId);
+        void SendEnableDataStream(Keccak depositId, string client, string[] args);
+        void SendDisableDataStream(Keccak depositId, string client);
         void SendDataDeliveryReceipt(Keccak depositId, DataDeliveryReceipt receipt);
         Task<FaucetResponse> SendRequestEth(Address address, UInt256 value, CancellationToken? token = null);
         void SendRequestDepositApproval(Keccak headerId, string kyc);

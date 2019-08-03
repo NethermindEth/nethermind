@@ -25,12 +25,14 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.EnableDataStream;
         public override string Protocol => "ndm";
-        public Keccak DepositId { get; set; }
-        public string[] Args { get; set; }
+        public Keccak DepositId { get; }
+        public string Client { get; }
+        public string[] Args { get; }
 
-        public EnableDataStreamMessage(Keccak depositId, string[] args)
+        public EnableDataStreamMessage(Keccak depositId, string client, string[] args)
         {
             DepositId = depositId;
+            Client = client;
             Args = args;
         }
     }

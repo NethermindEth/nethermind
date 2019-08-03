@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.DepositApprovals;
         public override string Protocol => "ndm";
-        public DepositApproval[] DepositApprovals { get; set; }
+        public DepositApproval[] DepositApprovals { get; }
 
         public DepositApprovalsMessage(DepositApproval[] depositApprovals)
         {

@@ -26,8 +26,8 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.DataUnavailable;
         public override string Protocol => "ndm";
-        public Keccak DepositId { get; set; }
-        public DataAvailability DataAvailability { get; set; }
+        public Keccak DepositId { get; }
+        public DataAvailability DataAvailability { get; }
 
         public DataAvailabilityMessage(Keccak depositId, DataAvailability dataAvailability)
         {

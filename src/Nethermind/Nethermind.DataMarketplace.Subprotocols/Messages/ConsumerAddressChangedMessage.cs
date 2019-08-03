@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.ConsumerAddressChanged;
         public override string Protocol => "ndm";
-        public Address Address { get; set; }
+        public Address Address { get; }
 
         public ConsumerAddressChangedMessage(Address address)
         {

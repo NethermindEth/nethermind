@@ -33,8 +33,8 @@ namespace Nethermind.DataMarketplace.WebSockets
             _client = client;
         }
 
-        public Task PublishAsync(Keccak depositId, string data)
-            => _client.SendAsync(new WebSocketsMessage("data_received", new
+        public Task PublishAsync(Keccak depositId, string client, string data)
+            => _client.SendAsync(new WebSocketsMessage("data_received", client, new
             {
                 depositId,
                 data

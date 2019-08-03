@@ -5,6 +5,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         DataAssetNotFound,
         DepositNotFound,
         SessionNotFound,
+        SessionClientNotFound,
         NoUnitsLeft,
         PluginNotFound,
         PluginDisabled,

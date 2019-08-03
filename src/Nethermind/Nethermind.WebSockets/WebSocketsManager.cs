@@ -35,12 +35,12 @@ namespace Nethermind.WebSockets
         public IWebSocketsModule GetModule(string name)
             => _modules.TryGetValue(name, out var module) ? module : null;
 
-        public IWebSocketsClient CreateClient(IWebSocketsModule module, WebSocket webSocket)
+        public IWebSocketsClient CreateClient(IWebSocketsModule module, WebSocket webSocket, string client)
         {
-            var client = module.CreateClient(webSocket);
+            var socketsClient = module.CreateClient(webSocket, client);
             _modules.TryAdd(module.Name, module);
 
-            return client;
+            return socketsClient;
         }
     }
 }

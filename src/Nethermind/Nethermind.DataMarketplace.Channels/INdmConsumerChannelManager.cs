@@ -25,6 +25,6 @@ namespace Nethermind.DataMarketplace.Channels
     {
         void Add(INdmConsumerChannel ndmConsumerChannel);
         void Remove(INdmConsumerChannel ndmConsumerChannel);
-        Task PublishAsync(Keccak depositId, string data);
+        Task PublishAsync(Keccak depositId, string client, string data);
     }
 }
