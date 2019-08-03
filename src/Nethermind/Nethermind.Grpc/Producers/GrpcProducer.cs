@@ -14,7 +14,7 @@ namespace Nethermind.Grpc.Producers
 
         public Task InitAsync() => Task.CompletedTask;
 
-        public Task PublishAsync<T>(T data) where T : class => _server.PublishAsync(data);
+        public Task PublishAsync<T>(T data) where T : class => _server.PublishAsync(data, string.Empty);
 
         public Task CloseAsync() => Task.CompletedTask;
     }

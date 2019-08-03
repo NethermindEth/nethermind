@@ -27,6 +27,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
         public byte[] Serialize(DataAssetDataMessage assetDataMessage)
             => Nethermind.Core.Encoding.Rlp.Encode(
                 Nethermind.Core.Encoding.Rlp.Encode(assetDataMessage.DepositId),
+                Nethermind.Core.Encoding.Rlp.Encode(assetDataMessage.Client),
                 Nethermind.Core.Encoding.Rlp.Encode(assetDataMessage.Data),
                 Nethermind.Core.Encoding.Rlp.Encode(assetDataMessage.ConsumedUnits)
             ).Bytes;
@@ -36,10 +37,11 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
             var context = bytes.AsRlpContext();
             context.ReadSequenceLength();
             var depositId = context.DecodeKeccak();
+            var client = context.DecodeString();
             var data = context.DecodeString();
             var usage = context.DecodeUInt();
 
-            return new DataAssetDataMessage(depositId, data, usage);
+            return new DataAssetDataMessage(depositId, client, data, usage);
         }
     }
 }

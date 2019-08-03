@@ -25,8 +25,8 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.GetDepositApprovals;
         public override string Protocol => "ndm";
-        public Keccak DataHeaderId { get; set; }
-        public bool OnlyPending { get; set; }
+        public Keccak DataHeaderId { get; }
+        public bool OnlyPending { get; }
 
         public GetDepositApprovalsMessage(Keccak dataHeaderId = null, bool onlyPending = false)
         {

@@ -158,7 +158,10 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _consumerNotifier.SendConsumerAccountLockedAsync(e.Address);
             if (_logger.IsInfo) _logger.Info($"Locked consumer account: '{e.Address}', all of the existing data streams will be disabled.");
 
-            var disableStreamTasks = _sessions.Values.Select(s => DisableDataStreamAsync(s.DepositId));
+            var disableStreamTasks = from session in _sessions.Values
+                from client in session.Clients
+                select DisableDataStreamAsync(session.DepositId, client.Id);
+
             Task.WhenAll(disableStreamTasks).ContinueWith(t =>
             {
                 if (t.IsFaulted && _logger.IsError)
@@ -442,8 +445,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
             SetActiveSession(consumerSession);
             await _sessionRepository.AddAsync(consumerSession);
-            await _consumerNotifier.SendSessionStartedAsync(session.DepositId, session.Id,
-                consumerSession.StreamEnabled, consumerSession.Args);
+            await _consumerNotifier.SendSessionStartedAsync(session.DepositId, session.Id);
             if (_logger.IsInfo) _logger.Info($"Started a session with id: '{session.Id}' for deposit: '{session.DepositId}', address: '{_consumerAddress}'.");
         }
 
@@ -737,7 +739,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             return depositId;
         }
 
-        public Task<Keccak> EnableDataStreamAsync(Keccak depositId, string[] args)
+        public Task<Keccak> EnableDataStreamAsync(Keccak depositId, string client, string[] args)
         {
             if (_accountLocked)
             {
@@ -746,13 +748,32 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return Task.FromResult<Keccak>(null);
             }
             
-            return ToggleDataStreamAsync(depositId, true, args);
+            return ToggleDataStreamAsync(depositId, true, client, args);
         }
 
-        public Task<Keccak> DisableDataStreamAsync(Keccak depositId)
-            => ToggleDataStreamAsync(depositId, false);
+        public Task<Keccak> DisableDataStreamAsync(Keccak depositId, string client)
+            => ToggleDataStreamAsync(depositId, false, client);
 
-        private async Task<Keccak> ToggleDataStreamAsync(Keccak depositId, bool enabled, string[] args = null)
+        public async Task<Keccak> DisableDataStreamsAsync(Keccak depositId)
+        {
+            var session = GetActiveSession(depositId);
+            if (session is null)
+            {
+                return null;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Disabling all data streams for deposit: '{depositId}'.");
+
+            var disableStreamTasks = from client in session.Clients
+                select DisableDataStreamAsync(session.DepositId, client.Id);
+            await Task.WhenAll(disableStreamTasks);
+            if (_logger.IsInfo) _logger.Info($"Disabled all data streams for deposit: '{depositId}'.");
+
+            return depositId;
+        }
+
+        private async Task<Keccak> ToggleDataStreamAsync(Keccak depositId, bool enabled, string client,
+            string[] args = null)
         {
             var session = GetActiveSession(depositId);
             if (session is null)
@@ -792,19 +813,19 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
             if (enabled)
             {
-                if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}'.");
-                providerPeer.SendEnableDataStream(depositId, args);
+                if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}', client: '{client}'.");
+                providerPeer.SendEnableDataStream(depositId, client, args);
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Sending disable data stream for deposit: '{depositId}'.");
-                providerPeer.SendDisableDataStream(depositId);
+                if (_logger.IsInfo) _logger.Info($"Sending disable data stream for deposit: '{depositId}', client: '{client}'.");
+                providerPeer.SendDisableDataStream(depositId, client);
             }
 
             return depositId;
         }
 
-        public async Task SetEnabledDataStreamAsync(Keccak depositId, string[] args)
+        public async Task SetEnabledDataStreamAsync(Keccak depositId, string client, string[] args)
         {
             var session = GetActiveSession(depositId);
             if (session is null)
@@ -812,13 +833,13 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
 
-            session.EnableStream(args);
+            session.EnableStream(client, args);
             await _sessionRepository.UpdateAsync(session);
             await _consumerNotifier.SendDataStreamEnabledAsync(depositId, session.Id);
-            if (_logger.IsInfo) _logger.Info($"Enabled data stream for deposit: '{depositId}', session: '{session.Id}'.'");
+            if (_logger.IsInfo) _logger.Info($"Enabled data stream for deposit: '{depositId}', client: '{client}', session: '{session.Id}'.'");
         }
 
-        public async Task SetDisabledDataStreamAsync(Keccak depositId)
+        public async Task SetDisabledDataStreamAsync(Keccak depositId, string client)
         {
             var session = GetActiveSession(depositId);
             if (session is null)
@@ -826,10 +847,10 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
             
-            session.DisableStream();
+            session.DisableStream(client);
             await _sessionRepository.UpdateAsync(session);
             await _consumerNotifier.SendDataStreamDisabledAsync(depositId, session.Id);
-            if (_logger.IsInfo) _logger.Info($"Disabled data stream for deposit: '{depositId}', session: '{session.Id}'.");
+            if (_logger.IsInfo) _logger.Info($"Disabled data stream for deposit: '{depositId}', client: '{client}', session: '{session.Id}'.");
         }
 
         public async Task SendDataDeliveryReceiptAsync(DataDeliveryReceiptRequest request)

@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.SessionStarted;
         public override string Protocol => "ndm";
-        public Session Session { get; set; }
+        public Session Session { get; }
 
         public SessionStartedMessage(Session session)
         {

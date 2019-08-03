@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.DataHeaderStateChanged;
         public override string Protocol => "ndm";
-        public Keccak DataHeaderId { get; set; }
+        public Keccak DataHeaderId { get; }
         public DataHeaderState State { get; }
 
         public DataHeaderStateChangedMessage(Keccak dataHeaderId, DataHeaderState state)

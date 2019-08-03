@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
 using Nethermind.DataMarketplace.Consumers.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
 
@@ -25,19 +26,17 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
     {
         public uint ConsumedUnitsFromProvider { get; set; }
         public string DataAvailability { get; set; }
-        public bool StreamEnabled { get; set; }
-        public string[] Args { get; set; }
+        public SessionClientForRpc[] Clients { get; set; }
 
         public ConsumerSessionForRpc()
         {
         }
-        
+
         public ConsumerSessionForRpc(ConsumerSession session) : base(session)
         {
             ConsumedUnitsFromProvider = session.ConsumedUnitsFromProvider;
             DataAvailability = session.DataAvailability.ToString().ToLowerInvariant();
-            StreamEnabled = session.StreamEnabled;
-            Args = session.Args;
+            Clients = session.Clients.Select(c => new SessionClientForRpc(c)).ToArray();
         }
     }
 }

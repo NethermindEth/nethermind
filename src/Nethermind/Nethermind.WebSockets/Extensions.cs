@@ -48,6 +48,9 @@ namespace Nethermind.WebSockets
             app.UseWebSockets(webSocketOptions);
             app.Use(async (context, next) =>
             {
+                var id = string.Empty;
+                var client = string.Empty;
+                IWebSocketsModule module = null;
                 try
                 {
                     if (!context.Request.Path.HasValue)
@@ -70,7 +73,7 @@ namespace Nethermind.WebSockets
                     }
 
                     var moduleName = path.Split("/").LastOrDefault();
-                    var module = webSocketsManager.GetModule(moduleName);
+                    module = webSocketsManager.GetModule(moduleName);
                     if (module is null)
                     {
                         context.Response.StatusCode = 400;
@@ -83,14 +86,27 @@ namespace Nethermind.WebSockets
                         return;
                     }
 
+                    client = context.Request.Query.TryGetValue("client", out var clientValues)
+                        ? clientValues.FirstOrDefault()
+                        : string.Empty;
+
+                    if (logger.IsInfo) logger.Info($"Initializing WebSockets for client: '{client}'.");
                     var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    var client = webSocketsManager.CreateClient(module, webSocket);
-                    await ReceiveAsync(webSocket, client);
-                    module.RemoveClient(client.Id);
+                    var socketsClient = webSocketsManager.CreateClient(module, webSocket, client);
+                    id = socketsClient.Id;
+                    await ReceiveAsync(webSocket, socketsClient);
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    logger.Error("WebSocket handling error", e);
+                    logger.Error("WebSockets error.", ex);
+                }
+                finally
+                {
+                    if (!(module is null) && !string.IsNullOrWhiteSpace(id))
+                    {
+                        module.RemoveClient(id);
+                        if (logger.IsInfo) logger.Info($"Closing WebSockets for client: '{client}'.");
+                    }
                 }
             });
         }

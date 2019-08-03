@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.RequestDataDeliveryReceipt;
         public override string Protocol => "ndm";
-        public DataDeliveryReceiptRequest Request { get; set; }
+        public DataDeliveryReceiptRequest Request { get; }
 
         public RequestDataDeliveryReceiptMessage(DataDeliveryReceiptRequest request)
         {

@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.DataHeaders;
         public override string Protocol => "ndm";
-        public DataHeader[] DataHeaders { get; set; }
+        public DataHeader[] DataHeaders { get; }
 
         public DataHeadersMessage(DataHeader[] dataHeaders)
         {

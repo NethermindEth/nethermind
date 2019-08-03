@@ -29,7 +29,7 @@ namespace Nethermind.DataMarketplace.Channels
 
         public NdmConsumerChannelType Type => NdmConsumerChannelType.JsonRpc;
 
-        public Task PublishAsync(Keccak depositId, string data)
+        public Task PublishAsync(Keccak depositId, string client, string data)
         {
             _data.AddOrUpdate(depositId, id =>
             {

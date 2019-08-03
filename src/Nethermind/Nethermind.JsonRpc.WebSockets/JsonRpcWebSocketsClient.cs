@@ -30,6 +30,7 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly JsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonSerializer _jsonSerializer;
         public string Id => _client.Id;
+        public string Client { get; }
 
         public JsonRpcWebSocketsClient(IWebSocketsClient client,
             JsonRpcProcessor jsonRpcProcessor, IJsonSerializer jsonSerializer)

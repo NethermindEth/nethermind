@@ -26,8 +26,8 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.RequestEth;
         public override string Protocol => "ndm";
-        public Address Address { get; set; }
-        public UInt256 Value { get; set; }
+        public Address Address { get; }
+        public UInt256 Value { get; }
 
         public RequestEthMessage(Address address, UInt256 value)
         {

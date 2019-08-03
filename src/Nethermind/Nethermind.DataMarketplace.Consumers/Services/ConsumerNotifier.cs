@@ -36,15 +36,12 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     reason = reason.ToString()
                 }));
 
-        public Task SendSessionStartedAsync(Keccak depositId, Keccak sessionId, bool streamEnabled,
-            IEnumerable<string> args)
+        public Task SendSessionStartedAsync(Keccak depositId, Keccak sessionId)
             => _notifier.NotifyAsync(new Notification("session_started",
                 new
                 {
                     depositId,
-                    sessionId,
-                    streamEnabled,
-                    args
+                    sessionId
                 }));
 
         public Task SendSessionFinishedAsync(Keccak depositId, Keccak sessionId)

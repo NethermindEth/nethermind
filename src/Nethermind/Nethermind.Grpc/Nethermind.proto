@@ -8,17 +8,21 @@ service NethermindService {
 }
 
 message QueryRequest {
-    repeated string args = 1;
+    string client = 1;
+    repeated string args = 2;
 }
 
 message QueryResponse {
-    string data = 1;
+    string client = 1;
+    string data = 2;
 }
 
 message SubscriptionRequest {
-    repeated string args = 1;
+    string client = 1;
+    repeated string args = 2;
 }
 
 message SubscriptionResponse {
-    string data = 1;
+    string client = 1;
+    string data = 2;
 }

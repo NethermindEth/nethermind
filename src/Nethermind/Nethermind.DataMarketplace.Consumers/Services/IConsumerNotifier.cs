@@ -12,7 +12,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             uint requiredConfirmations, uint verificationTimestamp);
 
         Task SendDataInvalidAsync(Keccak depositId, InvalidDataReason reason);
-        Task SendSessionStartedAsync(Keccak depositId, Keccak sessionId, bool streamEnabled, IEnumerable<string> args);
+        Task SendSessionStartedAsync(Keccak depositId, Keccak sessionId);
         Task SendSessionFinishedAsync(Keccak depositId, Keccak sessionId);
         Task SendConsumerAccountLockedAsync(Address address);
         Task SendConsumerAddressChangedAsync(Address newAddress, Address previousAddress);

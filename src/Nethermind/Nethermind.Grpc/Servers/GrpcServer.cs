@@ -9,9 +9,12 @@ namespace Nethermind.Grpc.Servers
 {
     public class GrpcServer : NethermindService.NethermindServiceBase, IGrpcServer
     {
+        private const int MaxCapacity = 100000;
         private readonly IJsonSerializer _jsonSerializer;
-        private static readonly QueryResponse QueryResponse = new QueryResponse();
-        private readonly BlockingCollection<string> _results = new BlockingCollection<string>();
+        private static readonly QueryResponse EmptyQueryResponse = new QueryResponse();
+
+        private readonly ConcurrentDictionary<string, BlockingCollection<string>> _clientResults =
+            new ConcurrentDictionary<string, BlockingCollection<string>>();
 
         private readonly ILogger _logger;
 
@@ -22,18 +25,24 @@ namespace Nethermind.Grpc.Servers
         }
 
         public override Task<QueryResponse> Query(QueryRequest request, ServerCallContext context)
-            => Task.FromResult(QueryResponse);
+            => Task.FromResult(EmptyQueryResponse);
 
         public override async Task Subscribe(SubscriptionRequest request,
             IServerStreamWriter<SubscriptionResponse> responseStream, ServerCallContext context)
         {
+            var client = request.Client ?? string.Empty;
+            var results = _clientResults.AddOrUpdate(client,
+                (_) => new BlockingCollection<string>(MaxCapacity),
+                (_, r) => r);
+
             try
             {
                 while (true)
                 {
-                    var result = _results.Take();
+                    var result = results.Take();
                     await responseStream.WriteAsync(new SubscriptionResponse
                     {
+                        Client = client,
                         Data = result
                     });
                 }
@@ -44,14 +53,26 @@ namespace Nethermind.Grpc.Servers
             }
         }
 
-        public Task PublishAsync<T>(T data) where T : class
+        public Task PublishAsync<T>(T data, string client) where T : class
         {
             if (data is null)
             {
                 return Task.CompletedTask;
             }
 
-            _results.TryAdd(_jsonSerializer.Serialize(data));
+            var payload = _jsonSerializer.Serialize(data);
+            _clientResults.AddOrUpdate(client ?? string.Empty, (_) =>
+            {
+                var results = new BlockingCollection<string>(MaxCapacity);
+                results.TryAdd(payload);
+
+                return results;
+            }, (c, results) =>
+            {
+                results.TryAdd(payload);
+
+                return results;
+            });
 
             return Task.CompletedTask;
         }

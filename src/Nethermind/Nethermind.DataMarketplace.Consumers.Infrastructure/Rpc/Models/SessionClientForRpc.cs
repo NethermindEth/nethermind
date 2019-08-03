@@ -16,23 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.Network.P2P;
+using Nethermind.DataMarketplace.Consumers.Domain;
 
-namespace Nethermind.DataMarketplace.Subprotocols.Messages
+namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
-    public class DataDeliveryReceiptMessage : P2PMessage
+    public class SessionClientForRpc
     {
-        public override int PacketType { get; } = NdmMessageCode.DataDeliveryReceipt;
-        public override string Protocol => "ndm";
-        public Keccak DepositId { get; }
-        public DataDeliveryReceipt Receipt { get; }
+        public string Id { get; set; }
+        public bool StreamEnabled { get; set; }
+        public string[] Args { get; set; }
 
-        public DataDeliveryReceiptMessage(Keccak depositId, DataDeliveryReceipt receipt)
+        public SessionClientForRpc()
         {
-            DepositId = depositId;
-            Receipt = receipt;
+        }
+
+        public SessionClientForRpc(SessionClient session)
+        {
+            Id = session.Id;
+            StreamEnabled = session.StreamEnabled;
+            Args = session.Args;
         }
     }
 }

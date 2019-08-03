@@ -38,10 +38,10 @@ namespace Nethermind.DataMarketplace.Channels
             _channels.TryRemove(ndmConsumerChannel, out _);
         }
 
-        public async Task PublishAsync(Keccak depositId, string data)
+        public async Task PublishAsync(Keccak depositId, string client, string data)
         {
             var channels = _channels.Values.ToArray();
-            await Task.WhenAll(channels.Select(c => c.PublishAsync(depositId, data)));
+            await Task.WhenAll(channels.Select(c => c.PublishAsync(depositId, client, data)));
         }
     }
 }

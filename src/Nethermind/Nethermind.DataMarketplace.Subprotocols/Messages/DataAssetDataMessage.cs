@@ -26,12 +26,14 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
         public override int PacketType { get; } = NdmMessageCode.DataAssetData;
         public override string Protocol => "ndm";
         public Keccak DepositId { get; }
+        public string Client { get; }
         public string Data { get; }
         public uint ConsumedUnits { get; }
 
-        public DataAssetDataMessage(Keccak depositId, string data, uint consumedUnits)
+        public DataAssetDataMessage(Keccak depositId, string client, string data, uint consumedUnits)
         {
             DepositId = depositId;
+            Client = client;
             Data = data;
             ConsumedUnits = consumedUnits;
         }

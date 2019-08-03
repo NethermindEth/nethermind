@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.FinishSession;
         public override string Protocol => "ndm";
-        public Keccak DepositId { get; set; }
+        public Keccak DepositId { get; }
 
         public FinishSessionMessage(Keccak depositId)
         {

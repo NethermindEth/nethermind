@@ -53,15 +53,15 @@ namespace Nethermind.DataMarketplace.WebSockets
             return true;
         }
 
-        public IWebSocketsClient CreateClient(WebSocket webSocket)
+        public IWebSocketsClient CreateClient(WebSocket webSocket, string client)
         {
-            var client = new NdmWebSocketsClient(new WebSocketsClient(webSocket, _jsonSerializer),
+            var socketsClient = new NdmWebSocketsClient(new WebSocketsClient(webSocket, client, _jsonSerializer),
                 _dataPublisher);
-            _channel = new NdmWebSocketsConsumerChannel(client);
+            _channel = new NdmWebSocketsConsumerChannel(socketsClient);
             _consumerChannelManager.Add(_channel);
-            _clients.TryAdd(client.Id, client);
+            _clients.TryAdd(socketsClient.Id, socketsClient);
 
-            return client;
+            return socketsClient;
         }
 
         public Task SendRawAsync(string data)

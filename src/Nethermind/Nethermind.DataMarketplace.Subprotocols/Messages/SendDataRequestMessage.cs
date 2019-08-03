@@ -25,8 +25,8 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     {
         public override int PacketType { get; } = NdmMessageCode.SendDataRequest;
         public override string Protocol => "ndm";
-        public DataRequest DataRequest { get; set; }
-        public uint ConsumedUnits { get; set; }
+        public DataRequest DataRequest { get; }
+        public uint ConsumedUnits { get; }
 
         public SendDataRequestMessage(DataRequest dataRequest, uint consumedUnits)
         {

@@ -55,10 +55,11 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         Task<Keccak> SendFinishSessionAsync(Keccak depositId);
         Task FinishSessionAsync(Session session, INdmPeer provider, bool removePeer = true);
         Task FinishSessionsAsync(INdmPeer provider, bool removePeer = true);
-        Task<Keccak> EnableDataStreamAsync(Keccak depositId, string[] args);
-        Task<Keccak> DisableDataStreamAsync(Keccak depositId);
-        Task SetEnabledDataStreamAsync(Keccak depositId, string[] args);
-        Task SetDisabledDataStreamAsync(Keccak depositId);
+        Task<Keccak> EnableDataStreamAsync(Keccak depositId, string client, string[] args);
+        Task<Keccak> DisableDataStreamAsync(Keccak depositId, string client);
+        Task<Keccak> DisableDataStreamsAsync(Keccak depositId);
+        Task SetEnabledDataStreamAsync(Keccak depositId, string client, string[] args);
+        Task SetDisabledDataStreamAsync(Keccak depositId, string client);
         Task SendDataDeliveryReceiptAsync(DataDeliveryReceiptRequest request);
         Task SetEarlyRefundTicketAsync(EarlyRefundTicket ticket, RefundReason reason);
         Task<Keccak> RequestDepositApprovalAsync(Keccak headerId, string kyc);

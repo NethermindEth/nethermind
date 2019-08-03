@@ -24,6 +24,6 @@ namespace Nethermind.WebSockets
     {
         void AddModule(IWebSocketsModule module);
         IWebSocketsModule GetModule(string name);
-        IWebSocketsClient CreateClient(IWebSocketsModule module, WebSocket webSocket);
+        IWebSocketsClient CreateClient(IWebSocketsModule module, WebSocket webSocket, string client);
     }
 }

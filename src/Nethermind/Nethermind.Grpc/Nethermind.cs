@@ -25,21 +25,23 @@ namespace Nethermind.Grpc {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "Ci9zcmMvTmV0aGVybWluZC9OZXRoZXJtaW5kLkdycGMvTmV0aGVybWluZC5w",
-            "cm90bxIPTmV0aGVybWluZC5HcnBjIhwKDFF1ZXJ5UmVxdWVzdBIMCgRhcmdz",
-            "GAEgAygJIh0KDVF1ZXJ5UmVzcG9uc2USDAoEZGF0YRgBIAEoCSIjChNTdWJz",
-            "Y3JpcHRpb25SZXF1ZXN0EgwKBGFyZ3MYASADKAkiJAoUU3Vic2NyaXB0aW9u",
-            "UmVzcG9uc2USDAoEZGF0YRgBIAEoCTK7AQoRTmV0aGVybWluZFNlcnZpY2US",
-            "SAoFUXVlcnkSHS5OZXRoZXJtaW5kLkdycGMuUXVlcnlSZXF1ZXN0Gh4uTmV0",
-            "aGVybWluZC5HcnBjLlF1ZXJ5UmVzcG9uc2UiABJcCglTdWJzY3JpYmUSJC5O",
-            "ZXRoZXJtaW5kLkdycGMuU3Vic2NyaXB0aW9uUmVxdWVzdBolLk5ldGhlcm1p",
-            "bmQuR3JwYy5TdWJzY3JpcHRpb25SZXNwb25zZSIAMAFiBnByb3RvMw=="));
+            "cm90bxIPTmV0aGVybWluZC5HcnBjIiwKDFF1ZXJ5UmVxdWVzdBIOCgZjbGll",
+            "bnQYASABKAkSDAoEYXJncxgCIAMoCSItCg1RdWVyeVJlc3BvbnNlEg4KBmNs",
+            "aWVudBgBIAEoCRIMCgRkYXRhGAIgASgJIjMKE1N1YnNjcmlwdGlvblJlcXVl",
+            "c3QSDgoGY2xpZW50GAEgASgJEgwKBGFyZ3MYAiADKAkiNAoUU3Vic2NyaXB0",
+            "aW9uUmVzcG9uc2USDgoGY2xpZW50GAEgASgJEgwKBGRhdGEYAiABKAkyuwEK",
+            "EU5ldGhlcm1pbmRTZXJ2aWNlEkgKBVF1ZXJ5Eh0uTmV0aGVybWluZC5HcnBj",
+            "LlF1ZXJ5UmVxdWVzdBoeLk5ldGhlcm1pbmQuR3JwYy5RdWVyeVJlc3BvbnNl",
+            "IgASXAoJU3Vic2NyaWJlEiQuTmV0aGVybWluZC5HcnBjLlN1YnNjcmlwdGlv",
+            "blJlcXVlc3QaJS5OZXRoZXJtaW5kLkdycGMuU3Vic2NyaXB0aW9uUmVzcG9u",
+            "c2UiADABYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Nethermind.Grpc.QueryRequest), global::Nethermind.Grpc.QueryRequest.Parser, new[]{ "Args" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Nethermind.Grpc.QueryResponse), global::Nethermind.Grpc.QueryResponse.Parser, new[]{ "Data" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Nethermind.Grpc.SubscriptionRequest), global::Nethermind.Grpc.SubscriptionRequest.Parser, new[]{ "Args" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Nethermind.Grpc.SubscriptionResponse), global::Nethermind.Grpc.SubscriptionResponse.Parser, new[]{ "Data" }, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Nethermind.Grpc.QueryRequest), global::Nethermind.Grpc.QueryRequest.Parser, new[]{ "Client", "Args" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Nethermind.Grpc.QueryResponse), global::Nethermind.Grpc.QueryResponse.Parser, new[]{ "Client", "Data" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Nethermind.Grpc.SubscriptionRequest), global::Nethermind.Grpc.SubscriptionRequest.Parser, new[]{ "Client", "Args" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Nethermind.Grpc.SubscriptionResponse), global::Nethermind.Grpc.SubscriptionResponse.Parser, new[]{ "Client", "Data" }, null, null, null)
           }));
     }
     #endregion
@@ -71,6 +73,7 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public QueryRequest(QueryRequest other) : this() {
+      client_ = other.client_;
       args_ = other.args_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
@@ -80,10 +83,21 @@ namespace Nethermind.Grpc {
       return new QueryRequest(this);
     }
 
+    /// <summary>Field number for the "client" field.</summary>
+    public const int ClientFieldNumber = 1;
+    private string client_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public string Client {
+      get { return client_; }
+      set {
+        client_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     /// <summary>Field number for the "args" field.</summary>
-    public const int ArgsFieldNumber = 1;
+    public const int ArgsFieldNumber = 2;
     private static readonly pb::FieldCodec<string> _repeated_args_codec
-        = pb::FieldCodec.ForString(10);
+        = pb::FieldCodec.ForString(18);
     private readonly pbc::RepeatedField<string> args_ = new pbc::RepeatedField<string>();
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public pbc::RepeatedField<string> Args {
@@ -103,6 +117,7 @@ namespace Nethermind.Grpc {
       if (ReferenceEquals(other, this)) {
         return true;
       }
+      if (Client != other.Client) return false;
       if(!args_.Equals(other.args_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -110,6 +125,7 @@ namespace Nethermind.Grpc {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override int GetHashCode() {
       int hash = 1;
+      if (Client.Length != 0) hash ^= Client.GetHashCode();
       hash ^= args_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -124,6 +140,10 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+      if (Client.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Client);
+      }
       args_.WriteTo(output, _repeated_args_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
@@ -133,6 +153,9 @@ namespace Nethermind.Grpc {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
       int size = 0;
+      if (Client.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Client);
+      }
       size += args_.CalculateSize(_repeated_args_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -144,6 +167,9 @@ namespace Nethermind.Grpc {
     public void MergeFrom(QueryRequest other) {
       if (other == null) {
         return;
+      }
+      if (other.Client.Length != 0) {
+        Client = other.Client;
       }
       args_.Add(other.args_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
@@ -158,6 +184,10 @@ namespace Nethermind.Grpc {
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
           case 10: {
+            Client = input.ReadString();
+            break;
+          }
+          case 18: {
             args_.AddEntriesFrom(input, _repeated_args_codec);
             break;
           }
@@ -192,6 +222,7 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public QueryResponse(QueryResponse other) : this() {
+      client_ = other.client_;
       data_ = other.data_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
@@ -201,8 +232,19 @@ namespace Nethermind.Grpc {
       return new QueryResponse(this);
     }
 
+    /// <summary>Field number for the "client" field.</summary>
+    public const int ClientFieldNumber = 1;
+    private string client_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public string Client {
+      get { return client_; }
+      set {
+        client_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     /// <summary>Field number for the "data" field.</summary>
-    public const int DataFieldNumber = 1;
+    public const int DataFieldNumber = 2;
     private string data_ = "";
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Data {
@@ -225,6 +267,7 @@ namespace Nethermind.Grpc {
       if (ReferenceEquals(other, this)) {
         return true;
       }
+      if (Client != other.Client) return false;
       if (Data != other.Data) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -232,6 +275,7 @@ namespace Nethermind.Grpc {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override int GetHashCode() {
       int hash = 1;
+      if (Client.Length != 0) hash ^= Client.GetHashCode();
       if (Data.Length != 0) hash ^= Data.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -246,8 +290,12 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
-      if (Data.Length != 0) {
+      if (Client.Length != 0) {
         output.WriteRawTag(10);
+        output.WriteString(Client);
+      }
+      if (Data.Length != 0) {
+        output.WriteRawTag(18);
         output.WriteString(Data);
       }
       if (_unknownFields != null) {
@@ -258,6 +306,9 @@ namespace Nethermind.Grpc {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
       int size = 0;
+      if (Client.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Client);
+      }
       if (Data.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Data);
       }
@@ -271,6 +322,9 @@ namespace Nethermind.Grpc {
     public void MergeFrom(QueryResponse other) {
       if (other == null) {
         return;
+      }
+      if (other.Client.Length != 0) {
+        Client = other.Client;
       }
       if (other.Data.Length != 0) {
         Data = other.Data;
@@ -287,6 +341,10 @@ namespace Nethermind.Grpc {
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
           case 10: {
+            Client = input.ReadString();
+            break;
+          }
+          case 18: {
             Data = input.ReadString();
             break;
           }
@@ -321,6 +379,7 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public SubscriptionRequest(SubscriptionRequest other) : this() {
+      client_ = other.client_;
       args_ = other.args_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
@@ -330,10 +389,21 @@ namespace Nethermind.Grpc {
       return new SubscriptionRequest(this);
     }
 
+    /// <summary>Field number for the "client" field.</summary>
+    public const int ClientFieldNumber = 1;
+    private string client_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public string Client {
+      get { return client_; }
+      set {
+        client_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     /// <summary>Field number for the "args" field.</summary>
-    public const int ArgsFieldNumber = 1;
+    public const int ArgsFieldNumber = 2;
     private static readonly pb::FieldCodec<string> _repeated_args_codec
-        = pb::FieldCodec.ForString(10);
+        = pb::FieldCodec.ForString(18);
     private readonly pbc::RepeatedField<string> args_ = new pbc::RepeatedField<string>();
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public pbc::RepeatedField<string> Args {
@@ -353,6 +423,7 @@ namespace Nethermind.Grpc {
       if (ReferenceEquals(other, this)) {
         return true;
       }
+      if (Client != other.Client) return false;
       if(!args_.Equals(other.args_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -360,6 +431,7 @@ namespace Nethermind.Grpc {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override int GetHashCode() {
       int hash = 1;
+      if (Client.Length != 0) hash ^= Client.GetHashCode();
       hash ^= args_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -374,6 +446,10 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+      if (Client.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Client);
+      }
       args_.WriteTo(output, _repeated_args_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
@@ -383,6 +459,9 @@ namespace Nethermind.Grpc {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
       int size = 0;
+      if (Client.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Client);
+      }
       size += args_.CalculateSize(_repeated_args_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -394,6 +473,9 @@ namespace Nethermind.Grpc {
     public void MergeFrom(SubscriptionRequest other) {
       if (other == null) {
         return;
+      }
+      if (other.Client.Length != 0) {
+        Client = other.Client;
       }
       args_.Add(other.args_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
@@ -408,6 +490,10 @@ namespace Nethermind.Grpc {
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
           case 10: {
+            Client = input.ReadString();
+            break;
+          }
+          case 18: {
             args_.AddEntriesFrom(input, _repeated_args_codec);
             break;
           }
@@ -442,6 +528,7 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public SubscriptionResponse(SubscriptionResponse other) : this() {
+      client_ = other.client_;
       data_ = other.data_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
@@ -451,8 +538,19 @@ namespace Nethermind.Grpc {
       return new SubscriptionResponse(this);
     }
 
+    /// <summary>Field number for the "client" field.</summary>
+    public const int ClientFieldNumber = 1;
+    private string client_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public string Client {
+      get { return client_; }
+      set {
+        client_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     /// <summary>Field number for the "data" field.</summary>
-    public const int DataFieldNumber = 1;
+    public const int DataFieldNumber = 2;
     private string data_ = "";
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Data {
@@ -475,6 +573,7 @@ namespace Nethermind.Grpc {
       if (ReferenceEquals(other, this)) {
         return true;
       }
+      if (Client != other.Client) return false;
       if (Data != other.Data) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -482,6 +581,7 @@ namespace Nethermind.Grpc {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override int GetHashCode() {
       int hash = 1;
+      if (Client.Length != 0) hash ^= Client.GetHashCode();
       if (Data.Length != 0) hash ^= Data.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -496,8 +596,12 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
-      if (Data.Length != 0) {
+      if (Client.Length != 0) {
         output.WriteRawTag(10);
+        output.WriteString(Client);
+      }
+      if (Data.Length != 0) {
+        output.WriteRawTag(18);
         output.WriteString(Data);
       }
       if (_unknownFields != null) {
@@ -508,6 +612,9 @@ namespace Nethermind.Grpc {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
       int size = 0;
+      if (Client.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Client);
+      }
       if (Data.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Data);
       }
@@ -521,6 +628,9 @@ namespace Nethermind.Grpc {
     public void MergeFrom(SubscriptionResponse other) {
       if (other == null) {
         return;
+      }
+      if (other.Client.Length != 0) {
+        Client = other.Client;
       }
       if (other.Data.Length != 0) {
         Data = other.Data;
@@ -537,6 +647,10 @@ namespace Nethermind.Grpc {
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
           case 10: {
+            Client = input.ReadString();
+            break;
+          }
+          case 18: {
             Data = input.ReadString();
             break;
           }

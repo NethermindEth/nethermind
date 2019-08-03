@@ -412,16 +412,16 @@ namespace Nethermind.DataMarketplace.Subprotocols
             Send(new FinishSessionMessage(depositId));
         }
 
-        public void SendEnableDataStream(Keccak depositId, string[] args)
+        public void SendEnableDataStream(Keccak depositId, string client, string[] args)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: enabledatastream");
-            Send(new EnableDataStreamMessage(depositId, args));
+            Send(new EnableDataStreamMessage(depositId, client, args));
         }
         
-        public void SendDisableDataStream(Keccak depositId)
+        public void SendDisableDataStream(Keccak depositId, string client)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: disabledatastream");
-            Send(new DisableDataStreamMessage(depositId));
+            Send(new DisableDataStreamMessage(depositId, client));
         }
         
         public void SendRequestDepositApproval(Keccak headerId, string kyc)
@@ -501,27 +501,29 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DataStreamEnabledMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: datastreamenabled");
-            ConsumerService.SetEnabledDataStreamAsync(message.DepositId, message.Args).ContinueWith(t =>
-            {
-                if (t.IsFaulted && Logger.IsError)
+            ConsumerService.SetEnabledDataStreamAsync(message.DepositId, message.Client, message.Args)
+                .ContinueWith(t =>
                 {
-                    Logger.Error("There was an error within NDM subprotocol.", t.Exception);
-                }
-            });
+                    if (t.IsFaulted && Logger.IsError)
+                    {
+                        Logger.Error("There was an error within NDM subprotocol.", t.Exception);
+                    }
+                });
         }
 
         private void Handle(DataStreamDisabledMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: datastreamdisabled");
-            ConsumerService.SetDisabledDataStreamAsync(message.DepositId).ContinueWith(t =>
-            {
-                if (t.IsFaulted && Logger.IsError)
+            ConsumerService.SetDisabledDataStreamAsync(message.DepositId, message.Client)
+                .ContinueWith(t =>
                 {
-                    Logger.Error("There was an error within NDM subprotocol.", t.Exception);
-                }
-            });
+                    if (t.IsFaulted && Logger.IsError)
+                    {
+                        Logger.Error("There was an error within NDM subprotocol.", t.Exception);
+                    }
+                });
         }
-        
+
         private void Handle(EthRequestedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: ethrequested");
@@ -539,13 +541,14 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     Logger.Error("There was an error within NDM subprotocol.", t.Exception);
                 }
             });
-            NdmConsumerChannelManager.PublishAsync(message.DepositId, message.Data).ContinueWith(t =>
-            {
-                if (t.IsFaulted && Logger.IsError)
+            NdmConsumerChannelManager.PublishAsync(message.DepositId, message.Client, message.Data)
+                .ContinueWith(t =>
                 {
-                    Logger.Error("There was an error within NDM subprotocol.", t.Exception);
-                }
-            });
+                    if (t.IsFaulted && Logger.IsError)
+                    {
+                        Logger.Error("There was an error within NDM subprotocol.", t.Exception);
+                    }
+                });
         }
 
         private void Handle(InvalidDataMessage message)
