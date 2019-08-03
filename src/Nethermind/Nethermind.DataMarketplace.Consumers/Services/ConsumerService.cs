@@ -141,7 +141,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
-            => _consumerNotifier.SendBlockProcessedAsync(e.Block.Number);}
+            => _consumerNotifier.SendBlockProcessedAsync(e.Block.Number);
 
         private void OnAccountUnlocked(object sender, AccountUnlockedEventArgs e)
         {
