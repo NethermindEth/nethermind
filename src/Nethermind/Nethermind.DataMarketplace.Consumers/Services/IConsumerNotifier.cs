@@ -26,7 +26,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         Task SendDataStreamDisabledAsync(Keccak depositId, Keccak sessionId);
         Task SendDepositApprovalConfirmedAsync(Keccak dataAssetId, string dataAssetName);
         Task SendDepositApprovalRejectedAsync(Keccak dataAssetId, string dataAssetName);
-        Task SendClaimedEarlyRefund(Keccak depositId, string dataAssetName, Keccak transactionHash);
-        Task SendClaimedRefund(Keccak depositId, string dataAssetName, Keccak transactionHash);
+        Task SendClaimedEarlyRefundAsync(Keccak depositId, string dataAssetName, Keccak transactionHash);
+        Task SendClaimedRefundAsync(Keccak depositId, string dataAssetName, Keccak transactionHash);
+        Task SendBlockProcessedAsync(long blockNumber);
     }
 }
