@@ -487,6 +487,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block block;
                 try
                 {
+                    Logger.Info($"Getting block number {blockParameter.BlockId}");
                     block = _blockchainBridge.GetBlock(blockParameter, true, true);
                 }
                 catch (JsonRpcException ex)

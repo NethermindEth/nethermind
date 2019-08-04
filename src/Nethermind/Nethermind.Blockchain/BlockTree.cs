@@ -696,7 +696,8 @@ namespace Nethermind.Blockchain
                 throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}",
                     nameof(blockNumber));
             }
-
+            
+            _logger.Info($"Loading level: {blockNumber}");
             ChainLevelInfo level = LoadLevel(blockNumber);
             if (level == null)
             {
@@ -1283,6 +1284,7 @@ namespace Nethermind.Blockchain
             Block block = _blockCache.Get(blockHash);
             if (block == null)
             {
+                _logger.Info($"Loading block from DB: {blockHash}");
                 byte[] data = _blockDb.Get(blockHash);
                 if (data == null)
                 {
