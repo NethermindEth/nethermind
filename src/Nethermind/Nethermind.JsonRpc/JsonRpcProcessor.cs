@@ -59,8 +59,11 @@ namespace Nethermind.JsonRpc
         {
             lock (_fileLock)
             {
-                File.AppendText(request);
-                File.AppendText(Environment.NewLine);
+                using (StreamWriter wr = File.AppendText("/home/root/rpc_records"))
+                {
+                    wr.WriteLine(request);
+                }
+                
                 if (_logger.IsInfo) _logger.Info($"JSONRPC REQUEST appended to the test file");
             }
 
