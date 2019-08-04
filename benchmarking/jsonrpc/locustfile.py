@@ -24,5 +24,5 @@ class WebsiteUser(HttpLocust):
     task_set = UserBehavior
     min_wait = 0
     max_wait = 0
-    #host = "http://3.9.144.27:8545"
-    host = "http://127.0.0.1:8545"
+    host = "http://3.9.144.27:8545"
+    #host = "http://127.0.0.1:8545"

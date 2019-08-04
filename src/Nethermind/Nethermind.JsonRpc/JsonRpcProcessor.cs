@@ -115,9 +115,10 @@ namespace Nethermind.JsonRpc
                 
                 var responses = new List<JsonRpcResponse>();
                 int requestIndex = 0;
+                Stopwatch singleRequestWatch = new Stopwatch();
                 foreach (JsonRpcRequest jsonRpcRequest in rpcRequest.Collection)
                 {
-                    if (_logger.IsInfo) _logger.Info($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest.Method}");
+                    singleRequestWatch.Start();
                     
                     Metrics.JsonRpcRequests++;
                     JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest);
@@ -133,6 +134,8 @@ namespace Nethermind.JsonRpc
                         Metrics.JsonRpcSuccesses++;
                     }
 
+                    singleRequestWatch.Stop();
+                    if (_logger.IsInfo) _logger.Info($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest.Method} handled in {singleRequestWatch.Elapsed.TotalMilliseconds}");
                     responses.Add(response);
                 }
 
