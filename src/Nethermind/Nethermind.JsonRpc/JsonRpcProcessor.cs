@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc
         {
             lock (_fileLock)
             {
-                using (StreamWriter wr = File.AppendText("/home/root/rpc_records"))
+                using (StreamWriter wr = File.AppendText("/home/ubuntu/rpc_records"))
                 {
                     wr.WriteLine(request);
                 }
