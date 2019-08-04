@@ -71,8 +71,10 @@ namespace Nethermind.Runner.Controllers
         {
             using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
             {
-                var result = await _jsonRpcProcessor.ProcessAsync(await reader.ReadToEndAsync());
-                Console.WriteLine($"Responses: {result.Responses.Count}");
+                string request = await reader.ReadToEndAsync();
+                Console.WriteLine($"{DateTime.UtcNow} Request: {request}");
+                var result = await _jsonRpcProcessor.ProcessAsync(request);
+                Console.WriteLine($"{DateTime.UtcNow} Responses: {result.Responses.Count}");
 //                using (var streamWriter = new StreamWriter(Response.Body))
 //                using (var jsonTextWriter = new JsonTextWriter(streamWriter))
 //                {
