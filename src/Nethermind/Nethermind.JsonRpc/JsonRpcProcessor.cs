@@ -19,7 +19,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.Contracts;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -53,21 +56,10 @@ namespace Nethermind.JsonRpc
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private static object _fileLock = new object();
-        
         public async Task<JsonRpcResult> ProcessAsync(string request)
         {
-            lock (_fileLock)
-            {
-                using (StreamWriter wr = File.AppendText("/home/ubuntu/rpc_records"))
-                {
-                    wr.WriteLine(request);
-                }
-                
-                if (_logger.IsInfo) _logger.Info($"JSONRPC REQUEST appended to the test file");
-            }
-
-            (JsonRpcRequest Model, IEnumerable<JsonRpcRequest> Collection) rpcRequest;
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            (JsonRpcRequest Model, List<JsonRpcRequest> Collection) rpcRequest;
             try
             {
                 rpcRequest = _jsonSerializer.DeserializeObjectOrArray<JsonRpcRequest>(request);
@@ -83,6 +75,8 @@ namespace Nethermind.JsonRpc
 
             if (rpcRequest.Model != null)
             {
+                if (_logger.IsInfo) _logger.Info($"JSON RPC request {rpcRequest.Model.Method}");
+                
                 Metrics.JsonRpcRequests++;
                 var response = await _jsonRpcService.SendRequestAsync(rpcRequest.Model);
                 if (response.Error != null)
@@ -98,14 +92,21 @@ namespace Nethermind.JsonRpc
                 }
 
                 TraceResult(response);
+                stopwatch.Stop();
+                if (_logger.IsInfo) _logger.Info($"  {rpcRequest.Model.Method} handled in {stopwatch.ElapsedMilliseconds}ms");
                 return JsonRpcResult.Single(response);
             }
 
             if (rpcRequest.Collection != null)
             {
+                if (_logger.IsInfo) _logger.Info($"{rpcRequest.Collection.Count} JSON RPC requests");
+                
                 var responses = new List<JsonRpcResponse>();
+                int requestIndex = 0;
                 foreach (var jsonRpcRequest in rpcRequest.Collection)
                 {
+                    if (_logger.IsInfo) _logger.Info($"  {requestIndex}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest.Method}");
+                    
                     Metrics.JsonRpcRequests++;
                     var response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest);
                     if (response.Error != null)
@@ -123,17 +124,36 @@ namespace Nethermind.JsonRpc
                     responses.Add(response);
                 }
 
-                TraceResult(responses.ToArray());
+                TraceResult(responses);
+                stopwatch.Stop();
+                if (_logger.IsInfo) _logger.Info($"  {rpcRequest.Collection.Count} requests handled in {stopwatch.ElapsedMilliseconds}ms");
                 return JsonRpcResult.Collection(responses);
             }
 
             Metrics.JsonRpcInvalidRequests++;
             var errorResponse = _jsonRpcService.GetErrorResponse(ErrorType.InvalidRequest, "Invalid request");
             TraceResult(errorResponse);
+            stopwatch.Stop();
+            if (_logger.IsInfo) _logger.Info($"  Failed request handled in {stopwatch.ElapsedMilliseconds}ms");
             return JsonRpcResult.Single(errorResponse);
         }
 
-        private void TraceResult(params JsonRpcResponse[] responses)
+        private void TraceResult(JsonRpcResponse response)
+        {
+            if (_logger.IsTrace)
+            {
+                var builder = new StringBuilder();
+                using (var stringWriter = new StringWriter(builder))
+                using (var jsonWriter = new JsonTextWriter(stringWriter))
+                {
+                    _traceSerializer.Serialize(jsonWriter, response);
+                }
+                
+                _logger.Trace($"Sending JSON RPC response: {builder}");
+            }
+        }
+        
+        private void TraceResult(List<JsonRpcResponse> responses)
         {
             if (_logger.IsTrace)
             {

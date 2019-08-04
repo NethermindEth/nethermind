@@ -86,7 +86,7 @@ namespace Nethermind.Core.Json
 
         private JsonSerializer _serializer;
 
-        public (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json)
+        public (T Model, List<T> Collection) DeserializeObjectOrArray<T>(string json)
         {
             var token = JToken.Parse(json);
             if (token is JArray array)

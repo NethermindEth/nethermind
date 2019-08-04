@@ -128,8 +128,6 @@ namespace Nethermind.JsonRpc
 
         private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, MethodInfo method, object module)
         {
-            Console.WriteLine($"{methodName}");
-
             var expectedParameters = method.GetParameters();
             var providedParameters = request.Params;
             int missingParamsCount = expectedParameters.Length - (providedParameters?.Length ?? 0) + providedParameters?.Count(string.IsNullOrWhiteSpace) ?? 0;
