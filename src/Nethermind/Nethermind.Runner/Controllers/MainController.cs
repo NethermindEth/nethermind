@@ -68,25 +68,25 @@ namespace Nethermind.Runner.Controllers
         [HttpPost]
         public async Task Post()
         {
-            using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
-            {
-                var result = await _jsonRpcProcessor.ProcessAsync(await reader.ReadToEndAsync());
+//            using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
+//            {
+//                var result = await _jsonRpcProcessor.ProcessAsync(await reader.ReadToEndAsync());
+//
+//                using (var streamWriter = new StreamWriter(Response.Body))
+//                using (var jsonTextWriter = new JsonTextWriter(streamWriter))
+//                {
+//                    if (result.IsCollection)
+//                    {
+//                        _serializer.Serialize(jsonTextWriter, result.Responses);
+//                    }
+//                    else
+//                    {
+//                        _serializer.Serialize(jsonTextWriter, result.Responses[0]);
+//                    }
+//                }
+//            }
 
-                using (var streamWriter = new StreamWriter(Response.Body))
-                using (var jsonTextWriter = new JsonTextWriter(streamWriter))
-                {
-                    if (result.IsCollection)
-                    {
-                        _serializer.Serialize(jsonTextWriter, result.Responses);
-                    }
-                    else
-                    {
-                        _serializer.Serialize(jsonTextWriter, result.Responses[0]);
-                    }
-                }
-            }
-
-            await Response.WriteAsync("\n");
+            await Response.WriteAsync("{response = 1}");
         }
     }
 }
