@@ -478,7 +478,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             try
             {
-                _readerWriterLockSlim.EnterReadLock();
+//                _readerWriterLockSlim.EnterReadLock();
                 if (_blockchainBridge.Head == null)
                 {
                     return ResultWrapper<BlockForRpc>.Fail("Incorrect head block");
@@ -503,7 +503,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             finally
             {
-                _readerWriterLockSlim.ExitReadLock();
+//                _readerWriterLockSlim.ExitReadLock();
             }
         }
 
