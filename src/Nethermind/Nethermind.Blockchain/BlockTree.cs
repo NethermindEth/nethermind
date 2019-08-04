@@ -1286,7 +1286,11 @@ namespace Nethermind.Blockchain
             {
                 _logger.Info($"Loading block from DB: {blockHash}");
                 _logger.Info($"GC: {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
+                Stopwatch stopwatch = new Stopwatch();
+                stopwatch.Start();
                 byte[] data = _blockDb.Get(blockHash);
+                stopwatch.Stop();
+                _logger.Info($"Database loading of {blockHash} took {stopwatch.Elapsed.TotalMilliseconds}ms");
                 if (data == null)
                 {
                     return null;
