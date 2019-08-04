@@ -53,9 +53,16 @@ namespace Nethermind.JsonRpc
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
+        private static object _fileLock = new object();
+        
         public async Task<JsonRpcResult> ProcessAsync(string request)
         {
-            if (_logger.IsInfo) _logger.Info($"JSONRPC REQUEST | {request}");
+            lock (_fileLock)
+            {
+                File.AppendText(request);
+                File.AppendText(Environment.NewLine);
+                if (_logger.IsInfo) _logger.Info($"JSONRPC REQUEST appended to the test file");
+            }
 
             (JsonRpcRequest Model, IEnumerable<JsonRpcRequest> Collection) rpcRequest;
             try
