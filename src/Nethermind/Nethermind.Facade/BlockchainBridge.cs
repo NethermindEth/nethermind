@@ -289,10 +289,10 @@ namespace Nethermind.Facade
 
         public void RecoverTxSenders(Block block)
         {
-            for (int i = 0; i < block.Transactions.Length; i++)
-            {
-                RecoverTxSender(block.Transactions[i], block.Number);
-            }
+//            for (int i = 0; i < block.Transactions.Length; i++)
+//            {
+//                RecoverTxSender(block.Transactions[i], block.Number);
+//            }
         }
 
         public void RecoverTxSender(Transaction tx, long blockNumber)

@@ -494,10 +494,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<BlockForRpc>.Fail(ex.Message, ex.ErrorType, null);
                 }
                 
-                if (block != null && returnFullTransactionObjects)
-                {
-                    _blockchainBridge.RecoverTxSenders(block);
-                }
+//                if (block != null && returnFullTransactionObjects)
+//                {
+//                    _blockchainBridge.RecoverTxSenders(block);
+//                }
 
                 return ResultWrapper<BlockForRpc>.Success(block == null ? null : new BlockForRpc(block, returnFullTransactionObjects));
             }
