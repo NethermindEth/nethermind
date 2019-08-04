@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
@@ -86,7 +87,10 @@ namespace Nethermind.Runner.Controllers
 //                }
 //            }
 
+            Console.WriteLine($"REQUEST {i++}");
             await Response.WriteAsync("{response = 1}");
         }
+
+        private static int i = 0;
     }
 }
