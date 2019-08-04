@@ -1285,6 +1285,7 @@ namespace Nethermind.Blockchain
             if (block == null)
             {
                 _logger.Info($"Loading block from DB: {blockHash}");
+                _logger.Info($"GC: {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
                 byte[] data = _blockDb.Get(blockHash);
                 if (data == null)
                 {
