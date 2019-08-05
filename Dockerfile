@@ -1,6 +1,6 @@
 FROM microsoft/dotnet:2.2-sdk AS build
 COPY . .
-RUN git submodule update --init
+RUN git -c submodule."src/tests".update=none submodule update --init
 RUN cd src/Nethermind/Nethermind.Runner && dotnet publish -c release -o out
 
 FROM microsoft/dotnet:2.2-aspnetcore-runtime
