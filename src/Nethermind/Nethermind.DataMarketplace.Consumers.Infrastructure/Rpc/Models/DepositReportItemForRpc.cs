@@ -34,6 +34,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public string ProviderName { get; set; }
         public UInt256 Value { get; set; }
         public uint Units { get; set; }
+        public Address Consumer { get; set; }
         public bool Completed { get; set; }
         public uint Timestamp { get; set; }
         public uint ExpiryTime { get; set; }
@@ -67,6 +68,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
             ProviderName = report.ProviderName;
             Value = report.Value;
             Units = report.Units;
+            Consumer = report.Consumer;
             Completed = report.Completed;
             Timestamp = report.Timestamp;
             ExpiryTime = report.ExpiryTime;

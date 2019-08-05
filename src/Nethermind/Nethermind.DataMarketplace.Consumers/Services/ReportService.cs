@@ -88,7 +88,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 var consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
                 items.Add(new DepositReportItem(deposit.Id, deposit.DataHeader.Id, deposit.DataHeader.Name,
                     deposit.DataHeader.Provider.Address, deposit.DataHeader.Provider.Name, deposit.Deposit.Value,
-                    deposit.Deposit.Units, deposit.Timestamp, deposit.Deposit.ExpiryTime, expired,
+                    deposit.Deposit.Units, deposit.Consumer, deposit.Timestamp, deposit.Deposit.ExpiryTime, expired,
                     deposit.TransactionHash, deposit.ConfirmationTimestamp, deposit.Confirmations,
                     deposit.RequiredConfirmations, deposit.Confirmed, deposit.ClaimedRefundTransactionHash,
                     consumedUnits, receiptItems));

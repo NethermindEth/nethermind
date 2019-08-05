@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
@@ -27,6 +28,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public Keccak Id { get; set; }
         public DepositForRpc Deposit { get; set; }
         public DataHeaderForRpc DataHeader { get; set; }
+        public Address Consumer { get; set; }
         public uint Timestamp { get; set; }
         public Keccak TransactionHash { get; set; }
         public uint ConfirmationTimestamp { get; set; }
@@ -47,6 +49,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
             Id = deposit.Id;
             Deposit = new DepositForRpc(deposit.Deposit);
             DataHeader = new DataHeaderForRpc(deposit.DataHeader);
+            Consumer = deposit.Consumer;
             Timestamp = deposit.Timestamp;
             TransactionHash = deposit.TransactionHash;
             ConfirmationTimestamp = deposit.ConfirmationTimestamp;

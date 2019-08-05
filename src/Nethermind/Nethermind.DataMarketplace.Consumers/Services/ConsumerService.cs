@@ -572,13 +572,13 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var expiryTime = now + (uint) dataHeader.Rules.Expiry.Value;
             expiryTime += dataHeader.UnitType == DataHeaderUnitType.Unit ? 0 : units;
             var pepper = _cryptoRandom.GenerateRandomBytes(16);
-            var abiHash = _abiEncoder.Encode(AbiEncodingStyle.Packed, _depositAbiSig,
-                headerId.Bytes, units, value, expiryTime, pepper, dataHeader.Provider.Address, _consumerAddress);
+            var abiHash = _abiEncoder.Encode(AbiEncodingStyle.Packed, _depositAbiSig, headerId.Bytes,
+                units, value, expiryTime, pepper, dataHeader.Provider.Address, _consumerAddress);
             var depositId = Keccak.Compute(abiHash);
             var deposit = new Deposit(depositId, units, expiryTime, value);
             var transactionHash = _depositService.MakeDeposit(_consumerAddress, deposit);
-            var depositDetails = new DepositDetails(deposit, dataHeader, pepper, now, transactionHash,
-                requiredConfirmations: _depositRequiredConfirmations);
+            var depositDetails = new DepositDetails(deposit, dataHeader, _consumerAddress, pepper, now,
+                transactionHash, requiredConfirmations: _depositRequiredConfirmations);
             await _depositRepository.AddAsync(depositDetails);
             if (_logger.IsInfo) _logger.Info($"Making a deposit with id: '{depositId}' for data header: '{headerId}', address: '{_consumerAddress}'.");
 
@@ -1329,7 +1329,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var signature = _wallet.Sign(hash, _consumerAddress);
 
             return new DataRequest(deposit.DataHeader.Id, deposit.Deposit.Units, deposit.Deposit.Value,
-                deposit.Deposit.ExpiryTime, deposit.Pepper, deposit.DataHeader.Provider.Address, _consumerAddress,
+                deposit.Deposit.ExpiryTime, deposit.Pepper, deposit.DataHeader.Provider.Address, deposit.Consumer,
                 signature);
         }
 

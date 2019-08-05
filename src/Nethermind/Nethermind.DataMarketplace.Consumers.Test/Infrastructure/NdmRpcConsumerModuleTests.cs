@@ -540,11 +540,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
 
         private static DepositDetails GetDepositDetails()
             => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, 1, 1),
-                GetDataHeader(), Array.Empty<byte>(), 1, TestItem.KeccakA);
+                GetDataHeader(), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA);
 
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,
-                "test", 1, 1, 1, 1, false, TestItem.KeccakA,
+                "test", 1, 1, TestItem.AddressB, 1, 1, false, TestItem.KeccakA,
                 1, 1, 1, true, TestItem.KeccakB, 1, new[]
                 {
                     new DataDeliveryReceiptReportItem(Keccak.Zero, 1, TestItem.KeccakC, TestItem.PublicKeyA,

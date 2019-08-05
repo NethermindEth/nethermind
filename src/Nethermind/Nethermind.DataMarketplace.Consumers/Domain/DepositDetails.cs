@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 
@@ -27,6 +28,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public Keccak Id { get; private set; }
         public Deposit Deposit { get; private set; }
         public DataHeader DataHeader { get; private set; }
+        public Address Consumer { get; private set; }
         public byte[] Pepper { get; private set; }
         public uint Timestamp { get; private set; }
         public Keccak TransactionHash { get; private set; }
@@ -40,7 +42,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public uint Confirmations { get; private set; }
         public uint RequiredConfirmations { get; private set; }
 
-        public DepositDetails(Deposit deposit, DataHeader dataHeader, byte[] pepper, uint timestamp, 
+        public DepositDetails(Deposit deposit, DataHeader dataHeader, Address consumer, byte[] pepper, uint timestamp, 
             Keccak transactionHash, uint confirmationTimestamp = 0, EarlyRefundTicket earlyRefundTicket = null,
             Keccak claimedRefundTransactionHash = null, string kyc = null, uint confirmations = 0,
             uint requiredConfirmations = 0)
@@ -48,6 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             Id = deposit.Id;
             Deposit = deposit;
             DataHeader = dataHeader;
+            Consumer = consumer;
             Pepper = pepper;
             Timestamp = timestamp;
             TransactionHash = transactionHash;
