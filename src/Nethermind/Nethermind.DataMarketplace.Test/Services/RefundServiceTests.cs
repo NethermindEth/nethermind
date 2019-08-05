@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _bridge.NextBlockPlease(timestamp);
             
             DepositService depositService = new DepositService(_bridge, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
-            Keccak assetId = Keccak.Compute("data header");
+            Keccak assetId = Keccak.Compute("data asset");
             uint expiryTime = timestamp + 4;
             UInt256 value = 1.Ether();
             uint units = 10U;
@@ -95,7 +95,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _bridge.NextBlockPlease(timestamp);
             
             DepositService depositService = new DepositService(_bridge, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
-            Keccak assetId = Keccak.Compute("data header");
+            Keccak assetId = Keccak.Compute("data asset");
             uint expiryTime = timestamp + (uint)TimeSpan.FromDays(4).TotalSeconds;
             UInt256 value = 1.Ether();
             uint units = 10U;

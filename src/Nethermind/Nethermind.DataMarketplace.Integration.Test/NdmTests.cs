@@ -46,8 +46,8 @@ namespace Nethermind.DataMarketplace.Integration.Test
                 .DP.DeployNdmContract()
                 .DP.AddDataAsset(() => new DataAssetDto
                     {
-                        Name = "Test data header #1",
-                        Description = "Test data header #1 description",
+                        Name = "Test data asset #1",
+                        Description = "Test data asset #1 description",
                         UnitPrice = "100000000000000000",
                         UnitType = "unit",
                         MinUnits = 1,

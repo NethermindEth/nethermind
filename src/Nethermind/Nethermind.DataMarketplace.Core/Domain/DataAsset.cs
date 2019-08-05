@@ -48,22 +48,22 @@ namespace Nethermind.DataMarketplace.Core.Domain
         {
             if (provider == null || string.IsNullOrWhiteSpace(provider.Name) || provider.Address == null)
             {
-                throw new ArgumentException("Invalid data header provider.", nameof(provider));
+                throw new ArgumentException("Invalid data asset provider.", nameof(provider));
             }
 
             if (id == Keccak.Zero)
             {
-                throw new ArgumentException("Invalid data header id.", nameof(id));
+                throw new ArgumentException("Invalid data asset id.", nameof(id));
             }
 
             if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
             {
-                throw new ArgumentException("Invalid data header name.", nameof(name));
+                throw new ArgumentException("Invalid data asset name.", nameof(name));
             }
 
             if (string.IsNullOrWhiteSpace(description) || description.Length > 256)
             {
-                throw new ArgumentException("Invalid data header description.", nameof(description));
+                throw new ArgumentException("Invalid data asset description.", nameof(description));
             }
 
             if (termsAndConditions?.Length > 10000)
