@@ -21,6 +21,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Timers;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -95,6 +96,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly ILogger _logger;
         private readonly IEcdsa _ecdsa;
         private bool _accountLocked;
+        private readonly Timer _timer;
 
         public ConsumerService(IConfigManager configManager, string configId,
             IDepositDetailsRepository depositRepository, IConsumerDepositApprovalRepository depositApprovalRepository,
@@ -132,47 +134,63 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _wallet.AccountUnlocked += OnAccountUnlocked;
             _accountLocked = !_wallet.IsUnlocked(_consumerAddress);
             _blockProcessor.BlockProcessed += OnBlockProcessed;
+            _timer = new Timer(5000);
+            _timer.Elapsed += TimerOnElapsed;
+            _timer.Start();
         }
 
-        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
+        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
-            _consumerNotifier.SendBlockProcessedAsync(e.Block.Number);
             _depositRepository.BrowseAsync(new GetDeposits
                 {
-                    OnlyUnconfirmed = true,
-                    OnlyNotRejected = true,
                     Results = int.MaxValue
                 })
                 .ContinueWith(async t =>
                 {
                     if (t.IsFaulted && _logger.IsError)
                     {
-                        _logger.Error($"Updating deposits failed.", t.Exception);
+                        _logger.Error($"Fetching deposits has failed.", t.Exception);
                         return;
                     }
 
-                    foreach (var depositDetails in t.Result.Items)
+                    await TryConfirmDepositsAsync(t.Result.Items);
+                    await TryClaimRefundsAsync(t.Result.Items);
+                });
+        }
+
+        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
+        {
+            _consumerNotifier.SendBlockProcessedAsync(e.Block.Number);
+            _depositRepository.BrowseAsync(new GetDeposits
+            {
+                OnlyUnconfirmed = true,
+                OnlyNotRejected = true,
+                Results = int.MaxValue
+            }).ContinueWith(async t =>
+            {
+                if (t.IsFaulted && _logger.IsError)
+                {
+                    _logger.Error($"Fetching deposits has failed.", t.Exception);
+                    return;
+                }
+
+                await TryConfirmDepositsAsync(t.Result.Items);
+            });
+        }
+
+        private async Task TryConfirmDepositsAsync(IEnumerable<DepositDetails> deposits)
+        {
+            foreach (var deposit in deposits)
+            {
+                await TryConfirmDepositAsync(deposit).ContinueWith(verifyDepositTask =>
+                {
+                    if (verifyDepositTask.IsFaulted && _logger.IsError)
                     {
-                        var details = depositDetails;
-                        await TryConfirmDepositAsync(depositDetails).ContinueWith(verifyDepositTask =>
-                        {
-                            if (verifyDepositTask.IsFaulted && _logger.IsError)
-                            {
-                                _logger.Error($"Verifying deposit: '{details.Id}' has failed.",
-                                    verifyDepositTask.Exception);
-                            }
-                        });
-                        await TryClaimRefundAsync(depositDetails).ContinueWith(claimRefundTask =>
-                            {
-                                if (claimRefundTask.IsFaulted && _logger.IsError)
-                                {
-                                    _logger.Error($"Claiming refund for deposit: '{depositDetails.Id}' has failed.",
-                                        claimRefundTask.Exception);
-                                }
-                            }
-                        );
+                        _logger.Error($"Confirming a deposit with id: '{deposit.Id}' has failed.",
+                            verifyDepositTask.Exception);
                     }
                 });
+            }
         }
 
         private void OnAccountUnlocked(object sender, AccountUnlockedEventArgs e)
@@ -205,13 +223,18 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             {
                 if (t.IsFaulted && _logger.IsError)
                 {
-                    _logger.Error("Disabling data stream failed.", t.Exception);
+                    _logger.Error("Disabling data stream has failed.", t.Exception);
                 }
             });
         }
 
         private async Task TryConfirmDepositAsync(DepositDetails deposit)
         {
+            if (deposit.Confirmed || deposit.Rejected)
+            {
+                return;
+            }
+
             if (deposit.ConfirmationTimestamp == 0)
             {
                 var confirmationTimestamp = _depositService.VerifyDeposit(_consumerAddress, deposit.Id);
@@ -234,26 +257,20 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
 
-            var block = _blockchainBridge.FindBlock(_blockchainBridge.Head.Hash);
-            if (block is null)
+            var startingBlockNumber = receipt.BlockNumber;
+            var lastBlockNumber = startingBlockNumber + _depositRequiredConfirmations;
+            for (var i = startingBlockNumber; i < lastBlockNumber; i++)
             {
-                if (_logger.IsWarn) _logger.Warn($"Block with hash: '{_blockchainBridge.Head.Hash}' for deposit: '{deposit.Id}' was not found.");
-                return;
+                var block = _blockchainBridge.FindBlock(i);
+                var (blockExists, transactionConfirmed) = await ConfirmTransactionAsync(block, deposit);
+                if (!blockExists || !transactionConfirmed)
+                {
+                    return;
+                }
             }
-            
-            if (block.Transactions.All(t => t.Hash != deposit.TransactionHash))
-            {
-                deposit.Reject();
-                await _depositRepository.UpdateAsync(deposit);
-                await _consumerNotifier.SendDepositRejectedAsync(deposit.Id);
-                if (_logger.IsWarn) _logger.Warn($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' was not found in block number: {block.Number}, 'hash: {block.Hash}' - deposit has been rejected.");
-                return;
-            }
-                
-            if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' was found in block number: {block.Number}, hash: '{block.Hash}'.");
-            var confirmations = _blockchainBridge.Head.Number - receipt.BlockNumber;
-            if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_depositRequiredConfirmations}) for transaction hash: '{transactionHash}' to be confirmed.");
 
+            var confirmations = _blockchainBridge.Head.Number - startingBlockNumber;
+            if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_depositRequiredConfirmations}) for transaction hash: '{transactionHash}' to be confirmed.");
             var confirmed = confirmations >= _depositRequiredConfirmations;
             if (confirmed)
             {
@@ -268,6 +285,36 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
             await _consumerNotifier.SendDepositConfirmationsStatusAsync(deposit.Id, deposit.DataAsset.Name,
                 (uint) confirmations, _depositRequiredConfirmations, deposit.ConfirmationTimestamp, confirmed);
+        }
+
+        private async Task<(bool blockExists, bool transactionConfirmed)> ConfirmTransactionAsync(Block block,
+            DepositDetails deposit)
+        {
+            if (block is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Block with hash: '{_blockchainBridge.Head.Hash}' for deposit: '{deposit.Id}' was not found.");
+                return (false, false);
+            }
+            
+            if (_depositService.VerifyDeposit(deposit.Consumer, deposit.Id, block.Header) > 0)
+            {
+                if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{deposit.TransactionHash}' for deposit: '{deposit.Id}' has been confirmed in block number: {block.Number}, hash: '{block.Hash}'.");
+                return (true, true);
+            }
+            
+            deposit.Reject();
+            await _depositRepository.UpdateAsync(deposit);
+            await _consumerNotifier.SendDepositRejectedAsync(deposit.Id);
+            if (_logger.IsError) _logger.Error($"Deposit has been rejected - transaction with hash: '{deposit.TransactionHash}' for deposit: '{deposit.Id}' was not found in block number: {block.Number}, 'hash: {block.Hash}'.");
+            return (true, false);
+        }
+        
+        private async Task TryClaimRefundsAsync(IEnumerable<DepositDetails> deposits)
+        {
+            foreach (var deposit in deposits)
+            {
+                await TryClaimRefundAsync(deposit);
+            }
         }
 
         private async Task TryClaimRefundAsync(DepositDetails depositDetails)
@@ -587,8 +634,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var depositDetails = new DepositDetails(deposit, dataAsset, _consumerAddress, pepper, now,
                 transactionHash, requiredConfirmations: _depositRequiredConfirmations);
             await _depositRepository.AddAsync(depositDetails);
-            if (_logger.IsInfo) _logger.Info($"Making a deposit with id: '{depositId}' for data asset: '{assetId}', address: '{_consumerAddress}'.");
-
+            if (_logger.IsInfo) _logger.Info($"Sent a deposit with id: '{depositId}', transaction hash: '{transactionHash}' for data asset: '{assetId}', address: '{_consumerAddress}'.");
+                
             return depositId;
         }
 
