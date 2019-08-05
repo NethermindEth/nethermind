@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
@@ -26,13 +27,15 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
+using Nethermind.HashLib.Extensions;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Wallet;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
-    public class TraceModuleFactory : IRpcModuleFactory<ITraceModule>
+    public class TraceModuleFactory : ModuleFactoryBase<ITraceModule>
     {
         private readonly IBlockTree _blockTree;
         private readonly IDbProvider _dbProvider;
@@ -71,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _logger = logManager.GetClassLogger();
         }
         
-        public ITraceModule Create()
+        public override ITraceModule Create()
         {
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
@@ -95,5 +98,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
             
             return new TraceModule(blockchainBridge, _logManager, tracer);
         }
+        
+        public static JsonConverter[] Converters = 
+        {
+            new ParityLikeTxTraceConverter(),
+            new ParityAccountStateChangeConverter(),
+            new ParityTraceActionConverter(),
+            new ParityTraceResultConverter(),
+            new ParityVmOperationTraceConverter(),
+            new ParityVmTraceConverter()
+        };
+
+        public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
     }
 }

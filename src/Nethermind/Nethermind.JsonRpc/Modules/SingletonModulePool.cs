@@ -22,9 +22,16 @@ namespace Nethermind.JsonRpc.Modules
     {
         private readonly T _onlyInstance;
 
-        public SingletonModulePool(T onlyInstance)
+        public SingletonModulePool(T module)
         {
-            _onlyInstance = onlyInstance;
+            Factory = new SingletonFactory<T>(module);
+            _onlyInstance = module;
+        }
+
+        public SingletonModulePool(IRpcModuleFactory<T> factory)
+        {
+            Factory = factory;
+            _onlyInstance = factory.Create();
         }
         
         public T GetModule()
@@ -35,5 +42,7 @@ namespace Nethermind.JsonRpc.Modules
         public void ReturnModule(T module)
         {
         }
+
+        public IRpcModuleFactory<T> Factory { get; set; }
     }
 }

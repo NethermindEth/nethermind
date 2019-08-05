@@ -22,17 +22,19 @@ using System.Threading;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public class StatefulModulePool<T> : IRpcModulePool<T> where T : IStatefulModule
+    public class BoundedModulePool<T> : IRpcModulePool<T> where T : IModule
     {
         private ConcurrentBag<T> _bag = new ConcurrentBag<T>();
         private SemaphoreSlim _semaphore;
 
-        public StatefulModulePool(int capacity, IRpcModuleFactory<T> factory)
+        public BoundedModulePool(int capacity, IRpcModuleFactory<T> factory)
         {
+            Factory = factory;
+            
             _semaphore = new SemaphoreSlim(capacity);
             for (int i = 0; i < capacity; i++)
             {
-                _bag.Add(factory.Create());
+                _bag.Add(Factory.Create());
             }
         }
         
@@ -49,9 +51,10 @@ namespace Nethermind.JsonRpc.Modules
 
         public void ReturnModule(T module)
         {
-            module.ResetState();
             _bag.Add(module);
             _semaphore.Release();
         }
+
+        public IRpcModuleFactory<T> Factory { get; set; }
     }
 }

@@ -23,6 +23,7 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Clique
 {
+    [RpcModule(ModuleType.Clique)]
     public interface ICliqueModule : IModule
     {
         ResultWrapper<Snapshot> clique_getSnapshot();

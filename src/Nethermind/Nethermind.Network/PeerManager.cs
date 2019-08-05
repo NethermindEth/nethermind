@@ -221,6 +221,8 @@ namespace Nethermind.Network
         private int failedInitialConnect;
         private int connectionRounds;
 
+        private static int _parallelism = Environment.ProcessorCount;
+        
         private async Task RunPeerUpdateLoop()
         {
             int loopCount = 0;
@@ -298,7 +300,7 @@ namespace Nethermind.Network
                             SetupPeerConnection,
                             new ExecutionDataflowBlockOptions
                             {
-                                MaxDegreeOfParallelism = Environment.ProcessorCount,
+                                MaxDegreeOfParallelism = _parallelism,
                                 CancellationToken = _cancellationTokenSource.Token
                             });
 

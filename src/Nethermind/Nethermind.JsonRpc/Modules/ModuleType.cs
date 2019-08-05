@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
 
 namespace Nethermind.JsonRpc.Modules
@@ -36,5 +37,15 @@ namespace Nethermind.JsonRpc.Modules
         Trace,
         TxPool,
         Web3,
+    }
+
+    public class RpcModuleAttribute : Attribute
+    {
+        public ModuleType ModuleType { get; }
+
+        public RpcModuleAttribute(ModuleType moduleType)
+        {
+            ModuleType = moduleType;
+        }
     }
 }

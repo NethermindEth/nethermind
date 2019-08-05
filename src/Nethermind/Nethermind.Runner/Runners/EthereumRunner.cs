@@ -257,13 +257,13 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsDebug) _logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
 
             EthModuleFactory ethModuleFactory = new EthModuleFactory(_dbProvider, _txPool, _wallet, _blockTree, _ethereumEcdsa, _blockProcessor, _receiptStorage, _specProvider, _logManager);
-            _rpcModuleProvider.Register(new StatefulModulePool<IEthModule>(4, ethModuleFactory));
+            _rpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_dbProvider, _blockTree, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, _configProvider, _specProvider, _logManager);
-            _rpcModuleProvider.Register(new StatefulModulePool<IDebugModule>(4, debugModuleFactory));
+            _rpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
             
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_dbProvider, _txPool, _blockTree, _blockValidator, _ethereumEcdsa, _recoveryStep, _rewardCalculator, _receiptStorage, _specProvider, _logManager);
-            _rpcModuleProvider.Register(new StatefulModulePool<ITraceModule>(4, traceModuleFactory));
+            _rpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
 
             if (_sealValidator is CliqueSealValidator)
             {

@@ -18,6 +18,7 @@
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {
+    [RpcModule(ModuleType.TxPool)]
     public interface ITxPoolModule : IModule
     {
         ResultWrapper<TxPoolStatus> txpool_status();

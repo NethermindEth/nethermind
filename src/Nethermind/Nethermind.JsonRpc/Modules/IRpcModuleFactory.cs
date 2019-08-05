@@ -16,10 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
+using Newtonsoft.Json;
+
 namespace Nethermind.JsonRpc.Modules
 {
     public interface IRpcModuleFactory<out T> where T : IModule
     {
         T Create();
+        
+        IReadOnlyCollection<JsonConverter> GetConverters();
     }
 }

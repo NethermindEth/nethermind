@@ -17,13 +17,32 @@
  */
 
 using System.Collections.Generic;
+using System.Reflection;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
+    public enum ModuleResolution
+    {
+        Enabled,
+        Disabled,
+        Unknown
+    }
+    
     public interface IRpcModuleProvider
     {
         void Register<T>(IRpcModulePool<T> pool) where T : IModule;
-        IReadOnlyCollection<ModuleInfo> GetEnabledModules();
-        IReadOnlyCollection<ModuleInfo> GetAllModules();
+        
+        IReadOnlyCollection<JsonConverter> Converters { get; }
+
+        IReadOnlyCollection<ModuleType> Enabled { get; }
+        
+        IReadOnlyCollection<ModuleType> All { get; }
+
+        ModuleResolution Check(string methodName);
+        
+        (IModule Module, MethodInfo Method) ResolveAndRent(string methodName);
+        
+        void Return(string methodName, IModule module);
     }
 }

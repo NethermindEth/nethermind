@@ -17,6 +17,8 @@
  */
 
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
@@ -24,10 +26,11 @@ using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
-    public class DebugModuleFactory : IRpcModuleFactory<IDebugModule>
+    public class DebugModuleFactory : ModuleFactoryBase<IDebugModule>
     {
         private readonly IBlockTree _blockTree;
         private readonly IDbProvider _dbProvider;
@@ -63,16 +66,20 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _logger = logManager.GetClassLogger();
         }
 
-        public IDebugModule Create()
+        public override IDebugModule Create()
         {
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
             ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
             ITracer tracer = new Tracer(readOnlyChainProcessingEnv.Processor, _receiptStorage, new ReadOnlyBlockTree(_blockTree), _dbProvider.TraceDb);
-            
+
             DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyChainProcessingEnv.Processor, readOnlyTree);
             return new DebugModule(_logManager, debugBridge);
         }
+
+        public static JsonConverter[] Converters = {new GethLikeTxTraceConverter()};
+
+        public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
     }
 }

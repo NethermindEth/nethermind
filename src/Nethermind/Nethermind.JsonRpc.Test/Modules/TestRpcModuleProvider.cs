@@ -16,8 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Reflection;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -25,47 +26,46 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
+using Newtonsoft.Json;
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
     internal class TestRpcModuleProvider<T> : IRpcModuleProvider where T : class, IModule
-         {
-        private List<ModuleInfo> _modules = new List<ModuleInfo>();
+    {
+        private RpcModuleProvider _provider = new RpcModuleProvider(new JsonRpcConfig());
 
         public TestRpcModuleProvider(T module)
         {
-            _modules.AddRange(new[]
-            {
-                new ModuleInfo(ModuleType.Net, typeof(INetModule), typeof(INetModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
-                new ModuleInfo(ModuleType.Eth, typeof(IEthModule), typeof(IEthModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
-                new ModuleInfo(ModuleType.Web3, typeof(IWeb3Module), typeof(IWeb3Module).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
-                new ModuleInfo(ModuleType.Debug, typeof(IDebugModule), typeof(IDebugModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
-                new ModuleInfo(ModuleType.Trace, typeof(ITraceModule), typeof(ITraceModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
-                new ModuleInfo(ModuleType.Parity, typeof(IParityModule), typeof(IParityModule).IsAssignableFrom(typeof(T)) ? module : Substitute.For<T>()),
-            });
+            _provider.Register(new SingletonModulePool<INetModule>(new SingletonFactory<INetModule>(typeof(INetModule).IsAssignableFrom(typeof(T)) ? (INetModule)module : Substitute.For<INetModule>())));
+            _provider.Register(new SingletonModulePool<IEthModule>(new SingletonFactory<IEthModule>(typeof(IEthModule).IsAssignableFrom(typeof(T)) ? (IEthModule)module : Substitute.For<IEthModule>())));
+            _provider.Register(new SingletonModulePool<IWeb3Module>(new SingletonFactory<IWeb3Module>(typeof(IWeb3Module).IsAssignableFrom(typeof(T)) ? (IWeb3Module)module : Substitute.For<IWeb3Module>())));
+            _provider.Register(new SingletonModulePool<IDebugModule>(new SingletonFactory<IDebugModule>(typeof(IDebugModule).IsAssignableFrom(typeof(T)) ? (IDebugModule)module : Substitute.For<IDebugModule>())));
+            _provider.Register(new SingletonModulePool<ITraceModule>(new SingletonFactory<ITraceModule>(typeof(ITraceModule).IsAssignableFrom(typeof(T)) ? (ITraceModule)module : Substitute.For<ITraceModule>())));
+            _provider.Register(new SingletonModulePool<IParityModule>(new SingletonFactory<IParityModule>(typeof(IParityModule).IsAssignableFrom(typeof(T)) ? (IParityModule)module : Substitute.For<IParityModule>())));
         }
 
         public void Register<TOther>(IRpcModulePool<TOther> pool) where TOther : IModule
         {
-            var module = pool.GetModule();
-            ModuleInfo mi = _modules.SingleOrDefault(m => m.ModuleType == module.ModuleType);
-            if (mi != null)
-            {
-                _modules.Remove(mi);
-            }
-            
-            _modules.Add(new ModuleInfo(module.ModuleType, typeof(TOther), module));
+            _provider.Register(pool);
         }
 
-        public IReadOnlyCollection<ModuleInfo> GetEnabledModules()
+        public IReadOnlyCollection<JsonConverter> Converters => _provider.Converters;
+        public IReadOnlyCollection<ModuleType> Enabled => _provider.All;
+        public IReadOnlyCollection<ModuleType> All => _provider.All;
+        public ModuleResolution Check(string methodName)
         {
-            return _modules;
+            return _provider.Check(methodName);
         }
 
-        public IReadOnlyCollection<ModuleInfo> GetAllModules()
+        public (IModule Module, MethodInfo Method) ResolveAndRent(string methodName)
         {
-            return _modules;
+            return _provider.ResolveAndRent(methodName);
+        }
+
+        public void Return(string methodName, IModule module)
+        {
+            _provider.Return(methodName, module);
         }
     }
 }

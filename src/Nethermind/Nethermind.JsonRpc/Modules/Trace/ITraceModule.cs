@@ -23,7 +23,8 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
-    public interface ITraceModule : IStatefulModule
+    [RpcModule(ModuleType.Trace)]
+    public interface ITraceModule : IModule
     {
         [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<ParityLikeTxTrace> trace_call(TransactionForRpc message, string[] traceTypes, BlockParameter numberOrTag);

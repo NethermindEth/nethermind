@@ -23,11 +23,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {
-    public class TxPoolModule : ModuleBase, ITxPoolModule
+    public class TxPoolModule : ITxPoolModule
     {
         private readonly ITxPoolInfoProvider _txPoolInfoProvider;
 
-        public TxPoolModule(ILogManager logManager, ITxPoolInfoProvider txPoolInfoProvider) : base(logManager)
+        public TxPoolModule(ILogManager logManager, ITxPoolInfoProvider txPoolInfoProvider)
         {
             _txPoolInfoProvider = txPoolInfoProvider ?? throw new ArgumentNullException(nameof(txPoolInfoProvider));
         }
@@ -51,7 +51,5 @@ namespace Nethermind.JsonRpc.Modules.TxPool
             var poolInfo = _txPoolInfoProvider.GetInfo();
             return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo));
         }
-
-        public override ModuleType ModuleType => ModuleType.TxPool;
     }
 }

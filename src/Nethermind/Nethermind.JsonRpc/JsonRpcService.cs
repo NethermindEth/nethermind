@@ -61,15 +61,12 @@ namespace Nethermind.JsonRpc
             _rpcModuleProvider = rpcModuleProvider;
             _serializer = new JsonSerializer();
 
-            foreach (ModuleInfo module in _rpcModuleProvider.GetEnabledModules())
+            foreach (JsonConverter converter in rpcModuleProvider.Converters)
             {
-                foreach (JsonConverter converter in module.Converters)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} ({module.ModuleType} module)");
-                    _serializer.Converters.Add(converter);
-                    _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
-                    Converters.Add(converter);
-                }
+                if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} inside {nameof(JsonRpcService)}");
+                _serializer.Converters.Add(converter);
+                _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
+                Converters.Add(converter);
             }
 
             foreach (JsonConverter converter in EthereumJsonSerializer.BasicConverters)
@@ -117,10 +114,17 @@ namespace Nethermind.JsonRpc
         {
             var methodName = rpcRequest.Method.Trim().ToLower();
 
-            var module = _rpcModuleProvider.GetEnabledModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
-            if (module != null)
+            var result = _rpcModuleProvider.ResolveAndRent(methodName);
+            try
             {
-                return await ExecuteAsync(rpcRequest, methodName, module.MethodDictionary[methodName], module.ModuleObject);
+                if (result.Module != null)
+                {
+                    return await ExecuteAsync(rpcRequest, methodName, result.Method, result.Module);
+                }
+            }
+            finally
+            {
+                _rpcModuleProvider.Return(methodName, result.Module);
             }
 
             return GetErrorResponse(ErrorType.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id, methodName);
@@ -307,15 +311,15 @@ namespace Nethermind.JsonRpc
 
             methodName = methodName.Trim().ToLower();
 
-            var module = _rpcModuleProvider.GetAllModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
-            if (module == null)
+            var result = _rpcModuleProvider.Check(methodName);
+            if (result == ModuleResolution.Unknown)
             {
                 return (ErrorType.MethodNotFound, $"Method {methodName} is not supported");
             }
 
-            if (_rpcModuleProvider.GetEnabledModules().All(x => x.ModuleType != module.ModuleType))
+            if (result == ModuleResolution.Disabled)
             {
-                return (ErrorType.InvalidRequest, $"{module.ModuleType} module is disabled");
+                return (ErrorType.InvalidRequest, $"{methodName} found but the containing module is disabled");
             }
 
             return (null, null);

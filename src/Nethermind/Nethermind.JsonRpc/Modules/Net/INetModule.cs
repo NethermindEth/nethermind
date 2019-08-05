@@ -21,6 +21,7 @@ using Nethermind.Core;
 
 namespace Nethermind.JsonRpc.Modules.Net
 {
+    [RpcModule(ModuleType.Net)]
     public interface INetModule : IModule
     {
         ResultWrapper<Address> net_localAddress();

@@ -24,15 +24,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
-    public class ParityModule : ModuleBase, IParityModule
+    public class ParityModule : IParityModule
     {
         private readonly IEcdsa _ecdsa;
         private readonly ITxPool _txPool;
 
-        public override ModuleType ModuleType { get; } = ModuleType.Parity;
-
         public ParityModule(IEcdsa ecdsa, ITxPool txPool, ILogManager logManager)
-            : base(logManager)
         {
             _ecdsa = ecdsa;
             _txPool = txPool;

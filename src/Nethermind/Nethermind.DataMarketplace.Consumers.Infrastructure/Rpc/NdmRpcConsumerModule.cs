@@ -38,7 +38,7 @@ using Nethermind.JsonRpc.Modules.Personal;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 {
-    public class NdmRpcConsumerModule : ModuleBase, INdmRpcConsumerModule
+    public class NdmRpcConsumerModule : INdmRpcConsumerModule
     {
 
         private readonly IConsumerService _consumerService;
@@ -47,12 +47,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         private readonly IEthRequestService _ethRequestService;
         private readonly IPersonalBridge _personalBridge;
 
-        public override ModuleType ModuleType => ModuleType.NdmConsumer;
-
         public NdmRpcConsumerModule(IConsumerService consumerService, IReportService reportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel, IEthRequestService ethRequestService,
             IPersonalBridge personalBridge, ILogManager logManager)
-            : base(logManager)
         {
             _consumerService = consumerService;
             _reportService = reportService;

@@ -24,16 +24,15 @@ using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
-    public class AdminModule : ModuleBase, IAdminModule
+    public class AdminModule : IAdminModule
     {
+        private readonly ILogger _logger;
         private readonly IPeerManager _peerManager;
         private readonly IStaticNodesManager _staticNodesManager;
 
-        public override ModuleType ModuleType => ModuleType.Admin;
-
-        public AdminModule(ILogManager logManager, IPeerManager peerManager, IStaticNodesManager staticNodesManager) :
-            base(logManager)
+        public AdminModule(ILogManager logManager, IPeerManager peerManager, IStaticNodesManager staticNodesManager)
         {
+            _logger = logManager.GetClassLogger();
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
             _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         }

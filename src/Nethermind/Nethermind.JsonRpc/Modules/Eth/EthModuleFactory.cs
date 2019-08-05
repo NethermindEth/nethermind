@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
@@ -27,10 +28,11 @@ using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Wallet;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class EthModuleFactory : IRpcModuleFactory<IEthModule>
+    public class EthModuleFactory : ModuleFactoryBase<IEthModule>
     {
         private readonly IBlockTree _blockTree;
         private readonly IDbProvider _dbProvider;
@@ -72,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _filterManager = new FilterManager(_filterStore, _blockProcessor, _txPool, _logManager);
         }
         
-        public IEthModule Create()
+        public override IEthModule Create()
         {
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
@@ -93,5 +95,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
             return new EthModule(_logManager, blockchainBridge);
         }
+        
+        
+        public static List<JsonConverter> Converters = new List<JsonConverter>
+        {
+            new SyncingResultConverter()
+        };
+
+        public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
     }
 }

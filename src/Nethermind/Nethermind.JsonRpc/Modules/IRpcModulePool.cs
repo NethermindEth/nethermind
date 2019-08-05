@@ -21,6 +21,9 @@ namespace Nethermind.JsonRpc.Modules
     public interface IRpcModulePool<T> where T : IModule
     {
         T GetModule();
+        
         void ReturnModule(T module);
+
+        IRpcModuleFactory<T> Factory { get; set; }
     }
 }
