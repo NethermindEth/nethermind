@@ -324,6 +324,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return _converters;
         }
 
+        public void ResetState()
+        {
+            throw new NotImplementedException();
+        }
+
         public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter blockParameter)
         {
             try
@@ -478,7 +483,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             try
             {
-//                _readerWriterLockSlim.EnterReadLock();
+                _readerWriterLockSlim.EnterReadLock();
                 if (_blockchainBridge.Head == null)
                 {
                     return ResultWrapper<BlockForRpc>.Fail("Incorrect head block");
@@ -487,7 +492,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block block;
                 try
                 {
-                    Logger.Info($"Getting block number {blockParameter.BlockId}");
                     block = _blockchainBridge.GetBlock(blockParameter, true, true);
                 }
                 catch (JsonRpcException ex)
@@ -495,16 +499,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<BlockForRpc>.Fail(ex.Message, ex.ErrorType, null);
                 }
                 
-//                if (block != null && returnFullTransactionObjects)
-//                {
-//                    _blockchainBridge.RecoverTxSenders(block);
-//                }
+                if (block != null && returnFullTransactionObjects)
+                {
+                    _blockchainBridge.RecoverTxSenders(block);
+                }
 
                 return ResultWrapper<BlockForRpc>.Success(block == null ? null : new BlockForRpc(block, returnFullTransactionObjects));
             }
             finally
             {
-//                _readerWriterLockSlim.ExitReadLock();
+                _readerWriterLockSlim.ExitReadLock();
             }
         }
 

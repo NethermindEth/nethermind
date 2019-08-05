@@ -36,40 +36,39 @@ namespace Nethermind.JsonRpc
     {
         private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
-        private readonly JsonSerializer _traceSerializer;
+        private JsonSerializer _traceSerializer;
         private readonly ILogger _logger;
 
         public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, ILogManager logManager)
         {
             _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            
+            BuildTraceJsonSerializer();
+        }
+
+        /// <summary>
+        /// The serializer is created in a way that mimics the behaviour of the Kestrel serialization
+        /// and can be used for recording and replaying JSON RPC calls.
+        /// </summary>
+        private void BuildTraceJsonSerializer()
+        {
             JsonSerializerSettings jsonSettings = new JsonSerializerSettings
             {
                 ContractResolver = new CamelCasePropertyNamesContractResolver()
             };
+
             foreach (JsonConverter converter in _jsonRpcService.Converters)
             {
                 jsonSettings.Converters.Add(converter);
             }
 
             _traceSerializer = JsonSerializer.Create(jsonSettings);
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
-        private static object _fileLock = new object();
 
         public async Task<JsonRpcResult> ProcessAsync(string request)
         {
-//            lock (_fileLock)
-//            {
-//                using (StreamWriter wr = File.AppendText("/home/ubuntu/rpc_records"))
-//                {
-//                    wr.WriteLine(request);
-//                }
-//            
-//                if (_logger.IsInfo) _logger.Info($"JSONRPC REQUEST appended to the test file");
-//            }
-
             Stopwatch stopwatch = Stopwatch.StartNew();
             (JsonRpcRequest Model, List<JsonRpcRequest> Collection) rpcRequest;
             try
@@ -135,7 +134,7 @@ namespace Nethermind.JsonRpc
                     }
 
                     singleRequestWatch.Stop();
-                    if (_logger.IsInfo) _logger.Info($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest.Method} handled in {singleRequestWatch.Elapsed.TotalMilliseconds}");
+                    if (_logger.IsInfo) _logger.Info($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest.Method} handled after {singleRequestWatch.Elapsed.TotalMilliseconds}");
                     responses.Add(response);
                 }
 

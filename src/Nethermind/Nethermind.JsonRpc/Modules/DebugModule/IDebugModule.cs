@@ -24,7 +24,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
-    public interface IDebugModule : IModule
+    public interface IDebugModule : IStatefulModule
     {
         [JsonRpcMethod(Description = "")]
         ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null);

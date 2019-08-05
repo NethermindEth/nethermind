@@ -16,10 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain.TxPools
+namespace Nethermind.JsonRpc.Modules
 {
-    public interface ITxPoolInfoProvider
+    /// <summary>
+    /// The module that should have its state reset after every request and cannot be reused concurrently by various requests.
+    /// Module pooling should be used. See <see cref="IRpcModulePool{T}"/>.
+    /// </summary>
+    public interface IStatefulModule : IModule
     {
-        TxPoolInfo GetInfo();
+        /// <summary>
+        /// Resets any state so the module can be reused by the next request.
+        /// </summary>
+        void ResetState();
     }
 }

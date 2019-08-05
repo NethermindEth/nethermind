@@ -35,13 +35,15 @@ namespace Nethermind.Blockchain.Test
         private Address _address;
         private IStateProvider _stateProvider;
         private ITxPoolInfoProvider _infoProvider;
+        private ITxPool _txPool;
 
         [SetUp]
         public void Setup()
         {
             _address = Address.FromNumber(1);
             _stateProvider = Substitute.For<IStateProvider>();
-            _infoProvider = new TxPoolInfoProvider(_stateProvider);
+            _txPool = Substitute.For<ITxPool>();
+            _infoProvider = new TxPoolInfoProvider(_stateProvider, _txPool);
         }
 
         [Test]
@@ -50,7 +52,9 @@ namespace Nethermind.Blockchain.Test
             var nonce = 3;
             _stateProvider.GetNonce(_address).Returns(new UInt256(nonce));
             var transactions = GetTransactions();
-            var info = _infoProvider.GetInfo(transactions);
+            
+            _txPool.GetPendingTransactions().Returns(transactions);
+            var info = _infoProvider.GetInfo();
 
             info.Pending.Count.Should().Be(1);
             info.Queued.Count.Should().Be(1);

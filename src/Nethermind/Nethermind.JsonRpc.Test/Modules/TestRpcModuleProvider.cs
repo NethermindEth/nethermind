@@ -30,7 +30,7 @@ using NSubstitute;
 namespace Nethermind.JsonRpc.Test.Modules
 {
     internal class TestRpcModuleProvider<T> : IRpcModuleProvider where T : class, IModule
-    {
+         {
         private List<ModuleInfo> _modules = new List<ModuleInfo>();
 
         public TestRpcModuleProvider(T module)
@@ -46,14 +46,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             });
         }
 
-        public void Register<TOther>(IModule module) where TOther : IModule
+        public void Register<TOther>(IRpcModulePool<TOther> pool) where TOther : IModule
         {
+            var module = pool.GetModule();
             ModuleInfo mi = _modules.SingleOrDefault(m => m.ModuleType == module.ModuleType);
             if (mi != null)
             {
                 _modules.Remove(mi);
             }
-
+            
             _modules.Add(new ModuleInfo(module.ModuleType, typeof(TOther), module));
         }
 

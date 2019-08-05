@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,32 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
-
-namespace Nethermind.JsonRpc.Modules.Web3
+namespace Nethermind.JsonRpc.Modules
 {
-    public class Web3Module : ModuleBase, IWeb3Module
+    public class SingletonModulePool<T> : IRpcModulePool<T> where T : IModule
     {
-        public Web3Module(ILogManager logManager) : base(logManager)
+        private readonly T _onlyInstance;
+
+        public SingletonModulePool(T onlyInstance)
         {
+            _onlyInstance = onlyInstance;
+        }
+        
+        public T GetModule()
+        {
+            return _onlyInstance;
         }
 
-        public ResultWrapper<string> web3_clientVersion()
+        public void ReturnModule(T module)
         {
-            var clientVersion = ClientVersion.Description;
-            if(Logger.IsDebug) Logger.Debug($"web3_clientVersion request, result: {clientVersion}");
-            return ResultWrapper<string>.Success(clientVersion);
         }
-
-        public ResultWrapper<Keccak> web3_sha3(byte[] data)
-        {
-            Keccak keccak = Keccak.Compute(data);
-            if(Logger.IsDebug) Logger.Debug($"web3_sha3 request, result: {keccak}");
-            return ResultWrapper<Keccak>.Success(keccak);
-        }
-
-        public override ModuleType ModuleType => ModuleType.Web3;
     }
 }

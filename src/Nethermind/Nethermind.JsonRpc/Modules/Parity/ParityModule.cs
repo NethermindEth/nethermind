@@ -28,6 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
     {
         private readonly IEcdsa _ecdsa;
         private readonly ITxPool _txPool;
+
         public override ModuleType ModuleType { get; } = ModuleType.Parity;
 
         public ParityModule(IEcdsa ecdsa, ITxPool txPool, ILogManager logManager)

@@ -36,7 +36,7 @@ namespace Nethermind.Clique
         {
             _cliqueBridge = cliqueBridge ?? throw new ArgumentNullException(nameof(cliqueBridge));
         }
-
+        
         public override ModuleType ModuleType => ModuleType.Clique;
 
         public ResultWrapper<Snapshot> clique_getSnapshot()

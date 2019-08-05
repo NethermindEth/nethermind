@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,30 +17,41 @@
  */
 
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
+using System.Threading;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public class NullModuleProvider : IRpcModuleProvider
+    public class StatefulModulePool<T> : IRpcModulePool<T> where T : IStatefulModule
     {
-        public static NullModuleProvider Instance = new NullModuleProvider();
+        private ConcurrentBag<T> _bag = new ConcurrentBag<T>();
+        private SemaphoreSlim _semaphore;
 
-        private NullModuleProvider()
+        public StatefulModulePool(int capacity, IRpcModuleFactory<T> factory)
         {
+            _semaphore = new SemaphoreSlim(capacity);
+            for (int i = 0; i < capacity; i++)
+            {
+                _bag.Add(factory.Create());
+            }
+        }
+        
+        public T GetModule()
+        {
+            if (!_semaphore.Wait(10000))
+            {
+                throw new TimeoutException($"Unable to rent an instance of {typeof(T).Name}");
+            }
+
+            _bag.TryTake(out T result);
+            return result;
         }
 
-        public void Register<T>(IRpcModulePool<T> pool) where T : IModule
+        public void ReturnModule(T module)
         {
-        }
-
-        public IReadOnlyCollection<ModuleInfo> GetEnabledModules()
-        {
-            return ArraySegment<ModuleInfo>.Empty;
-        }
-
-        public IReadOnlyCollection<ModuleInfo> GetAllModules()
-        {
-            return ArraySegment<ModuleInfo>.Empty;
+            module.ResetState();
+            _bag.Add(module);
+            _semaphore.Release();
         }
     }
 }

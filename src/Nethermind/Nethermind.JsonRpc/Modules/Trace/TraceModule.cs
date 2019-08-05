@@ -129,5 +129,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 new ParityVmTraceConverter()
             };
         }
+
+        public void ResetState()
+        {
+            throw new NotImplementedException();
+        }
     }
 }

@@ -25,7 +25,6 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
@@ -55,9 +54,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Grpc;
-using Nethermind.Grpc.Clients;
 using Nethermind.Grpc.Producers;
-using Nethermind.Grpc.Servers;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -116,21 +113,18 @@ namespace Nethermind.Runner.Runners
         private ITxPoolConfig _txPoolConfig;
         private IInitConfig _initConfig;
         private INetworkHelper _networkHelper;
-
         private PrivateKey _nodeKey;
         private ChainSpec _chainSpec;
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
         private IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
         private IJsonSerializer _ethereumJsonSerializer;
         private CancellationTokenSource _runnerCancellation;
-
         private IBlockchainProcessor _blockchainProcessor;
         private IDiscoveryApp _discoveryApp;
         private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
         private INodeStatsManager _nodeStatsManager;
         private IPerfService _perfService;
         private ITxPool _txPool;
-        private ITxPoolInfoProvider _transactionPoolInfoProvider;
         private IReceiptStorage _receiptStorage;
         private IEthereumEcdsa _ethereumEcdsa;
         private IEthSyncPeerPool _syncPeerPool;
@@ -154,7 +148,6 @@ namespace Nethermind.Runner.Runners
         private IRlpxPeer _rlpxPeer;
         private IDbProvider _dbProvider;
         private readonly ITimestamper _timestamper = new Timestamper();
-        private IStateProvider _stateProvider;
         private IWallet _wallet;
         private IEnode _enode;
         private HiveRunner _hiveRunner;
@@ -260,69 +253,42 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
+            // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
             if (_logger.IsDebug) _logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
 
-            IReadOnlyDbProvider rpcDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            AlternativeChain rpcChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage);
+            EthModuleFactory ethModuleFactory = new EthModuleFactory(_dbProvider, _txPool, _wallet, _blockTree, _ethereumEcdsa, _blockProcessor, _receiptStorage, _specProvider, _logManager);
+            _rpcModuleProvider.Register(new StatefulModulePool<IEthModule>(4, ethModuleFactory));
 
-            ITracer tracer = new Tracer(rpcChain.Processor, _receiptStorage, new ReadOnlyBlockTree(_blockTree), _dbProvider.TraceDb);
-            IFilterStore filterStore = new FilterStore();
-            IFilterManager filterManager = new FilterManager(filterStore, _blockProcessor, _txPool, _logManager);
-
-            RpcState rpcState = new RpcState(_blockTree, _specProvider, rpcDbProvider, _logManager);
-
-            //creating blockchain bridge
-            var blockchainBridge = new BlockchainBridge(
-                rpcState.StateReader,
-                rpcState.StateProvider,
-                rpcState.StorageProvider,
-                rpcState.BlockTree,
-                _txPool,
-                _transactionPoolInfoProvider,
-                _receiptStorage,
-                filterStore,
-                filterManager,
-                _wallet,
-                rpcState.TransactionProcessor,
-                _ethereumEcdsa);
-
-            AlternativeChain debugChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator, _specProvider, rpcDbProvider, _recoveryStep, _logManager, NullTxPool.Instance, NullReceiptStorage.Instance);
-            IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            var debugBridge = new DebugBridge(_configProvider, debugDbProvider, tracer, debugChain.Processor, _blockTree);
-
-            EthModule module = new EthModule(_logManager, blockchainBridge);
-            _rpcModuleProvider.Register<IEthModule>(module);
-
-            DebugModule debugModule = new DebugModule(_logManager, debugBridge);
-            _rpcModuleProvider.Register<IDebugModule>(debugModule);
+            DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_dbProvider, _blockTree, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, _configProvider, _specProvider, _logManager);
+            _rpcModuleProvider.Register(new StatefulModulePool<IDebugModule>(4, debugModuleFactory));
+            
+            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_dbProvider, _txPool, _blockTree, _blockValidator, _ethereumEcdsa, _recoveryStep, _rewardCalculator, _receiptStorage, _specProvider, _logManager);
+            _rpcModuleProvider.Register(new StatefulModulePool<ITraceModule>(4, traceModuleFactory));
 
             if (_sealValidator is CliqueSealValidator)
             {
                 CliqueModule cliqueModule = new CliqueModule(_logManager, new CliqueBridge(_blockProducer as ICliqueBlockProducer, _snapshotManager, _blockTree));
-                _rpcModuleProvider.Register<ICliqueModule>(cliqueModule);
+                _rpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule));
             }
 
             if (_initConfig.EnableUnsecuredDevWallet)
             {
                 PersonalBridge personalBridge = new PersonalBridge(_ethereumEcdsa, _wallet);
                 PersonalModule personalModule = new PersonalModule(personalBridge, _logManager);
-                _rpcModuleProvider.Register<IPersonalModule>(personalModule);
+                _rpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule));
             }
 
             AdminModule adminModule = new AdminModule(_logManager, _peerManager, _staticNodesManager);
-            _rpcModuleProvider.Register<IAdminModule>(adminModule);
-
-            TxPoolModule txPoolModule = new TxPoolModule(_logManager, blockchainBridge);
-            _rpcModuleProvider.Register<ITxPoolModule>(txPoolModule);
+            _rpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule));
+            
+            TxPoolModule txPoolModule = new TxPoolModule(_logManager, _txPoolInfoProvider);
+            _rpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule));
 
             NetModule netModule = new NetModule(_logManager, new NetBridge(_enode, _syncServer, _peerManager));
-            _rpcModuleProvider.Register<INetModule>(netModule);
+            _rpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule));
 
-            TraceModule traceModule = new TraceModule(blockchainBridge, _logManager, tracer);
-            _rpcModuleProvider.Register<ITraceModule>(traceModule);
-
-            var parityModule = new ParityModule(_ethereumEcdsa, _txPool, _logManager);
-            _rpcModuleProvider.Register<IParityModule>(parityModule);
+            ParityModule parityModule = new ParityModule(_ethereumEcdsa, _txPool, _logManager);
+            _rpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule));
         }
 
         private void UpdateDiscoveryConfig()
@@ -527,16 +493,12 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.CodeDb,
                 _logManager);
 
-            _stateProvider = stateProvider;
-
             var storageProvider = new StorageProvider(
                 _dbProvider.StateDb,
                 stateProvider,
                 _logManager);
 
-            _txPoolInfoProvider = new TxPoolInfoProvider(stateProvider);
-            
-            _transactionPoolInfoProvider = new TxPoolInfoProvider(stateProvider);
+            _txPoolInfoProvider = new TxPoolInfoProvider(stateProvider, _txPool);
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(
@@ -585,7 +547,8 @@ namespace Nethermind.Runner.Runners
             if (_initConfig.IsMining)
             {
                 IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-                AlternativeChain producerChain = new AlternativeChain(_blockTree, _blockValidator, _rewardCalculator,
+                ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
+                ReadOnlyChain producerChain = new ReadOnlyChain(readOnlyBlockTree, _blockValidator, _rewardCalculator,
                     _specProvider, minerDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage);
 
                 switch (_chainSpec.SealEngineType)
@@ -594,7 +557,7 @@ namespace Nethermind.Runner.Runners
                     {
                         if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
                         _blockProducer = new CliqueBlockProducer(_txPool, producerChain.Processor,
-                            _blockTree, _timestamper, _cryptoRandom, producerChain.StateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
+                            _blockTree, _timestamper, _cryptoRandom, producerChain.ReadOnlyStateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
                         break;
                     }
 

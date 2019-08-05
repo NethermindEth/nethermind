@@ -33,8 +33,9 @@ namespace Nethermind.JsonRpc.Modules
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
         }
 
-        public void Register<T>(IModule module) where T : IModule
+        public void Register<T>(IRpcModulePool<T> pool) where T : IModule
         {
+            T module = pool.GetModule();
             ModuleInfo moduleInfo = new ModuleInfo(module.ModuleType, typeof(T), module);
             _modules.Add(moduleInfo);
             if (_jsonRpcConfig.EnabledModules.Contains(module.ModuleType))

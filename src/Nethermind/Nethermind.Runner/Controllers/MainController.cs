@@ -72,27 +72,20 @@ namespace Nethermind.Runner.Controllers
             using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
             {
                 string request = await reader.ReadToEndAsync();
-                Console.WriteLine($"{DateTime.UtcNow} Request: {request}");
                 var result = await _jsonRpcProcessor.ProcessAsync(request);
-                Console.WriteLine($"{DateTime.UtcNow} Responses: {result.Responses.Count}");
-//                using (var streamWriter = new StreamWriter(Response.Body))
-//                using (var jsonTextWriter = new JsonTextWriter(streamWriter))
-//                {
-//                    if (result.IsCollection)
-//                    {
-//                        _serializer.Serialize(jsonTextWriter, result.Responses);
-//                    }
-//                    else
-//                    {
-//                        _serializer.Serialize(jsonTextWriter, result.Responses[0]);
-//                    }
-//                }
+                using (var streamWriter = new StreamWriter(Response.Body))
+                using (var jsonTextWriter = new JsonTextWriter(streamWriter))
+                {
+                    if (result.IsCollection)
+                    {
+                        _serializer.Serialize(jsonTextWriter, result.Responses);
+                    }
+                    else
+                    {
+                        _serializer.Serialize(jsonTextWriter, result.Responses[0]);
+                    }
+                }
             }
-
-            Console.WriteLine($"REQUEST {i++}");
-            await Response.WriteAsync("{response = 1}");
         }
-
-        private static int i = 0;
     }
 }

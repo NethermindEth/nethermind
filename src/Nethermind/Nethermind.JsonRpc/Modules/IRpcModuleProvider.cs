@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules
 {
     public interface IRpcModuleProvider
     {
-        void Register<T>(IModule module) where T : IModule;
+        void Register<T>(IRpcModulePool<T> pool) where T : IModule;
         IReadOnlyCollection<ModuleInfo> GetEnabledModules();
         IReadOnlyCollection<ModuleInfo> GetAllModules();
     }

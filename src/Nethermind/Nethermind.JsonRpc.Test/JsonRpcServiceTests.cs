@@ -52,10 +52,10 @@ namespace Nethermind.JsonRpc.Test
         private IConfigProvider _configurationProvider;
         private ILogManager _logManager;
 
-        private JsonRpcResponse TestRequest<T>(IModule ethModule, string method, params string[] parameters) where T : IModule
+        private JsonRpcResponse TestRequest<T>(T ethModule, string method, params string[] parameters) where T : IModule
         {
             RpcModuleProvider moduleProvider = new RpcModuleProvider(_configurationProvider.GetConfig<IJsonRpcConfig>());
-            moduleProvider.Register<T>(ethModule);
+            moduleProvider.Register<T>(new SingletonModulePool<T>(ethModule));
             _jsonRpcService = new JsonRpcService(moduleProvider, _logManager);
             JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
             JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request).Result;

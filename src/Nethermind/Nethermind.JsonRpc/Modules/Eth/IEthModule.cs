@@ -25,7 +25,7 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public interface IEthModule : IModule
+    public interface IEthModule : IStatefulModule
     {
         ResultWrapper<string> eth_protocolVersion();
         ResultWrapper<SyncingResult> eth_syncing();

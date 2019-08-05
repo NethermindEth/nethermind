@@ -16,10 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain.TxPools
+namespace Nethermind.JsonRpc.Modules
 {
-    public interface ITxPoolInfoProvider
+    public interface IRpcModulePool<T> where T : IModule
     {
-        TxPoolInfo GetInfo();
+        T GetModule();
+        void ReturnModule(T module);
     }
 }

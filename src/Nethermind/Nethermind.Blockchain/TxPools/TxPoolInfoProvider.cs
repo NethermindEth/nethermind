@@ -16,10 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.TxPools
@@ -27,14 +27,17 @@ namespace Nethermind.Blockchain.TxPools
     public class TxPoolInfoProvider : ITxPoolInfoProvider
     {
         private readonly IStateProvider _stateProvider;
+        private readonly ITxPool _txPool;
 
-        public TxPoolInfoProvider(IStateProvider stateProvider)
+        public TxPoolInfoProvider(IStateProvider stateProvider, ITxPool txPool)
         {
-            _stateProvider = stateProvider;
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
-        public TxPoolInfo GetInfo(Transaction[] transactions)
+        public TxPoolInfo GetInfo()
         {
+            var transactions = _txPool.GetPendingTransactions();
             var groupedTransactions = transactions.GroupBy(t => t.SenderAddress);
             var pendingTransactions = new Dictionary<Address, IDictionary<ulong, Transaction[]>>();
             var queuedTransactions = new Dictionary<Address, IDictionary<ulong, Transaction[]>>();

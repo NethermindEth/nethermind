@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         {
             _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         }
-
+        
         public override ModuleType ModuleType => ModuleType.Personal;
 
         public ResultWrapper<Address> personal_importRawKey(byte keyData, string passphrase)

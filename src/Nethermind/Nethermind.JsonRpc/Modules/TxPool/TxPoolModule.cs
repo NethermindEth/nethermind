@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Facade;
 using Nethermind.Logging;
 
@@ -24,16 +25,16 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 {
     public class TxPoolModule : ModuleBase, ITxPoolModule
     {
-        private readonly IBlockchainBridge _blockchainBridge;        
+        private readonly ITxPoolInfoProvider _txPoolInfoProvider;
 
-        public TxPoolModule(ILogManager logManager, IBlockchainBridge blockchainBridge) : base(logManager)
+        public TxPoolModule(ILogManager logManager, ITxPoolInfoProvider txPoolInfoProvider) : base(logManager)
         {
-            _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+            _txPoolInfoProvider = txPoolInfoProvider ?? throw new ArgumentNullException(nameof(txPoolInfoProvider));
         }
 
         public ResultWrapper<TxPoolStatus> txpool_status()
         {
-            var poolInfo = _blockchainBridge.GetTxPoolInfo();
+            var poolInfo = _txPoolInfoProvider.GetInfo();
             var poolStatus = new TxPoolStatus(poolInfo);
          
             return ResultWrapper<TxPoolStatus>.Success(poolStatus);
@@ -41,16 +42,16 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 
         public ResultWrapper<TxPoolContent> txpool_content()
         {
-            var poolInfo = _blockchainBridge.GetTxPoolInfo();
+            var poolInfo = _txPoolInfoProvider.GetInfo();
             return ResultWrapper<TxPoolContent>.Success(new TxPoolContent(poolInfo));
         }
 
         public ResultWrapper<TxPoolInspection> txpool_inspect()
         {
-            var poolInfo = _blockchainBridge.GetTxPoolInfo();
+            var poolInfo = _txPoolInfoProvider.GetInfo();
             return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo));
         }
-        
+
         public override ModuleType ModuleType => ModuleType.TxPool;
     }
 }

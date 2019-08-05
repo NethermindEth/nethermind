@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             Logger = logManager.GetClassLogger();
         }
-        
+
         public abstract ModuleType ModuleType { get; }
 
         public virtual IReadOnlyCollection<JsonConverter> GetConverters()

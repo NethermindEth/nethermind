@@ -28,6 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
     {
         private readonly IPeerManager _peerManager;
         private readonly IStaticNodesManager _staticNodesManager;
+
         public override ModuleType ModuleType => ModuleType.Admin;
 
         public AdminModule(ILogManager logManager, IPeerManager peerManager, IStaticNodesManager staticNodesManager) :
