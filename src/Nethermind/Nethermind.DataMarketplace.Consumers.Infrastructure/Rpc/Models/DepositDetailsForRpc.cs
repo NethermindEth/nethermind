@@ -33,6 +33,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public Keccak TransactionHash { get; set; }
         public uint ConfirmationTimestamp { get; set; }
         public bool Confirmed { get; set; }
+        public bool Rejected { get; set; }
         public bool RefundClaimed { get; set; }
         public Keccak ClaimedRefundTransactionHash { get; set; }
         public uint ConsumedUnits { get; set; }
@@ -54,6 +55,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
             TransactionHash = deposit.TransactionHash;
             ConfirmationTimestamp = deposit.ConfirmationTimestamp;
             Confirmed = deposit.Confirmed;
+            Rejected = deposit.Rejected;
             RefundClaimed = deposit.RefundClaimed;
             ClaimedRefundTransactionHash = deposit.ClaimedRefundTransactionHash;
             ConsumedUnits = deposit.ConsumedUnits;

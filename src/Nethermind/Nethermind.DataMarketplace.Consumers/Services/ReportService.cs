@@ -90,8 +90,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     deposit.DataAsset.Provider.Address, deposit.DataAsset.Provider.Name, deposit.Deposit.Value,
                     deposit.Deposit.Units, deposit.Consumer, deposit.Timestamp, deposit.Deposit.ExpiryTime, expired,
                     deposit.TransactionHash, deposit.ConfirmationTimestamp, deposit.Confirmations,
-                    deposit.RequiredConfirmations, deposit.Confirmed, deposit.ClaimedRefundTransactionHash,
-                    consumedUnits, receiptItems));
+                    deposit.RequiredConfirmations, deposit.Confirmed, deposit.Rejected,
+                    deposit.ClaimedRefundTransactionHash, consumedUnits, receiptItems));
             }
 
             var (total, claimed, refunded) = CalculateValues(foundDeposits, depositsReceipts);

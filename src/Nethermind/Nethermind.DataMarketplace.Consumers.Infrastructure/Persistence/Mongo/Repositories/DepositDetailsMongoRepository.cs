@@ -50,14 +50,23 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             }
 
             var deposits = Deposits.AsQueryable();
-            if (query.OnlyUnconfirmed)
+            if (query.OnlyUnconfirmed || query.OnlyNotRejected)
             {
                 //MongoDB unsupported predicate: (d.Confirmations < d.RequiredConfirmations) - maybe due to uint type?
                 var allDeposits = await deposits.ToListAsync();
-                var unconfirmed = allDeposits.Where(d => d.ConfirmationTimestamp == 0 ||
-                                                        d.Confirmations < d.RequiredConfirmations);
+                var filteredDeposits = allDeposits.AsEnumerable();
+                if (query.OnlyUnconfirmed)
+                {
+                    filteredDeposits = filteredDeposits.Where(d => d.ConfirmationTimestamp == 0 ||
+                                                                   d.Confirmations < d.RequiredConfirmations);
+                }
 
-                return unconfirmed.OrderByDescending(d => d.Timestamp).Paginate(query);
+                if (query.OnlyNotRejected)
+                {
+                    filteredDeposits = filteredDeposits.Where(d => !d.Rejected);
+                }
+
+                return filteredDeposits.OrderByDescending(d => d.Timestamp).Paginate(query);
             }
 
             return await deposits.OrderByDescending(d => d.Timestamp).PaginateAsync(query);

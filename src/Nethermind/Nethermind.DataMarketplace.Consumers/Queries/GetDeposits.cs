@@ -23,5 +23,6 @@ namespace Nethermind.DataMarketplace.Consumers.Queries
     public class GetDeposits : PagedQueryBase
     {
         public bool OnlyUnconfirmed { get; set; }
+        public bool OnlyNotRejected { get; set; }
     }
 }

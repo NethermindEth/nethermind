@@ -34,6 +34,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public Keccak TransactionHash { get; private set; }
         public uint ConfirmationTimestamp { get; private set; }
         public bool Confirmed => ConfirmationTimestamp > 0 && Confirmations >= RequiredConfirmations;
+        public bool Rejected { get; private set; }
         public EarlyRefundTicket EarlyRefundTicket { get; private set; }
         public Keccak ClaimedRefundTransactionHash { get; private set; }
         public bool RefundClaimed => !(ClaimedRefundTransactionHash is null);
@@ -43,9 +44,9 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public uint RequiredConfirmations { get; private set; }
 
         public DepositDetails(Deposit deposit, DataAsset dataAsset, Address consumer, byte[] pepper, uint timestamp, 
-            Keccak transactionHash, uint confirmationTimestamp = 0, EarlyRefundTicket earlyRefundTicket = null,
-            Keccak claimedRefundTransactionHash = null, string kyc = null, uint confirmations = 0,
-            uint requiredConfirmations = 0)
+            Keccak transactionHash, uint confirmationTimestamp = 0, bool rejected = false,
+            EarlyRefundTicket earlyRefundTicket = null, Keccak claimedRefundTransactionHash = null, string kyc = null,
+            uint confirmations = 0, uint requiredConfirmations = 0)
         {
             Id = deposit.Id;
             Deposit = deposit;
@@ -55,6 +56,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             Timestamp = timestamp;
             TransactionHash = transactionHash;
             SetConfirmationTimestamp(confirmationTimestamp);
+            Rejected = rejected;
             EarlyRefundTicket = earlyRefundTicket;
             SetRefundClaimed(claimedRefundTransactionHash);
             Kyc = kyc;
@@ -65,6 +67,11 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public void SetConfirmationTimestamp(uint timestamp)
         {
             ConfirmationTimestamp = timestamp;
+        }
+
+        public void Reject()
+        {
+            Rejected = true;
         }
 
         public void SetEarlyRefundTicket(EarlyRefundTicket earlyRefundTicket)

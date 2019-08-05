@@ -12,6 +12,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         Task SendDepositConfirmationsStatusAsync(Keccak depositId, string dataAssetName, uint confirmations,
             uint requiredConfirmations, uint confirmationTimestamp, bool confirmed);
 
+        Task SendDepositRejectedAsync(Keccak depositId);
         Task SendDataInvalidAsync(Keccak depositId, InvalidDataReason reason);
         Task SendSessionStartedAsync(Keccak depositId, Keccak sessionId);
         Task SendSessionFinishedAsync(Keccak depositId, Keccak sessionId);

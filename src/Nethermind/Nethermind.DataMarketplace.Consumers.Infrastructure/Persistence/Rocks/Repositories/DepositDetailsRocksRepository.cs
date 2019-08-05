@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             {
                 return Task.FromResult(PagedResult<DepositDetails>.Empty);
             }
-            
+
             var depositsBytes = _database.GetAll();
             if (depositsBytes.Length == 0)
             {
@@ -72,6 +72,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             {
                 filteredDeposits = filteredDeposits.Where(d => d.ConfirmationTimestamp == 0 ||
                                                                d.Confirmations < d.RequiredConfirmations);
+            }
+
+            if (query.OnlyNotRejected)
+            {
+                filteredDeposits = filteredDeposits.Where(d => !d.Rejected);
             }
 
             return Task.FromResult(filteredDeposits.OrderByDescending(d => d.Timestamp).Paginate(query));

@@ -545,7 +545,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,
                 "test", 1, 1, TestItem.AddressB, 1, 1, false, TestItem.KeccakA,
-                1, 1, 1, true, TestItem.KeccakB, 1, new[]
+                1, 1, 1, true, false, TestItem.KeccakB, 1, new[]
                 {
                     new DataDeliveryReceiptReportItem(Keccak.Zero, 1, TestItem.KeccakC, TestItem.PublicKeyA,
                         new DataDeliveryReceiptRequest(1, TestItem.KeccakD, new UnitsRange(0, 1), false,

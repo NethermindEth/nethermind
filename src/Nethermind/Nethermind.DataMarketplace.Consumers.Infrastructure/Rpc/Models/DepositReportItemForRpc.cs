@@ -40,10 +40,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public uint ExpiryTime { get; set; }
         public bool Expired { get; set; }
         public Keccak TransactionHash { get; set; }
-        public uint ConfirmationTimestamp { get; }
-        public uint Confirmations { get; }
-        public uint RequiredConfirmations { get; }
-        public bool Confirmed { get; }
+        public uint ConfirmationTimestamp { get; set; }
+        public uint Confirmations { get; set; }
+        public uint RequiredConfirmations { get; set; }
+        public bool Confirmed { get; set; }
+        public bool Rejected { get; set; }
         public Keccak ClaimedRefundTransactionHash { get; set; }
         public bool RefundClaimed { get; set; }
         public uint ConsumedUnits { get; set; }
@@ -78,6 +79,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
             Confirmations = report.Confirmations;
             RequiredConfirmations = report.RequiredConfirmations;
             Confirmed = report.Confirmed;
+            Rejected = report.Rejected;
             ClaimedRefundTransactionHash = report.ClaimedRefundTransactionHash;
             RefundClaimed = report.RefundClaimed;
             ConsumedUnits = report.ConsumedUnits;
